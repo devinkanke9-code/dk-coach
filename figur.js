@@ -41,7 +41,8 @@ export function ik(A, Z, a, b, pol) {
 
 /* ---------- Pose → Gelenkpunkte ---------- */
 // pose: { becken: Vector3, rumpf: {neigung, seit, drehung, basis?}, kopf: {neigung},
-//         hand: {l: V, r: V}, ellbogenPol: {l, r}, fuss: {l: V, r: V}, kniePol: {l, r}, fussRicht: {l, r} (Vektor), zehen: {l, r} (Grad, Fersenhub) }
+//         hand: {l: V, r: V}, ellbogenPol: {l, r}, handflaeche: {l, r} (Richtung, in die die Handfläche zeigt),
+//         fuss: {l: V, r: V}, kniePol: {l, r}, fussRicht: {l, r} (Vektor), zehen: {l, r} (Grad, Fersenhub) }
 export function gelenke(pose) {
   const m = MASS;
   const R = rumpfRahmen(pose.rumpf || {});
@@ -59,7 +60,7 @@ export function gelenke(pose) {
     l: becken.clone().add(R.links.clone().multiplyScalar(m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02)),
     r: becken.clone().add(R.links.clone().multiplyScalar(-m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02))
   };
-  const out = { R, becken, brust, nacken, kopf, schulter, huefte, ellbogen: {}, hand: {}, knie: {}, knoechel: {}, zehe: {}, ferse: {} };
+  const out = { R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handAchse: {}, handRuecken: {}, knie: {}, knoechel: {}, zehe: {}, ferse: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -67,6 +68,12 @@ export function gelenke(pose) {
     const epol = (pose.ellbogenPol && pose.ellbogenPol[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
     const arm = ik(schulter[s], hz, m.oberarm, m.unterarm, epol);
     out.ellbogen[s] = arm.mitte; out.hand[s] = arm.ende;
+    // Handrücken: ohne Angabe Obergriff (Fingerknöchel quer zum Körper, wie an der Stange)
+    const a = arm.ende.clone().sub(arm.mitte).normalize();
+    let n = pose.handflaeche && pose.handflaeche[s] ? pose.handflaeche[s].clone().negate() : a.clone().cross(R.links);
+    n.sub(a.clone().multiplyScalar(n.dot(a)));
+    if (n.lengthSq() < 1e-6) n = R.vor.clone().sub(a.clone().multiplyScalar(R.vor.dot(a)));
+    out.handAchse[s] = a; out.handRuecken[s] = n.normalize();
     // Beine: Knie zeigt nach vorn (leicht außen)
     const fz = (pose.fuss && pose.fuss[s]) || huefte[s].clone().add(V(0.02 * sg, -(m.oberschenkel + m.unterschenkel), 0));
     const kpol = (pose.kniePol && pose.kniePol[s]) || V(0.15 * sg, 0, 1);
@@ -92,7 +99,8 @@ export function gelenke(pose) {
 
 /* ---------- Material ---------- */
 export const FARBEN = {
-  koerper: 0x6a7686, koerperDunkel: 0x2f3742, gelenk: 0x35c6d4, gold: 0xffa53a, metall: 0xb4bcc6, scheibe: 0x2a2f36,
+  haut: 0xc4927a, shirt: 0x202329, hose: 0x14161a, schuh: 0xeceef0, haar: 0x1c1612, dkGold: 0xc29c5e,
+  gold: 0xffa53a, metall: 0xb4bcc6, scheibe: 0x2a2f36,
   holz: 0x39404a, polster: 0x232a33, boden: 0x12161c, linie: 0x6b7077, cyan: 0x35c6d4, glut: 0xff7a1a
 };
 function mat(farbe, opt = {}) { return new THREE.MeshStandardMaterial(Object.assign({ color: farbe, roughness: 0.55, metalness: 0.05 }, opt)); }
@@ -107,69 +115,132 @@ const MUSKEL_TEILE = {
   adduktoren: ['oberschenkel_l', 'oberschenkel_r'], abduktoren: ['gesaess_l', 'gesaess_r'], waden: ['unterschenkel_l', 'unterschenkel_r'],
   bauch: ['bauch'], seitlicher_rumpf: ['bauch'], unterer_ruecken: ['bauch']
 };
+// Kleidung über einem Muskel leuchtet mit
+const LEUCHTET_MIT = { hosenbein_l: 'oberschenkel_l', hosenbein_r: 'oberschenkel_r', hosenbund: 'gesaess_l' };
+
+// Drehkörper aus einem Profil [Anteil der Länge -0,5…0,5, Radius in m]; Länge 1, Enden geschlossen
+function drehkoerper(punkte, seg = 18) {
+  const p = [new THREE.Vector2(0, -0.5), ...punkte.map(([y, r]) => new THREE.Vector2(r, y)), new THREE.Vector2(0, 0.5)];
+  return new THREE.LatheGeometry(p, seg);
+}
+// Arm- und Beinform: Radius am Anfang, dickste Stelle (bei Anteil pm), Ende; Enden rund (keine Kante am Gelenk)
+function glied(r0, rMax, r1, pm) {
+  const p = [], kappe = 0.08;
+  const us = [0.004, 0.015, 0.03, 0.05, 0.08, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.92, 0.95, 0.97, 0.985, 0.996];
+  for (const u of us) {
+    const basis = u < pm ? r0 + (rMax - r0) * Math.sin(Math.PI / 2 * u / pm) : r1 + (rMax - r1) * Math.cos(Math.PI / 2 * (u - pm) / (1 - pm));
+    const rand = Math.min(u, 1 - u) / kappe;
+    p.push([u - 0.5, basis * (rand >= 1 ? 1 : Math.sqrt(1 - (1 - rand) * (1 - rand)))]);
+  }
+  return drehkoerper(p, 16);
+}
+// V-Form des Oberkörpers: schmale Taille, breite Brust, runde Schultern
+const RUMPF = [[-0.5, 0.05], [-0.46, 0.08], [-0.38, 0.09], [-0.15, 0.1], [0.12, 0.122], [0.3, 0.132], [0.4, 0.122], [0.47, 0.09], [0.495, 0.05]];
+const BAUCH = [[-0.5, 0.06], [-0.42, 0.09], [-0.1, 0.1], [0.38, 0.094], [0.48, 0.065]];
+
+// DK-Logo (Pfade wie im App-Symbol) als Textur für die Brust
+function logoTextur() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, '#e2bf7e'); g.addColorStop(1, '#a8834a');
+  x.fillStyle = g; x.translate(128, 64); x.scale(0.4, 0.4); x.translate(-297, -256);
+  x.fill(new Path2D('M132 150h76c62 0 104 42 104 106s-42 106-104 106h-76zM178 196v120h28c35 0 58-24 58-60s-23-60-58-60z'));
+  x.fill(new Path2D('M300 150h46v86l62-86h54l-74 98 78 114h-56l-64-96v96h-46z'));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+
+const M4 = new THREE.Matrix4();
 
 export class Figur {
   constructor() {
     this.gruppe = new THREE.Group();
     this.teile = {};
-    this.matNormal = mat(FARBEN.koerper, { roughness: 0.42, metalness: 0.18 });
-    this.matGelenk = mat(FARBEN.gelenk, { roughness: 0.35, metalness: 0.2, emissive: FARBEN.gelenk, emissiveIntensity: 0.25 });
+    const haut = mat(FARBEN.haut, { roughness: 0.6, metalness: 0.02 });
+    const shirt = mat(FARBEN.shirt, { roughness: 0.75, metalness: 0.05 });
+    const hose = mat(FARBEN.hose, { roughness: 0.8 });
+    const schuh = mat(FARBEN.schuh, { roughness: 0.5 });
+    const gold = mat(FARBEN.dkGold, { roughness: 0.35, metalness: 0.6, emissive: FARBEN.dkGold, emissiveIntensity: 0.15 });
     // Arbeitende Muskeln: leuchten orange-gold, je stärker die Anspannung, desto heller (siehe glut())
     this.matMuskel = mat(FARBEN.gold, { emissive: FARBEN.glut, emissiveIntensity: 0.5, roughness: 0.32, metalness: 0.12 });
-    const kapsel = (name, r, matl, laenge = 0.25) => {
-      const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, laenge, 6, 14), matl || this.matNormal);
-      m.castShadow = true; m.userData.r = r; m.userData.laenge = laenge;
-      this.gruppe.add(m); this.teile[name] = m; return m;
+    const teil = (name, geo, matl, laenge = 1) => {
+      const m = new THREE.Mesh(geo, matl); m.castShadow = true;
+      m.userData.laenge = laenge; m.userData.mat = matl;
+      this.gruppe.add(m); if (name) this.teile[name] = m; return m;
     };
-    const kugel = (name, r, matl) => {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), matl || this.matNormal);
-      m.castShadow = true; this.gruppe.add(m); this.teile[name] = m; return m;
-    };
-    kapsel('bauch', 0.112, null, 0.18); kapsel('brustkorb', 0.13, null, 0.2); kapsel('ruecken', 0.12, null, 0.2); kapsel('nacken', 0.05, null, 0.08);
-    kugel('kopf', MASS.kopf);
+    const kapsel = (name, r, matl, laenge) => teil(name, new THREE.CapsuleGeometry(r, laenge, 6, 14), matl, laenge);
+    const kugel = (name, r, matl) => teil(name, new THREE.SphereGeometry(r, 20, 14), matl);
+    teil('bauch', drehkoerper(BAUCH), shirt);
+    teil('brustkorb', drehkoerper(RUMPF, 24), shirt);
+    teil('ruecken', drehkoerper(RUMPF, 24), shirt);
+    kapsel('nacken', 0.05, haut, 0.08);
+    kapsel('hosenbund', 0.086, hose, 2 * MASS.hueftBreite);
+    // Kopf leicht oval, Haare als Kappe nach hinten gekippt (zeigt, wohin die Figur schaut)
+    const kopf = kugel('kopf', MASS.kopf, haut); kopf.scale.set(0.9, 1.08, 1);
+    const haarForm = new THREE.SphereGeometry(MASS.kopf * 1.05, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.52); haarForm.rotateX(-0.5);
+    const haar = new THREE.Mesh(haarForm, mat(FARBEN.haar, { roughness: 0.9 })); haar.castShadow = true; kopf.add(haar);
+    // DK auf der Brust
+    this.logo = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.07), new THREE.MeshStandardMaterial({
+      map: logoTextur(), transparent: true, alphaTest: 0.05, roughness: 0.35, metalness: 0.5,
+      emissive: 0xc29c5e, emissiveIntensity: 0.25, polygonOffset: true, polygonOffsetFactor: -2 }));
+    this.logo.material.emissiveMap = this.logo.material.map;
+    this.gruppe.add(this.logo);
+    this.handRuecken = {};
     for (const s of ['l', 'r']) {
-      kapsel('oberarm_' + s, 0.048, null, MASS.oberarm); kapsel('unterarm_' + s, 0.04, null, MASS.unterarm); kugel('hand_' + s, 0.042, this.matGelenk);
-      kugel('schulter_' + s, 0.062);
-      kapsel('oberschenkel_' + s, 0.072, null, MASS.oberschenkel); kapsel('unterschenkel_' + s, 0.054, null, MASS.unterschenkel); kapsel('fuss_' + s, 0.038, this.matGelenk, MASS.fussLaenge * 0.8);
-      kugel('gesaess_' + s, 0.085); kugel('knie_' + s, 0.052, this.matGelenk); kugel('ellbogen_' + s, 0.042, this.matGelenk);
+      teil('oberarm_' + s, glied(0.05, 0.055, 0.037, 0.45), haut); teil('unterarm_' + s, glied(0.042, 0.046, 0.03, 0.25), haut);
+      const hand = kugel('hand_' + s, 1, haut); hand.scale.set(0.043, 0.052, 0.03);
+      // Goldene Knöchel-Leiste auf dem Handrücken: zeigt, ob Ober- oder Untergriff
+      const leiste = new THREE.CapsuleGeometry(0.008, 0.05, 4, 8); leiste.rotateZ(Math.PI / 2);
+      this.handRuecken[s] = teil(null, leiste, gold);
+      kugel('schulter_' + s, 0.062, haut);
+      teil('oberschenkel_' + s, glied(0.074, 0.08, 0.05, 0.3), haut); teil('unterschenkel_' + s, glied(0.05, 0.058, 0.034, 0.3), haut);
+      teil('hosenbein_' + s, new THREE.CylinderGeometry(0.086, 0.08, 1, 18), hose);
+      kapsel('fuss_' + s, 0.04, schuh, MASS.fussLaenge * 0.8);
+      kugel('gesaess_' + s, 0.08, hose); kugel('knie_' + s, 0.053, haut); kugel('ellbogen_' + s, 0.04, haut);
     }
     this.markiere([]);
   }
   markiere(muskeln) {
     const an = new Set();
     for (const m of muskeln || []) for (const t of MUSKEL_TEILE[m] || []) an.add(t);
-    for (const [name, mesh] of Object.entries(this.teile)) {
-      if (an.has(name)) mesh.material = this.matMuskel;
-      else if (/^(hand|knie|ellbogen|fuss)_/.test(name)) mesh.material = this.matGelenk;
-      else mesh.material = this.matNormal;
-    }
+    for (const [name, mesh] of Object.entries(this.teile)) mesh.material = an.has(name) || an.has(LEUCHTET_MIT[name]) ? this.matMuskel : mesh.userData.mat;
   }
   glut(staerke) { this.matMuskel.emissiveIntensity = 0.25 + 0.9 * staerke; }
-  static setzeKapsel(mesh, A, B, dick = 1) {
+  // Teil zwischen A und B legen; quer = Richtung der Breite (für ovalen Querschnitt), bx/bz = Breite/Tiefe
+  static setzeKapsel(mesh, A, B, quer = null, bx = 1, bz = bx) {
     const d = B.clone().sub(A); const l = Math.max(d.length(), 1e-4);
+    const y = d.divideScalar(l);
     mesh.position.copy(A).add(B).multiplyScalar(0.5);
-    mesh.quaternion.setFromUnitVectors(V(0, 1, 0), d.divideScalar(l));
-    mesh.scale.set(dick, Math.max(l / mesh.userData.laenge, 0.01), dick);
+    const x = quer ? quer.clone().sub(y.clone().multiplyScalar(quer.dot(y))) : null;
+    if (x && x.lengthSq() > 1e-8) { x.normalize(); mesh.quaternion.setFromRotationMatrix(M4.makeBasis(x, y, x.clone().cross(y))); }
+    else mesh.quaternion.setFromUnitVectors(V(0, 1, 0), y);
+    mesh.scale.set(bx, Math.max(l / mesh.userData.laenge, 0.01), bz);
   }
   stelle(g) {
-    const T = this.teile, K = Figur.setzeKapsel;
-    const mitteBauch = g.becken.clone().lerp(g.brust, 0.42);
-    K(T.bauch, g.becken.clone().add(g.R.oben.clone().multiplyScalar(0.02)), mitteBauch);
-    K(T.brustkorb, mitteBauch.clone().add(g.R.vor.clone().multiplyScalar(0.025)), g.brust.clone().sub(g.R.oben.clone().multiplyScalar(0.05)).add(g.R.vor.clone().multiplyScalar(0.02)));
-    K(T.ruecken, mitteBauch.clone().sub(g.R.vor.clone().multiplyScalar(0.03)), g.brust.clone().sub(g.R.oben.clone().multiplyScalar(0.06)).sub(g.R.vor.clone().multiplyScalar(0.03)));
-    K(T.nacken, g.brust, g.nacken.clone().add(g.R.oben.clone().multiplyScalar(0.02)));
-    T.kopf.position.copy(g.kopf);
+    const T = this.teile, K = Figur.setzeKapsel, R = g.R;
+    const P = (hoch, vor = 0) => g.becken.clone().add(R.oben.clone().multiplyScalar(hoch)).add(R.vor.clone().multiplyScalar(vor));
+    K(T.bauch, P(0), P(0.25, 0.005), R.links, 1.16, 0.92);
+    K(T.brustkorb, P(0.17, 0.015), P(0.53, 0.015), R.links, 1.45, 0.82);
+    K(T.ruecken, P(0.15, -0.035), P(0.5, -0.035), R.links, 1.45, 0.7);
+    K(T.nacken, g.brust, g.nacken.clone().add(R.oben.clone().multiplyScalar(0.02)));
+    K(T.hosenbund, g.huefte.r.clone().sub(R.vor.clone().multiplyScalar(0.015)), g.huefte.l.clone().sub(R.vor.clone().multiplyScalar(0.015)));
+    T.kopf.position.copy(g.kopf); T.kopf.quaternion.copy(g.kopfQ);
+    this.logo.position.copy(P(0.38, 0.117)); this.logo.quaternion.copy(R.q);
     for (const s of ['l', 'r']) {
       K(T['oberarm_' + s], g.schulter[s], g.ellbogen[s]);
       K(T['unterarm_' + s], g.ellbogen[s], g.hand[s]);
-      T['hand_' + s].position.copy(g.hand[s]);
+      const a = g.handAchse[s], n = g.handRuecken[s], hand = T['hand_' + s];
+      hand.quaternion.setFromRotationMatrix(M4.makeBasis(a.clone().cross(n), a, n));
+      hand.position.copy(g.hand[s]).add(a.clone().multiplyScalar(0.012));
+      this.handRuecken[s].quaternion.copy(hand.quaternion);
+      this.handRuecken[s].position.copy(g.hand[s]).add(n.clone().multiplyScalar(0.026)).add(a.clone().multiplyScalar(0.022));
       T['schulter_' + s].position.copy(g.schulter[s]);
       T['ellbogen_' + s].position.copy(g.ellbogen[s]);
       K(T['oberschenkel_' + s], g.huefte[s], g.knie[s]);
+      K(T['hosenbein_' + s], g.huefte[s].clone().add(R.oben.clone().multiplyScalar(0.03)), g.huefte[s].clone().lerp(g.knie[s], 0.42));
       K(T['unterschenkel_' + s], g.knie[s], g.knoechel[s]);
       T['knie_' + s].position.copy(g.knie[s]);
       K(T['fuss_' + s], g.ferse[s], g.zehe[s]);
-      T['gesaess_' + s].position.copy(g.huefte[s]).sub(g.R.vor.clone().multiplyScalar(0.05)).add(g.R.oben.clone().multiplyScalar(0.03));
+      T['gesaess_' + s].position.copy(g.huefte[s]).sub(R.vor.clone().multiplyScalar(0.05)).add(R.oben.clone().multiplyScalar(0.03));
     }
   }
 }

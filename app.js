@@ -337,13 +337,19 @@ function buehne() {
   const langsam = knopf('½×', 'Langsam', () => { ansicht.tempo = ansicht.tempo === 1 ? 0.4 : 1; langsam.setAttribute('aria-pressed', String(ansicht.tempo !== 1)); }, { 'aria-pressed': 'false' });
   const links = knopf('⟲', 'Nach links drehen', () => { ansicht.drehe(-45); auto.setAttribute('aria-pressed', 'false'); });
   const rechts = knopf('⟳', 'Nach rechts drehen', () => { ansicht.drehe(45); auto.setAttribute('aria-pressed', 'false'); });
-  const el = h('div', { class: 'buehne' }, h('div', { class: 'glanz' }), canvas,
+  // Foto neben der Figur: So macht's Devin (nur wenn es zur Übung ein Foto gibt)
+  const fotoBild = h('img', { alt: '', onerror: () => { foto.hidden = true; } });
+  const foto = h('button', { class: 'devin-foto', hidden: true, 'aria-label': 'Foto vergrößern: So macht’s Devin', onclick: () => fotoGross(fotoBild.src) },
+    fotoBild, h('span', { text: 'So macht’s Devin' }));
+  const el = h('div', { class: 'buehne' }, h('div', { class: 'glanz' }), canvas, foto,
     h('div', { class: 'steuer' }, links, auto, pause, langsam, rechts),
     h('p', { class: 'tipp', text: 'Wischen zum Drehen · zwei Finger zum Zoomen' }));
   const passe = () => ansicht && ansicht.groesse();
   return {
     el,
     async zeige(d) {
+      foto.hidden = !d.b;
+      if (d.b) fotoBild.src = d.b;
       el.classList.toggle('ohne', !d.a);
       if (!d.a) return;
       const M = await lade3d();
@@ -371,6 +377,18 @@ function ebene(klasse, label) {
   history.pushState({ ebene: 1 }, '');
   window.addEventListener('popstate', zu);
   return { el, schliessen: () => history.back(), set beimSchliessen(f) { beimSchliessen = f; } };
+}
+function fotoGross(src) {
+  const e = ebene('foto-gross', 'So macht’s Devin');
+  e.el.append(h('div', { class: 'blatt-kopf' }, h('button', { class: 'zu', 'aria-label': 'Schließen', onclick: e.schliessen, text: '✕' })),
+    h('img', { src, alt: 'Devin zeigt die Übung', onclick: e.schliessen }), h('p', { text: 'So macht’s Devin' }));
+}
+// Fotos der Plan-Übungen einmal laden: Der Offline-Speicher behält sie, so sind sie auch ohne Netz im Gym da
+function fotosVorladen() {
+  if (!S.plan || navigator.onLine === false) return;
+  const pfade = new Set();
+  for (const t of S.plan.t || []) for (const x of t.u || []) { const d = UEBUNGEN[x.i]; if (d && d.b) pfade.add(d.b); }
+  if (pfade.size) setTimeout(() => pfade.forEach((p) => fetch(p).catch(() => {})), 2500);
 }
 async function oeffne3d(u) {
   const d = u.d;
@@ -437,5 +455,6 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
 (async () => {
   await linkEinlesen();
   zeichne();
+  fotosVorladen();
 })();
-window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { S.tag = null; zeichne(); } });
+window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { S.tag = null; zeichne(); fotosVorladen(); } });
