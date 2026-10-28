@@ -837,13 +837,13 @@ function kopfueber(art) {
         oben = mv(V(0, -0.6, 0.8), V(0, -0.42, 0.91), t);
         fuss = seiten((s, sg) => V(sg * 0.1, 0.11, -0.66));
       } else if (art === 'pike_erhoeht') {
-        sch = mv(V(0, 0.28, 0.45), V(0, 0.55, 0.38), t);
+        sch = mv(V(0, 0.36, 0.45), V(0, 0.55, 0.38), t);   // unten: Scheitel tippt den Boden gerade an (Rumpf fast senkrecht)
         oben = mv(V(0, -0.97, 0.25), V(0, -0.98, 0.17), t);
         fuss = seiten((s, sg) => V(sg * 0.1, 0.45 + FY, -0.45));
       } else {
         // Bauch zur Wand: Wand bei z = 0, Hände 0,3 m davor
         handZ = 0.3;
-        const tief = art === 'handstand' ? 0.02 * (1 - t) : mix(0.27, 0, t);
+        const tief = art === 'handstand' ? 0.02 * (1 - t) : mix(0.225, 0, t);   // unten: Scheitel knapp über dem Boden
         sch = V(0, 0.04 + ARM * 0.96 - tief, handZ + 0.02);
         // Füße lehnen an der Wand: Körper kippt mit den Füßen zur Wand
         oben = V(0, -1, 0.2 + (art === 'handstand' ? 0 : 0.1 * (1 - t)));

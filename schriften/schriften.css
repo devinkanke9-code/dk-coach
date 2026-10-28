@@ -1,0 +1,5 @@
+/* Schriften der Trainer-Seite, hier lokal, damit die Kunden-App auch offline gleich aussieht.
+   Archivo und IBM Plex: SIL Open Font License 1.1 (fonts.google.com), nur der Latin-Teil. */
+@font-face { font-family: "Archivo"; font-style: normal; font-weight: 700 800; font-stretch: 125%; font-display: swap; src: url(archivo.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 400 600; font-display: swap; src: url(plex-sans.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url(plex-mono-500.woff2) format("woff2"); }

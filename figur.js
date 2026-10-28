@@ -4,6 +4,7 @@
 // Koordinaten: Meter, Y nach oben, Figur schaut nach +Z, ihre linke Seite ist +X.
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { koerper, FigurModell } from './figur-modell.js';
 
 export const MASS = {
   oberarm: 0.29, unterarm: 0.27, oberschenkel: 0.45, unterschenkel: 0.44,
@@ -112,7 +113,7 @@ function mat(farbe, opt = {}) { return new THREE.MeshStandardMaterial(Object.ass
 
 /* ---------- Figur (Meshes zwischen Gelenkpunkten) ---------- */
 // Muskel → Körperteile, die golden leuchten
-const MUSKEL_TEILE = {
+export const MUSKEL_TEILE = {
   brust: ['brustkorb'], lat: ['ruecken'], oberer_ruecken: ['ruecken'], trapez: ['nacken', 'ruecken'],
   schulter_vorne: ['schulter_l', 'schulter_r'], schulter_seite: ['schulter_l', 'schulter_r'], schulter_hinten: ['schulter_l', 'schulter_r'],
   bizeps: ['oberarm_l', 'oberarm_r'], trizeps: ['oberarm_l', 'oberarm_r'], unterarme: ['unterarm_l', 'unterarm_r'],
@@ -121,7 +122,7 @@ const MUSKEL_TEILE = {
   bauch: ['bauch'], seitlicher_rumpf: ['bauch'], unterer_ruecken: ['bauch']
 };
 // Kleidung über einem Muskel leuchtet mit
-const LEUCHTET_MIT = { hosenbein_l: 'oberschenkel_l', hosenbein_r: 'oberschenkel_r', hosenbund: 'gesaess_l' };
+export const LEUCHTET_MIT = { hosenbein_l: 'oberschenkel_l', hosenbein_r: 'oberschenkel_r', hosenbund: 'gesaess_l' };
 
 // Drehkörper aus einem Profil [Anteil der Länge -0,5…0,5, Radius in m]; Länge 1, Enden geschlossen
 function drehkoerper(punkte, seg = 18) {
@@ -516,7 +517,8 @@ export class Ansicht {
     const ring = new THREE.Mesh(new THREE.RingGeometry(2.17, 2.2, 96), new THREE.MeshBasicMaterial({ color: this.effekte ? 0x35c6d4 : 0x3a3226, transparent: true, opacity: this.effekte ? 0.55 : 1 }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002; this.szene.add(ring);
     if (this.effekte) this.effekteBauen();
-    this.figur = new Figur(); this.szene.add(this.figur.gruppe);
+    // Echter Körper (figur-modell.js), sobald koerper.bin geladen ist (app.js lädt ihn mit); sonst die gebaute Figur
+    this.figur = koerper() ? new FigurModell() : new Figur(); this.szene.add(this.figur.gruppe);
     this.geraete = new Geraete(); this.szene.add(this.geraete.gruppe);
     if (!opt.standbild) {
       this.steuerung = new OrbitControls(this.kamera, canvas);
