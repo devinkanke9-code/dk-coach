@@ -4,8 +4,9 @@ const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'coach.js', 'figur.js
 const NAME = 'dk-coach-' + VERSION;
 
 self.addEventListener('install', (e) => {
-  // Alles oder nichts: erst wenn jede Datei da ist, gilt die neue Fassung
-  e.waitUntil(caches.open(NAME).then((c) => c.addAll(DATEIEN)).then(() => self.skipWaiting()));
+  // Alles oder nichts: erst wenn jede Datei da ist, gilt die neue Fassung.
+  // cache: 'reload' = am Browser-Zwischenspeicher vorbei (GitHub Pages hält Dateien 10 Minuten), sonst landet eine alte app.js in der neuen Fassung
+  e.waitUntil(caches.open(NAME).then((c) => c.addAll(DATEIEN.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((namen) => Promise.all(namen.filter((n) => n.startsWith('dk-coach-') && n !== NAME).map((n) => caches.delete(n)))).then(() => self.clients.claim()));
