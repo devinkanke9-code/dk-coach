@@ -59,7 +59,9 @@ export function buehne({ lade3d, fotoGross }) {
       el.classList.remove('laedt');
       if (!el.isConnected || gezeigt !== d) return;
       if (!ansicht) {
-        ansicht = new M.Ansicht(canvas, { effekte: true });
+        // Licht und Ringe der Bühne in den Farben der Seite (Farbwelt in stil.css)
+        const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || undefined;
+        ansicht = new M.Ansicht(canvas, { effekte: true, farbeA: css('--verlauf-a'), farbeB: css('--verlauf-b') });
         ansicht.beiDrehStopp = () => auto.setAttribute('aria-pressed', 'false');
         ansicht.start();
         if (beobachter) beobachter.observe(canvas); else window.addEventListener('resize', passe);

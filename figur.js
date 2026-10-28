@@ -488,6 +488,8 @@ export const HINWEIS = {
   arme: { punkte: (g) => [{ s: 'l', v: mitteVon(g.ellbogen.l, g.hand.l, 0.3) }, { s: 'r', v: mitteVon(g.ellbogen.r, g.hand.r, 0.3) }], teile: ['oberarm', 'unterarm', 'ellbogen'], blick: 'seite' },
   hand: { punkte: (g) => paar(g.handMitte || g.hand), teile: ['hand', 'unterarm'], blick: 'schraeg' }
 };
+// Farbe als CSS-Text für Canvas-Texturen (getHex liefert sRGB)
+const rgba = (c, a) => { const x = c.getHex(); return 'rgba(' + (x >> 16 & 255) + ',' + (x >> 8 & 255) + ',' + (x & 255) + ',' + a + ')'; };
 const HINWEIS_FARBE = { technik: 0x35c6d4, fehler: 0xff4b3a, vorsicht: 0xffa53a };
 
 export class Ansicht {
@@ -495,6 +497,8 @@ export class Ansicht {
   constructor(canvas, opt = {}) {
     this.canvas = canvas;
     this.effekte = !!opt.effekte && !opt.standbild;
+    // Farben der Bühne (Kantenlicht, Bodenring, Pulse, Funken): aus der Farbwelt der Seite (buehne.js gibt sie mit), sonst Orange/Türkis
+    this.farbeA = new THREE.Color(opt.farbeA || 0xffa53a); this.farbeB = new THREE.Color(opt.farbeB || 0x35c6d4);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: this.effekte, preserveDrawingBuffer: !!opt.standbild });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -509,12 +513,12 @@ export class Ansicht {
     const sonne = new THREE.DirectionalLight(0xfff1de, 1.9); sonne.position.set(2.5, 4.5, 3); sonne.castShadow = true;
     sonne.shadow.mapSize.set(1024, 1024); Object.assign(sonne.shadow.camera, { left: -2, right: 2, top: 2.5, bottom: -1, near: 0.5, far: 12 });
     sonne.shadow.radius = 4; this.szene.add(sonne);
-    // Zwei farbige Kantenlichter: Gold von hinten links, Türkis von hinten rechts
-    const kante = new THREE.DirectionalLight(0xffa53a, 1.1); kante.position.set(-3, 2.5, -3); this.szene.add(kante);
-    const kante2 = new THREE.DirectionalLight(0x35c6d4, 0.9); kante2.position.set(3, 1.8, -2.5); this.szene.add(kante2);
+    // Zwei farbige Kantenlichter: Farbe A von hinten links, Farbe B von hinten rechts
+    const kante = new THREE.DirectionalLight(this.farbeA, 1.1); kante.position.set(-3, 2.5, -3); this.szene.add(kante);
+    const kante2 = new THREE.DirectionalLight(this.farbeB, 0.9); kante2.position.set(3, 1.8, -2.5); this.szene.add(kante2);
     const boden = new THREE.Mesh(new THREE.CircleGeometry(2.2, 64), mat(FARBEN.boden, { roughness: 0.9, transparent: this.effekte, opacity: this.effekte ? 0.92 : 1 }));
     boden.rotation.x = -Math.PI / 2; boden.receiveShadow = true; this.szene.add(boden);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(2.17, 2.2, 96), new THREE.MeshBasicMaterial({ color: this.effekte ? 0x35c6d4 : 0x3a3226, transparent: true, opacity: this.effekte ? 0.55 : 1 }));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(2.17, 2.2, 96), new THREE.MeshBasicMaterial({ color: this.effekte ? this.farbeB : 0x3a3226, transparent: true, opacity: this.effekte ? 0.55 : 1 }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002; this.szene.add(ring);
     if (this.effekte) this.effekteBauen();
     // Echter Körper (figur-modell.js), sobald koerper.bin geladen ist (app.js lädt ihn mit); sonst die gebaute Figur
@@ -635,14 +639,14 @@ export class Ansicht {
   }
   // Leuchtender Bodenkreis, Pulsringe und schwebende Lichtpunkte
   effekteBauen() {
-    const kegel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: leuchtTextur('rgba(255,165,58,0.55)', 'rgba(255,165,58,0)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const kegel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: leuchtTextur(rgba(this.farbeA, 0.55), rgba(this.farbeA, 0)), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     kegel.rotation.x = -Math.PI / 2; kegel.position.y = 0.004; this.szene.add(kegel); this.kegel = kegel;
     this.pulse = [0, 1].map((i) => {
-      const r = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: i ? 0x35c6d4 : 0xffa53a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const r = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: i ? this.farbeB : this.farbeA, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
       r.rotation.x = -Math.PI / 2; r.position.y = 0.006; this.szene.add(r); return r;
     });
     const n = 140, pos = new Float32Array(n * 3), farbe = new Float32Array(n * 3);
-    const gold = new THREE.Color(0xffb35a), tuerkis = new THREE.Color(0x5fe3ee);
+    const gold = this.farbeA.clone().lerp(new THREE.Color(0xffffff), 0.25), tuerkis = this.farbeB.clone().lerp(new THREE.Color(0xffffff), 0.25);
     this.partikelTempo = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const w = Math.random() * Math.PI * 2, r = 0.5 + Math.random() * 1.7;

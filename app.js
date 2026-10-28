@@ -650,7 +650,7 @@ const HAKEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 const RING_U = 2 * Math.PI * 54;
 function ring(id, inhalt, klasse) {
   const w = h('div', { class: 'tm-ring ' + (klasse || '') });
-  w.innerHTML = '<svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="tm-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#CDA868"/><stop offset="1" stop-color="#A8834A"/></linearGradient></defs>' +
+  w.innerHTML = '<svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="tm-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--verlauf-a)"/><stop offset="1" style="stop-color:var(--verlauf-b)"/></linearGradient></defs>' +
     '<circle cx="60" cy="60" r="54" class="tm-ring-bahn"/><circle cx="60" cy="60" r="54" class="tm-ring-fort" id="' + id + '" stroke-dasharray="' + RING_U + '" stroke-dashoffset="' + RING_U + '"/></svg>';
   w.append(h('div', { class: 'tm-ring-mitte' }, inhalt));
   return w;
