@@ -1,5 +1,5 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = '39be116730';
+const VERSION = 'cf3975abb6';
 const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'figur.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js'];
 const NAME = 'dk-coach-' + VERSION;
 

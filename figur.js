@@ -60,7 +60,7 @@ export function gelenke(pose) {
     l: becken.clone().add(R.links.clone().multiplyScalar(m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02)),
     r: becken.clone().add(R.links.clone().multiplyScalar(-m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02))
   };
-  const out = { R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handAchse: {}, handRuecken: {}, knie: {}, knoechel: {}, zehe: {}, ferse: {} };
+  const out = { R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, zehe: {}, ferse: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -74,6 +74,11 @@ export function gelenke(pose) {
     n.sub(a.clone().multiplyScalar(n.dot(a)));
     if (n.lengthSq() < 1e-6) n = R.vor.clone().sub(a.clone().multiplyScalar(R.vor.dot(a)));
     out.handAchse[s] = a; out.handRuecken[s] = n.normalize();
+    // Handgelenk-Knick (Grad, + = zur Handfläche): Hand dreht um das Handgelenk, handMitte = Mitte der Hand
+    const knick = ((pose.handKnick && pose.handKnick[s]) || 0) * RAD;
+    const ak = a.clone().applyAxisAngle(a.clone().cross(out.handRuecken[s]).normalize(), knick);
+    out.handKnick[s] = knick; out.handFinger[s] = ak;
+    out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(ak.clone().multiplyScalar(0.047));
     // Beine: Knie zeigt nach vorn (leicht außen)
     const fz = (pose.fuss && pose.fuss[s]) || huefte[s].clone().add(V(0.02 * sg, -(m.oberschenkel + m.unterschenkel), 0));
     const kpol = (pose.kniePol && pose.kniePol[s]) || V(0.15 * sg, 0, 1);
@@ -228,11 +233,11 @@ export class Figur {
     for (const s of ['l', 'r']) {
       K(T['oberarm_' + s], g.schulter[s], g.ellbogen[s]);
       K(T['unterarm_' + s], g.ellbogen[s], g.hand[s]);
-      const a = g.handAchse[s], n = g.handRuecken[s], hand = T['hand_' + s];
-      hand.quaternion.setFromRotationMatrix(M4.makeBasis(a.clone().cross(n), a, n));
-      hand.position.copy(g.hand[s]).add(a.clone().multiplyScalar(0.012));
+      const a = g.handFinger[s], quer = g.handAchse[s].clone().cross(g.handRuecken[s]).normalize(), n = quer.clone().cross(a).normalize(), hand = T['hand_' + s];
+      hand.quaternion.setFromRotationMatrix(M4.makeBasis(quer, a, n));
+      hand.position.copy(g.handMitte[s]);
       this.handRuecken[s].quaternion.copy(hand.quaternion);
-      this.handRuecken[s].position.copy(g.hand[s]).add(n.clone().multiplyScalar(0.026)).add(a.clone().multiplyScalar(0.022));
+      this.handRuecken[s].position.copy(g.handMitte[s]).add(n.clone().multiplyScalar(0.026)).add(a.clone().multiplyScalar(0.01));
       T['schulter_' + s].position.copy(g.schulter[s]);
       T['ellbogen_' + s].position.copy(g.ellbogen[s]);
       K(T['oberschenkel_' + s], g.huefte[s], g.knie[s]);
@@ -464,6 +469,7 @@ export class Ansicht {
   }
   bild(t) {
     if (!this.uebung) return;
+    if (this.zustand) this.zustand.runter = !!this.runter;   // für Übungen, die hoch anders aussehen als runter (Zottman Curl)
     const erg = this.uebung.pose(t, this.zustand);
     const g = gelenke(erg.pose);
     this.figur.stelle(g);
@@ -475,6 +481,7 @@ export class Ansicht {
     const dauer = this.uebung && this.uebung.dauer || [1.0, 0.4, 2.0, 0.5];
     const ges = dauer.reduce((a, b) => a + b, 0);
     let x = sek % ges;
+    this.runter = x >= dauer[0] + dauer[1];
     const glatt = (u) => u * u * (3 - 2 * u);
     if (x < dauer[0]) return glatt(x / dauer[0]);
     x -= dauer[0]; if (x < dauer[1]) return 1;
