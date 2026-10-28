@@ -1,7 +1,7 @@
 // DK Coach — Kunden-App. Läuft ohne Konto und offline.
 // Der Plan kommt im Link (#p=…) vom Trainer, wird auf dem Handy gespeichert und nie an einen Server geschickt.
 import { UEBUNGEN, STAND } from './daten.js';
-import { erklaerPunkte, sprich, stimme, ART_NAME } from './coach.js';
+import { erklaerPunkte, lesezeit, ART_NAME } from './coach.js';
 
 /* ---------- Hilfen ---------- */
 const $ = (s) => document.querySelector(s);
@@ -342,7 +342,7 @@ function buehne() {
   const fotoBild = h('img', { alt: '', onerror: () => { foto.hidden = true; } });
   const foto = h('button', { class: 'devin-foto', hidden: true, 'aria-label': 'Foto vergrößern: So macht’s Devin', onclick: () => fotoGross(fotoBild.src) },
     fotoBild, h('span', { text: 'So macht’s Devin' }));
-  // Coach DK erklärt: Figur hält an, Körperteil leuchtet, Pfeil, Text und Stimme
+  // Coach DK erklärt: Figur hält an, Körperteil leuchtet, Pfeil und Text (ohne Stimme)
   let gezeigt = null, erk = null;
   const erklaerKnopf = h('button', { class: 'erklaer-knopf', hidden: true, onclick: () => {
     if (!ansicht || !gezeigt) return;
@@ -395,21 +395,21 @@ function erklaerung(ansicht, d, buehneEl, fertig) {
   const art = h('span', { class: 'eb-art' });
   const text = h('p', { class: 'eb-text' });
   const leiste = h('div', { class: 'eb-punkte' });
-  const tonKnopf = h('button', { class: 'eb-knopf', onclick: () => { stimme.schalten(!stimme.an); tonZeigen(); if (i >= 0) gehe(i); } });
-  const tonZeigen = () => { tonKnopf.textContent = stimme.an ? '🔊' : '🔇'; tonKnopf.setAttribute('aria-label', stimme.an ? 'Stimme aus' : 'Stimme an'); };
+  // Zeitleiste: zeigt, wann der nächste Punkt kommt
+  const zeit = h('div', { class: 'eb-zeit' }, h('i'));
   const pauseKnopf = h('button', { class: 'eb-knopf', 'aria-label': 'Pause', text: '❚❚', onclick: () => { pausiert = !pausiert; pauseKnopf.textContent = pausiert ? '▶' : '❚❚'; pauseKnopf.setAttribute('aria-label', pausiert ? 'Weiter' : 'Pause'); gehe(Math.max(0, i)); } });
   const blase = h('div', { class: 'erklaer-blase', role: 'status', 'aria-live': 'polite' },
-    h('div', { class: 'eb-kopf' }, art, tonKnopf, h('button', { class: 'eb-knopf', 'aria-label': 'Erklärung beenden', text: '✕', onclick: () => ende() })),
+    h('div', { class: 'eb-kopf' }, art, h('button', { class: 'eb-knopf', 'aria-label': 'Erklärung beenden', text: '✕', onclick: () => ende() })),
     text,
     h('div', { class: 'eb-nav' },
       h('button', { class: 'eb-knopf', 'aria-label': 'Vorheriger Punkt', text: '◀', onclick: () => gehe(Math.max(0, i - 1)) }),
       leiste, pauseKnopf,
-      h('button', { class: 'eb-knopf', 'aria-label': 'Nächster Punkt', text: '▶', onclick: () => gehe(i + 1) })));
+      h('button', { class: 'eb-knopf', 'aria-label': 'Nächster Punkt', text: '▶', onclick: () => gehe(i + 1) })),
+    zeit);
   buehneEl.append(pfeil, blase);
   buehneEl.classList.add('erklaert');
   ansicht.autoDrehen(false);
-  tonZeigen();
-  let i = -1, pausiert = false, abbrechen = null, warte = null, vorbei = false, oben = false;
+  let i = -1, pausiert = false, warte = null, vorbei = false, oben = false;
 
   // Pfeil von der Blase zum leuchtenden Körperteil, jedes Bild neu; die Blase weicht nach oben aus, wenn das Teil dahinter wäre
   ansicht.beiBild = () => {
@@ -435,7 +435,14 @@ function erklaerung(ansicht, d, buehneEl, fertig) {
     leiste.textContent = '';
     punkte.forEach((p, j) => leiste.append(h('span', { class: 'eb-p ' + p.art + (j === i ? ' jetzt' : j < i ? ' war' : '') })));
   }
-  function stoppen() { if (abbrechen) abbrechen(); abbrechen = null; clearTimeout(warte); }
+  function stoppen() { clearTimeout(warte); zeit.firstChild.style.transition = 'none'; zeit.firstChild.style.width = '0'; }
+  // Nach ms zum nächsten Schritt; die Zeitleiste läuft dabei voll
+  function spaeter(ms, weiter) {
+    const balken = zeit.firstChild;
+    void balken.offsetWidth;
+    balken.style.transition = 'width ' + ms + 'ms linear'; balken.style.width = '100%';
+    warte = setTimeout(weiter, ms);
+  }
   function gehe(n) {
     if (vorbei) return;
     stoppen();
@@ -444,13 +451,13 @@ function erklaerung(ansicht, d, buehneEl, fertig) {
     const p = punkte[i];
     ansicht.hinweis(p.teil ? p : null);
     zeigeBlase(ART_NAME[p.art] + ' · ' + (i + 1) + '/' + punkte.length, p.text, p.art);
-    if (!pausiert) abbrechen = sprich(p.sprechen, () => { abbrechen = null; warte = setTimeout(() => gehe(i + 1), 900); });
+    if (!pausiert) spaeter(lesezeit(p.text), () => gehe(i + 1));
   }
   function schluss() {
     i = punkte.length;
     ansicht.hinweis(null);
     zeigeBlase('Coach DK', 'Jetzt bist du dran. Achte auf diese Punkte!', 'technik');
-    abbrechen = sprich('Jetzt bist du dran. Achte auf diese Punkte!', () => { warte = setTimeout(ende, 600); });
+    spaeter(2600, ende);
   }
   function ende() {
     if (vorbei) return;
@@ -459,9 +466,9 @@ function erklaerung(ansicht, d, buehneEl, fertig) {
     pfeil.remove(); blase.remove(); buehneEl.classList.remove('erklaert');
     fertig();
   }
-  // Start: Name der Übung, dann Punkt für Punkt (der erste Ton muss direkt im Tipp starten, sonst bleibt das iPhone stumm)
+  // Start: Name der Übung, dann Punkt für Punkt
   zeigeBlase('Coach DK erklärt', d.n, 'technik');
-  abbrechen = sprich(d.n + '. Achte auf diese ' + punkte.length + ' Punkte.', () => { abbrechen = null; warte = setTimeout(() => gehe(0), 500); });
+  spaeter(1800, () => gehe(0));
   return { ende };
 }
 function muskelChips(d) { return h('div', { class: 'reihe' }, (d.m || []).map((m, i) => h('span', { class: 'muskel' + (i ? '' : ' haupt'), text: MUSKEL[m] || m }))); }

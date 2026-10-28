@@ -1,7 +1,7 @@
 // DK Coach — Bewegungsvorlagen für die 3D-Figur.
 // Jede Vorlage ist eine Funktion (optionen) → Animation { aufbau(geraete), pose(t), blick, abstand, kameraRicht, dauer }.
 // t läuft von 0 (Start der Bewegung, z. B. unten bei der Kniebeuge) bis 1 (Endposition, z. B. oben).
-import { THREE, V, RAD, MASS, rumpfRahmen } from './figur.js';
+import { THREE, V, RAD, MASS, rumpfRahmen, rumpfRing, rumpfPunkt } from './figur.js';
 
 const FY = 0.08;                                  // Knöchelhöhe, Fuß steht auf dem Boden
 const ARM = MASS.oberarm + MASS.unterarm;
@@ -1619,7 +1619,7 @@ export function rumpfuebung(o = {}) {
       if (art === 'crunch' || art === 'curlup' || art === 'russian') {
         const heben = art === 'curlup' ? 18 : art === 'russian' ? 45 : 35;
         const r = { basis: LIEGEND, neigung: art === 'russian' ? heben : mix(0, heben, t), drehung: art === 'russian' ? mix(-35, 35, t) : 0 };
-        const becken = V(0, 0.12, 0.25);
+        const becken = V(0, art === 'russian' ? 0.155 : 0.12, 0.25);   // Russian Twist: sitzt auf dem Po, nicht darin
         const k = rumpf(becken, r);
         const hand = art === 'russian' ? seiten((s, sg) => k.brust.clone().add(k.R.vor.clone().multiplyScalar(0.35)).add(V(sg * 0.04, 0, 0)))
           : art === 'curlup' ? seiten((s, sg) => becken.clone().add(V(sg * 0.06, -0.06, -0.08)))   // Hände unter dem unteren Rücken
@@ -2149,6 +2149,7 @@ export function einbeinkniebeuge(o = {}) {
   };
 }
 
+const GURT_H = 0.045;   // Belt Squat: Höhe des Gurts über dem Becken (knapp über den Shorts, frei von den Oberschenkeln)
 // Kniebeuge-Sonderformen: art: wandsitzen | spanish | sissy | belt
 export function sonderkniebeuge(o = {}) {
   const art = o.art || 'wandsitzen';
@@ -2162,7 +2163,13 @@ export function sonderkniebeuge(o = {}) {
         ger.box(0.8, 0.15, 0.6, V(0, 0.075, 0), ger.mRahmen);
         for (const sx of [-1, 1]) { ger.box(0.05, 1.05, 0.05, V(sx * 0.3, 0.6, 0.42), ger.mRahmen); }
         ger.box(0.65, 0.04, 0.04, V(0, 1.12, 0.38), ger.mMetall);
-        z.gurt = ger.zyl(0.17, 0.06, ger.mPolster, 20); z.kette = ger.stab(V(), V(0, 1, 0), 0.01, ger.mMetall);
+        // Gurt liegt tief auf der Hüfte und läuft ringsum eng am Körper; vorn eine Öse für die Kette
+        z.gurt = new THREE.Group();
+        z.gurt.add(new THREE.Mesh(rumpfRing(GURT_H, 0.014, 0.012, 2.8), ger.mBand));
+        const oese = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 8, 20), ger.mMetall);
+        oese.position.copy(rumpfPunkt(GURT_H, 0, 0.03)); z.gurt.add(oese);
+        ger.gruppe.add(z.gurt);
+        z.kette = ger.stab(V(), V(0, 1, 0), 0.01, ger.mMetall);
       }
       return z;
     },
@@ -2187,7 +2194,11 @@ export function sonderkniebeuge(o = {}) {
       // Belt Squat: Gurt an der Hüfte, Kette nach unten, Hände leicht am Haltegriff
       const becken = mv(V(0, 0.65, -0.1), V(0, 1.12, 0.0), t), r = { neigung: mix(14, 3, t) };
       return { pose: { becken, rumpf: r, hand: seiten((s, sg) => V(sg * 0.25, 1.13, 0.38)), ellbogenPol: seiten((s, sg) => V(sg, -1, -0.3)), fuss: seiten((s, sg) => V(sg * 0.2, 0.15 + FY, 0.02)), fussRicht: seiten((s, sg) => V(sg * 0.35, 0, 1)), kniePol: seiten((s, sg) => V(sg * 0.35, 0, 1)) },
-        props(g, z) { z.gurt.position.copy(g.becken).add(V(0, -0.03, 0)); seil(z.kette, g.becken.clone().add(V(0, -0.05, 0.14)), V(0, 0.15, 0.16)); } };
+        props(g, z) {
+          z.gurt.position.copy(g.becken); z.gurt.quaternion.copy(g.R.q);
+          const o = rumpfPunkt(GURT_H, 0, 0.03), vorn = g.becken.clone().add(g.R.links.clone().multiplyScalar(o.x)).add(g.R.oben.clone().multiplyScalar(o.y - 0.022)).add(g.R.vor.clone().multiplyScalar(o.z));
+          seil(z.kette, vorn, V(0, 0.15, 0.16));
+        } };
     },
     blick: V(0, 0.7, 0), abstand: 3.4, kameraRicht: V(1, 0.3, art === 'wandsitzen' ? 0.6 : 0.4), dauer: art === 'wandsitzen' ? STATISCH : undefined
   };

@@ -104,7 +104,7 @@ export function gelenke(pose) {
 
 /* ---------- Material ---------- */
 export const FARBEN = {
-  haut: 0xc4927a, shirt: 0x202329, hose: 0x14161a, schuh: 0xeceef0, haar: 0x1c1612, dkGold: 0xc29c5e,
+  haut: 0xc4927a, hose: 0x23262c, schuh: 0xeceef0, haar: 0x1c1612, dkGold: 0xc29c5e,
   gold: 0xffa53a, metall: 0xb4bcc6, scheibe: 0x2a2f36,
   holz: 0x39404a, polster: 0x232a33, boden: 0x12161c, linie: 0x6b7077, cyan: 0x35c6d4, glut: 0xff7a1a
 };
@@ -128,22 +128,120 @@ function drehkoerper(punkte, seg = 18) {
   const p = [new THREE.Vector2(0, -0.5), ...punkte.map(([y, r]) => new THREE.Vector2(r, y)), new THREE.Vector2(0, 0.5)];
   return new THREE.LatheGeometry(p, seg);
 }
-// Arm- und Beinform: Radius am Anfang, dickste Stelle (bei Anteil pm), Ende; Enden rund (keine Kante am Gelenk)
-function glied(r0, rMax, r1, pm) {
-  const p = [], kappe = 0.08;
+// Arm- und Beinform: Radius am Anfang, dickste Stelle (bei Anteil pm), Ende; Enden rund (keine Kante am Gelenk).
+// kappe: wie lang die Rundung an den Enden ist (Anteil); klein = Glied geht fast ohne Einschnürung ins Gelenk über
+function glied(r0, rMax, r1, pm, kappe = 0.08) {
+  const p = [];
   const us = [0.004, 0.015, 0.03, 0.05, 0.08, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.92, 0.95, 0.97, 0.985, 0.996];
   for (const u of us) {
     const basis = u < pm ? r0 + (rMax - r0) * Math.sin(Math.PI / 2 * u / pm) : r1 + (rMax - r1) * Math.cos(Math.PI / 2 * (u - pm) / (1 - pm));
     const rand = Math.min(u, 1 - u) / kappe;
     p.push([u - 0.5, basis * (rand >= 1 ? 1 : Math.sqrt(1 - (1 - rand) * (1 - rand)))]);
   }
-  return drehkoerper(p, 16);
+  return drehkoerper(p, 24);
 }
-// V-Form des Oberkörpers: schmale Taille, breite Brust, runde Schultern
-const RUMPF = [[-0.5, 0.05], [-0.46, 0.08], [-0.38, 0.09], [-0.15, 0.1], [0.12, 0.122], [0.3, 0.132], [0.4, 0.122], [0.47, 0.09], [0.495, 0.05]];
-const BAUCH = [[-0.5, 0.06], [-0.42, 0.09], [-0.1, 0.1], [0.38, 0.094], [0.48, 0.065]];
+/* ---------- Muskulöser Rumpf: eine Fläche aus Querschnitten + Muskeln ---------- */
+// Rumpf-Rahmen: x = links, y = Höhe über dem Becken, z = vorn. Der Rumpf ist starr (Becken bis Hals).
+// Profil: Höhe, halbe Breite, Tiefe vorn, Tiefe hinten, Rundung (2 = Ellipse, mehr = eckiger). Unten Becken/Po, oben Hals.
+const RUMPF_PROFIL = [
+  [-0.135, 0.0, 0.0, 0.0, 2.0], [-0.128, 0.07, 0.04, 0.05, 2.0], [-0.112, 0.125, 0.064, 0.078, 2.2], [-0.078, 0.152, 0.08, 0.092, 2.3],
+  [-0.038, 0.162, 0.089, 0.095, 2.3], [0.0, 0.155, 0.094, 0.089, 2.2], [0.06, 0.143, 0.097, 0.083, 2.2], [0.12, 0.137, 0.098, 0.083, 2.2],
+  [0.18, 0.139, 0.101, 0.087, 2.3], [0.24, 0.149, 0.106, 0.093, 2.4], [0.30, 0.165, 0.11, 0.1, 2.5], [0.36, 0.18, 0.112, 0.106, 2.6],
+  [0.41, 0.186, 0.11, 0.108, 2.6], [0.46, 0.178, 0.1, 0.104, 2.6], [0.50, 0.15, 0.083, 0.094, 2.4], [0.535, 0.105, 0.066, 0.075, 2.2],
+  [0.56, 0.062, 0.05, 0.056, 2.0], [0.575, 0.0, 0.0, 0.0, 2.0]
+];
+const glattStufe = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+const gauss = (u) => Math.exp(-u * u);
+const fenster = (h, a, b, w) => glattStufe((h - a + w) / w) * (1 - glattStufe((h - b) / w));
+// Querschnitt in Höhe h (Catmull-Rom zwischen den Zeilen, damit keine Kanten entstehen)
+function profil(h) {
+  const P = RUMPF_PROFIL;
+  let i = 0; while (i < P.length - 2 && h > P[i + 1][0]) i++;
+  const u = Math.max(0, Math.min(1, (h - P[i][0]) / (P[i + 1][0] - P[i][0])));
+  const a = P[Math.max(0, i - 1)], b = P[i], c = P[i + 1], d = P[Math.min(P.length - 1, i + 2)];
+  const out = [];
+  for (let k = 1; k <= 4; k++) out.push(Math.max(0, 0.5 * (2 * b[k] + (-a[k] + c[k]) * u + (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * u * u + (-a[k] + 3 * b[k] - 3 * c[k] + d[k]) * u * u * u)));
+  return out;
+}
+// Muskeln als Beulen und Rinnen (in m nach außen). vorn/hinten: 0…1, wie weit der Punkt auf Vorder-/Rückseite liegt
+function muskelRelief(x, h, vorn, hinten) {
+  const ax = Math.abs(x);
+  let d = 0;
+  // Brust: zwei Brustmuskeln mit klarer Unterkante, Rinne am Brustbein
+  const brustH = h > 0.405 ? gauss((h - 0.405) / 0.055) : Math.exp(-Math.pow((0.405 - h) / 0.05, 4));
+  d += vorn * 0.02 * gauss((ax - 0.08) / 0.065) * brustH;
+  d -= vorn * 0.005 * gauss(x / 0.012) * fenster(h, 0.3, 0.47, 0.03);
+  // Sixpack: drei Reihen, Mittellinie
+  const bauch = vorn * fenster(h, 0.035, 0.285, 0.03);
+  let reihen = 0; for (const hr of [0.07, 0.148, 0.226]) reihen += Math.exp(-Math.pow((h - hr) / 0.033, 4));
+  d += bauch * 0.008 * Math.exp(-Math.pow((ax - 0.036) / 0.027, 4)) * reihen;
+  d -= bauch * 0.004 * gauss(x / 0.008);
+  // Seitliche Bauchmuskeln
+  d += 0.006 * gauss((ax - 0.13) / 0.03) * gauss((h - 0.12) / 0.07) * (1 - 0.5 * hinten);
+  // Latissimus: breite Flügel unter den Armen
+  d += hinten * 0.022 * gauss((ax - 0.115) / 0.055) * gauss((h - 0.36) / 0.08);
+  // Wirbelsäule: Rinne, daneben die Rückenstrecker
+  d -= hinten * 0.008 * gauss(x / 0.014) * fenster(h, 0.0, 0.48, 0.04);
+  d += hinten * 0.008 * gauss((ax - 0.032) / 0.018) * gauss((h - 0.12) / 0.09);
+  // Trapez: vom Nacken zur Schulter
+  d += (0.4 + 0.6 * hinten) * 0.018 * gauss((ax - 0.06) / 0.05) * gauss((h - 0.515) / 0.035);
+  // Gesäß: zwei runde Backen, Rinne in der Mitte
+  d += hinten * 0.036 * gauss((ax - 0.07) / 0.06) * gauss((h + 0.052) / 0.048);
+  d -= hinten * 0.012 * gauss(x / 0.013) * (1 - glattStufe((h + 0.03) / 0.03));
+  return d;
+}
+// Punkt auf der Rumpf-Fläche: Höhe h, Winkel w (0 = vorn, π/2 = links), aus = zusätzlich nach außen (für Bund und Gurt)
+export function rumpfPunkt(h, w, aus = 0) {
+  const [W, Df, Db, n] = profil(h);
+  const s = Math.sin(w), c = Math.cos(w), e = 2 / n, D = c >= 0 ? Df : Db;
+  const x = W * Math.sign(s) * Math.pow(Math.abs(s), e);
+  const z = D * Math.sign(c) * Math.pow(Math.abs(c), e);
+  let nx = x / (W * W + 1e-6), nz = z / (D * D + 1e-6);
+  const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
+  const d = muskelRelief(x, h, glattStufe((c - 0.15) / 0.45), glattStufe((-c - 0.15) / 0.45)) * Math.min(1, W / 0.06) + aus;
+  return V(x + nx * d, h, z + nz * d);
+}
+// Ein Stück der Fläche (Höhe h0…h1, Winkel w0…w1). Normalen aus der Fläche selbst, damit Nähte zwischen Stücken nicht auffallen
+function rumpfStueck(h0, h1, w0, w1, nh, nw) {
+  const pos = [], nor = [], idx = [], e = 1e-3;
+  for (let i = 0; i <= nh; i++) {
+    const h = h0 + (h1 - h0) * i / nh;
+    for (let j = 0; j <= nw; j++) {
+      const w = w0 + (w1 - w0) * j / nw;
+      const p = rumpfPunkt(h, w);
+      const n = rumpfPunkt(h, w + e).sub(rumpfPunkt(h, w - e)).cross(rumpfPunkt(h + e, w).sub(rumpfPunkt(h - e, w)));
+      if (n.lengthSq() < 1e-14) n.set(0, h > 0.2 ? 1 : -1, 0);
+      n.normalize();
+      pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z);
+    }
+  }
+  for (let i = 0; i < nh; i++) for (let j = 0; j < nw; j++) {
+    const a = i * (nw + 1) + j, b = a + 1, c = a + nw + 1, d = c + 1;
+    idx.push(a, b, c, b, d, c);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setIndex(idx);
+  return geo;
+}
+// Ring um den Rumpf in Höhe h (Hosenbund, Gurt): r = Dicke, hoch = Streckung nach oben/unten
+export function rumpfRing(h, aus, r, hoch = 1) {
+  const pkt = [];
+  for (let j = 0; j < 72; j++) { const p = rumpfPunkt(h, j / 72 * Math.PI * 2, aus); p.y = 0; pkt.push(p); }
+  const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pkt, true), 120, r, 10, true);
+  geo.scale(1, hoch, 1); geo.translate(0, h, 0);
+  return geo;
+}
+// Deltamuskel: Kappe über dem Schultergelenk, läuft weich in den Oberarm aus (y = 0 am Gelenk, -y = Richtung Ellbogen)
+const DELTA = new THREE.LatheGeometry([[0, 0.065], [0.03, 0.06], [0.05, 0.05], [0.066, 0.035], [0.074, 0.015], [0.076, -0.01], [0.073, -0.04],
+  [0.066, -0.07], [0.06, -0.1], [0.057, -0.13], [0.055, -0.15], [0, -0.155]].reverse().map(([r, y]) => new THREE.Vector2(r, y)), 32);   // von unten nach oben, sonst zeigen die Flächen nach innen
+// Hosenbein: oben rund (geht ins Becken über), unten gerader Saum; Länge 1 vom Hüftgelenk abwärts
+const HOSENBEIN = drehkoerper([[-0.5, 0.05], [-0.47, 0.075], [-0.42, 0.09], [-0.34, 0.097], [0.0, 0.096], [0.5, 0.093]], 22);
+const SEITE = 1.83;   // Winkel, an dem Vorder- und Rückseite aneinanderstoßen (etwas hinter der Flanke)
+const BUND = 0.02;    // Oberkante der Shorts über dem Becken
 
-// DK-Logo (Pfade wie im App-Symbol) als Textur für die Brust
+// DK-Logo (Pfade wie im App-Symbol) als Textur für die Shorts
 function logoTextur() {
   const c = document.createElement('canvas'); c.width = 256; c.height = 128;
   const x = c.getContext('2d');
@@ -161,8 +259,7 @@ export class Figur {
     this.gruppe = new THREE.Group();
     this.teile = {};
     const haut = mat(FARBEN.haut, { roughness: 0.6, metalness: 0.02 });
-    const shirt = mat(FARBEN.shirt, { roughness: 0.75, metalness: 0.05 });
-    const hose = mat(FARBEN.hose, { roughness: 0.8 });
+    const hose = mat(FARBEN.hose, { roughness: 0.72 });
     const schuh = mat(FARBEN.schuh, { roughness: 0.5 });
     const gold = mat(FARBEN.dkGold, { roughness: 0.35, metalness: 0.6, emissive: FARBEN.dkGold, emissiveIntensity: 0.15 });
     // Arbeitende Muskeln: leuchten orange-gold, je stärker die Anspannung, desto heller (siehe glut())
@@ -174,33 +271,41 @@ export class Figur {
     };
     const kapsel = (name, r, matl, laenge) => teil(name, new THREE.CapsuleGeometry(r, laenge, 6, 14), matl, laenge);
     const kugel = (name, r, matl) => teil(name, new THREE.SphereGeometry(r, 20, 14), matl);
-    teil('bauch', drehkoerper(BAUCH), shirt);
-    teil('brustkorb', drehkoerper(RUMPF, 24), shirt);
-    teil('ruecken', drehkoerper(RUMPF, 24), shirt);
-    kapsel('nacken', 0.05, haut, 0.08);
-    kapsel('hosenbund', 0.086, hose, 2 * MASS.hueftBreite);
+    // Rumpf aus Stücken derselben Fläche: so leuchten Brust, Rücken, Bauch und Po einzeln (arbeitende Muskeln, Coach erklärt)
+    this.rumpfTeile = [];
+    const rumpfTeil = (name, geo, matl) => { const m = teil(name, geo, matl); this.rumpfTeile.push(m); return m; };
+    rumpfTeil('bauch', rumpfStueck(BUND, 0.27, 0, Math.PI * 2, 16, 56), haut);
+    rumpfTeil('brustkorb', rumpfStueck(0.27, 0.575, -SEITE, SEITE, 22, 34), haut);
+    rumpfTeil('ruecken', rumpfStueck(0.27, 0.575, SEITE, Math.PI * 2 - SEITE, 22, 30), haut);
+    rumpfTeil('hosenbund', rumpfStueck(-0.135, BUND, -SEITE, SEITE, 16, 30), hose);
+    rumpfTeil('gesaess_l', rumpfStueck(-0.135, BUND, SEITE, Math.PI, 16, 16), hose);
+    rumpfTeil('gesaess_r', rumpfStueck(-0.135, BUND, Math.PI, Math.PI * 2 - SEITE, 16, 16), hose);
+    // Bund der Shorts: läuft ringsum am Körper entlang
+    rumpfTeil(null, rumpfRing(BUND - 0.004, 0.002, 0.008, 2.2), mat(0x34383f, { roughness: 0.55 }));
+    kapsel('nacken', 0.056, haut, 0.08);
     // Kopf leicht oval, Haare als Kappe nach hinten gekippt (zeigt, wohin die Figur schaut)
     const kopf = kugel('kopf', MASS.kopf, haut); kopf.scale.set(0.9, 1.08, 1);
     const haarForm = new THREE.SphereGeometry(MASS.kopf * 1.05, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.52); haarForm.rotateX(-0.5);
     const haar = new THREE.Mesh(haarForm, mat(FARBEN.haar, { roughness: 0.9 })); haar.castShadow = true; kopf.add(haar);
-    // DK auf der Brust
-    this.logo = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.07), new THREE.MeshStandardMaterial({
+    // DK außen auf dem linken Hosenbein
+    this.logo = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.05), new THREE.MeshStandardMaterial({
       map: logoTextur(), transparent: true, alphaTest: 0.05, roughness: 0.35, metalness: 0.5,
       emissive: 0xc29c5e, emissiveIntensity: 0.25, polygonOffset: true, polygonOffsetFactor: -2 }));
     this.logo.material.emissiveMap = this.logo.material.map;
     this.gruppe.add(this.logo);
     this.handRuecken = {};
     for (const s of ['l', 'r']) {
-      teil('oberarm_' + s, glied(0.05, 0.055, 0.037, 0.45), haut); teil('unterarm_' + s, glied(0.042, 0.046, 0.03, 0.25), haut);
+      // Muskulös, aber natürlich: Bizeps/Trizeps, kräftige Unterarme, runde Schultern, Oberschenkel und Waden mit Form
+      teil('oberarm_' + s, glied(0.058, 0.066, 0.045, 0.38, 0.035), haut); teil('unterarm_' + s, glied(0.046, 0.052, 0.031, 0.2, 0.035), haut);
       const hand = kugel('hand_' + s, 1, haut); hand.scale.set(0.043, 0.052, 0.03);
       // Goldene Knöchel-Leiste auf dem Handrücken: zeigt, ob Ober- oder Untergriff
       const leiste = new THREE.CapsuleGeometry(0.008, 0.05, 4, 8); leiste.rotateZ(Math.PI / 2);
       this.handRuecken[s] = teil(null, leiste, gold);
-      kugel('schulter_' + s, 0.062, haut);
-      teil('oberschenkel_' + s, glied(0.074, 0.08, 0.05, 0.3), haut); teil('unterschenkel_' + s, glied(0.05, 0.058, 0.034, 0.3), haut);
-      teil('hosenbein_' + s, new THREE.CylinderGeometry(0.086, 0.08, 1, 18), hose);
+      teil('schulter_' + s, DELTA, haut);
+      teil('oberschenkel_' + s, glied(0.082, 0.089, 0.055, 0.28, 0.035), haut); teil('unterschenkel_' + s, glied(0.052, 0.061, 0.034, 0.27, 0.035), haut);
+      teil('hosenbein_' + s, HOSENBEIN, hose);
       kapsel('fuss_' + s, 0.04, schuh, MASS.fussLaenge * 0.8);
-      kugel('gesaess_' + s, 0.08, hose); kugel('knie_' + s, 0.053, haut); kugel('ellbogen_' + s, 0.04, haut);
+      kugel('knie_' + s, 0.055, haut); kugel('ellbogen_' + s, 0.046, haut);
     }
     // Coach erklärt: das Körperteil, um das es gerade geht, leuchtet in der Farbe des Hinweises
     this.matHinweis = mat(FARBEN.cyan, { emissive: FARBEN.cyan, emissiveIntensity: 0.9, roughness: 0.3, metalness: 0.1 });
@@ -235,14 +340,14 @@ export class Figur {
   }
   stelle(g) {
     const T = this.teile, K = Figur.setzeKapsel, R = g.R;
-    const P = (hoch, vor = 0) => g.becken.clone().add(R.oben.clone().multiplyScalar(hoch)).add(R.vor.clone().multiplyScalar(vor));
-    K(T.bauch, P(0), P(0.25, 0.005), R.links, 1.16, 0.92);
-    K(T.brustkorb, P(0.17, 0.015), P(0.53, 0.015), R.links, 1.45, 0.82);
-    K(T.ruecken, P(0.15, -0.035), P(0.5, -0.035), R.links, 1.45, 0.7);
+    for (const m of this.rumpfTeile) { m.position.copy(g.becken); m.quaternion.copy(R.q); }
     K(T.nacken, g.brust, g.nacken.clone().add(R.oben.clone().multiplyScalar(0.02)));
-    K(T.hosenbund, g.huefte.r.clone().sub(R.vor.clone().multiplyScalar(0.015)), g.huefte.l.clone().sub(R.vor.clone().multiplyScalar(0.015)));
     T.kopf.position.copy(g.kopf); T.kopf.quaternion.copy(g.kopfQ);
-    this.logo.position.copy(P(0.38, 0.117)); this.logo.quaternion.copy(R.q);
+    // Logo: außen auf dem linken Hosenbein, Schrift läuft quer zum Bein
+    const bein = g.knie.l.clone().sub(g.huefte.l).normalize(), hoch = bein.clone().negate();
+    const aussen = R.links.clone().sub(bein.clone().multiplyScalar(R.links.dot(bein))).normalize();
+    this.logo.quaternion.setFromRotationMatrix(M4.makeBasis(hoch.clone().cross(aussen), hoch, aussen));
+    this.logo.position.copy(g.huefte.l).lerp(g.knie.l, 0.2).add(aussen.multiplyScalar(0.1));
     for (const s of ['l', 'r']) {
       K(T['oberarm_' + s], g.schulter[s], g.ellbogen[s]);
       K(T['unterarm_' + s], g.ellbogen[s], g.hand[s]);
@@ -251,14 +356,16 @@ export class Figur {
       hand.position.copy(g.handMitte[s]);
       this.handRuecken[s].quaternion.copy(hand.quaternion);
       this.handRuecken[s].position.copy(g.handMitte[s]).add(n.clone().multiplyScalar(0.026)).add(a.clone().multiplyScalar(0.01));
-      T['schulter_' + s].position.copy(g.schulter[s]);
+      // Schulter (Deltamuskel): runde Kappe über dem Gelenk, geht mit dem Oberarm mit
+      const arm = g.ellbogen[s].clone().sub(g.schulter[s]).normalize();
+      T['schulter_' + s].position.copy(g.schulter[s]).add(R.links.clone().multiplyScalar(s === 'l' ? -0.006 : 0.006));
+      T['schulter_' + s].quaternion.setFromUnitVectors(V(0, -1, 0), arm);
       T['ellbogen_' + s].position.copy(g.ellbogen[s]);
       K(T['oberschenkel_' + s], g.huefte[s], g.knie[s]);
-      K(T['hosenbein_' + s], g.huefte[s].clone().add(R.oben.clone().multiplyScalar(0.03)), g.huefte[s].clone().lerp(g.knie[s], 0.42));
+      K(T['hosenbein_' + s], g.huefte[s].clone().sub(g.knie[s].clone().sub(g.huefte[s]).multiplyScalar(0.06)), g.huefte[s].clone().lerp(g.knie[s], 0.42));
       K(T['unterschenkel_' + s], g.knie[s], g.knoechel[s]);
       T['knie_' + s].position.copy(g.knie[s]);
       K(T['fuss_' + s], g.ferse[s], g.zehe[s]);
-      T['gesaess_' + s].position.copy(g.huefte[s]).sub(R.vor.clone().multiplyScalar(0.05)).add(R.oben.clone().multiplyScalar(0.03));
     }
   }
 }

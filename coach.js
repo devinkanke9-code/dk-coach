@@ -1,6 +1,6 @@
 // DK Coach — „Coach DK erklärt“: macht aus den Technik-Texten einer Übung Erklärpunkte für die 3D-Figur
-// (welches Körperteil leuchtet, an welcher Stelle der Bewegung die Figur anhält) und liest sie vor.
-// Läuft ganz ohne Internet: Text aus daten.js, Stimme vom Handy (Sprachausgabe des Browsers).
+// (welches Körperteil leuchtet, an welcher Stelle der Bewegung die Figur anhält). Nur zum Ansehen und Lesen, ohne Stimme
+// (Devin fand die Sprachausgabe zu roboterhaft). Läuft ganz ohne Internet: Text aus daten.js.
 
 // Körperteile; es zählt das Teil, das im Satz zuerst vorkommt (Namen wie in figur.js → HINWEIS)
 const KOERPER = [
@@ -44,7 +44,6 @@ export function stelleAus(satz) {
   for (const [wert, muster] of STELLEN) { const m = s.match(muster); if (m && m.index < pos) { t = wert; pos = m.index; } }
   return t;
 }
-const satz = (t) => /[.!?]$/.test(t.trim()) ? t.trim() : t.trim() + '.';
 export const ART_NAME = { technik: 'So geht’s', fehler: 'Typischer Fehler', vorsicht: 'Vorsicht' };
 
 // d = Übung aus daten.js: n Name, m Muskeln, t Technik, f Fehler, v Vorsicht, k eigene Erklärpunkte (erklaerungen.json)
@@ -57,42 +56,9 @@ export function erklaerPunkte(d) {
   return roh.map((p) => {
     const art = p.art || 'technik';
     const teil = p.teil !== undefined ? p.teil : teilAus(p.text, d.m);
-    const vorn = art === 'fehler' ? 'Typischer Fehler: ' : art === 'vorsicht' ? 'Vorsicht: ' : '';
-    return { art, text: p.text, teil, t: p.t != null ? p.t : stelleAus(p.text), sprechen: vorn + satz(p.text) };
+    return { art, text: p.text, teil, t: p.t != null ? p.t : stelleAus(p.text) };
   });
 }
 
-/* ---------- Stimme ---------- */
-const TON = typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
-let stimmeDe = null;
-function deutscheStimme() {
-  if (stimmeDe) return stimmeDe;
-  const alle = speechSynthesis.getVoices().filter((v) => /^de([-_]|$)/i.test(v.lang));
-  // Stimmen auf dem Gerät zuerst: die gehen auch ohne Netz
-  stimmeDe = alle.find((v) => v.localService && /de[-_]de/i.test(v.lang)) || alle.find((v) => v.localService) || alle[0] || null;
-  return stimmeDe;
-}
-if (TON && speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged', () => { stimmeDe = null; });
-export const stimme = {
-  moeglich: TON,
-  an: (() => { try { return localStorage.getItem('dk_ton') !== '0'; } catch (e) { return true; } })(),
-  schalten(an) { this.an = an; try { localStorage.setItem('dk_ton', an ? '1' : '0'); } catch (e) { /* egal */ } if (!an && TON) speechSynthesis.cancel(); }
-};
-// Spricht den Text (oder wartet die Lesezeit ab, wenn der Ton aus ist) und ruft dann fertig(). Rückgabe: Abbrechen.
-export function sprich(text, fertig) {
-  let erledigt = false, gestartet = false;
-  const timer = [];
-  const ende = () => { if (erledigt) return; erledigt = true; timer.forEach(clearTimeout); fertig(); };
-  const lesezeit = Math.max(3200, 1400 + text.length * 70);
-  if (!TON || !stimme.an) { timer.push(setTimeout(ende, lesezeit)); return () => { erledigt = true; timer.forEach(clearTimeout); }; }
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'de-DE'; u.rate = 1.03;
-  const v = deutscheStimme(); if (v) u.voice = v;
-  u.onstart = () => { gestartet = true; timer.push(setTimeout(ende, 5000 + text.length * 120)); };
-  u.onend = ende; u.onerror = ende;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
-  // Keine Stimme auf dem Handy (oder sie bleibt stumm): dann zählt die Lesezeit
-  timer.push(setTimeout(() => { if (!gestartet) { timer.push(setTimeout(ende, lesezeit - 1800)); } }, 1800));
-  return () => { erledigt = true; timer.forEach(clearTimeout); speechSynthesis.cancel(); };
-}
+// Wie lange ein Punkt stehen bleibt (ms): genug Zeit zum Lesen, mit ▶ geht es schneller
+export const lesezeit = (text) => Math.min(9000, Math.max(3800, 1600 + text.length * 60));
