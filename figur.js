@@ -202,14 +202,27 @@ export class Figur {
       kapsel('fuss_' + s, 0.04, schuh, MASS.fussLaenge * 0.8);
       kugel('gesaess_' + s, 0.08, hose); kugel('knie_' + s, 0.053, haut); kugel('ellbogen_' + s, 0.04, haut);
     }
+    // Coach erklärt: das Körperteil, um das es gerade geht, leuchtet in der Farbe des Hinweises
+    this.matHinweis = mat(FARBEN.cyan, { emissive: FARBEN.cyan, emissiveIntensity: 0.9, roughness: 0.3, metalness: 0.1 });
     this.markiere([]);
   }
-  markiere(muskeln) {
-    const an = new Set();
-    for (const m of muskeln || []) for (const t of MUSKEL_TEILE[m] || []) an.add(t);
-    for (const [name, mesh] of Object.entries(this.teile)) mesh.material = an.has(name) || an.has(LEUCHTET_MIT[name]) ? this.matMuskel : mesh.userData.mat;
+  markiere(muskeln) { this.muskeln = muskeln || []; this.hervor = null; this.materialien(); }
+  // namen: Figur-Teile (z. B. 'knie_l', 'ruecken'); leer = nichts hervorheben
+  hebeHervor(namen, farbe) {
+    this.hervor = namen && namen.length ? new Set(namen) : null;
+    if (farbe != null) { this.matHinweis.color.set(farbe); this.matHinweis.emissive.set(farbe); }
+    this.materialien();
   }
-  glut(staerke) { this.matMuskel.emissiveIntensity = 0.25 + 0.9 * staerke; }
+  materialien() {
+    const an = new Set();
+    for (const m of this.muskeln) for (const t of MUSKEL_TEILE[m] || []) an.add(t);
+    const h = this.hervor;
+    for (const [name, mesh] of Object.entries(this.teile)) {
+      mesh.material = h && (h.has(name) || h.has(LEUCHTET_MIT[name])) ? this.matHinweis : an.has(name) || an.has(LEUCHTET_MIT[name]) ? this.matMuskel : mesh.userData.mat;
+    }
+  }
+  // Während ein Körperteil erklärt wird, glühen die Muskeln nur leise (damit der Hinweis heraussticht)
+  glut(staerke) { this.matMuskel.emissiveIntensity = this.hervor ? 0.15 : 0.25 + 0.9 * staerke; }
   // Teil zwischen A und B legen; quer = Richtung der Breite (für ovalen Querschnitt), bx/bz = Breite/Tiefe
   static setzeKapsel(mesh, A, B, quer = null, bx = 1, bz = bx) {
     const d = B.clone().sub(A); const l = Math.max(d.length(), 1e-4);
@@ -340,6 +353,34 @@ function leuchtTextur(innen, aussen) {
   x.fillStyle = g; x.fillRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+// Leuchtender Ring (Markierung um das erklärte Körperteil)
+function ringTextur() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.strokeStyle = '#fff'; x.shadowColor = '#fff'; x.shadowBlur = 14; x.lineWidth = 7;
+  x.beginPath(); x.arc(64, 64, 46, 0, Math.PI * 2); x.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+/* ---------- Coach erklärt: Körperteile ---------- */
+// punkte(g): wo die Markierung sitzt (je Seite bei paarigen Teilen), teile: Figur-Teile, die leuchten, blick: beste Kamera
+const paar = (x) => [{ s: 'l', v: x.l }, { s: 'r', v: x.r }];
+const mitteVon = (a, b, u = 0.5) => a.clone().lerp(b, u);
+export const HINWEIS = {
+  knie: { punkte: (g) => paar(g.knie), teile: ['knie', 'unterschenkel'], blick: 'schraeg' },
+  bein: { punkte: (g) => [{ s: 'l', v: mitteVon(g.huefte.l, g.knie.l) }, { s: 'r', v: mitteVon(g.huefte.r, g.knie.r) }], teile: ['oberschenkel', 'hosenbein'], blick: 'schraeg' },
+  fuss: { punkte: (g) => [{ s: 'l', v: mitteVon(g.knoechel.l, g.zehe.l) }, { s: 'r', v: mitteVon(g.knoechel.r, g.zehe.r) }], teile: ['fuss'], blick: 'schraeg' },
+  huefte: { punkte: (g) => [{ v: g.becken.clone().sub(g.R.vor.clone().multiplyScalar(0.06)) }], teile: ['gesaess', 'hosenbund'], blick: 'seite' },
+  ruecken: { punkte: (g) => [{ v: mitteVon(g.becken, g.brust, 0.55).sub(g.R.vor.clone().multiplyScalar(0.13)) }], teile: ['ruecken'], blick: 'seite' },
+  bauch: { punkte: (g) => [{ v: mitteVon(g.becken, g.brust, 0.4).add(g.R.vor.clone().multiplyScalar(0.12)) }], teile: ['bauch'], blick: 'seite' },
+  brust: { punkte: (g) => [{ v: g.brust.clone().sub(g.R.oben.clone().multiplyScalar(0.12)).add(g.R.vor.clone().multiplyScalar(0.13)) }], teile: ['brustkorb'], blick: 'schraeg' },
+  schulter: { punkte: (g) => paar(g.schulter), teile: ['schulter'], blick: 'schraeg' },
+  kopf: { punkte: (g) => [{ v: g.kopf }], teile: ['kopf', 'nacken'], blick: 'seite' },
+  ellbogen: { punkte: (g) => paar(g.ellbogen), teile: ['ellbogen', 'oberarm'], blick: 'seite' },
+  arme: { punkte: (g) => [{ s: 'l', v: mitteVon(g.ellbogen.l, g.hand.l, 0.3) }, { s: 'r', v: mitteVon(g.ellbogen.r, g.hand.r, 0.3) }], teile: ['oberarm', 'unterarm', 'ellbogen'], blick: 'seite' },
+  hand: { punkte: (g) => paar(g.handMitte || g.hand), teile: ['hand', 'unterarm'], blick: 'schraeg' }
+};
+const HINWEIS_FARBE = { technik: 0x35c6d4, fehler: 0xff4b3a, vorsicht: 0xffa53a };
 
 export class Ansicht {
   // opt: standbild (Vorschaubild, ohne Steuerung), hintergrund (Farbe), effekte (Leuchtboden, Partikel, Farblichter; Hintergrund kommt dann aus dem CSS)
@@ -380,7 +421,108 @@ export class Ansicht {
     }
     this.ziel = V(0, 0.85, 0);
     this.uebung = null; this.zeit = 0; this.laeuft = true; this.tempo = 1; this.drehZiel = null;
+    // Coach erklärt: festT = Stelle, an der die Figur anhält; fokus = Kamera-Ziel beim Heranzoomen
+    this.festT = null; this.tJetzt = 0; this.fokus = null; this.hinweisAktiv = null; this.basisAbstand = 3;
+    if (!opt.standbild) this.hinweisBauen();
     this.groesse();
+  }
+  // Zwei Markierungen (für linke und rechte Seite): weiches Leuchten + Ring, der nach außen pulsiert; sichtbar durch den Körper
+  hinweisBauen() {
+    const glanz = leuchtTextur('rgba(255,255,255,0.95)', 'rgba(255,255,255,0)'), ring = ringTextur();
+    const sprite = (map) => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+      s.renderOrder = 10; s.visible = false; this.szene.add(s); return s;
+    };
+    this.marken = [0, 1].map(() => ({ glanz: sprite(glanz), ring: sprite(ring) }));
+  }
+  // p: { teil, art, t } → Figur fährt zur Stelle t und bleibt stehen, Teil leuchtet, Kamera dreht hin und zoomt etwas heran.
+  // p ohne teil (z. B. Vorsicht-Hinweis) oder null → Figur bewegt sich wieder, Kamera zurück.
+  hinweis(p) {
+    const def = p && HINWEIS[p.teil];
+    if (!def || !this.uebung) {
+      if (this.festT != null) this.zeit = ((this.uebung && this.uebung.dauer) || [1])[0] * this.tJetzt;   // dort weiterlaufen, wo die Figur steht
+      this.festT = null; this.hinweisAktiv = null;
+      this.figur.hebeHervor(null);
+      for (const m of this.marken || []) m.glanz.visible = m.ring.visible = false;
+      if (this.fokus) this.fokus = { ziel: this.ziel.clone(), abstand: this.basisAbstand, zurueck: true };
+      return;
+    }
+    const farbe = HINWEIS_FARBE[p.art] || HINWEIS_FARBE.technik;
+    this.festT = p.t != null ? p.t : this.tJetzt;
+    // Arbeitet nur eine Seite (einarmig, einbeinig)? Dann nur diese Seite zeigen
+    let seiten = ['l', 'r'];
+    if (this.g0 && this.g1) {
+      const weg = (s) => def.punkte(this.g0).concat(def.punkte(this.g1)).filter((x) => x.s === s).map((x) => x.v);
+      const dl = weg('l'), dr = weg('r');
+      if (dl.length === 2 && dr.length === 2) {
+        const l = dl[0].distanceTo(dl[1]), r = dr[0].distanceTo(dr[1]);
+        if (l > 2.5 * r + 0.03) seiten = ['l']; else if (r > 2.5 * l + 0.03) seiten = ['r'];
+      }
+    }
+    this.hinweisAktiv = { def, seiten };
+    const namen = [];
+    for (const n of def.teile) { if (this.figur.teile[n]) namen.push(n); else for (const s of seiten) namen.push(n + '_' + s); }
+    this.figur.hebeHervor(namen, farbe);
+    for (const m of this.marken || []) { m.glanz.material.color.set(farbe); m.ring.material.color.set(farbe); }
+    // Kamera: beste Seite für dieses Körperteil, an der Stelle, wo die Figur gleich steht
+    const g = gelenke(this.uebung.pose(this.festT, this.zustand).pose);
+    const w = this.blickWinkel(def.blick, g);
+    if (w != null && this.steuerung) { this.steuerung.autoRotate = false; this.drehZiel = w; }
+    const pkt = this.hinweisPunkte(g);
+    const mitte = pkt.reduce((a, v) => a.add(v), V()).divideScalar(Math.max(pkt.length, 1));
+    this.fokus = { ziel: this.ziel.clone().lerp(mitte, 0.3), abstand: this.basisAbstand * 0.86 };
+  }
+  hinweisPunkte(g) {
+    const h = this.hinweisAktiv;
+    return h ? h.def.punkte(g).filter((x) => !x.s || h.seiten.includes(x.s)).map((x) => x.v) : [];
+  }
+  // Blickwinkel (Azimut) für seite/schraeg/vorn, aus der Ausrichtung der Figur; nimmt die Möglichkeit, die am nächsten liegt
+  blickWinkel(art, g) {
+    if (!this.steuerung) return null;
+    const winkel = (v) => (Math.hypot(v.x, v.z) > 0.35 ? Math.atan2(v.x, v.z) : null);
+    const seite = winkel(g.R.links);
+    if (seite == null) return null;
+    let vorn = winkel(g.R.vor);
+    if (vorn == null) vorn = seite - Math.PI / 2;
+    const kand = art === 'seite' ? [seite, seite + Math.PI] : art === 'vorn' ? [vorn] : [vorn + 0.7, vorn - 0.7];
+    const jetzt = this.steuerung.getAzimuthalAngle();
+    const abst = (w) => Math.abs(Math.atan2(Math.sin(w - jetzt), Math.cos(w - jetzt)));
+    return kand.sort((a, b) => abst(a) - abst(b))[0];
+  }
+  // Wo das erklärte Körperteil gerade auf dem Bildschirm ist (Pixel im Canvas), für den Pfeil
+  hinweisBildschirm() {
+    if (!this.hinweisAktiv || !this.gAktuell) return null;
+    const pkt = this.hinweisPunkte(this.gAktuell);
+    if (!pkt.length) return null;
+    const v = pkt.reduce((a, b) => a.add(b), V()).divideScalar(pkt.length).project(this.kamera);
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    return { x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h, sichtbar: v.z < 1 };
+  }
+  hinweisZeit(dt) {
+    if (!this.marken) return;
+    const pkt = this.gAktuell ? this.hinweisPunkte(this.gAktuell) : [];
+    const jetzt = performance.now() / 1000;
+    this.marken.forEach((m, i) => {
+      const an = i < pkt.length;
+      m.glanz.visible = m.ring.visible = an;
+      if (!an) return;
+      m.glanz.position.copy(pkt[i]); m.ring.position.copy(pkt[i]);
+      m.glanz.scale.setScalar(0.24 + 0.05 * Math.sin(jetzt * 4));
+      const u = (jetzt * 0.9 + i * 0.5) % 1;
+      m.ring.scale.setScalar(0.1 + 0.3 * u); m.ring.material.opacity = 1 - u;
+    });
+    if (this.hinweisAktiv) this.figur.matHinweis.emissiveIntensity = 0.7 + 0.5 * Math.sin(jetzt * 4);
+  }
+  // Kamera weich zum Fokus schieben und heranzoomen (bzw. zurück)
+  fokusZeit(dt) {
+    if (!this.fokus || !this.steuerung) return;
+    const k = Math.min(1, dt * 2.5), z = this.steuerung.target;
+    const neu = z.clone().lerp(this.fokus.ziel, k);
+    this.kamera.position.add(neu.clone().sub(z)); z.copy(neu);
+    const off = this.kamera.position.clone().sub(z), l = off.length();
+    off.setLength(l + (this.fokus.abstand - l) * k);
+    this.kamera.position.copy(z).add(off);
+    if (this.fokus.zurueck && z.distanceTo(this.fokus.ziel) < 0.003 && Math.abs(l - this.fokus.abstand) < 0.005) this.fokus = null;
   }
   // Leuchtender Bodenkreis, Pulsringe und schwebende Lichtpunkte
   effekteBauen() {
@@ -436,6 +578,7 @@ export class Ansicht {
   }
   // uebung: { aufbau(geraete) → state, pose(t, state) → {pose, props}, ziel?: Vector3, abstand? }
   zeige(animation, muskeln) {
+    this.hinweis(null); this.fokus = null;
     this.geraete.leeren();
     this.uebung = animation;
     this.zustand = animation.aufbau ? animation.aufbau(this.geraete) : {};
@@ -444,6 +587,7 @@ export class Ansicht {
     const box = new THREE.Box3();
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
       this.bild(t);
+      if (t === 0) this.g0 = this.gAktuell; else if (t === 1) this.g1 = this.gAktuell;
       this.figur.gruppe.updateMatrixWorld(true); this.geraete.gruppe.updateMatrixWorld(true);
       box.expandByObject(this.figur.gruppe);
     }
@@ -458,7 +602,7 @@ export class Ansicht {
     const ab = (radius / Math.sin(Math.min(fov, hFov) / 2)) * (this.effekte ? 1.12 : 1.02);
     // Live-Ansicht: Knöpfe liegen unten über dem Bild, darum Figur etwas nach oben rücken
     if (this.effekte) mitte.y -= radius * 0.16;
-    this.ziel.copy(mitte);
+    this.ziel.copy(mitte); this.basisAbstand = ab;
     if (this.steuerung) { this.steuerung.target.copy(mitte); this.steuerung.minDistance = ab * 0.55; this.steuerung.maxDistance = ab * 1.8; }
     const richt = (animation.kameraRicht || V(0.62, 0.32, 0.72)).clone().normalize();
     this.kamera.position.copy(mitte).add(richt.multiplyScalar(ab));
@@ -472,6 +616,7 @@ export class Ansicht {
     if (this.zustand) this.zustand.runter = !!this.runter;   // für Übungen, die hoch anders aussehen als runter (Zottman Curl)
     const erg = this.uebung.pose(t, this.zustand);
     const g = gelenke(erg.pose);
+    this.gAktuell = g;
     this.figur.stelle(g);
     this.figur.glut(t);
     if (erg.props) erg.props(g, this.zustand);
@@ -494,9 +639,16 @@ export class Ansicht {
       this._raf = requestAnimationFrame(schleife);
       const dt = Math.min((jetzt - vorher) / 1000, 0.1); vorher = jetzt;
       if (this.laeuft) this.zeit += dt * this.tempo;
-      const t = this.uebung ? this.phase(this.zeit) : 0;
-      if (this.uebung) this.bild(t);
+      let t = 0;
+      if (this.uebung) {
+        // Coach erklärt: Figur gleitet zur Stelle festT und bleibt dort stehen
+        if (this.festT != null) { this.tJetzt += (this.festT - this.tJetzt) * Math.min(1, dt * 3); t = this.tJetzt; }
+        else { t = this.phase(this.zeit); this.tJetzt = t; }
+        this.bild(t);
+      }
       this.effekteZeit(dt, t);
+      this.hinweisZeit(dt);
+      this.fokusZeit(dt);
       if (this.steuerung && this.drehZiel != null) {
         const jetzt = this.steuerung.getAzimuthalAngle();
         let d = this.drehZiel - jetzt; d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -504,6 +656,7 @@ export class Ansicht {
       }
       if (this.steuerung) this.steuerung.update();
       this.renderer.render(this.szene, this.kamera);
+      if (this.beiBild) this.beiBild();
     };
     this._raf = requestAnimationFrame(schleife);
   }
