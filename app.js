@@ -1,8 +1,10 @@
 // DK Coach — Kunden-App. Läuft ohne Konto und offline.
-// Der Plan kommt im Link (#p=…) vom Trainer, wird auf dem Handy gespeichert und nie an einen Server geschickt.
+// Der Plan kommt im Link vom Trainer, wird auf dem Handy gespeichert und nie an einen Server geschickt.
+// Seit 29.10.2026: Link + Code (#z=…, verschlüsselt, mit Laufzeit), ohne Plan zuerst die Analyse. Alte Links (#p=…) gehen weiter.
 // Aussehen und Abläufe wie die Kunden-Ansicht der Trainer-Seite (stil.css, gleiche Bausteine), dazu die 3D-Figur (buehne.js).
-import { UEBUNGEN, STAND } from './daten.js';
+import { UEBUNGEN, STAND, ANALYSE } from './daten.js';
 import { buehne, standbilder } from './buehne.js';
+const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
 
 /* ---------- Hilfen ---------- */
 const $ = (s) => document.querySelector(s);
@@ -59,27 +61,114 @@ async function entpacke(code) {
 }
 function pruefePlan(p) { return p && p.v === 1 && Array.isArray(p.t) && p.t.length && p.t.every((t) => Array.isArray(t.u)); }
 
+/* iPhone: Apps vom Home-Bildschirm haben einen eigenen Speicher, sie sehen nicht, was Safari gespeichert hat.
+ * Deshalb bleibt der Link in Safari in der Adresszeile, und das iPhone bekommt kein Manifest: „Zum Home-Bildschirm“
+ * nimmt dann genau diesen Link mit, und die App fragt beim ersten Start einmal den Code ab. */
+const istIos = /iPhone|iPad|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const installiert = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+if (!istIos) document.head.append(h('link', { rel: 'manifest', href: 'manifest.webmanifest' }));
+function linkAusAdresse() { if (!istIos || installiert()) history.replaceState(null, '', location.pathname + location.search); }
+// Schon verarbeitete Links (z. B. der Start-Link der Home-Bildschirm-App) nicht bei jedem Start neu entschlüsseln
+const abdruck = (s) => s.slice(-24);
+const schonGesehen = (s) => speicher.lies('dk_gesehen', []).includes(abdruck(s));
+function gesehen(s) { speicher.schreib('dk_gesehen', speicher.lies('dk_gesehen', []).filter((x) => x !== abdruck(s)).concat(abdruck(s)).slice(-20)); }
+function dauerhaft() { try { navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {}); } catch (e) {} }   // Browser soll den Plan nicht wegräumen
+
 async function linkEinlesen() {
-  const m = /[#&]p=([A-Za-z0-9_-]+)/.exec(location.hash);
-  if (!m) return null;
+  const z = /[#&]z=([A-Za-z0-9_-]+)/.exec(location.hash), m = /[#&]p=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (!z && !m) return false;
+  linkAusAdresse();
+  const teil = z ? z[1] : m[1];
+  if (schonGesehen(teil)) return false;
+  return z ? zugangEinlesen(teil) : planEinlesen(teil);
+}
+// Alte Links (#p=…, bis 28.10.2026): Plan offen im Link, ohne Code und ohne Laufzeit
+async function planEinlesen(code) {
   try {
-    const p = await entpacke(m[1]);
+    const p = await entpacke(code);
     if (!pruefePlan(p)) throw new Error('kein Plan');
     p.id = p.id || ('p' + Date.now().toString(36));
     const plaene = speicher.lies('dk_plaene', {});
     const alt = plaene[p.id];
+    gesehen(code);
+    if (alt && alt.d && p.d && alt.d > p.d) return false;   // ein älterer Link überschreibt nie einen neueren Plan
     p.importiert = alt && alt.importiert || isoHeute();
     plaene[p.id] = p;
     speicher.schreib('dk_plaene', plaene);
     speicher.schreib('dk_aktiv', p.id);
-    history.replaceState(null, '', location.pathname + location.search);
     toast(alt ? 'Plan aktualisiert' : 'Plan gespeichert – ab jetzt auch ohne Internet');
-    return p;
+    dauerhaft(); S.tagWahl = null;
+    return true;
   } catch (e) {
-    history.replaceState(null, '', location.pathname + location.search);
     toast('Der Link ist unvollständig. Lass ihn dir nochmal schicken.');
-    return null;
+    return false;
   }
+}
+
+/* ---------- Zugang: Link + Code (#z=…) ----------
+ * Der Link trägt Name, Laufzeit und Plan verschlüsselt, der Code aus Devins Nachricht ist der Schlüssel.
+ * Einmal eingegeben, merkt sich das Handy den Code: Neue Links von Devin gehen danach ohne Eingabe auf.
+ * Ab dem Tag nach „bis“ sperrt die App, bis ein neuer Link kommt. */
+const konten = () => speicher.lies('dk_konten', {});
+const aktivesKonto = () => konten()[speicher.lies('dk_konto', '')] || null;
+const abgelaufen = (ko) => !!(ko && ko.bis && isoHeute() > ko.bis);
+const datumDe = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('de-DE');
+const tageBis = (ko) => Math.round((new Date(ko.bis + 'T12:00:00') - new Date(isoHeute() + 'T12:00:00')) / 864e5);
+function kontoSetzen(id, aenderung) { const alle = konten(); if (alle[id]) { Object.assign(alle[id], aenderung); speicher.schreib('dk_konten', alle); } }
+function linkDatenOk(d) {
+  return !!d && d.v === 2 && /^k[A-Za-z0-9]{1,16}$/.test(d.k || '') && typeof d.t === 'number' && (!d.bis || /^\d{4}-\d{2}-\d{2}$/.test(d.bis)) && (!d.p || pruefePlan(d.p));
+}
+async function zugangEinlesen(teil) {
+  for (const c of new Set(Object.values(konten()).map((k) => k.code).filter(Boolean))) {   // Code schon bekannt? Dann ohne Eingabe
+    let d = null;
+    try { d = await K.entpacken(c, teil); } catch (e) { continue; }
+    if (linkDatenOk(d)) { anmelden(d, c, teil); return true; }
+  }
+  S.wartet = teil; speicher.schreib('dk_wartet', teil);
+  return true;
+}
+function anmelden(d, code, teil) {
+  const alle = konten(), alt = alle[d.k];
+  gesehen(teil); S.wartet = null; speicher.schreib('dk_wartet', null);
+  speicher.schreib('dk_konto', d.k); speicher.schreib('dk_aktiv', d.k);   // wer sich einloggt, sieht seinen eigenen Stand
+  if (alt && alt.t > d.t) return;   // älterer Link (z. B. der Start-Link vom Home-Bildschirm) überschreibt nie einen neueren Stand
+  alle[d.k] = { id: d.k, n: d.n || '', bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,
+    analyse: d.p ? null : (alt && alt.analyse) || null };
+  speicher.schreib('dk_konten', alle);
+  if (d.p) {
+    // Neuer Plan (anderes Erstelldatum) = Woche 1 ab heute; nur geändert = die Wochen zählen weiter
+    const plaene = speicher.lies('dk_plaene', {}), vorher = plaene[d.k];
+    plaene[d.k] = Object.assign({}, d.p, { id: d.k, importiert: (vorher && vorher.d === d.p.d && vorher.importiert) || isoHeute() });
+    speicher.schreib('dk_plaene', plaene);
+  }
+  dauerhaft();
+  const vn = vorname(d.n);
+  if (!alt) toast('Hi' + (vn ? ' ' + vn : '') + '! Du bist eingeloggt.');
+  else if (alt.t !== d.t) toast(d.p && !alt.plan ? 'Dein Plan ist da!' : d.p ? 'Neuer Stand von Devin ist da' : 'Aktualisiert');
+  S.tagWahl = null; S.ansicht = 'heute';
+}
+// Nachricht von Devin einfügen: für die App vom Home-Bildschirm, die Links aus WhatsApp nicht selbst öffnet
+async function textEinlesen(text) {
+  text = String(text || '');
+  const z = /[#&]z=([A-Za-z0-9_-]+)/.exec(text), p = /[#&]p=([A-Za-z0-9_-]+)/.exec(text);
+  if (!z && !p) { toast('Darin ist kein Link von Devin. Kopier die ganze Nachricht.'); return; }
+  if (!z) { await planEinlesen(p[1]); zeichne(); return; }
+  const c = /(\d{4})\s*-\s*(\d{4})/.exec(text.replace(z[0], ''));   // steht der Code mit in der Nachricht: gleich einloggen
+  if (c) {
+    let d = null;
+    try { d = await K.entpacken(c[1] + c[2], z[1]); } catch (e) {}
+    if (linkDatenOk(d)) { anmelden(d, c[1] + c[2], z[1]); zeichne(); fotosVorladen(); return; }
+  }
+  await zugangEinlesen(z[1]); zeichne(); fotosVorladen();
+}
+function einfuegenBlock(titel) {
+  const feld = h('textarea', { class: 'eingabe', rows: '3', placeholder: 'Nachricht von Devin hier einfügen', 'aria-label': 'Nachricht von Devin' });
+  const offen = h('div', { class: 'stapel', hidden: true }, feld, h('button', { class: 'knopf haupt', type: 'button', onclick: () => textEinlesen(feld.value), text: 'Übernehmen' }));
+  return h('div', { class: 'stapel einfuegen' }, h('button', { class: 'knopf', type: 'button', onclick: async () => {
+    let t = '';
+    try { t = navigator.clipboard && navigator.clipboard.readText ? await navigator.clipboard.readText() : ''; } catch (e) {}   // das Handy fragt vorher
+    if (/[#&][zp]=/.test(t)) textEinlesen(t); else { offen.hidden = false; feld.focus(); }
+  }, text: titel || 'Link von Devin einfügen' }), offen);
 }
 
 /* ---------- Zustand ---------- */
@@ -87,7 +176,9 @@ const S = { ansicht: 'heute', plan: null, tagWahl: null };
 function aktiverPlan() {
   const plaene = speicher.lies('dk_plaene', {});
   const id = speicher.lies('dk_aktiv', null);
-  return plaene[id] || Object.values(plaene)[0] || null;
+  if (plaene[id]) return plaene[id];
+  if (id && konten()[id]) return null;   // eingeloggt, aber noch ohne Plan (Analyse oder Warten)
+  return Object.values(plaene)[0] || null;
 }
 function uebung(u) {
   const d = UEBUNGEN[u.i] || { n: u.nm || u.i, m: [], t: [], f: [], v: [] };
@@ -150,13 +241,26 @@ function leiste() {
   }
 }
 function geh(id) { S.ansicht = id; zeichne(); window.scrollTo(0, 0); }
+// Was die App zeigt: Code-Eingabe, Sperre nach Ablauf, Analyse, Warten auf den Plan, der Plan selbst oder Willkommen
+function zustand() {
+  if (S.wartet) return 'code';
+  const ko = aktivesKonto(), p = aktiverPlan();
+  if (ko && (!p || p.id === ko.id)) {
+    if (abgelaufen(ko)) return 'abgelaufen';
+    if (!ko.plan) return ko.warten || ko.analyse === 'geschickt' ? 'warten' : 'analyse';
+  }
+  return p ? 'plan' : 'willkommen';
+}
 function zeichne() {
-  S.plan = aktiverPlan();
+  const z = zustand();
+  S.konto = aktivesKonto();
+  S.plan = z === 'plan' ? aktiverPlan() : null;
   $('#wer').textContent = S.plan ? (navigator.onLine === false ? 'Offline · alles da' : vorname(S.plan.n)) : '';
   leiste();
   const ziel = $('#ansicht'); ziel.textContent = '';
-  if (!S.plan) ziel.append(...willkommen().filter(Boolean));
-  else ziel.append(...({ heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, info: ansichtInfo }[S.ansicht] || ansichtHeute)().filter(Boolean));
+  const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen }[z]
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, info: ansichtInfo }[S.ansicht] || ansichtHeute;
+  ziel.append(...ansicht().filter(Boolean));
   standbilder(lade3d, [...document.querySelectorAll('[data-vorschau]')].filter((el) => el.dataset.vorschau && !el.querySelector('img')), (id) => UEBUNGEN[id]).catch(() => {});
   if (LAUF && LAUF.phase !== 'fertig' && !TM.el) setTimeout(timerZeigen, 0);   // laufendes Training nach Neuladen wieder zeigen
 }
@@ -166,9 +270,205 @@ function willkommen() {
   return [h('section', { class: 'block willkommen' },
     h('img', { class: 'logo', src: 'icon.svg', alt: '' }),
     h('h1', { text: 'Dein Trainingsplan' }),
-    h('p', { class: 'leise', text: 'Öffne den Link, den dir dein Trainer geschickt hat. Danach ist dein Plan hier gespeichert und funktioniert auch ohne Internet.' }),
-    h('button', { class: 'knopf', type: 'button', onclick: beispiel, text: 'Beispielplan ansehen' })),
+    h('p', { class: 'leise', text: installiert()
+      ? 'Kopier die Nachricht von Devin (Link und Code) und füg sie hier ein. Danach bleibst du eingeloggt, auch ohne Internet.'
+      : 'Öffne den Link, den dir Devin geschickt hat, und gib deinen Code ein. Danach ist dein Plan hier gespeichert und funktioniert auch ohne Internet.' }),
+    einfuegenBlock(),
+    h('button', { class: 'knopf text', type: 'button', onclick: beispiel, text: 'Beispielplan ansehen' })),
     installKarte(true)];
+}
+
+/* ---------- Code, Sperre, Warten ---------- */
+const logo = () => h('img', { class: 'logo', src: 'icon.svg', alt: '' });
+function codeAnsicht() {
+  const fehler = h('p', { class: 'klein', role: 'status' });
+  let laeuft = false;
+  const feld = h('input', { class: 'eingabe code-feld', id: 'code', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '9', placeholder: '0000-0000',
+    oninput: (e) => { const n = K.appCodeNormal(e.target.value).slice(0, 8); e.target.value = n.length > 4 ? n.slice(0, 4) + '-' + n.slice(4) : n; if (n.length === 8) los(); },
+    onkeydown: (e) => { if (e.key === 'Enter') los(); } });
+  const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: 'Einloggen' });
+  async function los() {
+    if (laeuft) return;
+    if (!K.appCodeGueltig(feld.value)) { fehler.textContent = 'Der Code hat 8 Ziffern, zum Beispiel 4821-7730.'; return; }
+    laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; fehler.textContent = '';
+    let d = null;
+    try { d = await K.entpacken(feld.value, S.wartet); } catch (e) {}
+    if (linkDatenOk(d)) { anmelden(d, feld.value, S.wartet); zeichne(); window.scrollTo(0, 0); fotosVorladen(); return; }
+    laeuft = false; knopf.disabled = false; knopf.textContent = 'Einloggen';
+    fehler.textContent = 'Der Code passt nicht zu diesem Link. Schau nochmal in Devins Nachricht.';
+    feld.select();
+  }
+  return [h('section', { class: 'block willkommen' }, logo(),
+    h('h1', { text: 'Willkommen bei DK Coach' }),
+    h('p', { class: 'leise', text: 'Gib den Code aus Devins Nachricht ein. Danach bleibst du eingeloggt und brauchst ihn nicht mehr.' }),
+    h('label', { class: 'lbl', for: 'code', text: 'Dein Code' }), feld, knopf, fehler),
+    aktiverPlan() || aktivesKonto() ? h('button', { class: 'knopf text', type: 'button', onclick: () => { S.wartet = null; speicher.schreib('dk_wartet', null); zeichne(); }, text: 'Abbrechen' }) : null];
+}
+function abgelaufenAnsicht() {
+  const ko = aktivesKonto(), vn = vorname(ko.n);
+  return [h('section', { class: 'block willkommen' }, logo(),
+    h('h1', { text: (vn ? vn + ', dein' : 'Dein') + ' Zugang ist abgelaufen' }),
+    h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.' }),
+    einfuegenBlock('Neuen Link einfügen'))];
+}
+function wartenAnsicht() {
+  const ko = aktivesKonto(), vn = vorname(ko.n), geschickt = ko.analyse === 'geschickt';
+  if (geschickt) sendeTextVorbereiten(ko);
+  return [h('section', { class: 'block willkommen' }, logo(),
+    h('h1', { text: 'Danke' + (vn ? ', ' + vn : '') + '!' }),
+    h('p', { class: 'leise', text: 'Deine Analyse ist bei Devin. Er baut jetzt deinen Plan und schickt dir einen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' }),
+    geschickt ? h('div', { class: 'aktionen' }, sendenKnopf(ko, 'Nochmal schicken', 'knopf'),
+      h('button', { class: 'knopf', type: 'button', onclick: () => { kontoSetzen(ko.id, { analyse: null }); zeichne(); window.scrollTo(0, 0); }, text: 'Antworten ändern' })) : null,
+    einfuegenBlock('Neuen Link einfügen'))];
+}
+
+/* ---------- Analyse: der Kunde füllt sie aus, Devin baut daraus den Plan ----------
+ * Fragen und Auswahl kommen aus der Wissensbasis (daten.js → ANALYSE): dasselbe Formular wie in der Trainer-Seite, ohne Trainer-Felder.
+ * Die Antworten bleiben als Entwurf auf dem Handy, bis der Kunde sie verschlüsselt an Devin schickt (DK-Analyse:…:Ende).
+ * Was eine Antwort bedeutet (Stopp, Anpassung), entscheidet allein die Trainer-Seite beim Einfügen. */
+let EN = null;   // Entwurf: { id, a: Antworten, s: Gesundheits-Check, zg: Zielgruppen, schritt }
+const entwurfKey = (ko) => 'dk_analyse_' + ko.id;
+function entwurfLaden(ko) { const e = speicher.lies(entwurfKey(ko), null) || {}; return { id: ko.id, a: Object.assign({ name: ko.n || '' }, e.a), s: e.s || {}, zg: e.zg || [], schritt: e.schritt || 0 }; }
+const entwurfSichern = () => speicher.schreib('dk_analyse_' + EN.id, EN);
+const istJa = (v) => v === true || v === 'weiss_nicht';
+const STEUER = new Set(), STEUER_S = new Set();   // Antworten, von denen Folgefragen abhängen: bei Änderung neu zeichnen
+ANALYSE.abschnitte.forEach((a) => a.felder.forEach((f) => { if (f.zeige_wenn) STEUER.add(f.zeige_wenn.feld); }));
+ANALYSE.screening.forEach((f) => { if (f.nur_wenn && f.nur_wenn.frage_ja) STEUER_S.add(f.nur_wenn.frage_ja); });
+function anSichtbar(f, e = EN) {
+  const z = f.zeige_wenn; if (!z) return true;
+  const v = [].concat(e.a[z.feld] == null ? [] : e.a[z.feld]).map(String);
+  if (z.enthaelt) return [].concat(z.enthaelt).some((x) => v.includes(String(x)));
+  if (z.nicht_nur) return v.some((x) => ![].concat(z.nicht_nur).map(String).includes(x));
+  return true;
+}
+function frageAktiv(f, e = EN) {   // wie E.frageAktiv in engine.js
+  const n = f.nur_wenn; if (!n) return true;
+  if (n.frage_ja && !istJa(e.s[n.frage_ja])) return false;
+  if (n.geschlecht && !(n.geschlecht === 'w' ? e.a.geschlecht === 'weiblich' : e.a.geschlecht === 'maennlich')) return false;
+  return true;
+}
+function anFehler(a) {
+  return a.felder.filter((f) => anSichtbar(f)).map((f) => {
+    const v = EN.a[f.id], leer = v == null || v === '' || (Array.isArray(v) && !v.length);
+    if (leer) return f.pflicht && f.typ !== 'lang' ? f.label : null;   // Freitext ist wie in der Trainer-Seite nie Pflicht
+    if (f.typ === 'zahl' && ((f.min != null && v < f.min) || (f.max != null && v > f.max))) return f.label + ' (' + f.min + '–' + f.max + ')';
+    return null;
+  }).filter(Boolean);
+}
+function anFeld(f) {
+  const id = 'an_' + f.id, wert = EN.a[f.id];
+  const setze = (v) => { if (v == null || v === '' || (Array.isArray(v) && !v.length)) delete EN.a[f.id]; else EN.a[f.id] = v; entwurfSichern(); if (STEUER.has(f.id)) zeichne(); };
+  const hilfe = f.hilfe ? h('p', { class: 'hilfe', text: f.hilfe }) : null;
+  const titel = f.label + (f.pflicht && f.typ !== 'lang' ? ' *' : '');
+  if (f.typ === 'auswahl' || f.typ === 'mehrfach' || f.typ === 'ja_nein') {
+    const mehr = f.typ === 'mehrfach';
+    const opts = f.typ === 'ja_nein' ? [{ wert: true, label: 'Ja' }, { wert: false, label: 'Nein' }] : (f.optionen || []);
+    return h('div', { class: 'feld', role: 'group', 'aria-labelledby': id }, h('span', { class: 'lbl', id, text: titel }), hilfe,
+      h('div', { class: 'optionen' }, opts.map((o, i) => {
+        const an = mehr ? [].concat(wert || []).some((x) => String(x) === String(o.wert)) : wert != null && String(wert) === String(o.wert);
+        return h('label', null, h('input', { type: mehr ? 'checkbox' : 'radio', name: id, id: id + '_' + i, checked: an, onchange: (e) => {
+          if (!mehr) { setze(o.wert); return; }
+          let neu = [].concat(EN.a[f.id] || []).filter((x) => String(x) !== String(o.wert));
+          if (e.target.checked) { neu = o.exklusiv ? [] : neu.filter((x) => !opts.some((oo) => oo.exklusiv && String(oo.wert) === String(x))); neu.push(o.wert); }
+          setze(neu);
+          if (opts.some((oo) => oo.exklusiv) && !STEUER.has(f.id)) zeichne();
+        } }), h('span', { text: o.label }));
+      })));
+  }
+  const inp = f.typ === 'lang'
+    ? h('textarea', { class: 'eingabe', id, value: wert || '', placeholder: f.platzhalter || null, oninput: (e) => setze(e.target.value) })
+    : h('input', { class: 'eingabe', id, type: f.typ === 'zahl' ? 'number' : 'text', inputmode: f.typ === 'zahl' ? 'decimal' : null, min: f.min, max: f.max,
+      value: wert != null ? wert : '', autocomplete: 'off', placeholder: f.platzhalter || null,
+      oninput: (e) => setze(f.typ === 'zahl' ? (e.target.value === '' ? null : +e.target.value) : e.target.value) });
+  return h('div', { class: 'feld' }, h('label', { for: id, text: titel }), hilfe, f.einheit ? h('div', { class: 'mit-einheit' }, inp, h('span', { text: f.einheit })) : inp);
+}
+function anGesundheit() {
+  const OPT = [[true, 'Ja', 'ja'], [false, 'Nein', 'nein'], ['weiss_nicht', 'Weiß nicht', 'ja']];
+  return [h('section', { class: 'block' }, h('h2', { text: 'Gesundheits-Check' }),
+    h('p', { class: 'leise klein', text: 'Ehrlich antworten, das schützt dich. „Weiß nicht“ ist okay, dann klärt Devin das mit dir. Bei manchen Antworten brauchst du vor dem Training eine ärztliche Freigabe.' }),
+    ANALYSE.screening.filter((f) => frageAktiv(f)).map((f) => h('div', { class: 'frage' }, h('span', { text: f.frage }),
+      h('div', { class: 'janein' }, OPT.map(([w, t, c], i) => h('label', null,
+        h('input', { type: 'radio', name: 'scr_' + f.id, id: 'scr_' + f.id + '_' + i, checked: EN.s[f.id] === w, onchange: () => { EN.s[f.id] = w; entwurfSichern(); if (STEUER_S.has(f.id)) zeichne(); } }),
+        h('span', { class: c, text: t }))))))),
+    ANALYSE.zielgruppen.length ? h('section', { class: 'block' }, h('h2', { text: 'Trifft etwas davon auf dich zu?' }),
+      h('p', { class: 'leise klein', text: 'Freiwillig. Hilft Devin, deinen Plan anzupassen.' }),
+      h('div', { class: 'optionen' }, ANALYSE.zielgruppen.map((z) => h('label', null, h('input', { type: 'checkbox', checked: EN.zg.includes(z.id), onchange: (e) => {
+        EN.zg = EN.zg.filter((x) => x !== z.id); if (e.target.checked) EN.zg.push(z.id); entwurfSichern();
+      } }), h('span', { text: z.name }))))) : null];
+}
+// Verschlüsseln dauert kurz (PBKDF2). Deshalb vorher, damit „Teilen“ direkt im Tipp startet (sonst blockt das iPhone).
+let SENDE = { key: '', p: null, text: '' };
+function sendeTextVorbereiten(ko) {
+  const e = speicher.lies(entwurfKey(ko), null);
+  if (!e) return;
+  const key = JSON.stringify(e);
+  if (SENDE.key === key) return;
+  // Nur, was gerade sichtbar ist: eine Folgefrage, deren Ausgangsfrage jetzt Nein ist, geht nicht mit
+  const a = {}, s = {};
+  ANALYSE.abschnitte.forEach((ab) => ab.felder.forEach((f) => { if (e.a[f.id] != null && anSichtbar(f, e)) a[f.id] = e.a[f.id]; }));
+  ANALYSE.screening.forEach((f) => { if (e.s[f.id] !== undefined && frageAktiv(f, e)) s[f.id] = e.s[f.id]; });
+  const vn = vorname(a.name || ko.n);
+  SENDE = { key, text: '', p: K.verpacken(ko.code, { v: 1, k: ko.id, t: Date.now(), a, s, zg: e.zg || [] }).then((z) => {
+    SENDE.text = 'Hi Devin, hier ist meine Analyse für DK Coach' + (vn ? ' (' + vn + ')' : '') + '.\n\nCode für DK Coach (nicht ändern):\nDK-Analyse:' + z + ':Ende';
+    document.querySelectorAll('[data-senden]').forEach((b) => { b.disabled = false; b.textContent = b.dataset.senden; });
+  }) };
+}
+function sendenKnopf(ko, text, klasse) {
+  return h('button', { class: klasse, type: 'button', 'data-senden': text, disabled: !SENDE.text || null, text: SENDE.text ? text : 'Wird vorbereitet …', onclick: async (ev) => {
+    const t = SENDE.text, knopf = ev.currentTarget;
+    if (!t) return;
+    let ok = false;
+    if (navigator.share) {
+      try { await navigator.share({ text: t }); ok = true; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    if (!ok) { try { await navigator.clipboard.writeText(t); ok = true; toast('Kopiert. Jetzt in WhatsApp an Devin einfügen.'); } catch (e) {} }
+    if (!ok) {   // weder Teilen noch Kopieren: Text zum Markieren zeigen
+      const feld = h('textarea', { class: 'eingabe', rows: '4', readonly: true, value: t, 'aria-label': 'Analyse zum Kopieren' });
+      knopf.after(h('p', { class: 'klein', text: 'Markier den Text, kopier ihn und schick ihn Devin:' }), feld); feld.select();
+      ok = true;
+    }
+    kontoSetzen(ko.id, { analyse: 'geschickt' });
+    setTimeout(() => { zeichne(); window.scrollTo(0, 0); }, 400);
+  } });
+}
+function analyseAnsicht() {
+  const ko = aktivesKonto();
+  if (!EN || EN.id !== ko.id) EN = entwurfLaden(ko);
+  const alle = ANALYSE.abschnitte.map((a) => ({ art: 'abschnitt', titel: a.titel, a })).concat([{ art: 'gesundheit', titel: 'Gesundheits-Check' }, { art: 'senden', titel: 'Abschicken' }]);
+  EN.schritt = Math.min(EN.schritt || 0, alle.length - 1);
+  const akt = alle[EN.schritt], vn = vorname(ko.n);
+  const gehZu = (i) => { EN.schritt = i; entwurfSichern(); zeichne(); window.scrollTo(0, 0); };
+  const teile = [h('div', { class: 'plan-kopf' },
+    h('h1', { text: EN.schritt === 0 ? 'Hi' + (vn ? ' ' + vn : '') + '!' : akt.titel }),
+    h('p', { class: 'leise', text: EN.schritt === 0 ? 'Bevor Devin deinen Plan baut, braucht er ein paar Infos von dir. Dauert etwa 10 Minuten. Deine Antworten bleiben auf dem Handy, bis du sie abschickst.'
+      : 'Schritt ' + (EN.schritt + 1) + ' von ' + alle.length })),
+    h('div', { class: 'schritte', style: 'grid-template-columns:repeat(' + alle.length + ',1fr)' }, alle.map((s, i) =>
+      h('button', { type: 'button', class: i <= EN.schritt ? 'an' : '', 'aria-label': 'Schritt ' + (i + 1) + ': ' + s.titel, title: s.titel, onclick: () => { if (i < EN.schritt) gehZu(i); } })))];
+  if (akt.art === 'abschnitt') teile.push(h('section', { class: 'block' }, EN.schritt === 0 ? h('h2', { text: akt.titel }) : null, h('div', { class: 'stapel' }, akt.a.felder.filter((f) => anSichtbar(f)).map(anFeld))));
+  if (akt.art === 'gesundheit') teile.push(...anGesundheit());
+  if (akt.art === 'senden') {
+    sendeTextVorbereiten(ko);
+    const ja = ANALYSE.screening.filter((f) => frageAktiv(f) && istJa(EN.s[f.id])).length;
+    teile.push(h('section', { class: 'block' }, h('h2', { text: 'Fertig!' }),
+      h('p', { text: 'Tipp auf „An Devin schicken“ und wähl WhatsApp. Devin baut daraus deinen Plan und schickt dir einen neuen Link.' }),
+      ja ? h('p', { class: 'meldung klein', text: 'Du hast ' + ja + '× „Ja“ oder „Weiß nicht“ im Gesundheits-Check. Devin schaut sich das an. Vielleicht brauchst du vorher eine ärztliche Freigabe.' }) : null,
+      EN.a.alter != null && +EN.a.alter < 18 ? h('p', { class: 'meldung klein', text: 'Du bist unter 18: Devin braucht die schriftliche Einwilligung deiner Eltern, bevor es losgeht.' }) : null,
+      h('p', { class: 'leise klein', text: 'Deine Antworten gehen verschlüsselt raus. Lesen kann sie nur Devin mit deinem Code.' }),
+      sendenKnopf(ko, 'An Devin schicken', 'knopf haupt')));
+  }
+  const ges = alle.findIndex((x) => x.art === 'gesundheit');
+  if (akt.art === 'abschnitt' && EN.schritt < ges - 1 && alle.every((x) => x.art !== 'abschnitt' || !anFehler(x.a).length)) {
+    teile.push(h('button', { class: 'knopf text', type: 'button', onclick: () => gehZu(ges), text: 'Rest überspringen → Gesundheits-Check' }));
+  }
+  const weiter = () => {
+    if (akt.art === 'abschnitt') { const f = anFehler(akt.a); if (f.length) { toast('Bitte ausfüllen: ' + f.slice(0, 3).join(', ')); return; } }
+    if (akt.art === 'gesundheit') { const offen = ANALYSE.screening.filter((f) => frageAktiv(f) && EN.s[f.id] === undefined).length; if (offen) { toast('Bitte jede Frage beantworten (' + offen + ' offen)'); return; } }
+    gehZu(EN.schritt + 1);
+  };
+  teile.push(h('div', { class: 'fuss' },
+    EN.schritt > 0 ? h('button', { class: 'knopf', type: 'button', onclick: () => gehZu(EN.schritt - 1), text: 'Zurück' }) : h('span'),
+    akt.art !== 'senden' ? h('button', { class: 'knopf haupt', type: 'button', onclick: weiter, text: 'Weiter · ' + alle[EN.schritt + 1].titel }) : null));
+  return [h('div', { class: 'analyse stapel' }, teile)];
 }
 function beispiel() {
   const t = (n, m, u) => ({ n, m, u: u.map(([i, s, w, r, p]) => ({ i, s, w, r, p })) });
@@ -192,6 +492,8 @@ function kopf(unter) {
 function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
+  const ko = aktivesKonto();
+  if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
   if (!kundenTage(p).length) {
     teile.push(h('p', { class: 'meldung', text: 'Wähle zuerst deine Trainingstage. Dann siehst du hier jeden Tag, was dran ist.' }), trainingstageBlock(p), installKarte());
     return teile;
@@ -336,12 +638,12 @@ function ansichtUebungen() {
 /* ---------- Infos ---------- */
 let installEreignis = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEreignis = e; zeichne(); });
-const installiert = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 // Anleitung: als App auf den Home-Bildschirm (bis der Kunde sie wegtippt; unter Infos immer)
 function installKarte(immer) {
   if (installiert() || (!immer && speicher.lies('dk_install_weg', false))) return null;
   const ua = navigator.userAgent || '', ios = /iPhone|iPad|iPod/.test(ua), android = /Android/.test(ua);
-  const iphone = ['Öffne den Link in Safari, nicht in WhatsApp.', 'Tippe unten auf Teilen (Viereck mit Pfeil nach oben).', 'Wähle „Zum Home-Bildschirm“ und nenne es „DK Coach“.'];
+  const iphone = ['Öffne den Link in Safari, nicht in WhatsApp.', 'Tippe unten auf Teilen (Viereck mit Pfeil nach oben).', 'Wähle „Zum Home-Bildschirm“ und nenne es „DK Coach“.',
+    'Öffne DK Coach vom Home-Bildschirm und gib deinen Code dort noch einmal ein (das iPhone trennt App und Safari).'];
   const andro = ['Öffne den Link in Chrome, nicht in WhatsApp.', 'Tippe oben rechts auf ⋮.', 'Wähle „App installieren“ oder „Zum Startbildschirm hinzufügen“.'];
   const liste = (titel, schritte) => h('div', null, titel ? h('b', { class: 'klein', text: titel }) : null, h('ol', { class: 'klein' }, schritte.map((s) => h('li', { text: s }))));
   return h('section', { class: 'block' }, h('h2', { text: 'Als App aufs Handy' }),
@@ -351,9 +653,14 @@ function installKarte(immer) {
     !immer ? h('button', { class: 'knopf klein', type: 'button', onclick: () => { speicher.schreib('dk_install_weg', true); zeichne(); }, text: 'Erledigt, ausblenden' }) : null);
 }
 function ansichtInfo() {
-  const p = S.plan;
+  const p = S.plan, ko = aktivesKonto(), mitZugang = ko && ko.id === p.id;
   const plaene = Object.values(speicher.lies('dk_plaene', {}));
   return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Infos' })),
+    mitZugang ? h('section', { class: 'block' }, h('h2', { text: 'Dein Zugang' }),
+      h('p', { class: 'klein', text: 'Eingeloggt als ' + (ko.n || 'Kunde') + (ko.bis ? ' · bis ' + datumDe(ko.bis) + (tageBis(ko) >= 0 ? ' (noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag)' : ' Tage)') : '') : ' · ohne Ablauf') }),
+      h('p', { class: 'leise klein', text: 'Neuer Link von Devin? Einfach öffnen, der Code ist gespeichert. In der App vom Home-Bildschirm: Nachricht kopieren und hier einfügen.' }),
+      einfuegenBlock('Neuen Link einfügen'),
+      h('button', { class: 'knopf klein', type: 'button', onclick: abmelden, text: 'Abmelden' })) : null,
     installKarte(true),
     h('section', { class: 'block' }, h('h2', { text: 'Begriffe' }),
       h('p', { class: 'klein', text: 'Reserve (RIR): Wiederholungen, die du am Ende des Satzes noch schaffen würdest. RIR 2 heißt: aufhören, wenn noch zwei gehen würden.' }),
@@ -361,8 +668,21 @@ function ansichtInfo() {
       h('p', { class: 'klein', text: 'Coach DK erklärt: Knopf auf jeder 3D-Figur. Die Figur hält an der wichtigen Stelle an und zeigt dir, worauf du achten musst.' })),
     h('section', { class: 'block' }, h('h2', { text: 'Gespeichert' }),
       h('p', { class: 'klein leise', text: 'Plan vom ' + new Date(p.d || p.importiert).toLocaleDateString('de-DE') + ' · nur auf diesem Handy · Übungsdaten Stand ' + new Date(STAND).toLocaleDateString('de-DE') }),
-      plaene.length > 1 ? h('div', { class: 'reihe' }, plaene.map((x) => h('button', { class: 'knopf klein', type: 'button', onclick: () => { speicher.schreib('dk_aktiv', x.id); S.tagWahl = null; zeichne(); }, text: (x.id === p.id ? '✓ ' : '') + (x.n || 'Plan') + (x.s ? ' · ' + x.s : '') }))) : null,
-      h('button', { class: 'knopf klein', type: 'button', onclick: planLoeschen, text: 'Diesen Plan vom Handy löschen' }))];
+      plaene.length > 1 ? h('div', { class: 'reihe' }, plaene.map((x) => h('button', { class: 'knopf klein', type: 'button', onclick: () => {
+        speicher.schreib('dk_aktiv', x.id); if (konten()[x.id]) speicher.schreib('dk_konto', x.id); S.tagWahl = null; zeichne();
+      }, text: (x.id === p.id ? '✓ ' : '') + (x.n || 'Plan') + (x.s ? ' · ' + x.s : '') }))) : null,
+      !mitZugang ? einfuegenBlock('Neuen Link einfügen') : null,
+      !mitZugang ? h('button', { class: 'knopf klein', type: 'button', onclick: planLoeschen, text: 'Diesen Plan vom Handy löschen' }) : null)];
+}
+// Abmelden: Zugang, Plan und Analyse-Entwurf gehen vom Handy (Devin kann jederzeit einen neuen Link schicken)
+function abmelden(e) {
+  const b = e.currentTarget;
+  if (!b.dataset.sicher) { b.dataset.sicher = '1'; b.textContent = 'Wirklich abmelden? Nochmal tippen'; return; }
+  const ko = aktivesKonto(), alle = konten(), plaene = speicher.lies('dk_plaene', {});
+  delete alle[ko.id]; delete plaene[ko.id];
+  speicher.schreib('dk_konten', alle); speicher.schreib('dk_plaene', plaene); speicher.schreib(entwurfKey(ko), null);
+  speicher.schreib('dk_konto', Object.keys(alle)[0] || null); speicher.schreib('dk_aktiv', Object.keys(plaene)[0] || null);
+  EN = null; S.tagWahl = null; S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
 }
 function planLoeschen(e) {
   const b = e.currentTarget;
@@ -797,10 +1117,11 @@ setInterval(timerTick, 250);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 (async () => {
   altesAbhakenWeg();
+  S.wartet = speicher.lies('dk_wartet', null);
   await linkEinlesen();
   zeichne();
   fotosVorladen();
 })();
-window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { S.tagWahl = null; zeichne(); fotosVorladen(); } });
+window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { zeichne(); window.scrollTo(0, 0); fotosVorladen(); } });
 window.addEventListener('online', zeichne);
 window.addEventListener('offline', zeichne);

@@ -162,7 +162,9 @@ table.ueb td.z { font-family: var(--f-zahl); font-variant-numeric: tabular-nums;
 .edit-uebung .reihe { gap: 6px; }
 .klein-zahl { width: 64px; min-height: 36px; padding: 6px 8px; text-align: center; }
 .blatt .eingabe { background: #fff; color: var(--blatt-text); border-color: var(--blatt-linie); }
-.blatt .feld > label { color: var(--blatt-text); }
+.blatt .feld > label, .blatt .feld > .lbl { color: var(--blatt-text); }
+.blatt .optionen span { background: #fff; color: var(--blatt-text); border-color: var(--blatt-linie); }
+.blatt .optionen input:checked + span { border-color: var(--blatt-akzent); background: color-mix(in srgb, var(--blatt-akzent) 12%, #fff); color: var(--blatt-akzent); }
 .block.heute ul, .block ol { margin: 0; padding-left: 18px; }
 /* Kunden-App: Wochenleiste, Übungskarten zum Abhaken */
 .wochenleiste { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
@@ -329,6 +331,7 @@ nav.leiste button:active { transform: scale(1.12); }
 .blatt .detail { background: none; padding: 0; gap: 14px; font-size: 15px; }
 .blatt .knopf { background: #fff; color: var(--blatt-text); border: 1px solid var(--blatt-linie); box-shadow: 0 1px 2px rgba(23, 20, 15, .06); }
 .blatt .knopf:hover { border-color: var(--blatt-akzent); }
+.blatt .knopf.haupt { background: var(--akzent-verlauf); color: var(--auf-akzent); border: 0; }
 .blatt .chip { color: var(--blatt-akzent); border-color: color-mix(in srgb, var(--blatt-akzent) 40%, transparent); background: var(--blatt-feld); }
 .blatt-werte { display: flex; flex-wrap: wrap; gap: 6px; }
 .blatt-werte .chip { font-family: var(--f-zahl); font-variant-numeric: tabular-nums; }

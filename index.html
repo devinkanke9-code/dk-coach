@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="DK Coach">
-<link rel="manifest" href="manifest.webmanifest">
+<!-- manifest setzt app.js (nicht auf dem iPhone: dort soll „Zum Home-Bildschirm“ den Link mit dem Plan behalten) -->
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
@@ -25,6 +25,11 @@ img { max-width: 100%; }
 .kopf .rechts { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .willkommen { justify-items: center; text-align: center; padding: 28px 18px; }
 .willkommen .logo { width: 84px; height: 84px; border-radius: 20px; }
+/* Code-Eingabe und Analyse (seit 29.10.2026) */
+.code-feld { width: 100%; max-width: 280px; font-size: 30px; text-align: center; letter-spacing: .14em; font-variant-numeric: tabular-nums; }
+.willkommen .einfuegen, .willkommen .einfuegen textarea { width: 100%; }
+.analyse .frage { grid-template-columns: 1fr; gap: 8px; }
+.analyse .janein span { min-width: 84px; padding: 10px 0; }
 </style>
 </head>
 <body>
@@ -37,6 +42,7 @@ img { max-width: 100%; }
   <nav class="leiste" aria-label="Bereiche" hidden><div id="leiste"></div></nav>
 </div>
 <noscript><p style="padding:16px">DK Coach braucht JavaScript.</p></noscript>
+<script src="kompakt.js" defer></script>
 <script src="antippen.js" defer></script>
 <script type="module" src="app.js"></script>
 </body>
