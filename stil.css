@@ -104,6 +104,8 @@ textarea.eingabe { min-height: 80px; resize: vertical; }
 .optionen input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
 .optionen span { display: inline-block; border: 1px solid var(--linie); border-radius: 8px; padding: 8px 12px; font-size: 14px; background: var(--schwarz); min-height: 40px; }
 .optionen input:checked + span { border-color: var(--akzent); background: color-mix(in srgb, var(--akzent) 18%, var(--schwarz)); color: var(--text); }
+.optionen input:disabled { cursor: default; }
+.optionen input:disabled + span { opacity: .4; }
 .optionen input:focus-visible + span { outline: 2px solid var(--akzent-hell); outline-offset: 2px; }
 .raster2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .frage { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--linie); }

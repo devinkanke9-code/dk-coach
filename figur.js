@@ -5,11 +5,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { koerper, FigurModell } from './figur-modell.js';
+import { baueEinleitung } from './einleitung.js';
 
+// griff: Mitte der geschlossenen Faust (dort liegen Stange, Hantel, Griff) vom Handgelenk aus Richtung Finger; griffTief: so weit zur Handfläche hin
 export const MASS = {
-  oberarm: 0.29, unterarm: 0.27, oberschenkel: 0.45, unterschenkel: 0.44,
-  schulterBreite: 0.19, hueftBreite: 0.095, rumpf: 0.50, hals: 0.07, kopf: 0.105, fussHoehe: 0.07, fussLaenge: 0.24
+  oberarm: 0.29, unterarm: 0.27, oberschenkel: 0.45, unterschenkel: 0.44, griff: 0.085, griffTief: 0.028,
+  schulterBreite: 0.205, hueftBreite: 0.095, rumpf: 0.50, hals: 0.07, kopf: 0.105, fussHoehe: 0.07, fussLaenge: 0.24
 };
+export const HAND_BODEN = 0.12;   // Ziel der Hand tiefer als das (und nichts in der Hand): Hand liegt flach am Boden (Stütz)
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const RAD = Math.PI / 180;
@@ -42,8 +45,11 @@ export function ik(A, Z, a, b, pol) {
 
 /* ---------- Pose → Gelenkpunkte ---------- */
 // pose: { becken: Vector3, rumpf: {neigung, seit, drehung, basis?}, kopf: {neigung},
-//         hand: {l: V, r: V}, ellbogenPol: {l, r}, handflaeche: {l, r} (Richtung, in die die Handfläche zeigt),
+//         hand: {l: V, r: V} (Mitte der Faust = wo Stange/Hantel sitzt), ellbogenPol: {l, r}, handflaeche: {l, r} (Richtung, in die die Handfläche zeigt),
+//         flach: {l: V, r: V} (Hand liegt flach auf einer Fläche, V = Richtung von der Fläche weg; hand = Handgelenk),
+//         greift: {l, r} (Ziel tiefer als HAND_BODEN, trotzdem greifen statt flach aufstützen, z. B. Hantel vom Boden),
 //         fuss: {l: V, r: V}, kniePol: {l, r}, fussRicht: {l, r} (Vektor), zehen: {l, r} (Grad, Fersenhub) }
+// g.hand = Faustmitte (Geräte hängen dort), g.handgelenk = Handgelenk (dort beginnt die Hand des Körpers)
 export function gelenke(pose) {
   const m = MASS;
   const R = rumpfRahmen(pose.rumpf || {});
@@ -53,33 +59,71 @@ export function gelenke(pose) {
   const kq = new THREE.Quaternion().setFromAxisAngle(R.links, ((pose.kopf && pose.kopf.neigung) || 0) * RAD);
   const kopfRicht = R.oben.clone().applyQuaternion(kq);
   const kopf = nacken.clone().add(kopfRicht.multiplyScalar(m.kopf + 0.03));
+  // schulterHub (m): Schultern hochziehen (Shrugs), Schultergelenke wandern entlang der Rumpfachse
+  const hubS = pose.schulterHub || 0;
   const schulter = {
-    l: brust.clone().add(R.links.clone().multiplyScalar(m.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03)),
-    r: brust.clone().add(R.links.clone().multiplyScalar(-m.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03))
+    l: brust.clone().add(R.links.clone().multiplyScalar(m.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03 - hubS)),
+    r: brust.clone().add(R.links.clone().multiplyScalar(-m.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03 - hubS))
   };
   const huefte = {
     l: becken.clone().add(R.links.clone().multiplyScalar(m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02)),
     r: becken.clone().add(R.links.clone().multiplyScalar(-m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02))
   };
-  const out = { R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, zehe: {}, ferse: {} };
+  const out = { schulterHub: hubS, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, zehe: {}, ferse: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
-    const hz = (pose.hand && pose.hand[s]) || schulter[s].clone().add(V(0.05 * sg, -0.55, 0));
+    const hz = ((pose.hand && pose.hand[s]) || schulter[s].clone().add(V(0.05 * sg, -(m.oberarm + m.unterarm + m.griff) * 0.98, 0))).clone();
     const epol = (pose.ellbogenPol && pose.ellbogenPol[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
-    const arm = ik(schulter[s], hz, m.oberarm, m.unterarm, epol);
-    out.ellbogen[s] = arm.mitte; out.hand[s] = arm.ende;
-    // Handrücken: ohne Angabe Obergriff (Fingerknöchel quer zum Körper, wie an der Stange)
-    const a = arm.ende.clone().sub(arm.mitte).normalize();
-    let n = pose.handflaeche && pose.handflaeche[s] ? pose.handflaeche[s].clone().negate() : a.clone().cross(R.links);
-    n.sub(a.clone().multiplyScalar(n.dot(a)));
-    if (n.lengthSq() < 1e-6) n = R.vor.clone().sub(a.clone().multiplyScalar(R.vor.dot(a)));
-    out.handAchse[s] = a; out.handRuecken[s] = n.normalize();
-    // Handgelenk-Knick (Grad, + = zur Handfläche): Hand dreht um das Handgelenk, handMitte = Mitte der Hand
     const knick = ((pose.handKnick && pose.handKnick[s]) || 0) * RAD;
-    const ak = a.clone().applyAxisAngle(a.clone().cross(out.handRuecken[s]).normalize(), knick);
-    out.handKnick[s] = knick; out.handFinger[s] = ak;
-    out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(ak.clone().multiplyScalar(0.047));
+    // Hand-Ausrichtung zu einer Unterarm-Richtung a: Handrücken n (ohne Angabe Obergriff, Fingerknöchel quer zum Körper wie an der
+    // Stange), Finger ak und Rücken nk nach dem Handgelenk-Knick (Grad, + = zur Handfläche)
+    // Zeigt der Unterarm fast zur Seite (a ∥ links), geht der Handrücken weich zur Vorderseite über, statt zu springen
+    const ausrichtung = (a) => {
+      let n = pose.handflaeche && pose.handflaeche[s] ? pose.handflaeche[s].clone().negate() : a.clone().cross(R.links);
+      n.sub(a.clone().multiplyScalar(n.dot(a)));
+      const ersatz = R.vor.clone().sub(a.clone().multiplyScalar(R.vor.dot(a)));
+      const w = Math.max(0, 1 - n.length() / 0.5);
+      if (w > 0) n.add(ersatz.multiplyScalar(w * w));
+      if (n.lengthSq() < 1e-8) n = R.oben.clone().sub(a.clone().multiplyScalar(R.oben.dot(a)));
+      n.normalize();
+      const achse = a.clone().cross(n).normalize();
+      return { n, ak: a.clone().applyAxisAngle(achse, knick), nk: n.clone().applyAxisAngle(achse, knick) };
+    };
+    const faust = (r) => r.ak.clone().multiplyScalar(m.griff).sub(r.nk.clone().multiplyScalar(m.griffTief));
+    const flach = (pose.flach && pose.flach[s]) || (hz.y < HAND_BODEN && !(pose.greift && pose.greift[s]) ? V(0, 1, 0) : null);
+    let arm;
+    if (flach) { arm = ik(schulter[s], hz, m.oberarm, m.unterarm, epol); out.handZiel[s] = hz; }
+    else {
+      // Faustmitte aufs Ziel. Die Hand sitzt starr am Unterarm, also hat Ellbogen → Faust eine feste Länge L: Ellbogen per IK mit L,
+      // dann den Unterarm um den kleinen Winkel zwischen Unterarm-Achse und Linie zur Faust zurückdrehen
+      const zuFaust = (a) => a.clone().multiplyScalar(m.unterarm).add(faust(ausrichtung(a)));
+      const L = zuFaust(hz.clone().sub(schulter[s]).normalize()).length();
+      // Die Vorlagen sind für einen Arm ohne Hand (Schulter → Handgelenk R0) gebaut. Fast gestreckte Arme sollen gestreckt bleiben:
+      // dort rückt die Faust so weit nach außen, dass der Ellbogen denselben Winkel hat wie gedacht (Stange/Hantel geht mit).
+      // Stark gebeugte Arme behalten das Ziel genau (Stange auf der Brust, Hantel an der Schulter). Immer genau: pose.fest (feste Stange)
+      // oder ein Ziel mit .genau (Vorlage rechnet schon mit Ellbogen → Faust, z. B. Curl: Ellbogen fest, Unterarm klappt)
+      const d = hz.distanceTo(schulter[s]), R0 = m.oberarm + m.unterarm;
+      const genau = (pose.fest && pose.fest[s]) || (pose.hand && pose.hand[s] && pose.hand[s].genau);
+      if (!genau && d > 1e-4 && d < R0) {
+        const cosW = Math.max(-1, Math.min(1, (m.oberarm ** 2 + m.unterarm ** 2 - d * d) / (2 * m.oberarm * m.unterarm)));
+        const winkel = Math.acos(cosW) / RAD, w = Math.max(0, Math.min(1, (winkel - 110) / 40));
+        const dNeu = Math.sqrt(m.oberarm ** 2 + L * L - 2 * m.oberarm * L * cosW);
+        if (w > 0) hz.sub(schulter[s]).multiplyScalar(1 + (dNeu / d - 1) * w * w * (3 - 2 * w)).add(schulter[s]);
+      }
+      out.handZiel[s] = hz;
+      const k = ik(schulter[s], hz, m.oberarm, L, epol);
+      const u = k.ende.clone().sub(k.mitte).normalize(), a = u.clone(), q = new THREE.Quaternion();
+      for (let i = 0; i < 6; i++) a.applyQuaternion(q.setFromUnitVectors(zuFaust(a).normalize(), u)).normalize();
+      arm = { mitte: k.mitte, ende: k.mitte.clone().add(a.multiplyScalar(m.unterarm)) };
+    }
+    const a = arm.ende.clone().sub(arm.mitte).normalize(), r = ausrichtung(a);
+    out.ellbogen[s] = arm.mitte; out.handgelenk[s] = arm.ende; out.flach[s] = flach;
+    out.hand[s] = flach ? arm.ende.clone() : arm.ende.clone().add(faust(r));
+    out.handAchse[s] = a; out.handRuecken[s] = r.n;
+    // handMitte = Mitte der Hand (Leuchten, Coach erklärt)
+    out.handKnick[s] = knick; out.handFinger[s] = r.ak;
+    out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(r.ak.clone().multiplyScalar(0.047));
     // Beine: Knie zeigt nach vorn (leicht außen)
     const fz = (pose.fuss && pose.fuss[s]) || huefte[s].clone().add(V(0.02 * sg, -(m.oberschenkel + m.unterschenkel), 0));
     const kpol = (pose.kniePol && pose.kniePol[s]) || V(0.15 * sg, 0, 1);
@@ -101,6 +145,40 @@ export function gelenke(pose) {
     out.ferse[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(-m.fussLaenge * 0.25)).add(V(0, -m.fussHoehe * 0.6, 0));
   }
   return out;
+}
+
+// Hält die Hand etwas? Ja, wenn ein bewegtes Gerät der Vorlage (Stange, Hantel, Griff, Kabel …) oder eine feste Stange die Faustmitte berührt
+const _box = new THREE.Box3();
+export function haltErkennen(g, z, festeStangen = []) {
+  const teile = Object.values(z || {}).filter((o) => o && o.isObject3D);
+  for (const o of teile) o.updateMatrixWorld(true);
+  for (const s of ['l', 'r']) {
+    g.haelt[s] = !g.flach[s] && (teile.some((o) => _box.setFromObject(o).expandByScalar(0.02).containsPoint(g.hand[s])) || festeStangen.some((b) => b.containsPoint(g.hand[s])));
+  }
+}
+// Feste Stangen der Szene (Klimmzugstange, Barren, Pfosten): Teile, die sich über die Bewegung nicht rühren und in zwei Richtungen
+// höchstens 7 cm dick sind. Liegt das Ziel einer Hand daran, greift die Faust genau dort (pose.fest), statt mit dem Arm nach außen zu rücken
+export function festeStangen(anim, ger, z) {
+  const lage = (t) => {
+    const erg = anim.pose(t, z), g = gelenke(erg.pose);
+    if (erg.props) erg.props(g, z);
+    ger.gruppe.updateMatrixWorld(true);
+    return ger.gruppe.children.map((o) => new THREE.Box3().setFromObject(o));
+  };
+  const zeiten = [0, 0.5, 1].map(lage), boxen = [];
+  zeiten[0].forEach((b, i) => {
+    if (b.isEmpty() || !zeiten.every((x) => x[i].min.distanceTo(b.min) < 1e-3 && x[i].max.distanceTo(b.max) < 1e-3)) return;
+    const d = b.getSize(V()).toArray().sort((x, y) => x - y);
+    if (d[1] <= 0.07) boxen.push(b.clone().expandByScalar(0.035));
+  });
+  return boxen;
+}
+export function festErkennen(pose, boxen) {
+  if (!boxen.length || !pose.hand) return;
+  for (const s of ['l', 'r']) {
+    const h = pose.hand[s];
+    if (h && boxen.some((b) => b.containsPoint(h))) (pose.fest = pose.fest || {})[s] = true;
+  }
 }
 
 /* ---------- Material ---------- */
@@ -351,7 +429,7 @@ export class Figur {
     this.logo.position.copy(g.huefte.l).lerp(g.knie.l, 0.2).add(aussen.multiplyScalar(0.1));
     for (const s of ['l', 'r']) {
       K(T['oberarm_' + s], g.schulter[s], g.ellbogen[s]);
-      K(T['unterarm_' + s], g.ellbogen[s], g.hand[s]);
+      K(T['unterarm_' + s], g.ellbogen[s], g.handgelenk[s]);
       const a = g.handFinger[s], quer = g.handAchse[s].clone().cross(g.handRuecken[s]).normalize(), n = quer.clone().cross(a).normalize(), hand = T['hand_' + s];
       hand.quaternion.setFromRotationMatrix(M4.makeBasis(quer, a, n));
       hand.position.copy(g.handMitte[s]);
@@ -497,6 +575,7 @@ export class Ansicht {
   constructor(canvas, opt = {}) {
     this.canvas = canvas;
     this.effekte = !!opt.effekte && !opt.standbild;
+    this.einleitung = opt.einleitung != null ? !!opt.einleitung : !opt.standbild;   // Ablauf vor der Übung (hinlaufen, greifen)
     // Farben der Bühne (Kantenlicht, Bodenring, Pulse, Funken): aus der Farbwelt der Seite (buehne.js gibt sie mit), sonst Orange/Türkis
     this.farbeA = new THREE.Color(opt.farbeA || 0xffa53a); this.farbeB = new THREE.Color(opt.farbeB || 0x35c6d4);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: this.effekte, preserveDrawingBuffer: !!opt.standbild });
@@ -695,6 +774,7 @@ export class Ansicht {
     this.geraete.leeren();
     this.uebung = animation;
     this.zustand = animation.aufbau ? animation.aufbau(this.geraete) : {};
+    this.stangen = festeStangen(animation, this.geraete, this.zustand);
     this.figur.markiere(muskeln || []);
     // Bewegung ausmessen: Figur + Geräte über mehrere Zeitpunkte, daraus Mittelpunkt und Abstand
     const box = new THREE.Box3();
@@ -723,16 +803,32 @@ export class Ansicht {
     if (this.effekte) { for (const o of [this.kegel, ...this.pulse]) o.position.set(mitte.x, o.position.y, mitte.z); this.partikel.position.set(mitte.x, 0, mitte.z); }
     this.drehZiel = null;
     this.zeit = 0;
+    // Ablauf davor (hinlaufen, aufheben, hinsetzen, greifen): nur in der Live-Ansicht, nicht bei Standbildern
+    this.intro = null;
+    if (this.einleitung) {
+      try { this.intro = baueEinleitung(animation, this.geraete, this.zustand, richt.clone()); this.introZeit = 0; } catch (e) { this.intro = null; }
+    }
+  }
+  // Ein Bild des Ablaufs davor: Geräte gehen erst mit, wenn die Hände sie gegriffen haben
+  introBild(sek) {
+    const pose = this.intro.pose(sek), g = gelenke(pose);
+    this.gAktuell = g;
+    if (this.intro.gehtMit(sek)) { const erg = this.uebung.pose(this.intro.tStart, this.zustand); if (erg.props) erg.props(g, this.zustand); }
+    haltErkennen(g, this.zustand, this.stangen || []);
+    this.figur.stelle(g);
+    this.figur.glut(0);
   }
   bild(t) {
     if (!this.uebung) return;
     if (this.zustand) this.zustand.runter = !!this.runter;   // für Übungen, die hoch anders aussehen als runter (Zottman Curl)
     const erg = this.uebung.pose(t, this.zustand);
+    festErkennen(erg.pose, this.stangen || []);
     const g = gelenke(erg.pose);
     this.gAktuell = g;
+    if (erg.props) erg.props(g, this.zustand);
+    haltErkennen(g, this.zustand, this.stangen || []);   // erst die Geräte setzen, dann weiß die Hand, ob sie zur Faust wird
     this.figur.stelle(g);
     this.figur.glut(t);
-    if (erg.props) erg.props(g, this.zustand);
   }
   // Tempo: hoch (konzentrisch) 1 s, oben 0,4 s, runter 2 s, unten 0,4 s
   phase(sek) {
@@ -755,9 +851,17 @@ export class Ansicht {
       let t = 0;
       if (this.uebung) {
         // Coach erklärt: Figur gleitet zur Stelle festT und bleibt dort stehen
-        if (this.festT != null) { this.tJetzt += (this.festT - this.tJetzt) * Math.min(1, dt * 3); t = this.tJetzt; }
-        else { t = this.phase(this.zeit); this.tJetzt = t; }
-        this.bild(t);
+        if (this.festT != null) this.intro = null;
+        if (this.intro) {
+          if (this.laeuft) this.introZeit += dt * this.tempo;
+          if (this.introZeit < this.intro.dauer) this.introBild(this.introZeit);
+          else { this.zeit = this.intro.tStart > 0.5 ? (this.uebung.dauer || [1.0, 0.4, 2.0, 0.5])[0] : 0; this.intro = null; }
+        }
+        if (!this.intro) {
+          if (this.festT != null) { this.tJetzt += (this.festT - this.tJetzt) * Math.min(1, dt * 3); t = this.tJetzt; }
+          else { t = this.phase(this.zeit); this.tJetzt = t; }
+          this.bild(t);
+        }
       }
       this.effekteZeit(dt, t);
       this.hinweisZeit(dt);

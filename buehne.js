@@ -32,7 +32,7 @@ export function buehne({ lade3d, fotoGross }) {
   const foto = h('button', { class: 'devin-foto', type: 'button', hidden: true, 'aria-label': 'Foto vergrößern: So macht’s Devin', onclick: () => fotoGross && fotoGross(fotoBild.src) },
     fotoBild, h('span', { text: 'So macht’s Devin' }));
   // Coach DK erklärt: Figur hält an, Körperteil leuchtet, Pfeil und Text (ohne Stimme)
-  let gezeigt = null, erk = null;
+  let gezeigt = null, erk = null, zuletzt = null;
   const erklaerKnopf = h('button', { class: 'erklaer-knopf', type: 'button', hidden: true, onclick: () => {
     if (!ansicht || !gezeigt) return;
     if (erk) erk.ende();
@@ -68,6 +68,8 @@ export function buehne({ lade3d, fotoGross }) {
       }
       el.classList.remove('wechsel'); void el.offsetWidth; el.classList.add('wechsel');
       ansicht.groesse();
+      // Ablauf davor (hinlaufen, greifen) nur, wenn eine andere Übung kommt, nicht bei jedem Satz derselben Übung im Training
+      ansicht.einleitung = zuletzt !== d.n; zuletzt = d.n;
       ansicht.zeige(M.animation(d.a), d.m);
       ansicht.autoDrehen(auto.getAttribute('aria-pressed') === 'true');
     },

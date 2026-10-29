@@ -507,12 +507,14 @@ function ansichtHeute() {
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
   const ko = aktivesKonto();
   if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
-  if (!kundenTage(p).length) {
-    teile.push(h('p', { class: 'meldung', text: 'Wähle zuerst deine Trainingstage. Dann siehst du hier jeden Tag, was dran ist.' }), trainingstageBlock(p), installKarte());
+  // Erst wenn jeder Trainingstag einen Wochentag hat, kommt die Woche (vorher blieb nach dem ersten Haken nur ein Tag übrig)
+  if (kundenTage(p).length < planTage(p)) {
+    teile.push(h('p', { class: 'meldung', text: 'Dein Plan hat ' + planTage(p) + ' Trainingstag' + (planTage(p) === 1 ? '' : 'e') + '. Wähle deine Tage, dann siehst du hier deine ganze Woche.' }), trainingstageBlock(p), installKarte());
     return teile;
   }
   if (S.tagWahl == null) S.tagWahl = heute;
   teile.push(wochenleiste(p, heute));
+  teile.push(h('button', { class: 'knopf text klein', type: 'button', onclick: () => { geh('plan'); setTimeout(() => { const el = $('#trainingstage'); if (el) el.scrollIntoView({ block: 'start' }); }, 0); }, text: 'Trainingstage ändern' }));
   const ti = tagFuer(p, S.tagWahl);
   teile.push(ti >= 0 ? trainingsKarte(p, ti, S.tagWahl === heute) : ruhetagKarte(p, S.tagWahl, heute));
   teile.push(verlaufBlock());
@@ -570,8 +572,9 @@ function ruhetagKarte(p, wt, heute) {
 }
 // Große Muskeln an zwei Tagen direkt hintereinander? Dann ein Tipp (wie in der Trainer-Seite)
 const GROSSE_MUSKELN = ['brust', 'lat', 'oberer_ruecken', 'quadrizeps', 'beinbeuger', 'gesaess'];
-function tageZuNah(p) {
-  const tage = kundenTage(p).slice(0, p.t.length), nah = [];
+function tageZuNah(p, tage = kundenTage(p)) {
+  tage = tage.slice(0, p.t.length);
+  const nah = [];
   const muskeln = (t) => { const m = {}; t.u.forEach((roh) => ((UEBUNGEN[roh.i] || {}).m || []).forEach((x) => { if (GROSSE_MUSKELN.includes(x)) m[x] = 1; })); return m; };
   tage.forEach((wt, i) => {
     const morgen = tage.indexOf((wt + 1) % 7);
@@ -581,19 +584,38 @@ function tageZuNah(p) {
   });
   return nah;
 }
+const planTage = (p) => Math.min(7, p.t.length);
+// Vorschlag: behält schon gewählte Tage, so wenig gleiche große Muskeln an Folgetagen wie möglich, Abstände gleichmäßig, lieber unter der Woche
+function vorschlagTage(p) {
+  const n = planTage(p), gewaehlt = kundenTage(p);
+  let best = null;
+  for (let m = 1; m < 128; m++) {
+    const tage = [0, 1, 2, 3, 4, 5, 6].filter((i) => (m >> i) & 1);
+    if (tage.length !== n) continue;
+    const luecken = tage.map((t, i) => ((tage[(i + 1) % n] - t + 7) % 7) || 7);
+    const wert = gewaehlt.filter((x) => !tage.includes(x)).length * 50 + tageZuNah(p, tage).length * 100 + (Math.max(...luecken) - Math.min(...luecken)) * 10 + (tage.includes(6) ? 3 : 0) + (tage.includes(5) ? 1 : 0) + (tage[0] !== 0 ? 1 : 0);
+    if (!best || wert < best.wert) best = { wert, tage };
+  }
+  return best ? best.tage : [];
+}
 function trainingstageBlock(p) {
-  const tage = kundenTage(p), n = p.t.length, nah = tageZuNah(p);
+  const tage = kundenTage(p), n = planTage(p), nah = tageZuNah(p), voll = tage.length >= n;
   function setze(i, an) {
     const neu = kundenTage(p).filter((x) => x !== i);
     if (an) neu.push(i);
     speicher.schreib('dk_tage_' + p.id, neu.sort());
+    if (an && neu.length === n) toast('Deine Woche steht');
     zeichne();
   }
+  const vorschlag = tage.length < n ? vorschlagTage(p) : null;
   return h('section', { class: 'block', id: 'trainingstage' }, h('h2', { text: 'Deine Trainingstage' }),
     h('p', { class: 'leise klein', text: 'Dein Plan hat ' + n + ' Trainingstag' + (n === 1 ? '' : 'e') + ' pro Woche. Wähle, an welchen Tagen du trainierst. Das merkt sich nur dein Handy.' }),
+    // Sind alle Tage vergeben, erst einen abwählen, dann einen anderen wählen
     h('div', { class: 'optionen' }, WOCHENTAGE.map((w, i) => h('label', null,
-      h('input', { type: 'checkbox', checked: tage.includes(i), 'aria-label': w, onchange: (e) => setze(i, e.target.checked) }), h('span', { text: w.slice(0, 2) })))),
-    tage.length && tage.length < n ? h('p', { class: 'klein', text: 'Noch ' + (n - tage.length) + ' Tag(e) wählen, dann hat jeder Trainingstag seinen Platz.' }) : null,
+      h('input', { type: 'checkbox', checked: tage.includes(i), disabled: voll && !tage.includes(i), 'aria-label': w, onchange: (e) => setze(i, e.target.checked) }), h('span', { text: w.slice(0, 2) })))),
+    tage.length && tage.length < n ? h('p', { class: 'klein', text: 'Noch ' + (n - tage.length) + (n - tage.length === 1 ? ' Tag' : ' Tage') + ' wählen, dann hat jeder Trainingstag seinen Platz.' }) : null,
+    vorschlag && vorschlag.length ? h('button', { class: 'knopf', type: 'button', onclick: () => { speicher.schreib('dk_tage_' + p.id, vorschlag); toast('Deine Woche steht'); zeichne(); },
+      text: 'Vorschlag nehmen: ' + vorschlag.map((i) => WOCHENTAGE[i].slice(0, 2)).join(', ') }) : null,
     tage.length > n ? h('p', { class: 'klein', text: 'Du hast mehr Tage gewählt, als dein Plan hat. Die letzten bleiben frei.' }) : null,
     nah.length ? h('p', { class: 'klein', text: 'Tipp: ' + nah.join(', ') + ' trainieren dieselben großen Muskeln. Besser einen Tag Pause dazwischen.' }) : null,
     tage.length ? h('ul', { class: 'klein' }, tage.slice(0, n).map((i, k) => h('li', null, h('b', { text: WOCHENTAGE[i] + ': ' }), 'T' + (k + 1) + ' · ' + p.t[k].n))) : null);
