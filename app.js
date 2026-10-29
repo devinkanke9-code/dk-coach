@@ -133,7 +133,8 @@ function anmelden(d, code, teil) {
   speicher.schreib('dk_konto', d.k); speicher.schreib('dk_aktiv', d.k);   // wer sich einloggt, sieht seinen eigenen Stand
   if (alt && alt.t > d.t) return;   // älterer Link (z. B. der Start-Link vom Home-Bildschirm) überschreibt nie einen neueren Stand
   alle[d.k] = { id: d.k, n: d.n || '', bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,
-    analyse: d.p ? null : (alt && alt.analyse) || null };
+    analyse: d.p ? null : (alt && alt.analyse) || null,
+    form: d.a === 2 ? 'kurz' : d.a ? 'lang' : (alt && alt.form) || null };   // a: 2 = Analyse in 10 Fragen, 1 = alle Fragen
   speicher.schreib('dk_konten', alle);
   if (d.p) {
     // Neuer Plan (anderes Erstelldatum) = Woche 1 ab heute; nur geändert = die Wochen zählen weiter
@@ -355,7 +356,7 @@ function anFehler(a) {
     return null;
   }).filter(Boolean);
 }
-function anFeld(f) {
+function anFeld(f, ohneLabel) {   // ohneLabel: die Überschrift stellt die Frage schon (Analyse in 10 Fragen), Label nur für Vorleseprogramme
   const id = 'an_' + f.id, wert = EN.a[f.id];
   const setze = (v) => { if (v == null || v === '' || (Array.isArray(v) && !v.length)) delete EN.a[f.id]; else EN.a[f.id] = v; entwurfSichern(); if (STEUER.has(f.id)) zeichne(); };
   const hilfe = f.hilfe ? h('p', { class: 'hilfe', text: f.hilfe }) : null;
@@ -363,7 +364,7 @@ function anFeld(f) {
   if (f.typ === 'auswahl' || f.typ === 'mehrfach' || f.typ === 'ja_nein') {
     const mehr = f.typ === 'mehrfach';
     const opts = f.typ === 'ja_nein' ? [{ wert: true, label: 'Ja' }, { wert: false, label: 'Nein' }] : (f.optionen || []);
-    return h('div', { class: 'feld', role: 'group', 'aria-labelledby': id }, h('span', { class: 'lbl', id, text: titel }), hilfe,
+    return h('div', { class: 'feld', role: 'group', 'aria-labelledby': id }, h('span', { class: ohneLabel ? 'lbl versteckt' : 'lbl', id, text: titel }), hilfe,
       h('div', { class: 'optionen' }, opts.map((o, i) => {
         const an = mehr ? [].concat(wert || []).some((x) => String(x) === String(o.wert)) : wert != null && String(wert) === String(o.wert);
         return h('label', null, h('input', { type: mehr ? 'checkbox' : 'radio', name: id, id: id + '_' + i, checked: an, onchange: (e) => {
@@ -380,7 +381,7 @@ function anFeld(f) {
     : h('input', { class: 'eingabe', id, type: f.typ === 'zahl' ? 'number' : 'text', inputmode: f.typ === 'zahl' ? 'decimal' : null, min: f.min, max: f.max,
       value: wert != null ? wert : '', autocomplete: 'off', placeholder: f.platzhalter || null,
       oninput: (e) => setze(f.typ === 'zahl' ? (e.target.value === '' ? null : +e.target.value) : e.target.value) });
-  return h('div', { class: 'feld' }, h('label', { for: id, text: titel }), hilfe, f.einheit ? h('div', { class: 'mit-einheit' }, inp, h('span', { text: f.einheit })) : inp);
+  return h('div', { class: 'feld' }, h('label', { for: id, class: ohneLabel ? 'versteckt' : null, text: titel }), hilfe, f.einheit ? h('div', { class: 'mit-einheit' }, inp, h('span', { text: f.einheit })) : inp);
 }
 function anGesundheit() {
   const OPT = [[true, 'Ja', 'ja'], [false, 'Nein', 'nein'], ['weiss_nicht', 'Weiß nicht', 'ja']];
@@ -431,20 +432,31 @@ function sendenKnopf(ko, text, klasse) {
     setTimeout(() => { zeichne(); window.scrollTo(0, 0); }, 400);
   } });
 }
+// Analyse in 10 Fragen (ANALYSE.kurz, Link mit a: 2): ein Bildschirm pro Frage, die Felder kommen aus den Abschnitten.
+// Danach immer der ganze Gesundheits-Check. Bleibt eine Frage leer, fragt die App einmal nach; beim zweiten Tipp geht es weiter.
+const FELD = new Map(ANALYSE.abschnitte.flatMap((a) => a.felder.map((f) => [f.id, f])));
+const GEMAHNT = new Set();
+const leer = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
 function analyseAnsicht() {
   const ko = aktivesKonto();
   if (!EN || EN.id !== ko.id) EN = entwurfLaden(ko);
-  const alle = ANALYSE.abschnitte.map((a) => ({ art: 'abschnitt', titel: a.titel, a })).concat([{ art: 'gesundheit', titel: 'Gesundheits-Check' }, { art: 'senden', titel: 'Abschicken' }]);
+  const kurz = ko.form === 'kurz' && (ANALYSE.kurz || []).length > 0;
+  const fragen = kurz ? ANALYSE.kurz.map((q, i) => ({ art: 'abschnitt', titel: 'Frage ' + (i + 1), q, a: { felder: q.felder.map((id) => FELD.get(id)).filter(Boolean) } }))
+    : ANALYSE.abschnitte.map((a) => ({ art: 'abschnitt', titel: a.titel, a }));
+  const alle = fragen.concat([{ art: 'gesundheit', titel: 'Gesundheits-Check' }, { art: 'senden', titel: 'Abschicken' }]);
   EN.schritt = Math.min(EN.schritt || 0, alle.length - 1);
   const akt = alle[EN.schritt], vn = vorname(ko.n);
   const gehZu = (i) => { EN.schritt = i; entwurfSichern(); zeichne(); window.scrollTo(0, 0); };
   const teile = [h('div', { class: 'plan-kopf' },
-    h('h1', { text: EN.schritt === 0 ? 'Hi' + (vn ? ' ' + vn : '') + '!' : akt.titel }),
-    h('p', { class: 'leise', text: EN.schritt === 0 ? 'Bevor Devin deinen Plan baut, braucht er ein paar Infos von dir. Dauert etwa 10 Minuten. Deine Antworten bleiben auf dem Handy, bis du sie abschickst.'
-      : 'Schritt ' + (EN.schritt + 1) + ' von ' + alle.length })),
+    h('h1', { text: EN.schritt === 0 ? 'Hi' + (vn ? ' ' + vn : '') + '!' : akt.q ? akt.titel + ' von ' + fragen.length : akt.titel }),
+    EN.schritt === 0 || !akt.q ? h('p', { class: 'leise', text: EN.schritt > 0 ? 'Schritt ' + (EN.schritt + 1) + ' von ' + alle.length
+      : kurz ? 'Bevor Devin deinen Plan baut, hat er ' + fragen.length + ' Fragen an dich. Danach kommt ein kurzer Gesundheits-Check. Deine Antworten bleiben auf dem Handy, bis du sie abschickst.'
+      : 'Bevor Devin deinen Plan baut, braucht er ein paar Infos von dir. Dauert etwa 10 Minuten. Deine Antworten bleiben auf dem Handy, bis du sie abschickst.' }) : null),
     h('div', { class: 'schritte', style: 'grid-template-columns:repeat(' + alle.length + ',1fr)' }, alle.map((s, i) =>
       h('button', { type: 'button', class: i <= EN.schritt ? 'an' : '', 'aria-label': 'Schritt ' + (i + 1) + ': ' + s.titel, title: s.titel, onclick: () => { if (i < EN.schritt) gehZu(i); } })))];
-  if (akt.art === 'abschnitt') teile.push(h('section', { class: 'block' }, EN.schritt === 0 ? h('h2', { text: akt.titel }) : null, h('div', { class: 'stapel' }, akt.a.felder.filter((f) => anSichtbar(f)).map(anFeld))));
+  if (akt.art === 'abschnitt') teile.push(h('section', { class: 'block' },
+    akt.q ? [h('h2', { class: 'frage-gross', text: akt.q.frage }), akt.q.unter ? h('p', { class: 'leise', text: akt.q.unter }) : null] : EN.schritt === 0 ? h('h2', { text: akt.titel }) : null,
+    h('div', { class: 'stapel' }, akt.a.felder.filter((f) => anSichtbar(f)).map((f) => anFeld(f, !!akt.q && akt.q.frage_ist === f.id)))));
   if (akt.art === 'gesundheit') teile.push(...anGesundheit());
   if (akt.art === 'senden') {
     sendeTextVorbereiten(ko);
@@ -457,17 +469,18 @@ function analyseAnsicht() {
       sendenKnopf(ko, 'An Devin schicken', 'knopf haupt')));
   }
   const ges = alle.findIndex((x) => x.art === 'gesundheit');
-  if (akt.art === 'abschnitt' && EN.schritt < ges - 1 && alle.every((x) => x.art !== 'abschnitt' || !anFehler(x.a).length)) {
+  if (!kurz && akt.art === 'abschnitt' && EN.schritt < ges - 1 && alle.every((x) => x.art !== 'abschnitt' || !anFehler(x.a).length)) {
     teile.push(h('button', { class: 'knopf text', type: 'button', onclick: () => gehZu(ges), text: 'Rest überspringen → Gesundheits-Check' }));
   }
   const weiter = () => {
     if (akt.art === 'abschnitt') { const f = anFehler(akt.a); if (f.length) { toast('Bitte ausfüllen: ' + f.slice(0, 3).join(', ')); return; } }
+    if (akt.q && !GEMAHNT.has(akt.q.id) && akt.a.felder.every((x) => leer(EN.a[x.id]))) { GEMAHNT.add(akt.q.id); toast('Ein Satz reicht schon. Oder tipp nochmal auf Weiter.'); return; }
     if (akt.art === 'gesundheit') { const offen = ANALYSE.screening.filter((f) => frageAktiv(f) && EN.s[f.id] === undefined).length; if (offen) { toast('Bitte jede Frage beantworten (' + offen + ' offen)'); return; } }
     gehZu(EN.schritt + 1);
   };
   teile.push(h('div', { class: 'fuss' },
     EN.schritt > 0 ? h('button', { class: 'knopf', type: 'button', onclick: () => gehZu(EN.schritt - 1), text: 'Zurück' }) : h('span'),
-    akt.art !== 'senden' ? h('button', { class: 'knopf haupt', type: 'button', onclick: weiter, text: 'Weiter · ' + alle[EN.schritt + 1].titel }) : null));
+    akt.art !== 'senden' ? h('button', { class: 'knopf haupt', type: 'button', onclick: weiter, text: 'Weiter' + (alle[EN.schritt + 1].q ? '' : ' · ' + alle[EN.schritt + 1].titel) }) : null));
   return [h('div', { class: 'analyse stapel' }, teile)];
 }
 function beispiel() {
