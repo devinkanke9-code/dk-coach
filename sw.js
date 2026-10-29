@@ -1,5 +1,5 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = '00c7e67dfa';
+const VERSION = 'e68a9cce02';
 const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'stil.css',
   'schriften/schriften.css', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
   'koerper.bin', 'koerper-haut.jpg', 'koerper-haut-n.jpg', 'koerper-haar.jpg', 'koerper-augen.jpg'];
@@ -11,7 +11,10 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(NAME).then((c) => c.addAll(DATEIEN.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((namen) => Promise.all(namen.filter((n) => n.startsWith('dk-coach-') && n !== NAME).map((n) => caches.delete(n)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then((namen) => Promise.all(namen.filter((n) => n.startsWith('dk-coach-') && n !== NAME).map((n) => caches.delete(n)))).then(() => self.clients.claim())
+    // Steht noch ein Code-Link (#z=…) in der Adresse, hat ihn eine ältere App-Fassung (vor dem 29.10.2026) nicht gekannt: einmal neu laden.
+    // ?neu=… macht die Adresse anders, sonst springt der Browser nur zum #-Teil statt neu zu laden.
+    .then(() => self.clients.matchAll({ type: 'window' })).then((fenster) => fenster.forEach((c) => { if (!/[#&]z=/.test(c.url) || !c.navigate) return; const u = new URL(c.url); u.searchParams.set('neu', VERSION); c.navigate(u.href).catch(() => {}); })));
 });
 self.addEventListener('fetch', (e) => {
   const req = e.request;
