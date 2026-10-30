@@ -96,7 +96,13 @@ export function baueEinleitung(anim, ger, z, kamera) {
   const obj = Object.values(z).filter((o) => o && o.isObject3D);
   const hanteln = ['kh_l', 'kh_r', 'kb'].filter((n) => z[n] && z[n].isObject3D);
   // Startzeitpunkt: Stange vom Boden (Kreuzheben) unten; Stange im Ständer dort, wo der Körper am aufrechtesten ist bzw. im Liegen oben
-  const lage = (t) => { const erg = anim.pose(t, z), v = vollstaendig(erg.pose); return { t, erg, ...v }; };
+  // Griffachse der Kurzhanteln (setzen erst die props) vorher kennen, damit die Hand am Ende so greift wie in der Übung
+  if (!z.griffAchse) { const e0 = anim.pose(0, z); if (e0.props) e0.props(gelenke(e0.pose), z); }
+  const lage = (t) => {
+    const erg = anim.pose(t, z);
+    if (z.griffAchse && !erg.pose.griffAchse) erg.pose.griffAchse = z.griffAchse;
+    const v = vollstaendig(erg.pose); return { t, erg, ...v };
+  };
   const L0 = lage(0), L1 = lage(1);
   const props = (L) => { if (L.erg.props) L.erg.props(L.g, z); for (const o of obj) o.updateMatrixWorld(true); };
   const stangeY = (L) => { props(L); return z.lh ? z.lh.position.y : null; };

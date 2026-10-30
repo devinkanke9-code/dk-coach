@@ -5,7 +5,7 @@
 // koerper.bin und koerper-*.jpg baut kunden-app/modelle/umwandeln.js. Die Punkte liegen dort in der Ruhelage
 // (T-Pose, Blick nach +Z, linke Seite +X, Meter), darum ist jede Knochen-Matrix direkt die Abbildung Ruhelage → jetzt.
 import * as THREE from 'three';
-import { FARBEN, MUSKEL_TEILE, LEUCHTET_MIT, MASS } from './figur.js';
+import { FARBEN, MUSKEL_TEILE, LEUCHTET_MIT, MASS, GRIFF_R } from './figur.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const RAD = Math.PI / 180;
@@ -98,6 +98,94 @@ const DAUMEN = [10, 18, 14];
 // Faust um Stange oder Griff (g.haelt): Finger schließen sich um die Faustmitte g.hand, der Daumen dreht vor die Handfläche
 // (daumenDreh, Grad um die Fingerachse) und legt sich von der anderen Seite um den Griff. Exportiert, damit die Werkstatt sie einstellen kann
 export const FAUST = { finger: [72, 88, 50], daumen: [30, 50, 40], daumenDreh: -60 };
+// Griff wie bei einer echten Hand: Die Stange (Radius r) liegt quer in der Handfläche knapp vor den Fingerknöcheln, parallel zur
+// Knöchellinie (gelenke() knickt die Hand dafür zur Kleinfingerseite). Jeder Finger beugt sich Glied für Glied, bis er die Stange
+// berührt (Fingerdicke ~2,3 cm); der Daumen dreht vor die Handfläche und schließt sich von der anderen Seite um die Stange, bis er
+// außen auf dem Mittelglied des Zeigefingers liegt. Gerechnet in der Ruhelage, einmal je Hand und Radius (auf mm gerundet)
+const DAUMEN_GRIFF = [30, 50, 40];
+const _griffe = new Map();
+const segAbstand = (c, p, q) => {
+  const dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((c[0] - p[0]) * dx + (c[1] - p[1]) * dy) / l2)) : 0;
+  return Math.hypot(c[0] - p[0] - t * dx, c[1] - p[1] - t * dy);
+};
+export function griffLoesen(P, ru, S, r) {
+  const key = S + Math.round(r * 1000);
+  if (_griffe.has(key)) return _griffe.get(key);
+  const u = ru.finger.clone(), v = ru.ruecken.clone().negate(), w = u.clone().cross(v).normalize();
+  const B = P(S + 'Hand').clone().add(u.clone().multiplyScalar(MASS.griff)).add(v.clone().multiplyScalar(MASS.griffTief));
+  const d = w.clone();   // Stange quer zu den Fingern (gelenke() legt sie senkrecht zum Unterarm in die Hand)
+  const R = r + 0.0115, MAX = [95, 110, 80];
+  const loes = { finger: {}, glieder: {} };
+  const abstandZurStange = (p) => { const q = p.clone().sub(B); return q.sub(d.clone().multiplyScalar(q.dot(d))).length(); };
+  for (const f of FINGER) {
+    const J = [1, 2, 3, 4].map((j) => P(S + 'Hand' + f + j));
+    const C = B.clone().add(d.clone().multiplyScalar(J[0].clone().sub(B).dot(w) / d.dot(w)));
+    const zw = (p) => [p.clone().sub(J[0]).dot(u), p.clone().sub(J[0]).dot(v)];
+    const c = zw(C);
+    let p = [0, 0], phi = 0;
+    const winkel = [];
+    for (let k = 0; k < 3; k++) {
+      const a = zw(J[k + 1]), b = zw(J[k]), L = Math.hypot(a[0] - b[0], a[1] - b[1]), e0 = Math.atan2(a[1] - b[1], a[0] - b[0]);
+      // Glied dreht, bis es die Stange berührt; liegt sein Anfang schon an der Stange (dicker Griff), bis sein Ende aufliegt
+      const innen = Math.hypot(p[0] - c[0], p[1] - c[1]) < R;
+      let th = 0;
+      while (th < MAX[k]) {
+        const ang = e0 + phi + th * RAD, q = [p[0] + Math.cos(ang) * L, p[1] + Math.sin(ang) * L];
+        if (innen ? Math.hypot(q[0] - c[0], q[1] - c[1]) <= R : segAbstand(c, p, q) <= R) break;
+        th += 1;
+      }
+      winkel.push(th); phi += th * RAD;
+      const ang = e0 + phi; p = [p[0] + Math.cos(ang) * L, p[1] + Math.sin(ang) * L];
+    }
+    loes.finger[f] = winkel;
+  }
+  // Gebeugte Finger (Gelenkpunkte in der Ruhelage), für das Ziel des Daumens und damit er nicht durch die Finger geht
+  const gebeugt = (f) => {
+    let m = new THREE.Matrix4(); const pts = [P(S + 'Hand' + f + '1').clone()];
+    for (let j = 1; j <= 3; j++) { m = m.clone().multiply(umPunkt(P(S + 'Hand' + f + j), w, loes.finger[f][j - 1] * RAD)); pts.push(P(S + 'Hand' + f + (j + 1)).clone().applyMatrix4(m)); }
+    return pts;
+  };
+  const zeige = gebeugt('Index'), mittel = gebeugt('Middle');
+  // Ziel des Daumens: legt sich vorn um die Stange und quer über den Zeigefinger kurz vor dem Endgelenk, die Spitze zeigt zum
+  // Mittelfinger (wie bei einer geschlossenen Faust; das Mittelglied liegt bei dieser Hand zu weit hinter der Stange)
+  const auf = zeige[2].clone().lerp(zeige[3], 0.35);
+  const q = auf.clone().sub(B), aussen = q.sub(d.clone().multiplyScalar(q.dot(d))).normalize();
+  const ziel = auf.clone().add(aussen.multiplyScalar(0.0115 + 0.009));
+  const ulnar = P(S + 'HandPinky1').clone().sub(P(S + 'HandIndex1')).dot(w) > 0 ? w.clone() : w.clone().negate();
+  const fingerPunkte = [];
+  for (const kette of [zeige, mittel]) for (let i = 0; i < 3; i++) for (const u2 of [0.25, 0.75]) fingerPunkte.push(kette[i].clone().lerp(kette[i + 1], u2));
+  const achse = ru.daumen.clone().cross(ru.ruecken.clone().negate()).normalize();
+  const D = [1, 2, 3, 4].map((j) => P(S + 'HandThumb' + j));
+  // Daumen: zur Hand schwenken (um die Handflächen-Normale), vor die Handfläche drehen (um die Fingerachse), dann beugen
+  const daumen = (abd, dreh, curl) => {
+    let mm = umPunkt(D[0], v, abd * RAD).multiply(umPunkt(D[0], u, dreh * RAD)); const pts = [];
+    for (let j = 1; j <= 3; j++) { mm = mm.clone().multiply(umPunkt(D[j - 1], achse, DAUMEN_GRIFF[j - 1] * curl * RAD)); pts.push(D[j].clone().applyMatrix4(mm)); }
+    return pts;
+  };
+  // Bewertung: Spitze am Ziel, Endglied quer zu den Fingern; Strafe, wenn der Daumen in der Stange oder in Zeige-/Mittelfinger steckt
+  const wert = (pts) => {
+    let e = pts[2].distanceTo(ziel) + 0.02 * (1 - pts[2].clone().sub(pts[1]).normalize().dot(ulnar));
+    const glieder = [pts[0], pts[1], pts[2], pts[0].clone().lerp(pts[1], 0.5), pts[1].clone().lerp(pts[2], 0.5), D[0].clone().lerp(pts[0], 0.5)];
+    for (const x of glieder) { if (abstandZurStange(x) < r + 0.0085) e += 1; }
+    for (const x of glieder.slice(0, 2).concat(glieder.slice(3))) for (const f of fingerPunkte) if (x.distanceTo(f) < 0.017) e += 0.2;
+    return e;
+  };
+  let best = { abd: 0, dreh: 0, curl: 1, e: Infinity };
+  for (let abd = -40; abd <= 70; abd += 5) for (let dreh = -90; dreh <= 90; dreh += 10) for (let curl = 0; curl <= 2.01; curl += 0.1) {
+    const e = wert(daumen(abd, dreh, curl));
+    if (e < best.e) best = { abd, dreh, curl, e };
+  }
+  // fein nachsuchen um die beste Stelle
+  const grob = best;
+  for (let abd = grob.abd - 5; abd <= grob.abd + 5; abd += 1) for (let dreh = grob.dreh - 10; dreh <= grob.dreh + 10; dreh += 2) for (let curl = Math.max(0, grob.curl - 0.1); curl <= grob.curl + 0.1; curl += 0.02) {
+    const e = wert(daumen(abd, dreh, curl));
+    if (e < best.e) best = { abd, dreh, curl, e };
+  }
+  loes.daumen = best;
+  _griffe.set(key, loes);
+  return loes;
+}
 // Hinweis: FARBEN & Co. aus figur.js erst in Funktionen benutzen (figur.js importiert diese Datei, die Module hängen im Kreis)
 
 export class FigurModell {
@@ -260,13 +348,15 @@ export class FigurModell {
         for (let j = 1; j <= 4; j++) { const n = S + 'Hand' + f + j; if (j <= 3) glied.multiply(umPunkt(P(n), achse, winkel[j - 1] * RAD * c)); out.push([n, glied.clone()]); }
         return out;
       };
-      const winkel = haelt ? FAUST.finger : KRUEMMUNG;
+      // Hält die Hand etwas: Finger und Daumen um den Griff (Radius aus haltErkennen); sonst locker bzw. flach
+      const griff = haelt ? griffLoesen(P, ru, S, typeof g.haelt[s] === 'number' ? g.haelt[s] : GRIFF_R) : null;
+      const winkel = KRUEMMUNG;
       let krumm = flach ? 0 : haelt ? 1 : Math.max(0, Math.min(1, (wrist.y - 0.07) / 0.13));
       if (!flach && !haelt) for (const c of [krumm, 0.6, 1]) { krumm = c; if (P(S + 'HandMiddle4').clone().applyMatrix4(kette('Middle', zuHand, winkel, c)[3][1]).y > 0.01) break; }
-      for (const f of FINGER) for (const [n, m] of kette(f, zuHand, winkel, krumm)) setze(n, m);
+      for (const f of FINGER) for (const [n, m] of kette(f, zuHand, griff ? griff.finger[f] : winkel, griff ? 1 : krumm)) setze(n, m);
       const daumenStart = flach ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, ru.daumenFlach))
-        : haelt ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, -sg * FAUST.daumenDreh * RAD)) : hand;
-      for (const [n, m] of kette('Thumb', daumenAchse, haelt ? FAUST.daumen : DAUMEN, krumm, daumenStart)) setze(n, m);
+        : griff ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.ruecken.clone().negate(), griff.daumen.abd * RAD)).multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, griff.daumen.dreh * RAD)) : hand;
+      for (const [n, m] of kette('Thumb', daumenAchse, griff ? DAUMEN_GRIFF : DAUMEN, griff ? griff.daumen.curl : krumm, daumenStart)) setze(n, m);
       // Bein: Kniescheibe zeigt dorthin, wohin das Knie aus der Linie Hüfte–Knöchel herausragt
       const dB = richt(g.huefte[s], g.knie[s]);
       const bl = richt(g.huefte[s], g.knoechel[s]);
@@ -279,10 +369,12 @@ export class FigurModell {
       const ruheS = richt(P(S + 'Leg'), P(S + 'Foot'));
       setze(S + 'Leg', abbilden(new THREE.Matrix4(), P(S + 'Leg'), ruheS, senkrecht(Z, ruheS), g.knie[s], dS, senkrecht(kn, dS, fussVor),
         g.knie[s].distanceTo(g.knoechel[s]) / P(S + 'Leg').distanceTo(P(S + 'Foot')), BAU.bein, BAU.bein));
-      // Fuß: Sohle wie die Linie Ferse → Zehe; Zehen bleiben flach, wenn die Ferse hochgeht
-      const fuss = abbilden(new THREE.Matrix4(), P(S + 'Foot'), Y, Z, g.knoechel[s], senkrecht(Y, fussVor, dS.clone().negate()), fussVor, FUSS_HOEHE);
+      // Fuß: Sohle wie die Linie Ferse → Zehe, Fußrücken zeigt von der Fläche weg, auf der er steht (g.sohleN: Boden, schräge Platte …),
+      // so rollt er auf einer Platte nicht seitlich weg; Zehen bleiben flach auf der Fläche, wenn die Ferse hochgeht
+      const auf = (g.sohleN && g.sohleN[s]) || Y;
+      const fuss = abbilden(new THREE.Matrix4(), P(S + 'Foot'), Y, Z, g.knoechel[s], senkrecht(auf, fussVor, dS.clone().negate()), fussVor, FUSS_HOEHE);
       setze(S + 'Foot', fuss);
-      const hub = Math.asin(Math.max(0, Math.min(1, -fussVor.y)));
+      const hub = Math.asin(Math.max(0, Math.min(1, -fussVor.dot(auf))));
       const zehen = fuss.clone().multiply(umPunkt(P(S + 'ToeBase'), X, -hub));
       setze(S + 'ToeBase', zehen); setze(S + 'Toe_End', zehen);
     }

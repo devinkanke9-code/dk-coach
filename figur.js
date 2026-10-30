@@ -7,12 +7,22 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { koerper, FigurModell } from './figur-modell.js';
 import { baueEinleitung } from './einleitung.js';
 
-// griff: Mitte der geschlossenen Faust (dort liegen Stange, Hantel, Griff) vom Handgelenk aus Richtung Finger; griffTief: so weit zur Handfläche hin
+// griff: Mitte der geschlossenen Faust (dort liegen Stange, Hantel, Griff) vom Handgelenk aus Richtung Finger; griffTief: so weit zur Handfläche hin.
+// Beim echten Körper (vermessen am 30.10.): Fingerknöchel des Mittelfingers 11,7 cm vor dem Handgelenk, Handfläche 1,5 cm unter der Knochenlinie;
+// die Stange (Radius ~1,6 cm) liegt 1,4 cm vor den Knöcheln quer in der Handfläche
 export const MASS = {
-  oberarm: 0.29, unterarm: 0.27, oberschenkel: 0.45, unterschenkel: 0.44, griff: 0.085, griffTief: 0.028,
+  oberarm: 0.29, unterarm: 0.27, oberschenkel: 0.45, unterschenkel: 0.44, griff: 0.103, griffTief: 0.031,
   schulterBreite: 0.205, hueftBreite: 0.095, rumpf: 0.50, hals: 0.07, kopf: 0.105, fussHoehe: 0.07, fussLaenge: 0.24
 };
 export const HAND_BODEN = 0.12;   // Ziel der Hand tiefer als das (und nichts in der Hand): Hand liegt flach am Boden (Stütz)
+// Echter Körper: Sohle liegt so weit unter dem Knöchel (in Richtung der Fußfläche). Ein Fuß auf einer Platte: Knöchel = Auflagepunkt + Normale · SOHLE
+export const SOHLE = 0.083;
+export const BALLEN = 0.59;   // Knöchel bis Fußballen (Zehengrundgelenk) in Fußlängen
+const FUSS_LUFT = 0.2;   // Knöchel höher als das und keine fussFlaeche: Fuß ist in der Luft
+// Greifende Hand knickt zur Kleinfingerseite: Die Fingerknöchel liegen schräg in der Hand (Zeigefinger vorn, kleiner Finger hinten),
+// so liegen sie parallel zur Stange und alle vier Finger schließen sich gleich um den Griff
+export const HAND_ULNAR = 0 * Math.PI / 180;
+export const GRIFF_R = 0.016;   // Radius eines Griffs, wenn keiner gemessen werden kann
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const RAD = Math.PI / 180;
@@ -69,7 +79,7 @@ export function gelenke(pose) {
     l: becken.clone().add(R.links.clone().multiplyScalar(m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02)),
     r: becken.clone().add(R.links.clone().multiplyScalar(-m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02))
   };
-  const out = { schulterHub: hubS, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, zehe: {}, ferse: {} };
+  const out = { schulterHub: hubS, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -79,7 +89,23 @@ export function gelenke(pose) {
     // Hand-Ausrichtung zu einer Unterarm-Richtung a: Handrücken n (ohne Angabe Obergriff, Fingerknöchel quer zum Körper wie an der
     // Stange), Finger ak und Rücken nk nach dem Handgelenk-Knick (Grad, + = zur Handfläche)
     // Zeigt der Unterarm fast zur Seite (a ∥ links), geht der Handrücken weich zur Vorderseite über, statt zu springen
-    const ausrichtung = (a) => {
+    // Daumen bei neutral gedrehtem Unterarm (Hammergriff). Ellbogen gebeugt: zeigt vom Unterarm zur Schulter hin (Curl → oben,
+    // Rudern → vorn, Außenrotation → zum Kopf). Arm fast gestreckt: am hängenden Arm nach vorn, auf kürzestem Weg mit dem Arm gedreht
+    // (vorn gehoben → oben, seitlich gehoben → vorn), nahe über dem Kopf wie über vorn gehoben (nach hinten)
+    const daumenNeutral = (a) => {
+      const runter = R.oben.clone().negate();
+      const q = a.dot(runter) < -0.9999 ? new THREE.Quaternion().setFromAxisAngle(R.links, Math.PI) : new THREE.Quaternion().setFromUnitVectors(runter, a);
+      const d = R.vor.clone().applyQuaternion(q);
+      const ueberKopf = Math.max(0, Math.min(1, (a.dot(R.oben) - 0.5) / 0.4));
+      if (ueberKopf > 0) d.lerp(R.vor.clone().negate(), ueberKopf * ueberKopf * (3 - 2 * ueberKopf));
+      const zuS = schulter[s].clone().sub(hz), lang = zuS.length();
+      zuS.sub(a.clone().multiplyScalar(zuS.dot(a)));
+      const gebeugt = lang > 1e-6 ? Math.max(0, Math.min(1, (zuS.length() / lang - 0.15) / 0.25)) : 0;
+      if (gebeugt > 0) d.lerp(zuS.normalize(), gebeugt);
+      d.sub(a.clone().multiplyScalar(d.dot(a)));
+      return d.lengthSq() > 1e-8 ? d.normalize() : R.vor.clone();
+    };
+    const ausrichtung = (a, greift = true) => {
       let n = pose.handflaeche && pose.handflaeche[s] ? pose.handflaeche[s].clone().negate() : a.clone().cross(R.links);
       n.sub(a.clone().multiplyScalar(n.dot(a)));
       const ersatz = R.vor.clone().sub(a.clone().multiplyScalar(R.vor.dot(a)));
@@ -87,8 +113,25 @@ export function gelenke(pose) {
       if (w > 0) n.add(ersatz.multiplyScalar(w * w));
       if (n.lengthSq() < 1e-8) n = R.oben.clone().sub(a.clone().multiplyScalar(R.oben.dot(a)));
       n.normalize();
+      // griffAchse (Kurzhantel): 'neutral' = Hammergriff, der Unterarm ist neutral gedreht (Daumen siehe daumenNeutral);
+      // { daumen } = Daumen zeigt möglichst dorthin (Y-Heben: nach oben), am Arm, der fast dorthin zeigt, neutral;
+      // sonst die Achse des Griffs quer zur Hand (Ober-/Untergriff): die Hand dreht um den Unterarm, bis die Fingerknöchel entlang
+      // des Griffs liegen, auf der Seite des Handrückens ohne Griffachse (wie die Vorlage es will)
+      const ga = greift && pose.griffAchse && pose.griffAchse[s];
+      if (ga === 'neutral' || (ga && ga.daumen)) {
+        const T = daumenNeutral(a);
+        if (ga.daumen) { const d = ga.daumen.clone(); d.sub(a.clone().multiplyScalar(d.dot(a))); const w = Math.min(1, d.length() / 0.5); if (w > 0) T.lerp(d.normalize(), w).normalize(); }
+        const n3 = T.cross(a).multiplyScalar(sg);
+        if (n3.lengthSq() > 1e-6) n = n3.normalize();
+      } else if (ga) {
+        const n2 = a.clone().cross(ga);
+        if (n2.lengthSq() > 1e-6) { n2.normalize(); if (n2.dot(n) < 0) n2.negate(); n = n2; }
+      }
       const achse = a.clone().cross(n).normalize();
-      return { n, ak: a.clone().applyAxisAngle(achse, knick), nk: n.clone().applyAxisAngle(achse, knick) };
+      const ak = a.clone().applyAxisAngle(achse, knick), nk = n.clone().applyAxisAngle(achse, knick);
+      // Kleinfingerseite = sg · (Handrücken × Finger); die Hand dreht um den Handrücken dorthin (nicht bei flacher Hand)
+      if (greift) { const p = nk.clone().cross(ak).multiplyScalar(sg); ak.multiplyScalar(Math.cos(HAND_ULNAR)).add(p.multiplyScalar(Math.sin(HAND_ULNAR))).normalize(); }
+      return { n, ak, nk };
     };
     const faust = (r) => r.ak.clone().multiplyScalar(m.griff).sub(r.nk.clone().multiplyScalar(m.griffTief));
     const flach = (pose.flach && pose.flach[s]) || (hz.y < HAND_BODEN && !(pose.greift && pose.greift[s]) ? V(0, 1, 0) : null);
@@ -119,7 +162,7 @@ export function gelenke(pose) {
       for (let i = 0; i < 6; i++) a.applyQuaternion(q.setFromUnitVectors(zuFaust(a).normalize(), u)).normalize();
       arm = { mitte: k.mitte, ende: k.mitte.clone().add(a.multiplyScalar(m.unterarm)) };
     }
-    const a = arm.ende.clone().sub(arm.mitte).normalize(), r = ausrichtung(a);
+    const a = arm.ende.clone().sub(arm.mitte).normalize(), r = ausrichtung(a, !flach);
     out.ellbogen[s] = arm.mitte; out.handgelenk[s] = arm.ende; out.flach[s] = flach;
     out.hand[s] = flach ? arm.ende.clone() : arm.ende.clone().add(faust(r));
     out.handAchse[s] = a; out.handRuecken[s] = r.n;
@@ -127,36 +170,104 @@ export function gelenke(pose) {
     out.handKnick[s] = knick; out.handFinger[s] = r.ak;
     out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(r.ak.clone().multiplyScalar(0.047));
     // Beine: Knie zeigt nach vorn (leicht außen)
-    const fz = (pose.fuss && pose.fuss[s]) || huefte[s].clone().add(V(0.02 * sg, -(m.oberschenkel + m.unterschenkel), 0));
+    let fz = (pose.fuss && pose.fuss[s]) || huefte[s].clone().add(V(0.02 * sg, -(m.oberschenkel + m.unterschenkel), 0));
+    // Fuß am Boden auf den Zehen (Fußspitze soll nach unten zeigen wie beim Liegestütz, oder Ferse gehoben wie hinten beim Ausfallschritt;
+    // die Zehen zeigen dabei nicht vom Bein weg wie in Bauchlage): Knöchel mindestens so hoch, wie er über dem Fußballen steht, wenn der
+    // Fuß so weit kippt. Und das Sprunggelenk beugt sich höchstens 40° (Winkel Schienbein–Fuß 130°): liegt das Schienbein flach, kippt
+    // der Fuß weiter auf die Zehen (bis 75°) und der Knöchel geht mit hoch. Sonst klappt der Fuß flach unter das Schienbein
     const kpol = (pose.kniePol && pose.kniePol[s]) || V(0.15 * sg, 0, 1);
+    const fr0 = pose.fussRicht && pose.fussRicht[s] && pose.fussRicht[s].clone().normalize();
+    let zehenNeig = 0;
+    if (pose.fuss && pose.fuss[s] && fz.y < FUSS_LUFT && !(pose.fussFlaeche && pose.fussFlaeche[s])) {
+      const neig = Math.max(fr0 ? Math.asin(Math.max(-1, Math.min(1, -fr0.y))) : 0, ((pose.zehen && pose.zehen[s]) || 0) * RAD);
+      const vor = fr0 || V(0, 0, 1), hochFuer = (n) => m.fussHoehe * 0.6 + 0.02 + Math.sin(n) * m.fussLaenge * BALLEN;
+      const s0 = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), schien0 = s0.ende.clone().sub(s0.mitte).normalize();
+      if (neig > 20 * RAD && vor.dot(schien0) < 0.5) {
+        zehenNeig = Math.min(65 * RAD, neig);
+        if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(hochFuer(zehenNeig));
+        const schien = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), sd = schien.ende.clone().sub(schien.mitte).normalize();
+        const hor = V(vor.x, 0, vor.z).normalize(), a = sd.dot(hor), b2 = -sd.y, Rr = Math.hypot(a, b2), grenz = Math.cos(130 * RAD);
+        let phi = Math.atan2(b2, a); if (phi < 0) phi += 2 * Math.PI;
+        if (Rr > Math.abs(grenz) && a * Math.cos(zehenNeig) + b2 * Math.sin(zehenNeig) < grenz) {
+          zehenNeig = Math.min(75 * RAD, Math.max(zehenNeig, phi - Math.acos(grenz / Rr)));
+          if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(hochFuer(zehenNeig));
+        }
+      }
+    }
+    out.fussZiel[s] = fz;
     const bein = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol);
     out.knie[s] = bein.mitte; out.knoechel[s] = bein.ende;
-    // Fuß: Richtung (Standard: nach vorn, leicht außen), Fersenhub in Grad
-    const fr = ((pose.fussRicht && pose.fussRicht[s]) || V(0.18 * sg, 0, 1)).clone().normalize();
-    const hub = ((pose.zehen && pose.zehen[s]) || 0) * RAD;
-    const sohle = fr.clone().multiplyScalar(Math.cos(hub)).add(V(0, -Math.sin(hub), 0)).normalize();
-    // Boden: Zehen und Ferse bleiben über dem Boden (Fuß kippt um den Knöchel)
-    const ky = out.knoechel[s].y, versatz = m.fussHoehe * 0.6 + 0.02;
-    const yMin = (versatz - ky) / (m.fussLaenge * 0.75), yMax = (ky - versatz) / (m.fussLaenge * 0.25);
-    if (yMin <= yMax && (sohle.y < yMin || sohle.y > yMax)) {
-      const y = Math.max(-1, Math.min(1, Math.min(Math.max(sohle.y, yMin), yMax)));
-      const h = Math.hypot(sohle.x, sohle.z) || 1e-6, neu = Math.sqrt(Math.max(0, 1 - y * y));
-      sohle.set(sohle.x / h * neu, y, sohle.z / h * neu);
+    // Fuß: Richtung (Standard: nach vorn, leicht außen), Fersenhub in Grad.
+    // fussFlaeche = Normale der Fläche, auf der der Fuß steht (schräge Platte der Beinpresse, Plattform, Stufe): Die Sohle liegt dann flach
+    // in dieser Fläche, die Zehen zeigen dorthin, wohin fussRicht in ihr zeigt, und der Fuß kann nicht seitlich wegrollen.
+    // Ohne Fläche wie bisher: am Boden kippt der Fuß um den Knöchel; in der Luft (Beinstrecker, Hängen) liegt die Sohle auf der Seite,
+    // die vom Schienbein weg zeigt.
+    const flaeche = pose.fussFlaeche && pose.fussFlaeche[s] ? pose.fussFlaeche[s].clone().normalize() : null;
+    const hub = zehenNeig > 0 ? Math.max(((pose.zehen && pose.zehen[s]) || 0) * RAD, zehenNeig) : ((pose.zehen && pose.zehen[s]) || 0) * RAD;
+    let fr = ((pose.fussRicht && pose.fussRicht[s]) || V(0.18 * sg, 0, 1)).clone();
+    let oben = V(0, 1, 0);
+    if (flaeche) {
+      fr.sub(flaeche.clone().multiplyScalar(fr.dot(flaeche)));
+      if (fr.lengthSq() < 1e-6) fr = R.vor.clone().sub(flaeche.clone().multiplyScalar(R.vor.dot(flaeche)));
+      oben = flaeche;
     }
-    out.zehe[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(m.fussLaenge * 0.75)).add(V(0, -m.fussHoehe * 0.6, 0));
-    out.ferse[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(-m.fussLaenge * 0.25)).add(V(0, -m.fussHoehe * 0.6, 0));
+    fr.normalize();
+    const sohle = fr.clone().multiplyScalar(Math.cos(hub)).sub(oben.clone().multiplyScalar(Math.sin(hub))).normalize();
+    const ky = out.knoechel[s].y;
+    if (!flaeche) {
+      // Boden: Zehen und Ferse bleiben über dem Boden (Fuß kippt um den Knöchel)
+      const versatz = m.fussHoehe * 0.6 + 0.02;
+      // vorn zählt der Fußballen (die Zehen knicken im Modell flach auf den Boden, wenn die Ferse hochgeht), hinten die Ferse
+      const yMin = (versatz - ky) / (m.fussLaenge * BALLEN), yMax = (ky - versatz) / (m.fussLaenge * 0.25);
+      if (yMin <= yMax && (sohle.y < yMin || sohle.y > yMax)) {
+        const y = Math.max(-1, Math.min(1, Math.min(Math.max(sohle.y, yMin), yMax)));
+        const h = Math.hypot(sohle.x, sohle.z) || 1e-6, neu = Math.sqrt(Math.max(0, 1 - y * y));
+        sohle.set(sohle.x / h * neu, y, sohle.z / h * neu);
+      }
+      if (ky > FUSS_LUFT) {
+        const schien = out.knie[s].clone().sub(out.knoechel[s]);
+        schien.sub(sohle.clone().multiplyScalar(schien.dot(sohle)));
+        if (schien.lengthSq() > 1e-6) oben = schien.normalize();
+      }
+    }
+    out.sohleN[s] = oben;
+    out.zehe[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(m.fussLaenge * 0.75)).sub(oben.clone().multiplyScalar(m.fussHoehe * 0.6));
+    out.ballen[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(m.fussLaenge * BALLEN)).sub(oben.clone().multiplyScalar(m.fussHoehe * 0.6));
+    out.ferse[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(-m.fussLaenge * 0.25)).sub(oben.clone().multiplyScalar(m.fussHoehe * 0.6));
   }
   return out;
 }
 
-// Hält die Hand etwas? Ja, wenn ein bewegtes Gerät der Vorlage (Stange, Hantel, Griff, Kabel …) oder eine feste Stange die Faustmitte berührt
-const _box = new THREE.Box3();
-export function haltErkennen(g, z, festeStangen = []) {
+// Hält die Hand etwas? Ja, wenn ein bewegtes Gerät der Vorlage (Stange, Hantel, Griff, Kabel …) oder eine feste Stange die Faustmitte berührt.
+// g.haelt[s] = Radius des Griffs (m) oder false: dicker Gummigriff, dünne Stange … so schließen sich die Finger genau darum
+const _box = new THREE.Box3(), _gv = new THREE.Vector3(), _ga = new THREE.Vector3(), _gc = new THREE.Vector3();
+export function haltErkennen(g, z, festeStangen = [], gruppe = null) {
   const teile = Object.values(z || {}).filter((o) => o && o.isObject3D);
   for (const o of teile) o.updateMatrixWorld(true);
+  if (gruppe) gruppe.updateMatrixWorld(true);
   for (const s of ['l', 'r']) {
-    g.haelt[s] = !g.flach[s] && (teile.some((o) => _box.setFromObject(o).expandByScalar(0.02).containsPoint(g.hand[s])) || festeStangen.some((b) => b.containsPoint(g.hand[s])));
+    const p = g.hand[s];
+    const haelt = !g.flach[s] && (teile.some((o) => _box.setFromObject(o).expandByScalar(0.02).containsPoint(p)) || festeStangen.some((b) => b.containsPoint(p)));
+    // pose.faust: Hand ohne Griff zur Faust geschlossen (Arme verschränkt), wie um eine dünne Stange
+    g.haelt[s] = haelt ? griffRadius(gruppe ? [gruppe] : teile, p) || GRIFF_R : g.faust && g.faust[s] ? 0.006 : false;
   }
+}
+// Radius des Griffs an einem Punkt: größter dünne Zylinder (Gummi über Chrom), dessen Achse durch die Faust läuft
+function griffRadius(wurzeln, p) {
+  let best = 0;
+  for (const w of wurzeln) w.traverse((m) => {
+    const par = m.isMesh && m.visible && m.geometry && m.geometry.parameters;
+    if (!par || !(par.radiusTop > 0) || !(par.height > 0)) return;
+    const sx = _gv.setFromMatrixColumn(m.matrixWorld, 0).length(), sz = _gc.setFromMatrixColumn(m.matrixWorld, 2).length();
+    const rr = par.radiusTop * Math.max(sx, sz);
+    if (rr < 0.008 || rr > 0.03) return;
+    _ga.setFromMatrixColumn(m.matrixWorld, 1); const halb = _ga.length() * par.height / 2; _ga.normalize();
+    _gc.setFromMatrixPosition(m.matrixWorld);
+    const d = _gv.copy(p).sub(_gc), t = d.dot(_ga);
+    if (Math.abs(t) > halb + 0.012) return;
+    if (d.sub(_ga.multiplyScalar(t)).length() <= rr + 0.015 && rr > best) best = rr;
+  });
+  return best;
 }
 // Feste Stangen der Szene (Klimmzugstange, Barren, Pfosten): Teile, die sich über die Bewegung nicht rühren und in zwei Richtungen
 // höchstens 7 cm dick sind. Liegt das Ziel einer Hand daran, greift die Faust genau dort (pose.fest), statt mit dem Arm nach außen zu rücken
@@ -452,84 +563,258 @@ export class Figur {
 }
 
 /* ---------- Geräte ---------- */
+// Abgerundeter Quader (Verfahren wie RoundedBoxGeometry in three.js): Polster mit weichen Kanten, Rahmen aus Vierkantrohr.
+// Die mittlere Reihe jeder Seite bildet die flache Fläche, die übrigen Punkte liegen auf den Rundungen. Je Maß nur einmal gebaut
+const _rund = new Map();
+export function rundGeo(w, h, d, r, teile = 2) {
+  r = Math.max(0.0005, Math.min(r, w / 2 - 1e-4, h / 2 - 1e-4, d / 2 - 1e-4));
+  const key = [w, h, d, r].map((x) => x.toFixed(4)).join(',') + ',' + teile;
+  if (_rund.has(key)) return _rund.get(key);
+  const n = teile * 2 + 1, geo = new THREE.BoxGeometry(1, 1, 1, n, n, n).toNonIndexed();
+  const pos = geo.attributes.position, nor = geo.attributes.normal, p = V(), q = V(), halb = 0.5 / n, kern = V(w / 2 - r, h / 2 - r, d / 2 - r);
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i);
+    q.set(p.x - Math.sign(p.x) * halb, p.y - Math.sign(p.y) * halb, p.z - Math.sign(p.z) * halb).normalize();
+    pos.setXYZ(i, kern.x * Math.sign(p.x) + q.x * r, kern.y * Math.sign(p.y) + q.y * r, kern.z * Math.sign(p.z) + q.z * r);
+    nor.setXYZ(i, q.x, q.y, q.z);
+  }
+  _rund.set(key, geo); return geo;
+}
+// Hantelscheibe aus Gummi: Rand, vertiefte Fläche, Nabe mit Loch (Achse Y wie CylinderGeometry, Radius r, Dicke d)
+const _scheiben = new Map();
+export function scheibenGeo(r, d) {
+  const key = r.toFixed(3) + ',' + d.toFixed(3);
+  if (_scheiben.has(key)) return _scheiben.get(key);
+  const h = d / 2, loch = Math.min(0.026, r * 0.3), nabe = Math.min(r * 0.32, loch + 0.03);
+  // Profil gegen den Uhrzeigersinn (Radius, Höhe): unten nach außen, außen hoch, oben nach innen, im Loch hinunter (so zeigen die Flächen nach außen)
+  const pkt = [[loch, -h], [nabe, -h], [nabe + 0.01, -0.68 * h], [r * 0.84, -0.68 * h], [r * 0.9, -h], [r - 0.004, -h], [r, -h + 0.004], [r, h - 0.004], [r - 0.004, h],
+    [r * 0.9, h], [r * 0.84, 0.68 * h], [nabe + 0.01, 0.68 * h], [nabe, h], [loch, h], [loch, -h]];
+  const geo = new THREE.LatheGeometry(pkt.map(([x, y]) => new THREE.Vector2(x, y)), 40);
+  _scheiben.set(key, geo); return geo;
+}
+// Wie ein Teil liegt: vom Ursprung entlang Y (Zylinder, Rohr) zwischen A und B
+function legeZwischen(o, A, B, laengeSkalieren = true) {
+  const d = B.clone().sub(A); const l = Math.max(d.length(), 1e-4);
+  o.position.copy(A).add(B).multiplyScalar(0.5);
+  o.quaternion.setFromUnitVectors(V(0, 1, 0), d.divideScalar(l));
+  if (laengeSkalieren) o.scale.set(1, l, 1);
+  return l;
+}
+
 export class Geraete {
   constructor() {
     this.gruppe = new THREE.Group();
     this.dyn = [];      // pro Bild neu gesetzte Teile
-    this.mMetall = mat(FARBEN.metall, { metalness: 0.7, roughness: 0.3 });
-    this.mScheibe = mat(FARBEN.scheibe, { roughness: 0.7 });
-    this.mPolster = mat(FARBEN.polster, { roughness: 0.8 });
-    this.mRahmen = mat(FARBEN.holz, { metalness: 0.4, roughness: 0.5 });
+    // Pulverbeschichteter Stahl, Leder, Chrom, Gummi. Mit der Umgebung der Ansicht (spiegeln()) glänzen sie wie echte Geräte
+    this.mMetall = mat(0xe2e6ea, { metalness: 1, roughness: 0.2 });          // Chrom: Stangen, Hülsen, Führungen
+    this.mScheibe = mat(0x1c1e22, { roughness: 0.66, metalness: 0.06 });    // Gummi: Hantelscheiben, Räder
+    this.mPolster = mat(0x18191c, { roughness: 0.46, metalness: 0 });       // Leder
+    this.mRahmen = mat(0x2a2e35, { metalness: 0.3, roughness: 0.46 });      // Rahmen: Stahl, pulverbeschichtet (Lack, darum wenig Metallglanz)
     this.mGold = mat(FARBEN.gold, { metalness: 0.5, roughness: 0.35 });
-    this.mKabel = new THREE.MeshBasicMaterial({ color: 0x8a8f96 });
-    this.mBand = mat(0x8e6a3a, { roughness: 0.6 });
+    this.mKabel = mat(0x9aa1aa, { metalness: 0.75, roughness: 0.32 });      // Stahlseil
+    this.mBand = mat(0xc8463c, { roughness: 0.6 });                         // Gummiband
+    this.mGummi = mat(0x0f1012, { roughness: 0.85 });                       // Griffe, Füße, Kappen
+    this.mSechskant = mat(0x1c1e22, { roughness: 0.62, metalness: 0.06, flatShading: true });
+    this.mAkzent = mat(0xff8a3d, { roughness: 0.4, metalness: 0.3 });       // Farbstreifen (Ansicht setzt die Farbe der Seite)
+    this.tuerme = [];
   }
-  leeren() { while (this.gruppe.children.length) this.gruppe.remove(this.gruppe.children[0]); this.dyn = []; }
+  get materialien() { return [this.mMetall, this.mScheibe, this.mPolster, this.mRahmen, this.mGold, this.mKabel, this.mBand, this.mGummi, this.mSechskant, this.mAkzent]; }
+  // Spiegelungen für alle Geräte-Materialien (Ansicht gibt ihre Umgebung mit)
+  spiegeln(env, akzent) {
+    for (const m of this.materialien) { m.envMap = env; m.needsUpdate = true; }
+    this.mPolster.envMapIntensity = 0.55; this.mScheibe.envMapIntensity = 0.5; this.mGummi.envMapIntensity = 0.3; this.mSechskant.envMapIntensity = 0.5;
+    if (akzent) this.mAkzent.color.copy(akzent);
+  }
+  leeren() { while (this.gruppe.children.length) this.gruppe.remove(this.gruppe.children[0]); this.dyn = []; this.tuerme = []; }
+  teil(geo, m, pos) { const o = new THREE.Mesh(geo, m); o.castShadow = true; o.receiveShadow = true; if (pos) o.position.copy(pos); this.gruppe.add(o); return o; }
+  // Quader: Polster weich gerundet (Leder), alles andere mit kleiner Kante (Vierkantrohr, Platten)
   box(w, h, d, pos, m, rotX = 0, rotY = 0) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m || this.mPolster);
-    b.position.copy(pos); b.rotation.set(rotX * RAD, rotY * RAD, 0); b.castShadow = true; b.receiveShadow = true;
-    this.gruppe.add(b); return b;
+    m = m || this.mPolster;
+    const klein = Math.min(w, h, d), polster = m === this.mPolster;
+    const b = this.teil(rundGeo(w, h, d, polster ? Math.min(0.03, klein * 0.4) : Math.min(0.008, klein * 0.3), polster ? 3 : 1), m, pos);
+    b.rotation.set(rotX * RAD, rotY * RAD, 0);
+    return b;
   }
-  zyl(r, l, m, seg = 16) { const z = new THREE.Mesh(new THREE.CylinderGeometry(r, r, l, seg), m); z.castShadow = true; this.gruppe.add(z); return z; }
+  // Polster/Platte mit beliebiger Lage: Mitte, Drehung (Quaternion), Größe in eigener Lage
+  polster(w, h, d, pos, q, m) { const b = this.box(w, h, d, pos, m || this.mPolster); if (q) b.quaternion.copy(q); return b; }
+  // Vierkantrohr zwischen zwei Punkten (Rahmen schräger Maschinen)
+  vierkant(A, B, b = 0.06, m) {
+    const l = A.distanceTo(B), o = this.teil(rundGeo(b, l, b, Math.min(0.008, b * 0.3), 1), m || this.mRahmen);
+    legeZwischen(o, A, B, false); return o;
+  }
+  zyl(r, l, m, seg = 16) {
+    // Große Gummi-Zylinder sind Hantelscheiben: dann mit Rand und Nabe
+    const geo = m === this.mScheibe && r >= 0.15 && l <= 0.08 ? scheibenGeo(r, l) : new THREE.CylinderGeometry(r, r, l, Math.max(seg, r > 0.05 ? 32 : seg));
+    return this.teil(geo, m);
+  }
   stab(A, B, r, m) { // Zylinder zwischen zwei Punkten (für bewegte Teile)
     const z = this.zyl(r, 1, m); this.legeStab(z, A, B); return z;
   }
-  legeStab(z, A, B) {
-    const d = B.clone().sub(A); const l = Math.max(d.length(), 1e-4);
-    z.position.copy(A).add(B).multiplyScalar(0.5);
-    z.quaternion.setFromUnitVectors(V(0, 1, 0), d.divideScalar(l)); z.scale.set(1, l, 1);
-  }
-  // Langhantel: Mitte + Achse
+  legeStab(z, A, B) { legeZwischen(z, A, B); }
+  // Langhantel (Olympia, 2,0 m wie bisher): [0] Griffstange, danach Hülsen, Bunde, Scheiben, Verschlüsse (alles entlang X;
+  // Vorlagen kürzen über scale.x oder children[i].position.x)
   langhantel() {
     const g = new THREE.Group();
-    const stange = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 2.0, 12), this.mMetall); stange.rotation.z = Math.PI / 2; g.add(stange);
+    const quer = (geo, m, x) => { const o = new THREE.Mesh(geo, m); o.rotation.z = Math.PI / 2; o.position.x = x; o.castShadow = true; g.add(o); return o; };
+    quer(new THREE.CylinderGeometry(0.014, 0.014, 1.3, 16), this.mMetall, 0);
     for (const sx of [-1, 1]) {
-      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.05, 32), this.mScheibe); s.rotation.z = Math.PI / 2; s.position.x = sx * 0.78; s.castShadow = true; g.add(s);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.008, 6, 40), this.mGold); ring.rotation.y = Math.PI / 2; ring.position.x = sx * 0.81; g.add(ring);
-      const h = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 12), this.mMetall); h.rotation.z = Math.PI / 2; h.position.x = sx * 0.73; g.add(h);
+      quer(new THREE.CylinderGeometry(0.025, 0.025, 0.36, 20), this.mMetall, sx * 0.83);     // Hülse
+      quer(new THREE.CylinderGeometry(0.036, 0.036, 0.025, 24), this.mMetall, sx * 0.66);    // Bund
+      quer(scheibenGeo(0.225, 0.05), this.mScheibe, sx * 0.78);                                // Scheibe 20 kg
+      const rand = quer(new THREE.CylinderGeometry(0.226, 0.226, 0.012, 40, 1, true), this.mAkzent, sx * 0.78); rand.castShadow = false;   // Farbrand
+      quer(new THREE.CylinderGeometry(0.03, 0.03, 0.035, 16), this.mGummi, sx * 0.825);       // Verschluss
     }
     this.gruppe.add(g); return g;
   }
   sz() { const g = this.langhantel(); g.children[0].scale.y = 0.6; g.children.forEach((c, i) => { if (i > 0) c.position.x *= 0.62; c.scale.multiplyScalar(i > 0 ? 0.62 : 1); }); return g; }
+  // Kurzhantel mit Sechskant-Köpfen aus Gummi und gerändeltem Chromgriff (Achse X, Griff in der Mitte)
   kurzhantel() {
     const g = new THREE.Group();
-    const griff = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.3, 10), this.mMetall); griff.rotation.z = Math.PI / 2; g.add(griff);
-    for (const sx of [-1, 1]) { const s = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.07, 8), this.mScheibe); s.rotation.z = Math.PI / 2; s.position.x = sx * 0.12; s.castShadow = true; g.add(s); }
+    const quer = (geo, m, x) => { const o = new THREE.Mesh(geo, m); o.rotation.z = Math.PI / 2; o.position.x = x; o.castShadow = true; g.add(o); return o; };
+    quer(new THREE.CylinderGeometry(0.0165, 0.0165, 0.17, 16), this.mMetall, 0);
+    for (const sx of [-1, 1]) {
+      quer(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 20), this.mMetall, sx * 0.08);
+      const kopf = quer(new THREE.CylinderGeometry(0.068, 0.068, 0.085, 6), this.mSechskant, sx * 0.128);
+      kopf.rotation.x = Math.PI / 6;
+    }
     this.gruppe.add(g); return g;
   }
+  // Kettlebell: Kugel mit flachem Boden, Griff mit Hörnern (Griffmitte im Ursprung wie bisher)
   kettlebell() {
     const g = new THREE.Group();
-    const k = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 14), this.mScheibe); k.position.y = -0.13; k.castShadow = true; g.add(k);
-    const h = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 20, Math.PI), this.mScheibe); h.position.y = -0.04; g.add(h);
+    const r = 0.1, profil = [];
+    for (let i = 0; i <= 14; i++) { const w = -Math.PI / 2 + 0.55 + (Math.PI - 0.55 - 0.35) * i / 14; profil.push(new THREE.Vector2(Math.cos(w) * r, Math.sin(w) * r)); }
+    profil.unshift(new THREE.Vector2(0, profil[0].y));
+    const koerper = new THREE.Mesh(new THREE.LatheGeometry(profil, 28), this.mScheibe); koerper.position.y = -0.13; koerper.castShadow = true; g.add(koerper);
+    const bogen = new THREE.CatmullRomCurve3([V(-0.06, -0.075, 0), V(-0.068, -0.02, 0), V(-0.05, 0.012, 0), V(0, 0.022, 0), V(0.05, 0.012, 0), V(0.068, -0.02, 0), V(0.06, -0.075, 0)]);
+    const griff = new THREE.Mesh(new THREE.TubeGeometry(bogen, 30, 0.012, 10), this.mScheibe); griff.castShadow = true; g.add(griff);
     this.gruppe.add(g); return g;
   }
-  griff() { const g = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.14, 10), this.mGold); g.rotation.z = Math.PI / 2; const w = new THREE.Group(); w.add(g); this.gruppe.add(w); return w; }
+  // Kabelgriff: Gummigriff mit Chrom-Enden und Öse für den Karabiner (Achse X)
+  // laenge > 0,2: gerade Kabelstange für beide Hände (Chrom, Gummikappen, Drehring in der Mitte für den Karabiner)
+  griff(laenge = 0) {
+    const w = new THREE.Group();
+    const quer = (geo, m, x) => { const o = new THREE.Mesh(geo, m); o.rotation.z = Math.PI / 2; o.position.x = x; o.castShadow = true; w.add(o); return o; };
+    if (laenge > 0.2) {
+      quer(new THREE.CylinderGeometry(0.0145, 0.0145, laenge, 16), this.mMetall, 0);
+      for (const sx of [-1, 1]) quer(new THREE.CylinderGeometry(0.019, 0.019, 0.025, 14), this.mGummi, sx * (laenge / 2 + 0.01));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 8, 18), this.mMetall); ring.position.y = 0.03; w.add(ring);
+      const fuss = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.03, 10), this.mMetall); fuss.position.y = 0.012; w.add(fuss);
+    } else {
+      quer(new THREE.CylinderGeometry(0.017, 0.017, 0.12, 14), this.mGummi, 0);
+      for (const sx of [-1, 1]) quer(new THREE.CylinderGeometry(0.021, 0.021, 0.012, 14), this.mMetall, sx * 0.066);
+    }
+    this.gruppe.add(w); return w;
+  }
   // Fest stehende Geräte
+  // Flachbank bzw. Schrägbank: Lederpolster, Stahlrahmen mit T-Füßen und Gummikappen (Polster wie bisher: Mitte z0, Höhe hoehe)
   bank(z0 = -0.2, laenge = 1.15, hoehe = 0.43, neigung = 0, fussZ = null) {
     const g = new THREE.Group();
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.07, laenge), this.mPolster);
+    const pad = new THREE.Mesh(rundGeo(0.28, 0.07, laenge, 0.028, 3), this.mPolster);
     pad.castShadow = true; pad.receiveShadow = true;
     pad.rotation.x = -neigung * RAD; pad.position.set(0, hoehe, z0); g.add(pad);
-    const fussA = new THREE.Mesh(new THREE.BoxGeometry(0.05, hoehe, 0.05), this.mRahmen); fussA.position.set(0, hoehe / 2, z0 - laenge * 0.35); g.add(fussA);
-    const fussB = fussA.clone(); fussB.position.z = z0 + laenge * 0.35; g.add(fussB);
-    for (const f of [fussA, fussB]) { const q = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.06), this.mRahmen); q.position.set(0, 0.02, f.position.z); g.add(q); }
+    // Unterseite des Polsters an zwei Stellen (vorn/hinten): dort stehen die Beine
+    const unter = (u) => V(0, hoehe - 0.035, z0).add(V(0, Math.sin(neigung * RAD) * u, Math.cos(neigung * RAD) * u));
+    for (const u of [-laenge * 0.36, laenge * 0.36]) {
+      const oben = unter(u), fuss = V(0, 0.03, oben.z);
+      const bein = new THREE.Mesh(rundGeo(0.06, Math.max(0.05, oben.y - 0.06), 0.06, 0.008, 1), this.mRahmen); bein.position.set(0, (oben.y + 0.06) / 2, oben.z); bein.castShadow = true; g.add(bein);
+      const quer = new THREE.Mesh(rundGeo(0.44, 0.05, 0.07, 0.01, 1), this.mRahmen); quer.position.copy(fuss); quer.castShadow = true; g.add(quer);
+      for (const sx of [-1, 1]) { const k = new THREE.Mesh(rundGeo(0.05, 0.02, 0.08, 0.008, 1), this.mGummi); k.position.set(sx * 0.21, 0.01, fuss.z); g.add(k); }
+    }
+    const traeger = new THREE.Mesh(rundGeo(0.07, 0.05, laenge * 0.72, 0.01, 1), this.mRahmen);
+    traeger.rotation.x = -neigung * RAD; traeger.position.copy(unter(0)).add(V(0, -0.03, 0)); g.add(traeger);
     this.gruppe.add(g); return g;
   }
   querbank(z = -0.42, hoehe = 0.43) { // Bank quer zur Figur (Hip Thrust)
     this.box(1.1, 0.07, 0.3, V(0, hoehe, z), this.mPolster);
-    for (const sx of [-0.4, 0.4]) { this.box(0.05, hoehe, 0.05, V(sx, hoehe / 2, z), this.mRahmen); this.box(0.06, 0.04, 0.35, V(sx, 0.02, z), this.mRahmen); }
+    for (const sx of [-0.4, 0.4]) { this.box(0.06, hoehe - 0.04, 0.06, V(sx, (hoehe - 0.04) / 2 + 0.02, z), this.mRahmen); this.box(0.07, 0.04, 0.38, V(sx, 0.02, z), this.mRahmen); }
   }
-  turm(pos, hoehe = 2.1) { // Kabelturm
+  // Kabelturm: Säule mit Fuß und Kopf, dahinter (vom Trainierenden weg) der Gewichtsblock auf zwei Führungsstangen.
+  // Zieht jemand das Kabel länger, hebt sich der Block (nachBild); an der Säule sitzt eine Umlenkrolle, wo das Kabel herauskommt
+  turm(pos, hoehe = 2.1) {
     const t = this.box(0.12, hoehe, 0.12, V(pos.x, hoehe / 2, pos.z), this.mRahmen);
-    this.box(0.3, 0.04, 0.3, V(pos.x, 0.02, pos.z), this.mRahmen);
+    this.box(0.36, 0.04, 0.42, V(pos.x, 0.02, pos.z), this.mRahmen);
+    this.box(0.16, 0.05, 0.16, V(pos.x, hoehe + 0.02, pos.z), this.mRahmen);
+    const weg = V(pos.x, 0, pos.z); if (weg.lengthSq() < 1e-4) weg.set(0, 0, -1); weg.normalize();
+    const mitte = V(pos.x, 0, pos.z).add(weg.clone().multiplyScalar(0.2)), quer = V(-weg.z, 0, weg.x);
+    for (const sq of [-1, 1]) this.stab(mitte.clone().add(quer.clone().multiplyScalar(sq * 0.1)).setY(0.04), mitte.clone().add(quer.clone().multiplyScalar(sq * 0.1)).setY(hoehe - 0.05), 0.009, this.mMetall);
+    const dreh = Math.atan2(-quer.z, quer.x);   // lokale X-Achse → quer
+    this.box(0.3, 0.03, 0.12, mitte.clone().setY(hoehe - 0.04), this.mRahmen).rotation.y = dreh;
+    const block = new THREE.Group(); block.position.copy(mitte);
+    for (let i = 0; i < 12; i++) {
+      const p = new THREE.Mesh(rundGeo(0.24, 0.042, 0.1, 0.006, 1), i === 11 ? this.mAkzent : this.mRahmen);
+      p.position.y = 0.06 + i * 0.045; p.castShadow = true; block.add(p);
+    }
+    block.rotation.y = dreh;
+    this.gruppe.add(block);
+    const rolle = this.rolle(); rolle.visible = false;
+    this.tuerme.push({ pos: V(pos.x, 0, pos.z), hoehe, block, rolle, ruhe: Infinity });
     return t;
   }
+  // Umlenkrolle: Rad in einem Gehäuse (Achse X)
+  rolle(r = 0.045) {
+    const g = new THREE.Group();
+    const rad = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.025, 24), this.mMetall); rad.rotation.z = Math.PI / 2; g.add(rad);
+    for (const sx of [-1, 1]) { const w = new THREE.Mesh(rundGeo(0.008, r * 2.6, r * 2.6, 0.004, 1), this.mRahmen); w.position.x = sx * 0.02; g.add(w); }
+    this.gruppe.add(g); return g;
+  }
+  // Nach jedem Bild (Ansicht.bild): Kabel, die an einem Turm enden, bekommen dort eine Rolle; je länger das Kabel, desto höher der Block
+  nachBild() {
+    if (!this.tuerme.length) return;
+    const kabel = this.gruppe.children.filter((o) => o.material === this.mKabel && o.visible);
+    const ende = V(), A = V(), B = V();
+    for (const t of this.tuerme) {
+      let best = null, bestD = 0.3;
+      for (const k of kabel) {
+        const l = k.scale.y; ende.set(0, l / 2, 0).applyQuaternion(k.quaternion);
+        A.copy(k.position).add(ende); B.copy(k.position).sub(ende);
+        for (const [p, q] of [[A, B], [B, A]]) {
+          const d = Math.hypot(p.x - t.pos.x, p.z - t.pos.z);
+          if (d < bestD && p.y > 0.05 && p.y < t.hoehe + 0.2) { bestD = d; best = { p: p.clone(), q: q.clone(), l }; }
+        }
+      }
+      if (!best) { t.rolle.visible = false; continue; }
+      t.ruhe = Math.min(t.ruhe, best.l);
+      const hub = Math.min(0.55, Math.max(0, best.l - t.ruhe));
+      t.block.children.forEach((p, i) => { p.position.y = 0.06 + i * 0.045 + (i >= 4 ? hub : 0); });
+      t.rolle.visible = true; t.rolle.position.copy(best.p);
+      const zug = best.q.clone().sub(best.p).normalize(), achse = zug.clone().cross(V(0, 1, 0));
+      if (achse.lengthSq() < 1e-4) achse.set(1, 0, 0);
+      t.rolle.quaternion.setFromUnitVectors(V(1, 0, 0), achse.normalize());
+    }
+  }
+  // Klimmzugstation: zwei Pfosten mit Fußplatten, Querstange mit Gummigriffen außen
   stange(hoehe = 2.25, breite = 1.2, z = 0) {
     const s = this.zyl(0.016, breite, this.mMetall); s.rotation.z = Math.PI / 2; s.position.set(0, hoehe, z);
-    for (const sx of [-1, 1]) this.box(0.06, hoehe, 0.06, V(sx * breite / 2, hoehe / 2, z), this.mRahmen);
+    for (const sx of [-1, 1]) {
+      this.box(0.07, hoehe + 0.08, 0.07, V(sx * breite / 2, (hoehe + 0.08) / 2, z), this.mRahmen);
+      this.box(0.12, 0.03, 0.5, V(sx * breite / 2, 0.015, z), this.mRahmen);
+      this.box(0.09, 0.05, 0.09, V(sx * breite / 2, hoehe, z), this.mRahmen);
+    }
     return s;
   }
-  matte() { const m = this.box(0.7, 0.012, 1.9, V(0, 0.006, 0), mat(0x1f2226, { roughness: 0.9 })); m.castShadow = false; return m; }
+  matte() { const m = this.box(0.7, 0.012, 1.9, V(0, 0.006, 0), mat(0x24282f, { roughness: 0.9 })); m.castShadow = false; return m; }
+}
+// Umgebung für Spiegelungen (Chrom, Lack, Leder): kleiner dunkler Raum mit Deckenlicht, Softbox und zwei farbigen Lichtstreifen
+const _umgebung = new WeakMap();
+function umgebung(renderer, a, b) {
+  if (_umgebung.has(renderer)) return _umgebung.get(renderer);
+  const raum = new THREE.Scene();
+  raum.add(new THREE.Mesh(new THREE.BoxGeometry(14, 7, 14), new THREE.MeshBasicMaterial({ color: 0x16191e, side: THREE.BackSide })));
+  const flaeche = (w, h, farbe, staerke, pos) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(farbe).multiplyScalar(staerke), side: THREE.DoubleSide }));
+    m.position.set(...pos); m.lookAt(0, 1, 0); raum.add(m);
+  };
+  flaeche(6, 1.2, 0xffffff, 4, [0, 3.4, 0]);
+  flaeche(2.4, 3, 0xfff3e2, 3, [5.5, 1.8, 4]);
+  flaeche(2.4, 3, 0xdfe8ff, 1.6, [-5.5, 1.6, 3]);
+  flaeche(4, 0.4, a || 0xff8a3d, 0.9, [-4, 2.6, -6]);   // farbige Lichtstreifen hoch an der Wand: Glanzlichter auf Chrom, aber kein Farbschleier auf flachen Rahmen
+  flaeche(4, 0.4, b || 0x35c6d4, 0.8, [4, 2.4, -6]);
+  const pm = new THREE.PMREMGenerator(renderer);
+  const tex = pm.fromScene(raum, 0.02).texture;
+  pm.dispose();
+  _umgebung.set(renderer, tex);
+  return tex;
 }
 
 /* ---------- Ansicht: Szene, Kamera, Drehen mit dem Finger ---------- */
@@ -605,6 +890,7 @@ export class Ansicht {
     // Echter Körper (figur-modell.js), sobald koerper.bin geladen ist (app.js lädt ihn mit); sonst die gebaute Figur
     this.figur = koerper() ? new FigurModell() : new Figur(); this.szene.add(this.figur.gruppe);
     this.geraete = new Geraete(); this.szene.add(this.geraete.gruppe);
+    this.geraete.spiegeln(umgebung(this.renderer, this.farbeA, this.farbeB), this.farbeA);
     if (!opt.standbild) {
       this.steuerung = new OrbitControls(this.kamera, canvas);
       this.steuerung.enableDamping = true; this.steuerung.enablePan = false;
@@ -816,7 +1102,8 @@ export class Ansicht {
     const pose = this.intro.pose(sek), g = gelenke(pose);
     this.gAktuell = g;
     if (this.intro.gehtMit(sek)) { const erg = this.uebung.pose(this.intro.tStart, this.zustand); if (erg.props) erg.props(g, this.zustand); }
-    haltErkennen(g, this.zustand, this.stangen || []);
+    this.geraete.nachBild();
+    haltErkennen(g, this.zustand, this.stangen || [], this.geraete.gruppe);
     this.figur.stelle(g);
     this.figur.glut(0);
   }
@@ -824,11 +1111,16 @@ export class Ansicht {
     if (!this.uebung) return;
     if (this.zustand) this.zustand.runter = !!this.runter;   // für Übungen, die hoch anders aussehen als runter (Zottman Curl)
     const erg = this.uebung.pose(t, this.zustand);
+    const griffAchse = this.zustand && this.zustand.griffAchse;
+    if (griffAchse && !erg.pose.griffAchse) erg.pose.griffAchse = griffAchse;
     festErkennen(erg.pose, this.stangen || []);
     const g = gelenke(erg.pose);
     this.gAktuell = g;
     if (erg.props) erg.props(g, this.zustand);
-    haltErkennen(g, this.zustand, this.stangen || []);   // erst die Geräte setzen, dann weiß die Hand, ob sie zur Faust wird
+    // Erstes Bild mit Kurzhantel: erst props kennt die Griffachse, also die Hand gleich danach ausrichten (sonst springt sie im nächsten Bild)
+    if (!griffAchse && this.zustand && this.zustand.griffAchse) return this.bild(t);
+    this.geraete.nachBild();   // Kabelrollen, Gewichtsblock folgt dem Kabel
+    haltErkennen(g, this.zustand, this.stangen || [], this.geraete.gruppe);   // erst die Geräte setzen, dann weiß die Hand, ob sie zur Faust wird
     this.figur.stelle(g);
     this.figur.glut(t);
   }
