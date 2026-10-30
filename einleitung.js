@@ -165,9 +165,9 @@ export function baueEinleitung(anim, ger, z, kamera) {
   }
   const winkel = winkelVon(blick);
 
-  // Anlauf: von der Kameraseite her, schräg; bleibt auf der Bodenscheibe
+  // Anlauf: von der Seite (quer zur Kamera), bleibt auf der Bodenscheibe
   const kh = waag(kamera || V(0.62, 0.32, 0.72)), seitlich = V(kh.z, 0, -kh.x);
-  let start = stand.clone().setY(0).add(kh.clone().multiplyScalar(0.9)).add(seitlich.multiplyScalar(1.1));
+  let start = stand.clone().setY(0).add(kh.clone().multiplyScalar(-0.25)).add(seitlich.multiplyScalar(1.4));   // von der Seite quer durchs Bild, nicht an der Kamera vorbei
   if (V(start.x, 0, start.z).length() > 1.9) start.setLength(1.9);
   const weg = V(stand.x - start.x, 0, stand.z - start.z), meter = weg.length(), richtung = winkelVon(weg);
 

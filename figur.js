@@ -93,6 +93,8 @@ export function gelenke(pose) {
     const faust = (r) => r.ak.clone().multiplyScalar(m.griff).sub(r.nk.clone().multiplyScalar(m.griffTief));
     const flach = (pose.flach && pose.flach[s]) || (hz.y < HAND_BODEN && !(pose.greift && pose.greift[s]) ? V(0, 1, 0) : null);
     let arm;
+    // Hand flach am Boden: Handgelenk mindestens so hoch, wie Hand und Unterarm dick sind (sonst taucht der Daumen in den Boden)
+    if (flach && !(pose.flach && pose.flach[s]) && hz.y < 0.045) hz.y = 0.045;
     if (flach) { arm = ik(schulter[s], hz, m.oberarm, m.unterarm, epol); out.handZiel[s] = hz; }
     else {
       // Faustmitte aufs Ziel. Die Hand sitzt starr am Unterarm, also hat Ellbogen → Faust eine feste Länge L: Ellbogen per IK mit L,
