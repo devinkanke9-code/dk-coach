@@ -147,7 +147,9 @@ export function gelenke(pose) {
       // Die Vorlagen sind für einen Arm ohne Hand (Schulter → Handgelenk R0) gebaut. Fast gestreckte Arme sollen gestreckt bleiben:
       // dort rückt die Faust so weit nach außen, dass der Ellbogen denselben Winkel hat wie gedacht (Stange/Hantel geht mit).
       // Stark gebeugte Arme behalten das Ziel genau (Stange auf der Brust, Hantel an der Schulter). Immer genau: pose.fest (feste Stange)
-      // oder ein Ziel mit .genau (Vorlage rechnet schon mit Ellbogen → Faust, z. B. Curl: Ellbogen fest, Unterarm klappt)
+      // oder ein Ziel mit .genau (Vorlage rechnet schon mit Ellbogen → Faust, z. B. Curl: Ellbogen fest, Unterarm klappt).
+      // Ziele ab R0 gelten genau (Fliegende, Seitheben: Arm leicht gebeugt). Geht ein Ziel in der Bewegung über R0 hinweg, springt die
+      // Faust dort um bis zu 10 cm (Ellbogen ploppt): solche Vorlagen setzen .genau (Latzug, Bankdrücken, Rudern …)
       const d = hz.distanceTo(schulter[s]), R0 = m.oberarm + m.unterarm;
       const genau = (pose.fest && pose.fest[s]) || (pose.hand && pose.hand[s] && pose.hand[s].genau);
       if (!genau && d > 1e-4 && d < R0) {
