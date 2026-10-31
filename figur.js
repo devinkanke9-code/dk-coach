@@ -296,7 +296,7 @@ export function festErkennen(pose, boxen) {
 
 /* ---------- Material ---------- */
 export const FARBEN = {
-  haut: 0xc4927a, hose: 0x23262c, schuh: 0xeceef0, haar: 0x1c1612, dkGold: 0xc29c5e,
+  haut: 0xc4927a, hose: 0x16171b, schuh: 0xeceef0, haar: 0x1c1612, dkGold: 0xc29c5e, oberteil: 0x7c8086, socke: 0xf3f3f1,   // Devins Look: graues Tanktop, schwarze Shorts, weiße Socken
   gold: 0xffa53a, metall: 0xb4bcc6, scheibe: 0x2a2f36,
   holz: 0x39404a, polster: 0x232a33, boden: 0x12161c, linie: 0x6b7077, cyan: 0x35c6d4, glut: 0xff7a1a
 };
@@ -817,6 +817,23 @@ function umgebung(renderer, a, b) {
   return tex;
 }
 
+// Saunahut im Ablauf vor der Übung: mit eigenen Geräten durchgehen (die Szene bleibt, wie sie ist), damit Vorschaubild und Live-Ansicht
+// dasselbe zeigen. Taucht der Hut irgendwo in ein Gerät (Latzug-Stange beim Hinsetzen, Schulterpolster …), bleibt er für die Übung weg
+function hutImAblauf(animation, figur) {
+  try {
+    const ger = new Geraete(), z = animation.aufbau ? animation.aufbau(ger) : {};
+    const ein = baueEinleitung(animation, ger, z, (animation.kameraRicht || V(0.62, 0.32, 0.72)).clone().normalize());
+    for (let s = 0; s < ein.dauer; s += 0.2) {
+      const g = gelenke(ein.pose(s));
+      if (ein.gehtMit(s)) { const erg = animation.pose(ein.tStart, z); if (erg.props) erg.props(g, z); }
+      ger.nachBild(); figur.stelle(g);
+      figur.gruppe.updateMatrixWorld(true); ger.gruppe.updateMatrixWorld(true);
+      if (!figur.hutFrei(ger.gruppe)) return false;
+    }
+  } catch (e) { /* Ablauf nicht baubar: dann zählt nur die Übung */ }
+  return true;
+}
+
 /* ---------- Ansicht: Szene, Kamera, Drehen mit dem Finger ---------- */
 // Weiches Leuchten als Textur (für Lichtkegel am Boden und Partikel)
 function leuchtTextur(innen, aussen) {
@@ -1065,13 +1082,19 @@ export class Ansicht {
     this.stangen = festeStangen(animation, this.geraete, this.zustand);
     this.figur.markiere(muskeln || []);
     // Bewegung ausmessen: Figur + Geräte über mehrere Zeitpunkte, daraus Mittelpunkt und Abstand
-    const box = new THREE.Box3();
+    // Saunahut (FigurModell): bleibt nur auf, wenn er über die Übung und den Ablauf davor nirgends in Boden oder Gerät taucht
+    const box = new THREE.Box3(), hut = this.figur.hut, hutBox = new THREE.Box3();
+    let hutAuf = !!hut;
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
       this.bild(t);
       if (t === 0) this.g0 = this.gAktuell; else if (t === 1) this.g1 = this.gAktuell;
       this.figur.gruppe.updateMatrixWorld(true); this.geraete.gruppe.updateMatrixWorld(true);
       box.expandByObject(this.figur.gruppe);
+      if (hutAuf) { hutAuf = this.figur.hutFrei(this.geraete.gruppe); hutBox.union(this.figur.hutBox.clone().applyMatrix4(hut.matrixWorld)); }
     }
+    if (hutAuf && new THREE.Box3().setFromObject(this.geraete.gruppe).max.y > 0.3) hutAuf = hutImAblauf(animation, this.figur);   // Matte, Stufe, Hanteln am Boden stören nie
+    if (hut) hut.visible = hutAuf;
+    if (hutAuf) box.union(hutBox);
     const nurFigur = box.clone();
     box.expandByObject(this.geraete.gruppe);
     // Geräte zählen nur halb (eine lange Stange soll die Figur nicht winzig machen)

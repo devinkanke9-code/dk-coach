@@ -188,6 +188,182 @@ export function griffLoesen(P, ru, S, r) {
 }
 // Hinweis: FARBEN & Co. aus figur.js erst in Funktionen benutzen (figur.js importiert diese Datei, die Module hängen im Kreis)
 
+/* ---------- Kleidung und Saunahut (Devins Look) ---------- */
+// Masken in der Ruhelage (p = Punkt vor dem Skinning). Tanktop: Saum über dem Hosenbund, Ausschnitt vorn tief (U), hinten flacher,
+// tiefe Armlöcher (Ellipse um das Schultergelenk), dazwischen die Träger über den Trapez. Hosenbeine bis knapp übers Knie,
+// Socken bis ein Drittel der Wade mit geripptem Bund. dkNaht: Saum etwas dunkler (umgeschlagener Stoff)
+const KLEIDUNG_GLSL = `
+float dkTanktop(vec3 p) {
+  float ax = abs(p.x);
+  if (ax > 0.24 || p.y < 0.94 || p.y > 1.63) return 0.0;
+  float vorn = smoothstep(-0.03, 0.03, p.z);
+  float hals = mix(1.48 + 8.0 * ax * ax, 1.415 + 11.0 * ax * ax, vorn);
+  vec2 e = vec2((ax - 0.235) / 0.115, (p.y - 1.43) / 0.19);
+  return smoothstep(0.952, 0.958, p.y) * (1.0 - smoothstep(hals - 0.003, hals + 0.003, p.y)) * smoothstep(1.0, 1.04, dot(e, e));
+}
+float dkHosenbein(vec3 p) {
+  if (abs(p.x) > 0.215 || p.y > 0.86) return 0.0;
+  return smoothstep(0.597, 0.603, p.y);
+}
+float dkSocke(vec3 p) {
+  if (abs(p.x) > 0.215 || p.y > 0.26) return 0.0;
+  return 1.0 - smoothstep(0.242, 0.248, p.y);
+}
+float dkNaht(float y, float kante, float breite) { return 1.0 - 0.14 * (1.0 - smoothstep(kante + breite - 0.002, kante + breite, y)); }
+float dkRippe(vec3 p) {
+  float a = atan(p.z + 0.075, abs(p.x) - 0.114);
+  return 1.0 - smoothstep(0.212, 0.218, p.y) * 0.07 * (0.5 + 0.5 * sin(a * 30.0));
+}
+// Weißer Sneaker (Ruhelage, linker Fuß um x = 0,131): graue Laufsohle, Zwischensohle mit feiner grauer Kante, leicht abgesetzte
+// Fersenkappe, Schnürung auf dem Rist, dunklerer Rand am Übergang zur Socke
+float dkTurnschuh(vec3 p, float schuh) {
+  float lauf = 1.0 - smoothstep(-0.0055, -0.0035, p.y);
+  float kante = smoothstep(0.0175, 0.0185, p.y) * (1.0 - smoothstep(0.0205, 0.0215, p.y));
+  float ferse = (1.0 - smoothstep(-0.085, -0.075, p.z)) * smoothstep(0.022, 0.026, p.y) * (1.0 - smoothstep(0.075, 0.08, p.y));
+  float mitte = abs(abs(p.x) - 0.131);
+  float rist = (1.0 - smoothstep(0.016, 0.019, mitte)) * smoothstep(0.055, 0.062, p.y) * smoothstep(-0.035, -0.03, p.z) * (1.0 - smoothstep(0.055, 0.06, p.z));
+  float schnuer = rist * (0.5 + 0.5 * smoothstep(0.35, 0.65, fract(p.z / 0.013))) * (1.0 - smoothstep(0.012, 0.015, mitte));
+  float kragen = smoothstep(0.3, 0.55, schuh) * (1.0 - smoothstep(0.72, 0.95, schuh));
+  return (1.0 - 0.5 * lauf) * (1.0 - 0.3 * kante) * (1.0 - 0.07 * ferse) * (1.0 - 0.06 * rist) * (1.0 - 0.14 * schnuer) * (1.0 - 0.3 * kragen);
+}
+`;
+// Saunahut aus weißem Filz (Devins Markenzeichen, wie im Video vom 31.10.): zwei Filzhälften mit Naht von vorn über den Scheitel nach
+// hinten, oben schmal und gerundet, unten glockig mit dicker, weicher Kante; sitzt bis an die Augenbrauen, hinten tiefer. Vorn seitlich
+// das DK-Logo als Aufdruck. Geometrie in der Ruhelage; stelle() legt ihn jedes Bild mit dem Kopfknochen
+const HUT_LAGE = () => new THREE.Matrix4().makeRotationX(-10 * RAD).setPosition(0, 1.693, -0.012);
+const HUT_LOGO = { winkel: 28 * RAD, hoehe: 0.085, groesse: 0.066 };   // Aufdruck: Richtung von vorn zur linken Seite, Höhe über der Kante
+const HUT_AUSSEN = [[0.124, 0], [0.122, 0.01], [0.115, 0.028], [0.108, 0.05], [0.102, 0.078], [0.097, 0.108], [0.091, 0.136], [0.082, 0.16],
+  [0.069, 0.181], [0.052, 0.198], [0.032, 0.209], [0.014, 0.214], [0, 0.216]];   // Außenseite: Radius, Höhe über der Kante (m)
+// Radius der Außenseite in der Höhe y (zwischen den Profilpunkten linear)
+function hutRadius(y) {
+  for (let i = 1; i < HUT_AUSSEN.length; i++) {
+    const [r0, h0] = HUT_AUSSEN[i - 1], [r1, h1] = HUT_AUSSEN[i];
+    if (y <= h1) return r0 + (r1 - r0) * Math.max(0, (y - h0) / (h1 - h0));
+  }
+  return 0;
+}
+function saunahut() {
+  const aussen = HUT_AUSSEN;
+  const innen = aussen.map(([r, h]) => [Math.max(0, r - 0.007), h + 0.003 - 0.009 * Math.min(1, h / 0.05)]).reverse();   // innen, von oben nach unten
+  const kante = [[0.118, -0.002], [0.1205, -0.0035], [0.123, -0.002]];   // dicke, gerundete Filzkante
+  const profil = [...innen, ...kante, ...aussen].map(([r, h]) => new THREE.Vector2(r, h)), nP = profil.length, nS = 72;
+  const geo = new THREE.LatheGeometry(profil, nS);
+  // Grat an der Naht (vorn und hinten, x ≈ 0) und eine leicht unregelmäßige Form wie gewalkter Filz; dazu Innen-Kennung für den Shader
+  const pos = geo.attributes.position, innenA = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), r = Math.hypot(x, z), w = Math.atan2(x, z);
+    innenA[i] = (i % nP) < innen.length ? 1 : 0;
+    if (r < 1e-6) continue;
+    const f = 1 + 0.03 * Math.exp(-((x / r / 0.16) ** 2)) + 0.007 * Math.sin(3 * w + 1.1) + 0.004 * Math.sin(5 * w + 0.4) * Math.min(1, y / 0.15);
+    pos.setXYZ(i, x * f, y, z * f * 1.13);   // Kopf ist länger als breit
+  }
+  geo.setAttribute('innen', new THREE.BufferAttribute(innenA, 1));
+  geo.setAttribute('lokal', pos.clone());
+  geo.computeVertexNormals();
+  // Naht der Drehfläche (erste = letzte Spalte) und die Spitzen: Normalen angleichen, sonst sieht man einen Knick
+  const nor = geo.attributes.normal, n = new THREE.Vector3(), m = new THREE.Vector3();
+  for (let j = 0; j < nP; j++) {
+    n.fromBufferAttribute(nor, j).add(m.fromBufferAttribute(nor, nS * nP + j)).normalize();
+    nor.setXYZ(j, n.x, n.y, n.z); nor.setXYZ(nS * nP + j, n.x, n.y, n.z);
+    if (profil[j].x < 1e-6) for (let i = 0; i <= nS; i++) nor.setXYZ(i * nP + j, 0, innenA[j] ? -1 : 1, 0);
+  }
+  geo.applyMatrix4(HUT_LAGE());
+  const mat = new THREE.MeshPhysicalMaterial({ color: 0xede5d3, roughness: 0.96, metalness: 0, sheen: 1, sheenRoughness: 0.42,
+    sheenColor: new THREE.Color(0xfff8ec), side: THREE.DoubleSide });
+  const logo = logoTextur();
+  // Filz: Fasern und Walkflecken (Helligkeit und Normale leicht verrauscht, an den Hut gebunden), Naht als feine Rille, innen dunkler, Aufdruck
+  mat.onBeforeCompile = (s) => {
+    s.uniforms.uLogo = { value: logo }; s.uniforms.uLogoAn = { value: logo ? 1 : 0 };
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute float innen;\nattribute vec3 lokal;\nvarying float vInnen;\nvarying vec3 vLokal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvInnen = innen;\nvLokal = lokal;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vInnen;\nvarying vec3 vLokal;\nuniform sampler2D uLogo;\nuniform float uLogoAn;\n' + FILZ_GLSL)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+float dkF = dkFilz(vLokal * 280.0) * 0.55 + dkFilz(vLokal * 60.0) * 0.45;
+float dkNahtR = (1.0 - smoothstep(0.0012, 0.0032, abs(vLokal.x))) * (1.0 - vInnen);
+diffuseColor.rgb *= (0.93 + 0.1 * dkF) * (1.0 - 0.07 * dkNahtR) * (1.0 - 0.24 * vInnen);
+vec3 dkLR = vec3(cos(${HUT_LOGO.winkel.toFixed(4)}), 0.0, -sin(${HUT_LOGO.winkel.toFixed(4)}));
+vec2 dkLP = vec2(sin(${HUT_LOGO.winkel.toFixed(4)}), cos(${HUT_LOGO.winkel.toFixed(4)}));
+vec2 dkLU = vec2(dot(vLokal - vec3(0.0, ${HUT_LOGO.hoehe.toFixed(3)}, 0.0), dkLR) / ${HUT_LOGO.groesse.toFixed(3)} + 0.5, (vLokal.y - ${HUT_LOGO.hoehe.toFixed(3)}) / ${HUT_LOGO.groesse.toFixed(3)} + 0.5);
+if (uLogoAn > 0.5 && vInnen < 0.5 && dot(normalize(vLokal.xz + 1e-6), dkLP) > 0.6 && all(greaterThan(dkLU, vec2(0.0))) && all(lessThan(dkLU, vec2(1.0)))) {
+  vec4 dkL = texture2D(uLogo, dkLU);
+  diffuseColor.rgb = mix(diffuseColor.rgb, dkL.rgb * (0.9 + 0.1 * dkF), dkL.a * 0.92);
+}`)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(normal + 0.09 * vec3(dkFilz(vLokal * 320.0 + 7.0) - 0.5, dkFilz(vLokal * 320.0 + 19.0) - 0.5, dkFilz(vLokal * 320.0 + 31.0) - 0.5));');
+  };
+  const hut = new THREE.Mesh(geo, mat);
+  hut.castShadow = true; hut.matrixAutoUpdate = false;
+  return hut;
+}
+// DK-Logo (wie icon.svg: D und K im Verlauf der Farbwelt) als Textur für den Aufdruck; ohne Browser (Prüfung in Node) keins
+let _logo;
+function logoTextur() {
+  if (_logo !== undefined) return _logo;
+  if (typeof document === 'undefined' || typeof Path2D === 'undefined') return (_logo = null);
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.scale(256 / 400, 256 / 400); g.translate(-88, -56);   // Ausschnitt um die Buchstaben (viewBox 512)
+  // Verlauf je Buchstabe von oben links nach unten rechts (wie im SVG: objectBoundingBox)
+  for (const [d, x0, x1] of [['M132 150h76c62 0 104 42 104 106s-42 106-104 106h-76zM178 196v120h28c35 0 58-24 58-60s-23-60-58-60z', 132, 312],
+    ['M300 150h46v86l62-86h54l-74 98 78 114h-56l-64-96v96h-46z', 300, 466]]) {
+    const v = g.createLinearGradient(x0, 150, x1, 362); v.addColorStop(0, '#ff8a3d'); v.addColorStop(1, '#ff3d81');
+    g.fillStyle = v; g.fill(new Path2D(d));
+  }
+  _logo = new THREE.CanvasTexture(c); _logo.colorSpace = THREE.SRGBColorSpace; _logo.anisotropy = 4;
+  return _logo;
+}
+// Turnschuhe: Das Modell hat nackte Füße mit Zehen (die Schuhe waren nur aufgemalt). Hier eine eigene Hülle aus den Dreiecken des
+// gemalten Schuhs: im Zehenbereich geglättet (Taubin, behält das Volumen) zu einer runden Kappe, dann 6 mm nach außen (Sohle 2 mm,
+// damit nichts im Boden steckt). Gleiche Knochen-Gewichte wie der Fuß: der Schuh knickt mit den Zehen. Format wie ein Mesh aus koerper.bin
+function turnschuhDaten(k) {
+  const m = k.meshes.find((x) => x.mat === 'haut');
+  if (!m) return null;
+  const kl = m.kleid.array, idx = m.idx.array, P = m.pos.array, neu = new Map(), alt = [], tri = [];
+  for (let i = 0; i < idx.length; i += 3) {
+    const v = [idx[i], idx[i + 1], idx[i + 2]];
+    if (v.some((x) => kl[x * 2 + 1] < 128)) continue;
+    for (const x of v) if (!neu.has(x)) { neu.set(x, alt.length); alt.push(x); }
+    tri.push(...v.map((x) => neu.get(x)));
+  }
+  const n = alt.length;
+  if (!n) return null;
+  const pos = new Float32Array(n * 3);
+  alt.forEach((v, i) => { for (let c = 0; c < 3; c++) pos[i * 3 + c] = P[v * 3 + c]; });
+  const nb = Array.from({ length: n }, () => new Set());
+  for (let i = 0; i < tri.length; i += 3) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) if (a !== b) nb[tri[i + a]].add(tri[i + b]);
+  const vorn = Array.from({ length: n }, (_, i) => Math.max(0, Math.min(1, (pos[i * 3 + 2] - 0.025) / 0.045)));   // Zehen: z ab etwa 2,5 cm vor der Fußmitte
+  for (let it = 0; it < 40; it++) {
+    const f = it % 2 ? -0.53 : 0.5, q = pos.slice();
+    for (let i = 0; i < n; i++) {
+      if (!vorn[i] || !nb[i].size) continue;
+      let sx = 0, sy = 0, sz = 0; for (const j of nb[i]) { sx += q[j * 3]; sy += q[j * 3 + 1]; sz += q[j * 3 + 2]; }
+      const c = nb[i].size, w = f * vorn[i];
+      pos[i * 3] += (sx / c - q[i * 3]) * w; pos[i * 3 + 1] += (sy / c - q[i * 3 + 1]) * w; pos[i * 3 + 2] += (sz / c - q[i * 3 + 2]) * w;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(tri); geo.computeVertexNormals();
+  const nr = geo.attributes.normal.array;
+  for (let i = 0; i < n; i++) { const d = nr[i * 3 + 1] < -0.5 ? 0.002 : 0.006; for (let c = 0; c < 3; c++) pos[i * 3 + c] += nr[i * 3 + c] * d; }
+  geo.computeVertexNormals();
+  const kopie = (attr, groesse, Typ) => { const a = new Typ(n * groesse); alt.forEach((v, i) => { for (let c = 0; c < groesse; c++) a[i * groesse + c] = attr[v * groesse + c]; }); return a; };
+  return {
+    name: 'Turnschuhe', mat: 'schuh', pos: geo.attributes.position, nor: geo.attributes.normal,
+    uv: new THREE.BufferAttribute(new Float32Array(n * 2), 2),
+    gel: new THREE.BufferAttribute(kopie(m.gel.array, 4, Uint8Array), 4), gew: new THREE.BufferAttribute(kopie(m.gew.array, 4, Uint8Array), 4, true),
+    kleid: new THREE.BufferAttribute(kopie(kl, 2, Uint8Array), 2, true), idx: new THREE.BufferAttribute(new Uint16Array(tri), 1),
+    teil: kopie(m.teil, 1, Uint8Array)
+  };
+}
+// Wertrauschen 0…1 (für den Filz)
+const FILZ_GLSL = `
+float dkHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float dkFilz(vec3 x) {
+  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(dkHash(i), dkHash(i + vec3(1, 0, 0)), f.x), mix(dkHash(i + vec3(0, 1, 0)), dkHash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(dkHash(i + vec3(0, 0, 1)), dkHash(i + vec3(1, 0, 1)), f.x), mix(dkHash(i + vec3(0, 1, 1)), dkHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+`;
+
 export class FigurModell {
   constructor(k = geladen) {
     if (!k) throw new Error('Körper noch nicht geladen (ladeKoerper())');
@@ -205,6 +381,7 @@ export class FigurModell {
       uGlut: { value: 0.5 }, uGlutFarbe: { value: new THREE.Color(FARBEN.glut) }, uMuskelFarbe: { value: new THREE.Color(FARBEN.gold) },
       uHinweisFarbe: { value: mh.color }, uHinweis: { get value() { return mh.emissiveIntensity; } },
       uHose: { value: new THREE.Color(FARBEN.hose) }, uSchuh: { value: new THREE.Color(FARBEN.schuh) },
+      uOberteil: { value: new THREE.Color(FARBEN.oberteil) }, uSocke: { value: new THREE.Color(FARBEN.socke) },
       uPec: { value: new THREE.Vector2() }
     };
     const t = k.tex || {};   // ohne Texturen (Prüfung in Node): nur Form
@@ -212,9 +389,11 @@ export class FigurModell {
       haut: () => new THREE.MeshStandardMaterial({ map: t.haut, normalMap: t['haut-n'], roughness: 0.62, metalness: 0.02 }),
       augen: () => new THREE.MeshStandardMaterial({ map: t.augen, roughness: 0.3 }),
       // Haar-Textur ist grau (Quaternius färbt im Spiel ein): hier dunkelbraun wie FARBEN.haar
-      haar: () => new THREE.MeshStandardMaterial({ map: t.haar, color: 0x4a3426, roughness: 0.85, side: THREE.DoubleSide })
+      haar: () => new THREE.MeshStandardMaterial({ map: t.haar, color: 0x4a3426, roughness: 0.85, side: THREE.DoubleSide }),
+      schuh: () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, side: THREE.DoubleSide })
     };
-    this.meshes = k.meshes.map((m) => {
+    if (!k.schuhe) k.schuhe = turnschuhDaten(k) || false;   // einmal je geladenem Körper
+    this.meshes = [...k.meshes, ...(k.schuhe ? [k.schuhe] : [])].map((m) => {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', m.pos); geo.setAttribute('normal', m.nor); geo.setAttribute('uv', m.uv);
       geo.setAttribute('skinIndex', m.gel); geo.setAttribute('skinWeight', m.gew); geo.setAttribute('kleid', m.kleid); geo.setIndex(m.idx);
@@ -232,21 +411,37 @@ export class FigurModell {
       mesh.bindMode = 'detached'; mesh.bind(this.skelett, new THREE.Matrix4());
       mesh.castShadow = true; mesh.frustumCulled = false;
       mesh.boundingBox = new THREE.Box3(V(-0.9, 0, -0.2), V(0.9, 1.8, 0.2));
-      mesh.userData.teil = m.teil;
+      mesh.userData.teil = m.teil; mesh.userData.koerper = m.mat === 'haut';   // Haut-Mesh eindeutig (für huelle.js/pruefe-3d statt über die Punktzahl)
       this.gruppe.add(mesh);
       return mesh;
     });
+    this.koerperMesh = this.meshes.find((m) => m.userData.koerper);
+    this.hut = saunahut(); this.gruppe.add(this.hut);
+    // Hut zählt für die Kamera nur, wenn er sichtbar ist (Ansicht.zeige nimmt hutBox dazu); Prüfpunkte = Außenseite, ausgedünnt
+    this.hutBox = this.hut.geometry.boundingBox || (this.hut.geometry.computeBoundingBox(), this.hut.geometry.boundingBox);
+    this.hut.geometry.boundingBox = new THREE.Box3();
+    const hp = this.hut.geometry.attributes.position, hi = this.hut.geometry.attributes.innen;
+    this.hutPunkte = [];
+    for (let i = 0; i < hp.count; i += 7) if (!hi.getX(i)) this.hutPunkte.push(V().fromBufferAttribute(hp, i));
     this.ruhe = this.ruhelage();
     this.markiere([]);
   }
-  // Shorts und Schuhe über die Haut legen, dann Muskel-Glühen und Coach-Hinweis
+  // Kleidung über die Haut legen (Devin, 31.10.: „das bin ich“ — graues Tanktop, schwarze Shorts bis übers Knie, weiße Socken und
+  // Schuhe), dann Muskel-Glühen und Coach-Hinweis. Shorts und Schuhe kommen aus koerper.bin (kleid je Punkt); Tanktop, längere
+  // Hosenbeine und Socken rechnet der Shader pro Pixel aus der Ruhelage (T-Pose, Meter, +x links, +z vorn): scharfe Kanten,
+  // unabhängig vom Netz. Stoff ist rauer und zeigt die Poren der Haut-Normalen kaum noch.
   shader(s) {
     Object.assign(s.uniforms, this.u);
     // Brust (vor dem Skinning, in der Ruhelage): angespannt wölbt sie sich nach vorn und rückt zum Brustbein, gedehnt wird sie flacher
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nvarying vec2 vLeucht;\nvarying vec2 vKleid;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\ntransformed += normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ntransformed.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nuniform float uGlut;\nuniform float uHinweis;\nuniform vec3 uGlutFarbe;\nuniform vec3 uMuskelFarbe;\nuniform vec3 uHinweisFarbe;\nuniform vec3 uHose;\nuniform vec3 uSchuh;')
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHose, vKleid.x);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uSchuh, vKleid.y);\nfloat dkMuskel = vLeucht.x * (1.0 - vLeucht.y);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uMuskelFarbe, dkMuskel * 0.75);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHinweisFarbe, vLeucht.y);')
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nvRuhe = position;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\ntransformed += normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ntransformed.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nuniform float uGlut;\nuniform float uHinweis;\nuniform vec3 uGlutFarbe;\nuniform vec3 uMuskelFarbe;\nuniform vec3 uHinweisFarbe;\nuniform vec3 uHose;\nuniform vec3 uSchuh;\nuniform vec3 uOberteil;\nuniform vec3 uSocke;\n' + KLEIDUNG_GLSL)
+      .replace('#include <color_fragment>', '#include <color_fragment>\nfloat dkHose = max(vKleid.x, dkHosenbein(vRuhe));\nfloat dkTop = dkTanktop(vRuhe);\nfloat dkSock = dkSocke(vRuhe);\n' +
+        'diffuseColor.rgb = mix(diffuseColor.rgb, uHose * dkNaht(vRuhe.y, 0.6, 0.012), dkHose);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uOberteil * dkNaht(vRuhe.y, 0.955, 0.014), dkTop);\n' +
+        'diffuseColor.rgb = mix(diffuseColor.rgb, uSocke * dkRippe(vRuhe), dkSock);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uSchuh * dkTurnschuh(vRuhe, vKleid.y), vKleid.y);\nfloat dkStoff = max(max(dkHose, dkTop), dkSock * (1.0 - vKleid.y));\n' +
+        'float dkMuskel = vLeucht.x * (1.0 - vLeucht.y);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uMuskelFarbe, dkMuskel * 0.75);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHinweisFarbe, vLeucht.y);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(roughnessFactor, 0.9, dkStoff), 0.55, vKleid.y);')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, dkStoff * 0.75));')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uGlutFarbe * (uGlut * dkMuskel) + uHinweisFarbe * (uHinweis * vLeucht.y);');
   }
   // Feste Größen der Ruhelage: Gelenkpunkte, Rumpfachse, Richtungen von Armen, Händen und Daumen
@@ -269,6 +464,37 @@ export class FigurModell {
         daumenFlach: Math.atan2(d.clone().cross(ziel).dot(finger), d.dot(ziel)) * 0.85 };
     }
     return r;
+  }
+  // Darf der Hut in der jetzigen Pose auf dem Kopf sein? Nein, wenn der Kopf fast liegt (Hut stünde seitlich ab), der Hut in den Boden
+  // taucht oder mehr als 1 cm in ein Geräteteil (Bank, Stange, Polster). Ansicht prüft das über Übung und Ablauf davor
+  hutFrei(geraete) {
+    const h = this.hut; h.updateMatrixWorld(true);
+    const e = h.matrixWorld.elements;
+    if (e[5] / Math.hypot(e[4], e[5], e[6]) < 0.2) return false;
+    const p = V();
+    if (this.hutPunkte.some((q) => p.copy(q).applyMatrix4(h.matrixWorld).y < 0.015)) return false;
+    if (!geraete) return true;
+    // Geräteteile in Kopfnähe als gedrehte Quader abtasten (Raster ≤ 2 cm, dünne Stangen entlang ihrer Achse) und jeden Punkt in die
+    // Lage des Huts bringen: drin, wenn er unter der Außenseite liegt (Profil HUT_AUSSEN, 5 mm Spiel)
+    const zuHut = h.matrixWorld.clone().multiply(HUT_LAGE()).invert(), mitte = V(0, 0.1, 0).applyMatrix4(HUT_LAGE()).applyMatrix4(h.matrixWorld);
+    const drin = (q) => { const y = q.y; if (y < 0 || y > 0.214) return false; return Math.hypot(q.x, q.z / 1.13) < hutRadius(y) - 0.005; };
+    let frei = true;
+    const c = V(), ax = [V(), V(), V()], hx = [0, 0, 0], gr = V();
+    geraete.traverse((m) => {
+      if (!frei || !m.isMesh || !m.visible || !m.geometry) return;
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      const b = m.geometry.boundingBox; if (b.isEmpty()) return;
+      const me = m.matrixWorld.elements; b.getSize(gr);
+      for (let i = 0; i < 3; i++) { ax[i].set(me[4 * i], me[4 * i + 1], me[4 * i + 2]); hx[i] = gr.getComponent(i) / 2 * ax[i].length(); ax[i].normalize(); }
+      b.getCenter(c).applyMatrix4(m.matrixWorld);
+      if (c.distanceTo(mitte) > Math.hypot(...hx) + 0.18) return;
+      const n = hx.map((x) => Math.min(12, Math.max(1, Math.ceil(2 * x / 0.02))));
+      for (let i = 0; i < n[0] && frei; i++) for (let j = 0; j < n[1] && frei; j++) for (let k = 0; k < n[2] && frei; k++) {
+        p.copy(c).addScaledVector(ax[0], hx[0] * ((2 * i + 1) / n[0] - 1)).addScaledVector(ax[1], hx[1] * ((2 * j + 1) / n[1] - 1)).addScaledVector(ax[2], hx[2] * ((2 * k + 1) / n[2] - 1));
+        if (drin(p.applyMatrix4(zuHut))) frei = false;
+      }
+    });
+    return frei;
   }
   markiere(muskeln) { this.muskeln = muskeln || []; this.hervor = null; this.leuchten(); }
   hebeHervor(namen, farbe) {
@@ -380,6 +606,7 @@ export class FigurModell {
     }
     // Übrige Knochen (Enden, Wurzel) gehen mit ihrem Elternknochen mit
     this.k.knochen.forEach((kn, i) => { if (!gesetzt.has(i)) A[i].copy(kn.eltern >= 0 ? A[kn.eltern] : rumpf.Hips); });
+    this.hut.matrix.copy(A[I.Head]); this.hut.matrixWorldNeedsUpdate = true;
     // Brust: Oberarm vor den Körper geführt (Drücken, Butterfly zu) = angespannt, hinter den Körper (Bank unten, Rudern) = gedehnt
     const pec = (s, sg) => {
       const v = richt(g.schulter[s], g.ellbogen[s]), x = v.dot(R.links) * sg, z = v.dot(R.vor);
