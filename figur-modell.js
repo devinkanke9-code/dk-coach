@@ -205,6 +205,19 @@ float dkHosenbein(vec3 p) {
   if (abs(p.x) > 0.215 || p.y > 0.86) return 0.0;
   return smoothstep(0.597, 0.603, p.y);
 }
+float dkShorts(vec3 p) { return abs(p.x) <= 0.215 && p.y >= 0.6 && p.y <= 1.024 ? 1.0 : 0.0; }
+#ifdef DK_STOFF
+// Senkrechte Falten im lockeren Stoff (Höhe in m, nur für Licht und Schatten): unten am Shirt vorn und hinten, an den Hosenbeinen außen
+float dkFalten(vec3 p) {
+#if DK_STOFF == 1
+  float w = atan(p.x, p.z + 0.015);
+  return 0.0028 * smoothstep(1.32, 0.98, p.y) * (1.0 - 0.6 * abs(sin(w))) * sin(7.0 * w + 2.0 * sin(3.0 * w + p.y * 9.0) + p.y * 3.0);
+#else
+  float s = p.x >= 0.0 ? 1.0 : -1.0, w = atan(p.x - s * 0.11, p.z + 0.025), innen = pow(max(0.0, cos(w + s * 1.5708)), 2.0);
+  return 0.003 * smoothstep(0.9, 0.64, p.y) * (1.0 - innen) * sin(6.0 * w + 1.7 * sin(2.0 * w + p.y * 14.0) + p.y * 5.0);
+#endif
+}
+#endif
 float dkSocke(vec3 p) {
   if (abs(p.x) > 0.215 || p.y > 0.26) return 0.0;
   return 1.0 - smoothstep(0.242, 0.248, p.y);
@@ -354,6 +367,212 @@ function turnschuhDaten(k) {
     teil: kopie(m.teil, 1, Uint8Array)
   };
 }
+// Lockere Kleidung (Devin, 31.10.: Tanktop und Shorts „locker machen“ wie im Video): eigene Hüllen aus den Dreiecken der Haut
+// (Bereich plus ein Ring Rand; die Kante schneidet der Shader an derselben Stelle wie bei der aufgemalten Kleidung, die darunter
+// bleibt, falls die Haut doch einmal durch den Stoff kommt). Der Stoff fällt von der breitesten Stelle darüber senkrecht nach unten,
+// statt jeder Einbuchtung zu folgen: Tanktop von Brust und Schulterblättern (Bauch und Kreuz mit Luft, an den Seiten wenig, wegen der
+// Arme), Shorts je Bein von Hüfte und Gesäß, unten weit, innen eng (die Beine berühren sich sonst). Dazu Luft entlang der Normale, zum
+// Saum hin mehr. 'eng' ist dieselbe Hülle knapp über der Haut: dorthin fällt der Stoff, wo er nach oben absteht (shader(): im Liegen
+// liegt das Shirt auf dem Bauch). Gleiche Knochen-Gewichte wie die Haut
+const glatt = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+// Masken wie KLEIDUNG_GLSL (Ruhelage)
+function tanktopMaske(x, y, z) {
+  const ax = Math.abs(x);
+  if (ax > 0.24 || y < 0.94 || y > 1.63) return 0;
+  const vorn = glatt(-0.03, 0.03, z), hals = 1.48 + 8 * ax * ax + (1.415 + 11 * ax * ax - 1.48 - 8 * ax * ax) * vorn;
+  const ex = (ax - 0.235) / 0.115, ey = (y - 1.43) / 0.19;
+  return glatt(0.952, 0.958, y) * (1 - glatt(hals - 0.003, hals + 0.003, y)) * glatt(1, 1.04, ex * ex + ey * ey);
+}
+const shortsMaske = (x, y) => (Math.abs(x) <= 0.215 && y >= 0.6 && y <= 1.024 ? 1 : 0);
+// Größter Abstand der Haut von einer senkrechten Achse (ax, az) je Höhe (2 cm) und Richtung (10°; 0 = vorn, +90° = links), aus
+// Punkten auf den Dreiecken (≤ 1 cm Abstand); Lücken im Kreis bzw. von der Nachbarhöhe gefüllt
+function huelleRadien(P, I, dreiecke, ax, az, y0, y1) {
+  const DY = 0.02, NW = 36, ny = Math.round((y1 - y0) / DY) + 1, R = Array.from({ length: ny }, () => new Float32Array(NW).fill(-1));
+  const a = V(), b = V(), c = V(), q = V();
+  for (const t of dreiecke) {
+    a.fromArray(P, I[t] * 3); b.fromArray(P, I[t + 1] * 3); c.fromArray(P, I[t + 2] * 3);
+    const s = Math.max(1, Math.ceil(Math.max(a.distanceTo(b), b.distanceTo(c), c.distanceTo(a)) / 0.01));
+    for (let i = 0; i <= s; i++) for (let j = 0; i + j <= s; j++) {
+      q.copy(a).multiplyScalar((s - i - j) / s).addScaledVector(b, i / s).addScaledVector(c, j / s);
+      const yb = Math.round((q.y - y0) / DY); if (yb < 0 || yb >= ny) continue;
+      const dx = q.x - ax, dz = q.z - az, wb = Math.floor((Math.atan2(dx, dz) + Math.PI) / (2 * Math.PI) * NW) % NW;
+      R[yb][wb] = Math.max(R[yb][wb], Math.hypot(dx, dz));
+    }
+  }
+  for (const z of R) {
+    const voll = []; for (let w = 0; w < NW; w++) if (z[w] >= 0) voll.push(w);
+    if (!voll.length) continue;
+    for (let w = 0; w < NW; w++) {
+      if (voll.includes(w)) continue;
+      let l = w, r = w, dl = 0, dr = 0;
+      do { l = (l + NW - 1) % NW; dl++; } while (!voll.includes(l));
+      do { r = (r + 1) % NW; dr++; } while (!voll.includes(r));
+      z[w] = (z[l] * dr + z[r] * dl) / (dl + dr);
+    }
+  }
+  for (let y = 1; y < ny; y++) if (R[y][0] < 0 && R[y - 1][0] >= 0) R[y].set(R[y - 1]);
+  for (let y = ny - 2; y >= 0; y--) if (R[y][0] < 0 && R[y + 1][0] >= 0) R[y].set(R[y + 1]);
+  return { R, D: R, y0, DY, NW };
+}
+// Fallender Stoff: unterhalb von yOben D(y) = max(R(y), D(y + DY) − k·DY), höchstens kappe über der Haut (k, kappe je Richtung)
+function fallen(H, yOben, k, kappe) {
+  const { R, y0, DY, NW } = H, top = Math.min(R.length - 1, Math.round((yOben - y0) / DY));
+  H.D = R.map((z) => Float32Array.from(z));
+  for (let w = 0; w < NW; w++) {
+    const wi = (w + 0.5) / NW * 2 * Math.PI - Math.PI, kw = k(wi) * DY, kap = kappe(wi);
+    for (let y = top - 1; y >= 0; y--) H.D[y][w] = Math.min(R[y][w] + kap, Math.max(R[y][w], H.D[y + 1][w] - kw));
+  }
+  // weich machen (1-2-1 über Richtung und Höhe), sonst sieht man die 10°-Fächer und 2-cm-Stufen im Stoff
+  for (let pass = 0; pass < 2; pass++) {
+    const A = H.D.map((z) => Float32Array.from(z)), ny = A.length;
+    for (let y = 0; y < ny; y++) for (let w = 0; w < NW; w++) {
+      const um = (yy) => A[yy][(w + NW - 1) % NW] + 2 * A[yy][w] + A[yy][(w + 1) % NW];
+      H.D[y][w] = (um(Math.max(0, y - 1)) + 2 * um(y) + um(Math.min(ny - 1, y + 1))) / 16;
+    }
+  }
+}
+function liesD(H, y, w) {
+  const { D, y0, DY, NW } = H;
+  const fy = Math.max(0, Math.min(D.length - 1.001, (y - y0) / DY)), iy = Math.floor(fy), ty = fy - iy;
+  const fw = ((w + Math.PI) / (2 * Math.PI) * NW - 0.5 + NW) % NW, iw = Math.floor(fw), tw = fw - iw, iw2 = (iw + 1) % NW;
+  return (D[iy][iw] * (1 - tw) + D[iy][iw2] * tw) * (1 - ty) + (D[iy + 1][iw] * (1 - tw) + D[iy + 1][iw2] * tw) * ty;
+}
+function kleidungDaten(k) {
+  const m = k.meshes.find((x) => x.mat === 'haut');
+  if (!m) return [];
+  const P = m.pos.array, I = m.idx.array, NR = m.nor.array, teil = m.teil, kl = m.kleid.array;
+  const mitte = (t, c) => (P[I[t] * 3 + c] + P[I[t + 1] * 3 + c] + P[I[t + 2] * 3 + c]) / 3;
+  const dreiecke = (wahl) => { const out = []; for (let t = 0; t < I.length; t += 3) if (wahl(t)) out.push(t); return out; };
+  // Hülle: alle Dreiecke mit einer Ecke im Bereich; lage(v, normale) = lockerer Punkt, eng = Abstand der engen Hülle. Punkte an den
+  // Textur-Nähten der Haut (gleicher Ort, doppelt gespeichert) werden verschweißt, sonst reißt der Stoff dort auf und zeigt eine Linie
+  const ort = (v) => Math.round(P[v * 3] * 1e4) + ',' + Math.round(P[v * 3 + 1] * 1e4) + ',' + Math.round(P[v * 3 + 2] * 1e4);
+  const armKnochen = new Set(['LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm'].map((b) => k.index[b]));
+  const baue = (name, mat, imBereich, lage, eng) => {
+    const neu = new Map(), orte = new Map(), alt = [], tri = [];
+    for (let t = 0; t < I.length; t += 3) {
+      const v = [I[t], I[t + 1], I[t + 2]];
+      if (!v.some(imBereich)) continue;
+      for (const x of v) {
+        if (neu.has(x)) continue;
+        const o = ort(x);
+        if (!orte.has(o)) { orte.set(o, alt.length); alt.push(x); }
+        neu.set(x, orte.get(o));
+      }
+      tri.push(...v.map((x) => neu.get(x)));
+    }
+    const n = alt.length, pos = new Float32Array(n * 3), ruhe = new Float32Array(n * 3), engA = new Float32Array(n * 3), hn = new Float32Array(n * 3), nv = V();
+    alt.forEach((v, i) => {
+      nv.set(NR[v * 3], NR[v * 3 + 1], NR[v * 3 + 2]).normalize();
+      const p = lage(v, nv);
+      // Wo der Oberarm die Haut mitnimmt (Achsel), liegt der Stoff eng an: sonst stünden die Seiten bei erhobenen Armen ab wie Flügel
+      let arm = 0; for (let j = 0; j < 4; j++) if (armKnochen.has(m.gel.array[v * 4 + j])) arm += m.gew.array[v * 4 + j] / 255;
+      const locker = 1 - Math.min(1, arm * 2.5);
+      for (let c = 0; c < 3; c++) {
+        ruhe[i * 3 + c] = P[v * 3 + c]; hn[i * 3 + c] = nv.getComponent(c); engA[i * 3 + c] = P[v * 3 + c] + hn[i * 3 + c] * eng;
+        pos[i * 3 + c] = engA[i * 3 + c] + (p[c] - engA[i * 3 + c]) * locker;
+      }
+    });
+    // Glätten (Taubin, behält das Volumen), wo der Stoff absteht; Randpunkte der Hülle bleiben. Danach nie näher an die Haut als 1 mm
+    // über der engen Hülle
+    const nb = Array.from({ length: n }, () => new Set()), kanten = new Map();
+    for (let i = 0; i < tri.length; i += 3) for (let a = 0; a < 3; a++) {
+      const u = tri[i + a], v = tri[i + (a + 1) % 3], key = Math.min(u, v) * n + Math.max(u, v);
+      nb[u].add(v); nb[v].add(u); kanten.set(key, (kanten.get(key) || 0) + 1);
+    }
+    const wg = new Float32Array(n);
+    for (let i = 0; i < n; i++) wg[i] = glatt(0.002, 0.012, Math.hypot(pos[i * 3] - ruhe[i * 3], pos[i * 3 + 1] - ruhe[i * 3 + 1], pos[i * 3 + 2] - ruhe[i * 3 + 2]) - eng);
+    for (const [key, c] of kanten) if (c === 1) { wg[Math.floor(key / n)] = 0; wg[key % n] = 0; }
+    for (let it = 0; it < 16; it++) {
+      const f = it % 2 ? -0.53 : 0.5, q = pos.slice();
+      for (let i = 0; i < n; i++) {
+        if (!wg[i]) continue;
+        let sx = 0, sy = 0, sz = 0; for (const j of nb[i]) { sx += q[j * 3]; sy += q[j * 3 + 1]; sz += q[j * 3 + 2]; }
+        const c = nb[i].size, w = f * wg[i];
+        pos[i * 3] += (sx / c - q[i * 3]) * w; pos[i * 3 + 1] += (sy / c - q[i * 3 + 1]) * w; pos[i * 3 + 2] += (sz / c - q[i * 3 + 2]) * w;
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const d = (pos[i * 3] - ruhe[i * 3]) * hn[i * 3] + (pos[i * 3 + 1] - ruhe[i * 3 + 1]) * hn[i * 3 + 1] + (pos[i * 3 + 2] - ruhe[i * 3 + 2]) * hn[i * 3 + 2];
+      if (d < eng + 0.001) for (let c = 0; c < 3; c++) pos[i * 3 + c] += hn[i * 3 + c] * (eng + 0.001 - d);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(tri); geo.computeVertexNormals();
+    const kopie = (attr, groesse, Typ) => { const a = new Typ(n * groesse); alt.forEach((v, i) => { for (let c = 0; c < groesse; c++) a[i * groesse + c] = attr[v * groesse + c]; }); return a; };
+    return {
+      name, mat, pos: geo.attributes.position, nor: geo.attributes.normal, uv: new THREE.BufferAttribute(new Float32Array(n * 2), 2),
+      gel: new THREE.BufferAttribute(kopie(m.gel.array, 4, Uint8Array), 4), gew: new THREE.BufferAttribute(kopie(m.gew.array, 4, Uint8Array), 4, true),
+      kleid: new THREE.BufferAttribute(kopie(kl, 2, Uint8Array), 2, true), idx: new THREE.BufferAttribute(new Uint16Array(tri), 1),
+      teil: kopie(teil, 1, Uint8Array), ruhe: new THREE.BufferAttribute(ruhe, 3), eng: new THREE.BufferAttribute(engA, 3)
+    };
+  };
+  // Tanktop: Achse senkrecht durch die Rumpfmitte; Hülle nur aus dem Rumpf (ohne Schultern und Arme, ohne Hosenbund und Gesäß: unter
+  // der Taille fällt der Stoff einfach weiter, statt über den Bund des Modells zu knicken)
+  const rumpf = new Set(['bauch', 'brustkorb', 'ruecken', 'nacken'].map((t) => k.teile.indexOf(t)));
+  const HT = huelleRadien(P, I, dreiecke((t) => [0, 1, 2].every((a) => rumpf.has(teil[I[t + a]])) && Math.abs(mitte(t, 0)) <= 0.215), 0, -0.015, 0.88, 1.66);
+  fallen(HT, 1.40, (w) => 0.05 + 0.25 * Math.sin(w) ** 2, (w) => 0.024 - 0.012 * Math.sin(w) ** 2);
+  const top = baue('Tanktop', 'top', (v) => tanktopMaske(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]) >= 0.5, (v, nv) => {
+    // Oben Luft entlang der Normale; wo der Stoff fällt, waagrecht nach außen bis zur fallenden Hülle (folgt so keinem Wulst der Haut)
+    const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2], dz = z + 0.015, r = Math.max(1e-6, Math.hypot(x, dz)), w = Math.atan2(x, dz), s2 = Math.sin(w) ** 2;
+    const e = 0.0065 + (0.010 - 0.004 * s2) * glatt(1.40, 0.96, y), wd = glatt(1.48, 1.30, y), ra = (Math.max(r, liesD(HT, y, w)) + e - r) * wd;
+    return [x + nv.x * e * (1 - wd) + x / r * ra, y + nv.y * e * (1 - wd), z + nv.z * e * (1 - wd) + dz / r * ra];
+  }, 0.006);
+  // Shorts: je Bein eine Achse durch den Oberschenkel; innen (zum anderen Bein) fast ohne Fall
+  const beine = [1, -1].map((s) => {
+    const H = huelleRadien(P, I, dreiecke((t) => s * mitte(t, 0) > -0.005 && Math.abs(mitte(t, 0)) <= 0.23 && mitte(t, 1) >= 0.54 && mitte(t, 1) <= 1.06), s * 0.11, -0.025, 0.54, 1.06);
+    const innen = (w) => Math.max(0, Math.cos(w + s * Math.PI / 2)) ** 2;
+    fallen(H, 0.93, (w) => 0.02 + 0.6 * innen(w), (w) => 0.05 * (1 - innen(w)) + 0.008 * innen(w));
+    return { H, s, innen };
+  });
+  const hose = baue('Shorts', 'hose', (v) => shortsMaske(P[v * 3], P[v * 3 + 1]) > 0, (v, nv) => {
+    const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2], B = beine[x >= 0 ? 0 : 1];
+    const dx = x - B.s * 0.11, dz = z + 0.025, r = Math.max(1e-6, Math.hypot(dx, dz)), w = Math.atan2(dx, dz), inn = B.innen(w);
+    const e = (0.005 + 0.004 * glatt(1.02, 0.92, y) + 0.006 * glatt(0.9, 0.62, y)) * (1 - 0.4 * inn), wd = glatt(0.95, 0.88, y) * (1 - inn);
+    const ra = (Math.max(r, liesD(B.H, y, w)) + e - r) * wd;
+    return [x + nv.x * e * (1 - wd) + dx / r * ra, y + nv.y * e * (1 - wd), z + nv.z * e * (1 - wd) + dz / r * ra];
+  }, 0.004);
+  return [top, hose];
+}
+// Shirt und Shorts fallen dorthin, wo die Schwerkraft sie zieht: steht der Stoff nach oben von der Haut ab (Bauch im Liegen, Rücken
+// beim Vorbeugen), rückt er bis auf ein Fünftel an die enge Hülle; hängt er nach unten (Brust im Liegestütz), hängt das Shirt etwas weiter
+const STOFF_FALL_GLSL = `
+#ifdef DK_STOFF
+{
+  vec4 dkE = bindMatrix * vec4(dkEng, 1.0);
+  vec4 dkES = boneMatX * dkE * skinWeight.x + boneMatY * dkE * skinWeight.y + boneMatZ * dkE * skinWeight.z + boneMatW * dkE * skinWeight.w;
+  vec3 dkEngS = (bindMatrixInverse * dkES).xyz;
+  vec3 dkAb = transformed - dkEngS;
+  vec3 dkW = mat3(modelMatrix) * dkAb;
+  float dkL = length(dkW);
+  float dkHoch = dkL > 1e-5 ? dkW.y / dkL : 0.0;
+  float dkF = 1.0 - 0.8 * smoothstep(0.15, 0.85, dkHoch);
+  #if DK_STOFF == 1
+  dkF += 0.25 * smoothstep(0.3, 0.9, -dkHoch);
+  #endif
+  transformed = dkEngS + dkAb * dkF;
+}
+#endif
+`;
+// Falten als Höhenfeld auf die Normale (Oberflächen-Gradient aus Bildschirm-Ableitungen, unabhängig von Auflösung und Abstand).
+// WebGL 1 kennt dFdx nur mit Erweiterung (das Physical-Material schaltet sie ein); ohne sie bleibt der Stoff glatt
+const STOFF_FALTEN_GLSL = `
+#if defined(DK_STOFF) && (__VERSION__ >= 300 || defined(GL_OES_standard_derivatives))
+{
+  float dkH = dkFalten(vRuhe);
+  vec3 dkP = -vViewPosition, dkPx = dFdx(dkP), dkPy = dFdy(dkP);
+  vec3 dkR1 = cross(dkPy, normal), dkR2 = cross(normal, dkPx);
+  float dkDet = dot(dkPx, dkR1);
+  if (abs(dkDet) > 1e-12) normal = normalize(normal - (dkR1 * dFdx(dkH) + dkR2 * dFdy(dkH)) / dkDet);
+}
+#endif
+`;
+// Baumwolle: matt, mit leichtem Schimmer an den Kanten (hebt die schwarzen Shorts vom dunklen Hintergrund ab)
+function stoffMaterial(art) {
+  const farbe = new THREE.Color(art === 1 ? FARBEN.oberteil : FARBEN.hose);
+  const m = new THREE.MeshPhysicalMaterial({ roughness: 0.9, metalness: 0, side: THREE.DoubleSide, sheen: 0.25, sheenRoughness: 0.8,
+    sheenColor: farbe.lerp(new THREE.Color(0xffffff), 0.2) });
+  m.defines = { ...m.defines, DK_STOFF: art };
+  return m;
+}
 // Wertrauschen 0…1 (für den Filz)
 const FILZ_GLSL = `
 float dkHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -390,16 +609,20 @@ export class FigurModell {
       augen: () => new THREE.MeshStandardMaterial({ map: t.augen, roughness: 0.3 }),
       // Haar-Textur ist grau (Quaternius färbt im Spiel ein): hier dunkelbraun wie FARBEN.haar
       haar: () => new THREE.MeshStandardMaterial({ map: t.haar, color: 0x4a3426, roughness: 0.85, side: THREE.DoubleSide }),
-      schuh: () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, side: THREE.DoubleSide })
+      schuh: () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, side: THREE.DoubleSide }),
+      // Lockere Kleidung (kleidungDaten): DK_STOFF 1 = Tanktop, 2 = Shorts; Kante, Farbe und Fall in shader()
+      top: () => stoffMaterial(1), hose: () => stoffMaterial(2)
     };
     if (!k.schuhe) k.schuhe = turnschuhDaten(k) || false;   // einmal je geladenem Körper
-    this.meshes = [...k.meshes, ...(k.schuhe ? [k.schuhe] : [])].map((m) => {
+    if (!k.kleidung) k.kleidung = kleidungDaten(k);
+    this.meshes = [...k.meshes, ...(k.schuhe ? [k.schuhe] : []), ...k.kleidung].map((m) => {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', m.pos); geo.setAttribute('normal', m.nor); geo.setAttribute('uv', m.uv);
       geo.setAttribute('skinIndex', m.gel); geo.setAttribute('skinWeight', m.gew); geo.setAttribute('kleid', m.kleid); geo.setIndex(m.idx);
+      if (m.ruhe) { geo.setAttribute('ruhe', m.ruhe); geo.setAttribute('eng', m.eng); }
       geo.setAttribute('leucht', new THREE.BufferAttribute(new Float32Array(m.teil.length * 2), 2));
-      // Gewicht je Punkt für den linken (x) und rechten (y) Brustmuskel: weich um die Muskelmitte, nur vorn
-      const pec = new Float32Array(m.teil.length * 2), p = m.pos.array;
+      // Gewicht je Punkt für den linken (x) und rechten (y) Brustmuskel: weich um die Muskelmitte, nur vorn (Stoff: am Punkt der Haut)
+      const pec = new Float32Array(m.teil.length * 2), p = (m.ruhe || m.pos).array;
       for (let i = 0; i < m.teil.length; i++) {
         const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2], vorn = Math.max(0, Math.min(1, z / BRUST.z));
         for (const [j, sx] of [[0, 1], [1, -1]]) pec[i * 2 + j] = vorn * Math.exp(-(((x - sx * BRUST.x) / BRUST.bx) ** 2) - (((y - BRUST.y) / BRUST.by) ** 2));
@@ -433,15 +656,20 @@ export class FigurModell {
   shader(s) {
     Object.assign(s.uniforms, this.u);
     // Brust (vor dem Skinning, in der Ruhelage): angespannt wölbt sie sich nach vorn und rückt zum Brustbein, gedehnt wird sie flacher
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nvRuhe = position;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\ntransformed += normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ntransformed.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;');
+    // Stoff-Hüllen (DK_STOFF): vRuhe ist der Punkt auf der Haut (Masken wie bei der aufgemalten Kleidung), die enge Hülle geht mit
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\n#ifdef DK_STOFF\nattribute vec3 ruhe;\nattribute vec3 eng;\n#endif')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\nvec3 dkPecV = normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ndkPecV.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;\ntransformed += dkPecV;\n' +
+        '#ifdef DK_STOFF\nvRuhe = ruhe;\nvec3 dkEng = eng + dkPecV;\n#else\nvRuhe = position;\n#endif')
+      .replace('#include <skinning_vertex>', '#include <skinning_vertex>\n' + STOFF_FALL_GLSL);
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nuniform float uGlut;\nuniform float uHinweis;\nuniform vec3 uGlutFarbe;\nuniform vec3 uMuskelFarbe;\nuniform vec3 uHinweisFarbe;\nuniform vec3 uHose;\nuniform vec3 uSchuh;\nuniform vec3 uOberteil;\nuniform vec3 uSocke;\n' + KLEIDUNG_GLSL)
-      .replace('#include <color_fragment>', '#include <color_fragment>\nfloat dkHose = max(vKleid.x, dkHosenbein(vRuhe));\nfloat dkTop = dkTanktop(vRuhe);\nfloat dkSock = dkSocke(vRuhe);\n' +
+      .replace('#include <color_fragment>', '#include <color_fragment>\n#ifdef DK_STOFF\n#if DK_STOFF == 1\nif (dkTanktop(vRuhe) < 0.5) discard;\ndiffuseColor.rgb = uOberteil * dkNaht(vRuhe.y, 0.955, 0.014);\n#else\n' +
+        'if (dkShorts(vRuhe) < 0.5) discard;\ndiffuseColor.rgb = uHose * dkNaht(vRuhe.y, 0.6, 0.012);\n#endif\ndiffuseColor.rgb *= (gl_FrontFacing ? 1.0 : 0.55) * (1.0 + 20.0 * dkFalten(vRuhe));\nfloat dkStoff = 1.0;\n#else\n' +
+        'float dkHose = max(vKleid.x, dkHosenbein(vRuhe));\nfloat dkTop = dkTanktop(vRuhe);\nfloat dkSock = dkSocke(vRuhe);\n' +
         'diffuseColor.rgb = mix(diffuseColor.rgb, uHose * dkNaht(vRuhe.y, 0.6, 0.012), dkHose);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uOberteil * dkNaht(vRuhe.y, 0.955, 0.014), dkTop);\n' +
-        'diffuseColor.rgb = mix(diffuseColor.rgb, uSocke * dkRippe(vRuhe), dkSock);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uSchuh * dkTurnschuh(vRuhe, vKleid.y), vKleid.y);\nfloat dkStoff = max(max(dkHose, dkTop), dkSock * (1.0 - vKleid.y));\n' +
+        'diffuseColor.rgb = mix(diffuseColor.rgb, uSocke * dkRippe(vRuhe), dkSock);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uSchuh * dkTurnschuh(vRuhe, vKleid.y), vKleid.y);\nfloat dkStoff = max(max(dkHose, dkTop), dkSock * (1.0 - vKleid.y));\n#endif\n' +
         'float dkMuskel = vLeucht.x * (1.0 - vLeucht.y);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uMuskelFarbe, dkMuskel * 0.75);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHinweisFarbe, vLeucht.y);')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(roughnessFactor, 0.9, dkStoff), 0.55, vKleid.y);')
-      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, dkStoff * 0.75));')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, dkStoff * 0.75));\n' + STOFF_FALTEN_GLSL)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uGlutFarbe * (uGlut * dkMuskel) + uHinweisFarbe * (uHinweis * vLeucht.y);');
   }
   // Feste Größen der Ruhelage: Gelenkpunkte, Rumpfachse, Richtungen von Armen, Händen und Daumen
@@ -465,21 +693,32 @@ export class FigurModell {
     }
     return r;
   }
-  // Darf der Hut in der jetzigen Pose auf dem Kopf sein? Nein, wenn der Kopf fast liegt (Hut stünde seitlich ab), der Hut in den Boden
-  // taucht oder mehr als 1 cm in ein Geräteteil (Bank, Stange, Polster). Ansicht prüft das über Übung und Ablauf davor
+  // Darf der Hut in der jetzigen Pose auf dem Kopf sein? Nein, wenn er in den Boden taucht, mehr als 5 mm in ein Geräteteil (Bank,
+  // Stange, Polster) oder ein Arm durch ihn geht, oder wenn der Kopf nach unten hängt (Handstand: er fiele herunter). Liegt der Kopf
+  // waagrecht (Vierfüßler, Liegestütz), bleibt er auf, solange er nichts berührt (Devin, 31.10.: „Ja, wo es geht“). Ansicht prüft das
+  // über Übung und Ablauf davor
   hutFrei(geraete) {
     const h = this.hut; h.updateMatrixWorld(true);
     const e = h.matrixWorld.elements;
-    if (e[5] / Math.hypot(e[4], e[5], e[6]) < 0.2) return false;
-    const p = V();
-    if (this.hutPunkte.some((q) => p.copy(q).applyMatrix4(h.matrixWorld).y < 0.015)) return false;
-    if (!geraete) return true;
-    // Geräteteile in Kopfnähe als gedrehte Quader abtasten (Raster ≤ 2 cm, dünne Stangen entlang ihrer Achse) und jeden Punkt in die
-    // Lage des Huts bringen: drin, wenn er unter der Außenseite liegt (Profil HUT_AUSSEN, 5 mm Spiel)
+    if (e[5] / Math.hypot(e[4], e[5], e[6]) < -0.5) return false;
+    const p = V(), hw = this.hutPunkte.map((q) => q.clone().applyMatrix4(h.matrixWorld));
+    if (hw.some((q) => q.y < 0.015)) return false;
+    // Punkte in die Lage des Huts bringen: drin, wenn sie unter der Außenseite liegen (Profil HUT_AUSSEN, 5 mm Spiel; r = Dicke um den Punkt)
     const zuHut = h.matrixWorld.clone().multiply(HUT_LAGE()).invert(), mitte = V(0, 0.1, 0).applyMatrix4(HUT_LAGE()).applyMatrix4(h.matrixWorld);
-    const drin = (q) => { const y = q.y; if (y < 0 || y > 0.214) return false; return Math.hypot(q.x, q.z / 1.13) < hutRadius(y) - 0.005; };
+    const drin = (q, r = 0) => { const y = q.y; if (y < -r || y > 0.216 + r) return false; return Math.hypot(q.x, q.z / 1.13) < hutRadius(Math.max(0, y)) + r - 0.005; };
+    // Arme als Kapseln entlang der Knochen (Oberarm, Unterarm, Hand bis zur Fingerspitze): Hände am Hinterkopf, Arme dicht am Kopf
+    const P = this.ruhe.P, I = this.k.index, a = V(), b = V(), gw = this.gruppe.matrixWorld;
+    const gelenk = (out, name) => out.copy(P(name)).applyMatrix4(this.A[I[name]]).applyMatrix4(gw).applyMatrix4(zuHut);
+    for (const S of ['Left', 'Right']) for (const [von, bis, r] of [['Arm', 'ForeArm', 0.045], ['ForeArm', 'Hand', 0.04], ['Hand', 'HandMiddle4', 0.025]]) {
+      gelenk(a, S + von); gelenk(b, S + bis);
+      for (let i = 0; i <= 6; i++) if (drin(p.copy(a).lerp(b, i / 6), r)) return false;
+    }
+    if (!geraete) return true;
+    // Geräteteile in Kopfnähe als gedrehte Quader: Außenpunkte des Huts im Quader (8 mm Spiel; große Polster, Bänke) und den Quader
+    // abtasten (Raster ≤ 2 cm, dünne Stangen entlang ihrer Achse)
     let frei = true;
-    const c = V(), ax = [V(), V(), V()], hx = [0, 0, 0], gr = V();
+    const c = V(), ax = [V(), V(), V()], hx = [0, 0, 0], gr = V(), d = V();
+    const imQuader = (q) => { d.copy(q).sub(c); for (let i = 0; i < 3; i++) if (Math.abs(d.dot(ax[i])) > hx[i] - 0.008) return false; return true; };
     geraete.traverse((m) => {
       if (!frei || !m.isMesh || !m.visible || !m.geometry) return;
       if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
@@ -488,6 +727,7 @@ export class FigurModell {
       for (let i = 0; i < 3; i++) { ax[i].set(me[4 * i], me[4 * i + 1], me[4 * i + 2]); hx[i] = gr.getComponent(i) / 2 * ax[i].length(); ax[i].normalize(); }
       b.getCenter(c).applyMatrix4(m.matrixWorld);
       if (c.distanceTo(mitte) > Math.hypot(...hx) + 0.18) return;
+      if (hw.some(imQuader)) { frei = false; return; }
       const n = hx.map((x) => Math.min(12, Math.max(1, Math.ceil(2 * x / 0.02))));
       for (let i = 0; i < n[0] && frei; i++) for (let j = 0; j < n[1] && frei; j++) for (let k = 0; k < n[2] && frei; k++) {
         p.copy(c).addScaledVector(ax[0], hx[0] * ((2 * i + 1) / n[0] - 1)).addScaledVector(ax[1], hx[1] * ((2 * j + 1) / n[1] - 1)).addScaledVector(ax[2], hx[2] * ((2 * k + 1) / n[2] - 1));

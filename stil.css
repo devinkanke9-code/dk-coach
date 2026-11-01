@@ -98,7 +98,7 @@ p { margin: 0; }
 textarea.eingabe { min-height: 80px; resize: vertical; }
 .eingabe:focus { border-color: var(--akzent); outline: none; }
 .mit-einheit { display: flex; align-items: center; gap: 8px; }
-.mit-einheit span { color: var(--text2); font-size: 13px; }
+.mit-einheit span { color: var(--text2); font-size: 13px; white-space: nowrap; }
 .optionen { display: flex; flex-wrap: wrap; gap: 6px; }
 .optionen label { position: relative; }
 .optionen input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }

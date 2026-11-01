@@ -37,6 +37,9 @@ function vollstaendig(pose) {
   p.fussRicht = seiten((s) => g.zehe[s].clone().sub(g.ferse[s]));
   p.handflaeche = seiten((s) => g.handRuecken[s].clone().negate());
   p.zehen = Object.assign({}, pose.zehen || {});
+  // Fläche unter dem Fuß (Box, schräge Platte) mitnehmen, sonst steht der Fuß im letzten Bild des Ablaufs anders als in der Übung
+  // (bis 31.10. zeigten beim Pike auf der Box die Zehen 4–6 cm in die Box)
+  p.fussFlaeche = seiten((s) => (pose.fussFlaeche && pose.fussFlaeche[s] ? pose.fussFlaeche[s].clone() : null));
   p.handKnick = Object.assign({}, pose.handKnick || {});
   p.flach = seiten((s) => (g.flach[s] ? g.flach[s].clone() : null));
   p.greift = seiten((s) => !g.flach[s]);
@@ -84,6 +87,7 @@ function mische(A, B, u, hand = u) {
   for (const k of ['ellbogenPol', 'handflaeche']) p[k] = seiten((s) => ln(A[k][s], B[k][s], hand));
   for (const k of ['kniePol', 'fussRicht']) p[k] = seiten((s) => ln(A[k][s], B[k][s], u));
   p.zehen = seiten((s) => mix(A.zehen[s] || 0, B.zehen[s] || 0, u));
+  p.fussFlaeche = seiten((s) => ((u < 0.5 ? A : B).fussFlaeche || {})[s] || null);   // gilt ab der zweiten Hälfte (Fuß kommt dort an)
   p.handKnick = seiten((s) => mix(A.handKnick[s] || 0, B.handKnick[s] || 0, hand));
   p.flach = seiten((s) => (hand < 0.5 ? A.flach[s] : B.flach[s]));
   p.greift = seiten((s) => (hand < 0.5 ? A.greift[s] : B.greift[s]));
@@ -96,11 +100,13 @@ function drehePose(p, m, w) {
   n.hand = seiten((s) => um(p.hand[s])); n.fuss = seiten((s) => um(p.fuss[s]));
   for (const k of ['ellbogenPol', 'kniePol', 'fussRicht', 'handflaeche']) n[k] = seiten((s) => r(p[k][s]));
   n.flach = seiten((s) => (p.flach[s] ? r(p.flach[s]) : null));
+  n.fussFlaeche = seiten((s) => (p.fussFlaeche && p.fussFlaeche[s] ? r(p.fussFlaeche[s]) : null));
   return n;
 }
-// Stehend (oder gehend: phase in Bogenmaß, 0 = Füße nebeneinander) an pos (Becken x/z), Blick in Richtung winkel (0 = +z)
+// Stehend (oder gehend: phase in Bogenmaß, 0 = Füße nebeneinander) an pos (Becken x/z), Blick in Richtung winkel (0 = +z);
+// hoch = auf einer Box oder Stufe dieser Höhe
 function stehen(pos, winkel, o = {}) {
-  const q = drehY(winkel), d = (x, y, z) => V(x, y, z).applyQuaternion(q).add(V(pos.x, 0, pos.z));
+  const q = drehY(winkel), d = (x, y, z) => V(x, y, z).applyQuaternion(q).add(V(pos.x, o.hoch || 0, pos.z));
   const ph = o.phase || 0, schritt = o.schritt == null ? 0.2 : o.schritt, s1 = Math.sin(ph), c1 = Math.cos(ph);
   // geht = wie weit im Gehen (Schrittlänge 0…0,2): Fuß heben, Becken wippen und Arme schwingen laufen damit aus, das letzte Bild des
   // Gehens ist genau das Stehen (sonst ruckt der Fuß aus der Luft auf den Boden)
@@ -127,14 +133,26 @@ function sitzen(m, winkel, vor, kniePol = V(0, 1, 0.6)) {
   p.kniePol = seiten((s, sg) => V(sg * 0.15, kniePol.y, kniePol.z).applyQuaternion(q));
   return p;
 }
-// Hände locker auf den Oberschenkeln (Sitzen, vor dem Greifen)
+// Hände locker auf den Oberschenkeln (Sitzen, vor dem Greifen). Die Ellbogen hängen seitlich; stößt ein Arm so an ein Gerät (z. B. an das
+// Armpolster der Seitheben-Maschine, bis 31.10. 4–5 cm), hängen sie enger am Körper bzw. nach hinten. QAKT: Geräte des laufenden Ablaufs
+let QAKT = null;
+const ELLBOGEN_POLE = [[1, -0.5, 0], [0.35, -1, -0.2], [0.1, -1, -0.6]];   // je [außen, vor, oben] im Rahmen des Rumpfs
 function haendeAufBeinen(p) {
   const g = gelenke(p);
   const q = Object.assign({}, p);
   q.hand = seiten((s) => g.huefte[s].clone().lerp(g.knie[s], 0.55).add(g.R.oben.clone().multiplyScalar(0.07)).add(g.R.vor.clone().multiplyScalar(0.02)));
   q.handflaeche = seiten(() => g.R.oben.clone().negate());
-  q.ellbogenPol = seiten((s, sg) => g.R.links.clone().multiplyScalar(sg).sub(g.R.vor.clone().multiplyScalar(0.5)));
   q.flach = { l: null, r: null };
+  let best = null;
+  for (const [a, v, o] of ELLBOGEN_POLE) {
+    q.ellbogenPol = seiten((s, sg) => g.R.links.clone().multiplyScalar(sg * a).addScaledVector(g.R.vor, v).addScaledVector(g.R.oben, o));
+    if (!QAKT || !QAKT.length) return q;
+    const t = tiefen(gelenke(q), QAKT);
+    let arm = 0; for (let k = 0; k < QAKT.length; k++) arm = Math.max(arm, t[NG * k + 2]);
+    if (!best || arm < best.arm - 0.005) best = { arm, pol: q.ellbogenPol };
+    if (arm < 0.01) break;
+  }
+  q.ellbogenPol = best.pol;
   return q;
 }
 // Mit Hanteln in den Händen (Sitzen): die Hantel steht senkrecht auf dem Oberschenkel nahe am Knie (wie vor dem Bankdrücken), die Faust
@@ -159,11 +177,23 @@ function haendeNeben(p) {
 // Übergang von einer Pose zur nächsten (Schritt { ziel, d, verzug, bogen, heben, dreh }): verzug = Hände greifen später,
 // bogen = Becken in der Mitte höher (negativ: tiefer, unter einem Polster durch), heben = Füße in der Mitte angehoben (über Rahmen und
 // Stufen), dreh = { m, w }: um die Senkrechte durch m eindrehen (die Form mischt sich im Rahmen der Zielpose, die Drehung läuft im Bogen),
-// aussen = Hände in der Mitte so weit seitlich vom Körper weg (Hanteln gehen außen an Oberschenkeln und Hüfte vorbei)
+// aussen = Hände in der Mitte so weit seitlich vom Körper weg (Hanteln gehen außen an Oberschenkeln und Hüfte vorbei),
+// steigen = { erst, bogen }: auf eine Box oder Stufe steigen: erst ein Fuß, dann der andere, jeder zuerst hoch (bogen über die höhere
+// Lage), dann hinüber; das Becken kommt erst hoch, wenn der erste Fuß oben steht
 function uebergang(von, s) {
   const verzug = s.verzug || 0, A = s.dreh ? drehePose(von, s.dreh.m, s.dreh.w) : von;
   return (u) => {
     const g = glatt(u), h = glatt((u - verzug) / (1 - verzug)), p = mische(A, s.ziel, g, h);
+    if (s.steigen) {
+      const erst = s.steigen.erst || 'l';
+      for (const [k, a, b] of [[erst, 0, 0.55], [erst === 'l' ? 'r' : 'l', 0.45, 1]]) {
+        const v = Math.max(0, Math.min(1, (u - a) / (b - a))), P0 = A.fuss[k], P1 = s.ziel.fuss[k], oben = Math.max(P0.y, P1.y) + s.steigen.bogen;
+        const f = P0.clone().lerp(P1, glatt((v - 0.15) / 0.75));
+        f.y = v < 0.55 ? mix(P0.y, oben, glatt(v / 0.55)) : mix(oben, P1.y, glatt((v - 0.55) / 0.45));
+        p.fuss[k] = f;
+      }
+      p.becken.y = mix(A.becken.y, s.ziel.becken.y, glatt((u - 0.3) / 0.6));
+    }
     if (s.bogen) p.becken.y += s.bogen * Math.sin(Math.PI * g);
     if (s.aussen) { const R = rumpfRahmen(p.rumpf), w = s.aussen * Math.sin(Math.PI * h); p.hand = seiten((k, sg) => p.hand[k].clone().addScaledVector(R.links, sg * w)); }
     if (s.heben) { const hb = s.heben * Math.sin(Math.PI * Math.min(1, g / (s.hebenBis || 1))); for (const k of ['l', 'r']) p.fuss[k].y += hb; }
@@ -452,6 +482,43 @@ function klassisch(art, G, Gp, gg, hantel = false) {
   return { name: art, blick, stand: art === 'stehen' ? fussMitte.clone().add(blick.clone().multiplyScalar(-0.03)) : gg.becken.clone(),
     schritte: [{ ziel: Gp, d: DAUER.greifen + 0.3, verzug: hantel ? 0 : 0.35, aussen: hantel && art !== 'stehen' ? 0.12 : 0 }] };
 }
+// Erhöhter Stand: Box oder Stufe unter den Zehen der Startpose (Oberkante 1–7 cm unter dem Zehenpunkt, mindestens 5 cm hoch)
+function plattformUnter(gg, Q) {
+  let best = null;
+  for (const q of Q) for (const s of ['l', 'r']) {
+    const z = gg.zehe[s], d = z.y - q.top;
+    if (q.top < 0.05 || d < 0.01 || d > 0.07 || abstand2(z.x, z.z, q.grund) > 0.02) continue;
+    if (!best || q.top > best.top) best = { q, top: q.top };
+  }
+  return best;
+}
+// Auf Box oder Stufe steigen (Devin: Figur stand beim Hinlaufen in der Klimmzug-Box bzw. mit dem Fuß in der Stufe): vor der Kante in
+// Richtung d stehen, Blick zur Plattform, erst einen Fuß, dann den anderen hinaufsetzen, oben in die Blickrichtung der Übung drehen,
+// dann wie klassisch (greifen bzw. in die Pose). Oben steht die Figur dort, wo das Becken der Startpose ist
+function aufsteigen(art, Gp, gg, P, d, hantel) {
+  const blick = waag(gg.R.vor), wB = winkelVon(blick), S0 = gg.becken.clone().setY(0), h = P.top;
+  // Nur ein Fuß oben, der andere am Boden (Step-up, Ausfallschritt mit Erhöhung): unten so stehen, dass der Standfuß schon an seinem
+  // Platz ist, und nur den anderen Fuß im Bogen hinaufsetzen
+  const oben = ['l', 'r'].filter((s) => { const z = gg.zehe[s], dz = z.y - h; return dz >= 0.01 && dz <= 0.07 && abstand2(z.x, z.z, P.q.grund) <= 0.02; });
+  const unten = ['l', 'r'].filter((s) => gg.zehe[s].y < 0.08);
+  if (oben.length === 1 && unten.length === 1) {
+    const j = unten[0], links = V(blick.z, 0, -blick.x), stand = gg.knoechel[j].clone().setY(0).addScaledVector(links, (j === 'l' ? -1 : 1) * 0.11);
+    if (d.dot(blick) > -0.7) return null;   // nur einmal (für „von hinten“), die Richtung gibt die Übung vor
+    return { name: 'aufsteigen1', blick, stand, schritte: [{ ziel: Gp, d: 0.9 + 0.8 * h, steigen: { erst: oben[0], bogen: 0.06 } }], vorwaerts: true };
+  }
+  const kante = Math.max(0, ...P.q.grund.map(([x, z]) => (x - S0.x) * d.x + (z - S0.z) * d.z));   // so weit reicht die Plattform in Richtung d
+  const stand = S0.clone().addScaledVector(d, kante + 0.17), wf = winkelVon(d.clone().negate()), dw = kurz(wB - wf);
+  // Unter einer Stange (Klimmzug) oben nicht höher als in der Startpose: in den Knien, sonst stößt der Kopf an
+  const tief = art === 'haengen' ? Math.max(0, gelenke(stehen(S0, wB, { hoch: h })).kopf.y - gg.kopf.y) : 0, o = { hoch: h, tief };
+  const schritte = [{ ziel: stehen(S0, wf, o), d: 0.75 + 1.2 * h, steigen: { bogen: 0.06 } }];
+  if (Math.abs(dw) > 0.15) schritte.push({ ziel: stehen(S0, wB, o), d: 0.35 + 0.25 * Math.abs(dw), dreh: { m: S0, w: dw } });
+  if (art === 'haengen') {
+    const greifen = stehen(S0, wB, { ...o, hand: seiten((s) => gg.hand[s].clone()) });
+    greifen.ellbogenPol = seiten((s, sg) => V(sg, -0.3, 0).applyQuaternion(drehY(wB)));
+    schritte.push({ ziel: greifen, d: DAUER.greifen, verzug: 0.2 }, { ziel: Gp, d: DAUER.setzen });
+  } else schritte.push({ ziel: Gp, d: DAUER.greifen + 0.3, verzug: hantel ? 0 : 0.35 });
+  return { name: 'aufsteigen', blick: d.clone().negate(), stand, schritte, vorwaerts: d.dot(blick) < -0.7 };
+}
 // Seitlich einsteigen (Sitz mit Polster, Hebel oder Rolle davor): neben dem Sitz stehen, Rücken zum Sitz, seitlich hinsetzen,
 // dann auf dem Sitz eindrehen und die Beine unter Polster und Hebel bringen (Füße angehoben über Rahmen), zuletzt greifen
 function seitlichSetzen(Gp, gg, sg, zurueck, heben) {
@@ -596,6 +663,7 @@ function aufhebePlan(stand, winkel, z, halter, Q) {
 /* ---------- Einleitung bauen ---------- */
 // anim = Vorlage, z = ihre Geräte, ger = Geraete, kamera = Richtung der Kamera (dorthin ist Platz zum Anlaufen)
 export function baueEinleitung(anim, ger, z, kamera) {
+  QAKT = null;   // Geräte dieses Ablaufs erst, wenn sie bekannt sind (unten)
   const obj = Object.values(z).filter((o) => o && o.isObject3D);
   const hanteln = ['kh_l', 'kh_r', 'kb'].filter((n) => z[n] && z[n].isObject3D);
   // Startzeitpunkt: Stange vom Boden (Kreuzheben) unten; Stange im Ständer dort, wo der Körper am aufrechtesten ist bzw. im Liegen oben
@@ -651,8 +719,70 @@ export function baueEinleitung(anim, ger, z, kamera) {
     }
   }
 
+  // Kabelzug (Devin, 31.10.: „erst zur Rolle gehen, den Griff holen und rückwärts in Position gehen“): Griff und Seil hängen vor dem
+  // Greifen an der Rolle (oben knapp darunter, unten liegt der Griff davor), nicht schon in Übungslage, wo die Figur beim Hinlaufen
+  // hindurchginge. Die Figur läuft vor die Rolle, greift (unten aus der Hocke), geht in kurzen Schritten rückwärts auf ihren Platz und
+  // geht in die Startpose; ab dem Greifen gehen Griff und Seil mit den Händen. Nur stehend, ein Seil von einer Rolle, Blick zur Rolle
+  // (bis 60° daneben); Rolle hinter oder neben der Figur, zwei Türme, Fußschlaufen, Sitzen und Knien bleiben, wie sie sind
+  let kabel = null;
+  const seile = art === 'stehen' && !latzug && !hanteln.length && !z.seil_r ? [z.seil || z.seil_l].filter((o) => o && o.isMesh) : [];
+  if (seile.length === 1) {
+    const s = seile[0], E = [V(0, 0.5, 0), V(0, -0.5, 0)].map((p) => p.applyMatrix4(s.matrixWorld));
+    const hm = gg.hand.l.clone().add(gg.hand.r).multiplyScalar(0.5), aI = E[0].distanceTo(hm) > E[1].distanceTo(hm) ? 0 : 1;
+    const A = E[aI], ende = E[1 - aI], dl = gg.hand.l.distanceTo(ende), dr = gg.hand.r.distanceTo(ende);
+    const beide = dl < 0.32 && dr < 0.32, haelt = dl <= dr ? 'l' : 'r';
+    const fuss = Math.min(gg.knoechel.l.distanceTo(ende), gg.knoechel.r.distanceTo(ende)) < Math.min(dl, dr);   // Fußschlaufe
+    const S = klassisch(art, G, Gp, gg).stand.clone().setY(0), Ah = V(A.x, 0, A.z), aus = S.clone().sub(Ah), dist = aus.length();
+    const wB = winkelVon(waag(gg.R.vor)), wF = winkelVon(Ah.clone().sub(S)), dw = kurz(wB - wF);
+    if (dist > 0.45 && !fuss && Math.min(dl, dr) < 0.3 && Math.abs(dw) < 1.05) {
+      aus.divideScalar(dist);
+      const vor = aus.clone().negate(), links = V(vor.z, 0, -vor.x), hoch = A.y > 0.75;   // Rolle mittel oder oben: Griff hängt daran
+      const breit = beide ? Math.min(0.25, Math.max(0.06, gg.hand.l.distanceTo(gg.hand.r) / 2)) : 0;
+      // oben hängt der Griff knapp unter der Rolle; unten liegt er ein Stück vor dem Turm am Boden (sonst stieße der Kopf beim Bücken an die Säule)
+      const R = hoch ? A.clone().addScaledVector(aus, 0.08).add(V(0, -0.16, 0)) : Ah.clone().addScaledVector(aus, 0.35).setY(0.07);
+      // Rolle hinter der Säulenkante: Griff so weit nach vorn, dass er frei vom Turm hängt
+      const fest = quader(ger, new Set([...hanteln.map((n) => z[n]), ...obj]));
+      for (let k = 0; k < 15 && fest.some((q) => q.top > R.y - 0.1 && q.bot < R.y + 0.1 && abstand2(R.x, R.z, q.grund) < 0.1); k++) R.addScaledVector(aus, 0.02);
+      const F = hoch ? V(R.x, 0, R.z).addScaledVector(aus, 0.36) : Ah.clone().addScaledVector(aus, 0.85);
+      const mitHaenden = (pos, o, m) => {
+        const p = stehen(pos, wF, o);
+        for (const [k, sg] of [['l', 1], ['r', -1]]) if (beide || k === haelt) p.hand[k] = m.clone().addScaledVector(links, beide ? sg * breit : 0);
+        return p;
+      };
+      const tief = hoch ? 0 : Math.min(0.5, Math.max(0, (0.95 - R.y) * 0.6));
+      const greifen = mitHaenden(F, { tief, neigung: hoch ? 2 : 10 + 30 * Math.min(1, Math.max(0, (0.9 - R.y) / 0.6)) }, R);
+      if (hoch) greifen.ellbogenPol = seiten((k, sg) => V(sg, -0.4, 0).applyQuaternion(drehY(wF)));
+      // oben: erst die Hände vor die Brust, dann hinauf zum Griff (im großen Bogen nach vorn gingen die Arme durch die Säule); unten: nach
+      // dem Greifen mit langen Armen aufrichten, der Griff bleibt vor den Beinen
+      const vorn = (y, d) => F.clone().addScaledVector(vor, d).setY(y);
+      const schritte = hoch ? [{ ziel: mitHaenden(F, {}, vorn(Math.min(1.3, R.y), 0.34)), d: 0.45 }, { ziel: greifen, d: DAUER.greifen }]
+        : [{ ziel: greifen, d: DAUER.greifen + 0.45, verzug: 0.2 }];
+      const griffNach = schritte.length;
+      if (!hoch) schritte.push({ ziel: mitHaenden(F, {}, vorn(0.72, 0.42)), d: 0.6 });
+      const n = Math.max(1, Math.ceil(F.distanceTo(S) / 0.35));   // rückwärts, Schritte bis 35 cm, Griff vor dem Bauch
+      for (let i = 1; i <= n; i++) {
+        const P = F.clone().lerp(S, i / n);
+        schritte.push({ ziel: mitHaenden(P, {}, P.clone().addScaledVector(vor, 0.3).setY(1.02)), d: 0.5, steigen: { bogen: 0.05, erst: i % 2 ? 'l' : 'r' } });
+      }
+      schritte.push(Object.assign({ ziel: Gp, d: DAUER.greifen + 0.3 + 0.3 * Math.abs(dw) }, Math.abs(dw) > 0.15 ? { dreh: { m: S, w: dw } } : {}));
+      // Griff und Seil in Ruhe so, wie die Hände sie beim Greifen halten; geht der Körper dabei (ohne Griff und Seil) zu tief in Teile,
+      // bleibt der alte Ablauf
+      const vorher = obj.map((o) => o.matrixWorld.clone());
+      if (G.erg.props) G.erg.props(gelenke(greifen), z);
+      for (const o of obj) o.updateMatrixWorld(true);
+      const bewegt = new Set(obj.filter((o, i) => !o.matrixWorld.equals(vorher[i])));
+      const Qo = quader(ger, new Set([...hanteln.map((n) => z[n]), ...bewegt])), posen = [stehen(F, wF)];
+      let von = posen[0];
+      for (const st of schritte.slice(0, -1)) { const f = uebergang(von, st); for (const u of [0.25, 0.5, 0.75, 1]) posen.push(f(u)); von = st.ziel; }
+      const erl = tiefen(gg, Qo).map((t, i) => t + (i % NG === 2 ? 0.08 : 0.015));   // Hände dürfen an Rolle und Turm (sie greifen dort)
+      if (stoss(posen, Qo, erl) < 0.03) kabel = { name: 'kabelholen', blick: vor, stand: F, schritte, griffNach };
+      else props(G);
+    }
+  }
+
   // Geräte als Hindernisse; erlaubt ist, was die Startpose selbst berührt (Sitz, Polster, Griffe)
   const Q = quader(ger, new Set(hanteln.map((n) => z[n])));
+  QAKT = Q;   // für haendeAufBeinen (Ellbogen nicht ins Gerät)
   const erlaubtEnde = tiefen(gg, Q).map((t) => t + 0.015);
   const bewerten = (plan) => {
     let von = stehen(plan.stand, winkelVon(plan.blick)); const posen = [von];
@@ -667,7 +797,24 @@ export function baueEinleitung(anim, ger, z, kamera) {
     const p = z[n].getWorldPosition(V()), dl = p.distanceTo(gg.hand.l), dr = p.distanceTo(gg.hand.r);
     halter[n] = dl < 0.2 && dr < 0.2 ? 'beide' : dl <= dr ? 'l' : 'r';
   }
-  const plaene = [latzug || klassisch(art, G, Gp, gg, hanteln.length ? (Object.values(halter).includes('beide') ? 'beide' : true) : false)];
+  const hantelArt = hanteln.length ? (Object.values(halter).includes('beide') ? 'beide' : true) : false;
+  const plaene = [kabel || latzug || klassisch(art, G, Gp, gg, hantelArt)];
+  // Erhöhter Stand (Klimmzug-Box, Stufe beim Wadenheben): statt in der Box zu stehen vor die Kante laufen und hinaufsteigen; von der
+  // Seite, wo der Körper am wenigsten in Teile eintaucht (vorwärts hinauf bevorzugt). Tritt gegen den klassischen Einstieg an (unten),
+  // der bleibt, wo das Hinaufsteigen mehr streift (Wadenmaschine: Kopf an den Griffen)
+  const aufrecht = art === 'stehen' || art === 'haengen' || (art === 'sonst' && gg.becken.y > 0.75 && gg.R.oben.y > 0.8);   // sonst: einbeinig, Fersen oben
+  const plattform = !latzug && !kabel && aufrecht ? plattformUnter(gg, Q) : null;
+  if (plattform) {
+    const blick = waag(gg.R.vor), quer = V(blick.z, 0, -blick.x);
+    let best = null;
+    for (const d of [blick.clone().negate(), quer, quer.clone().negate(), blick]) {
+      const p = aufsteigen(art, Gp, gg, plattform, d, hantelArt);
+      if (!p) continue;
+      const w = bewerten(p) + (p.vorwaerts ? 0 : 0.004);
+      if (!best || w < best.w) best = { p, w };
+    }
+    if (best) plaene.push(best.p);
+  }
   if (Q.length && !hanteln.length && !z.lh) {
     if (art === 'sitzen' && auflage(Q, gg.becken) > 0.2) for (const sg of [1, -1])   // seitlich nur auf einen Sitz
       for (const zurueck of [0.03, 0.1]) for (const heben of [0.1, 0.03]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, heben));

@@ -163,14 +163,28 @@
     [].concat((antwort && antwort.zg) || []).forEach(function (id) {
       if (bekannt.indexOf(id) >= 0 && [].concat(k.zielgruppen || []).indexOf(id) < 0) k.zielgruppen = [].concat(k.zielgruppen || [], [id]);
     });
-    k.analyse = { am: new Date(+antwort.t || Date.now()).toISOString(), felder: r.felder, gesundheit: r.gesundheit };
+    var vorher = k.analyse || {};   // kommt danach nur der Gesundheits-Check (App-Link a: 3), bleibt die Zahl der Angaben stehen
+    k.analyse = { am: new Date(+antwort.t || Date.now()).toISOString(), felder: r.felder || vorher.felder || 0, gesundheit: r.gesundheit || vorher.gesundheit || 0 };
     return r;
+  }
+
+  /* ---------- Analyse von der Seite „Analyse für dich“ (31.10.2026) ----------
+   * Die Seite (kunden-app/analyse.html → /analyse/) schickt die 10 Antworten per WhatsApp als lesbaren Text plus Zeile
+   * DK-Analyse10:…:Ende (JSON, base64url, nicht verschlüsselt: kein Code, kein Name; WhatsApp ist Ende-zu-Ende verschlüsselt).
+   * Hier nur lesen; übernommen wird wie jede Analyse mit analyseUebernehmen (nur bekannte Felder, gültige Werte). */
+  function analyseSeiteLesen(text) {
+    var m = /DK-Analyse10:([A-Za-z0-9_-]+):Ende/.exec(String(text || ''));
+    if (!m) return null;
+    try {
+      var d = JSON.parse(new TextDecoder().decode(vonBase64url(m[1])));
+      return d && d.v === 10 && d.a && typeof d.a === 'object' && !Array.isArray(d.a) ? { v: 10, t: +d.t || Date.now(), a: d.a } : null;
+    } catch (e) { return null; }
   }
 
   var API = { planKompakt: planKompakt, planCode: planCode, base64url: base64url, kundenId: kundenId,
     appCodeNeu: appCodeNeu, appCodeNormal: appCodeNormal, appCodeGueltig: appCodeGueltig, appCodeAnzeige: appCodeAnzeige,
     verpacken: verpacken, entpacken: entpacken, analyseAbschnitte: analyseAbschnitte, analyseUebernehmen: analyseUebernehmen,
-    ZG_NUR_TRAINER: ZG_NUR_TRAINER };
+    analyseSeiteLesen: analyseSeiteLesen, ZG_NUR_TRAINER: ZG_NUR_TRAINER };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.DKKompakt = API;
 })(this);

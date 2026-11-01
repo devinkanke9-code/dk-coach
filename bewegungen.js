@@ -9,6 +9,14 @@ const UNTERARM = Math.hypot(MASS.unterarm + MASS.griff * Math.cos(HAND_ULNAR), M
 const ARM = MASS.oberarm + UNTERARM;                        // Schulter bis Faustmitte bei gestrecktem Arm (dort liegt das Ziel der Hand)
 const STUETZ = MASS.oberarm + MASS.unterarm;                // Schulter bis Handgelenk: flache Hand beim Stütz (Liegestütz, Handstand)
 const genau = (v) => Object.assign(v, { genau: true });   // Ziel der Hand gilt genau (Vorlage rechnet schon mit Ellbogen → Faust)
+// Ende einer Ruderbewegung wie im Lehrbuch (Devin 31.10.: „die Arme gehen viel zu weit nach hinten“): Oberarm ext° hinter der Rumpflinie
+// (Ellbogen knapp hinter dem Brustkorb, nicht weiter; Experience Life/Gentilcore, Planfit: Zug zum Bauchnabel bzw. unteren Brustkorb),
+// abd° seitlich vom Körper, Unterarm zeigt in Zugrichtung (freie Gewichte: senkrecht nach unten, Kabel/Band: zum Ansatz). k = rumpf(…)
+function ruderEnde(k, s, sg, { ext = 40, abd = 15, zug = V(0, -1, 0) } = {}) {
+  const e = ext * RAD, a = abd * RAD, R = k.R;
+  const oberarm = R.oben.clone().multiplyScalar(-Math.cos(e) * Math.cos(a)).addScaledVector(R.vor, -Math.sin(e) * Math.cos(a)).addScaledVector(R.links, sg * Math.sin(a)).normalize();
+  return k.schulter[s].clone().addScaledVector(oberarm, MASS.oberarm).addScaledVector(zug.clone().normalize(), UNTERARM);
+}
 const BEIN = MASS.oberschenkel + MASS.unterschenkel;
 const mix = (a, b, t) => a + (b - a) * t;
 const mv = (A, B, t) => A.clone().lerp(B, t);
@@ -104,6 +112,11 @@ function koerperKapseln(g) {
   k.push([g.becken.clone().addScaledVector(vor, 0.03), mitte.clone().addScaledVector(vor, 0.03), 0.14], [mitte.clone().addScaledVector(vor, 0.06), g.brust.clone().addScaledVector(vor, 0.06), 0.175], [g.kopf, g.kopf, 0.11]);
   for (const s of ['l', 'r']) k.push([g.huefte[s], g.knie[s], 0.11], [g.knie[s], g.knoechel[s], 0.065], [g.schulter[s], g.ellbogen[s], 0.078], [g.ellbogen[s], g.handgelenk[s], 0.05]);
   return k;
+}
+// Band unter dem Fuß: kommt an der Außenkante des Mittelfußes am Boden heraus, nicht mitten durch den Fuß (bis 31.10. 2,6–3,1 cm darin)
+function bandAmFuss(g, s, aussen) {
+  const mitte = g.ferse[s].clone().lerp(g.ballen[s], 0.5);
+  return V(mitte.x + aussen * 0.06, 0.012, mitte.z);
 }
 // Weg eines gespannten Bands von A nach B außen um den Körper: geht die Strecke durch eine Ersatzform, kommt an der tiefsten Stelle ein
 // Punkt dazu, der auf kürzestem Weg nach außen geschoben ist (höchstens drei; nach = bevorzugte Richtung, z. B. hinter den Rücken)
@@ -276,12 +289,15 @@ export function kniebeuge(o = {}) {
           hand[s] = k.schulter[s].clone().add(k.R.vor.clone().multiplyScalar(0.1)).add(k.R.oben.clone().multiplyScalar(0.03)).add(k.R.links.clone().multiplyScalar(sg * 0.03));
           epol[s] = V(sg * 0.3, -1, 0.6);
         } else {
-          hand[s] = k.schulter[s].clone().add(V(sg * 0.14, -ARM * 0.9995, 0));   // Hanteln außen neben den Knien
+          hand[s] = k.schulter[s].clone().add(V(sg * 0.18, -ARM * 0.9995, 0));   // Hanteln außen neben den Knien (bis 31.10. 0,14: Hantel 3,5 cm im Knie)
           epol[s] = V(sg * 0.3, 0, -1);
         }
       }
       // Last über dem Mittelfuß: der ganze Körper rückt, bis die Stange (bzw. Hantel) senkrecht über der Fußmitte liegt
       if (last !== 'keine' && last !== 'band') { const dz = 0.04 - (hand.l.z + hand.r.z) / 2; becken.z += dz; for (const s of ['l', 'r']) hand[s].z += dz; }
+      // Goblet: der Kopf der Hantel ist dicker, sie liegt 4,5 cm weiter vorn an Brust und Bauch (bis 31.10. 4,7 cm im Bauch); der Körper bleibt,
+      // wo er war (sonst lehnt er oben zurück und die Fersen heben ab)
+      if (last === 'goblet') for (const s of ['l', 'r']) hand[s].addScaledVector(k.R.vor, 0.045);
       return {
         pose: Object.assign({ becken, rumpf: r, hand, ellbogenPol: epol, kniePol: seiten((s, sg) => V(sg * (sumo ? 0.9 : 0.35), 0, 1)) }, stehFuesse(breite, 0, sumo ? 0.7 : 0.3),
           o.fersen ? { fuss: seiten((s, sg) => V(sg * breite, FY + 0.03, 0)), zehen: seiten(() => 14) } : {}),
@@ -289,7 +305,7 @@ export function kniebeuge(o = {}) {
           if (z.lh) stangeAn(z.lh, g);
           if (z.kh_l && last === 'goblet') { z.kh_l.position.copy(g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5)); z.kh_l.quaternion.setFromUnitVectors(V(1, 0, 0), g.R.oben); }
           if (z.kh_l && last === 'haengend') { z.kh_l.position.copy(g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5)).add(V(0, -0.12, 0)); z.kh_l.quaternion.setFromUnitVectors(V(1, 0, 0), V(0, 1, 0)); }
-          if (z.band_l) for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, V(sg * 0.165, 0.015, 0.03), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)));
+          if (z.band_l) for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, bandAmFuss(g, s, sg), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)));
           if (z.kb) z.kb.position.copy(g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5)).add(V(0, 0.04, 0));
           if (last === 'kurzhanteln') kurzhantelnAn(z, g, 'hammer');
         }
@@ -324,9 +340,9 @@ export function kreuzheben(o = {}) {
       let beckenU, leanU;
       if (steif) { beckenU = V(0, 0.935, -0.2); leanU = art === 'huefte_wand' ? 55 : 68; }
       else if (sumo) { beckenU = V(0, 0.6, -0.12); leanU = null; }
-      else if (o.block) { beckenU = V(0, 0.8, -0.17); leanU = null; }
+      else if (o.block) { beckenU = blockBecken(0); leanU = null; }
       else { beckenU = V(0, 0.69, -0.2); leanU = null; }
-      const becken = mv(beckenU, V(0, 0.975, 0), t);
+      const becken = o.block ? blockBecken(t) : mv(beckenU, V(0, 0.975, 0), t);
       let neigung;
       const stangeU = o.block ? 0.515 : art === 'kurzhanteln' || art === 'kettlebell' ? 0.22 : 0.225;
       if (leanU == null) {
@@ -339,7 +355,7 @@ export function kreuzheben(o = {}) {
       let k = rumpf(becken, r);
       // Start vom Boden: Stange über dem Mittelfuß, Schienbein fast an der Stange, Schultern knapp vor der Stange (Becken rückt dafür)
       const vomBoden = !steif && art !== 'goodmorning' && art !== 'huefte_wand';
-      if (vomBoden) { becken.z += (0.08 - k.schulter.l.z) * (1 - t); k = rumpf(becken, r); }
+      if (vomBoden && !o.block) { becken.z += (0.08 - k.schulter.l.z) * (1 - t); k = rumpf(becken, r); }
       const hand = {}, epol = {};
       for (const [s, sg] of [['l', 1], ['r', -1]]) {
         if (art === 'goodmorning') {
@@ -356,12 +372,9 @@ export function kreuzheben(o = {}) {
       }
       const pose = Object.assign({ becken, rumpf: r, hand, handflaeche: art === 'trapbar' ? seiten((s, sg) => V(-sg, 0, 0)) : undefined, ellbogenPol: epol, kniePol: seiten((s, sg) => V(sg * (sumo ? 0.8 : 0.2), 0, 1)) }, stehFuesse(breite, 0, sumo ? 0.6 : 0.2),
         o.bstance ? { fuss: { l: V(0.13, FY, 0.06), r: V(-0.13, FY, -0.3) }, zehen: { l: 0, r: 55 }, fussRicht: { l: V(0.1, 0, 1), r: V(-0.1, 0, 1) } } : {});
-      if (art !== 'goodmorning' && art !== 'huefte_wand' && art !== 'trapbar') {
-        // Blockheben: unten liegt die Stange auf den Blöcken; vor den Beinen erst ab t = 0,1 sanft einblenden (bis 31.10. sprang die Stange bei t = 0,2)
-        const vorher = o.block ? seiten((s) => pose.hand[s].clone()) : null;
-        vorDenBeinen(pose, art === 'kettlebell' ? 0.1 : kh ? 0.085 : 0.008, kh || art === 'kettlebell' ? 0.003 : 0);
-        if (vorher) { const w = glatt((t - 0.1) / 0.2); pose.hand = seiten((s) => vorher[s].clone().lerp(pose.hand[s], w)); }
-      }
+      // Blockheben: Stange liegt auf den Blöcken vor dem Knie und gleitet stetig vor den Oberschenkeln hoch (bis 31.10. steckte sie 4–6 cm im Knie)
+      if (o.block) vorDenBeinenKapsel(pose);
+      else if (art !== 'goodmorning' && art !== 'huefte_wand' && art !== 'trapbar') vorDenBeinen(pose, art === 'kettlebell' ? 0.1 : kh ? 0.085 : 0.008, kh || art === 'kettlebell' ? 0.003 : 0);
       return {
         pose,
         props(g, z) {
@@ -388,6 +401,23 @@ function vorDenBeinen(pose, r = 0.016, rand = 0.003) {
   }
   const fehlt = vorn + r + rand - Math.min(pose.hand.l.z, pose.hand.r.z);
   if (fehlt > 0) for (const s of ['l', 'r']) pose.hand[s] = pose.hand[s].clone().setZ(pose.hand[s].z + fehlt);
+}
+// Dasselbe stetig über das Knie: Abstand der Stange zu Oberschenkel und Schienbein als Kapseln im Schnitt y-z (Vorderseite wie oben)
+function vorDenBeinenKapsel(pose, r = 0.016, rand = 0.003) {
+  const g = gelenke(pose), y = (pose.hand.l.y + pose.hand.r.y) / 2, z0 = Math.min(pose.hand.l.z, pose.hand.r.z);
+  const stoesst = (z) => ['l', 'r'].some((s) => [[g.huefte[s], g.knie[s], 0.12, 0.072], [g.knie[s], g.knoechel[s], 0.058, 0.034]].some(([A, B, ra, rb]) => {
+    const dy = B.y - A.y, dz = B.z - A.z, u = Math.max(0, Math.min(1, ((y - A.y) * dy + (z - A.z) * dz) / (dy * dy + dz * dz)));
+    return Math.hypot(y - A.y - dy * u, z - A.z - dz * u) < mix(ra, rb, u) + r + rand;
+  }));
+  let z = z0;
+  while (stoesst(z) && z < z0 + 0.3) z += 0.002;
+  for (const s of ['l', 'r']) pose.hand[s] = pose.hand[s].clone().setZ(pose.hand[s].z + z - z0);
+}
+// Blockheben: Knie bleibt über dem Knöchel (Schienbein senkrecht), die Hüfte schwingt auf einem Bogen um das Knie nach vorn-oben
+// (das Knie streckt sich, statt vorzuschieben); zu Beginn Rumpf etwa 50° vorgeneigt, Schultern knapp vor der Stange
+function blockBecken(t) {
+  const w = mix(36.4, 0, t) * RAD;
+  return V(0, FY + MASS.unterschenkel + 0.015 + MASS.oberschenkel * Math.cos(w), -MASS.oberschenkel * Math.sin(w));
 }
 // Vorderseite des Rumpfs vor der Linie Becken → Brust (an der Haut gemessen, Brust gespannt), je Abstand s entlang R.oben
 const RUMPF_VORN = [[-0.05, 0.14], [0.05, 0.145], [0.1, 0.152], [0.15, 0.155], [0.2, 0.172], [0.25, 0.19], [0.3, 0.215], [0.35, 0.236], [0.4, 0.245], [0.45, 0.19], [0.5, 0.156], [0.55, 0.11]];
@@ -616,7 +646,8 @@ export function wadenheben(o = {}) {
       const z = {};
       if (sitzend && !khKnie) wadensitzBauen(ger, z, WS_BECKEN, WS_P, wsPolster(0));
       else if (sitzend) ger.box(0.45, 0.45, 0.4, V(0, 0.225, -0.1), ger.mPolster);
-      if (khKnie) { ger.box(0.5, 0.08, 0.2, V(0, 0.04, 0.45), ger.mRahmen); khAufbauen(ger, z); }   // nur unter den Fußballen, Ferse sinkt frei
+      // nur unter den Fußballen, Ferse und Mittelfuß sinken frei (bis 31.10. lag die Kante unter dem Fußgewölbe: 4 cm darin)
+      if (khKnie) { ger.box(0.5, 0.08, 0.2, V(0, 0.04, 0.55), ger.mRahmen); khAufbauen(ger, z); }
       if (art === 'stufe' || art === 'einbeinig') ger.box(0.6, 0.12, 0.25, V(0, 0.06, 0.2), ger.mRahmen);   // Kante unter dem Fußballen, Ferse frei
       if (o.last === 'multipresse') { z.lh = ger.langhantel(); schienenAufbauen(ger, z); }
       if (art === 'esel') eselBauen(ger, z, ES_P, esPolster(0));
@@ -653,14 +684,15 @@ export function wadenheben(o = {}) {
         const r = { neigung: khKnie ? 12 : 5 };
         const k = rumpf(becken, r);
         const sh = khKnie ? 0.08 : 0, hubS = khKnie ? mix(-15, 38, t) : hub, anhebenS = Math.sin(Math.max(hubS, -20) * RAD) * MASS.fussLaenge * BALLEN;
-        return { pose: { becken, rumpf: r, fuss: { l: V(0.13, FY + sh + anhebenS, 0.36), r: V(-0.13, FY + sh + anhebenS, 0.36) }, zehen: { l: hubS, r: hubS },
+        // Hanteln auf den Knien: Fußballen auf dem Klotz (Fläche), die Zehen liegen darauf flach, auch wenn die Ferse hoch ist
+        return { pose: { becken, rumpf: r, fuss: { l: V(0.13, FY + sh + anhebenS, 0.36), r: V(-0.13, FY + sh + anhebenS, 0.36) }, zehen: { l: hubS, r: hubS }, fussFlaeche: khKnie ? seiten(() => V(0, 1, 0)) : undefined,
           hand: khKnie ? seiten((s, sg) => V(sg * 0.15, 0.66 + anhebenS, 0.25)) : seiten((s, sg) => {
             const pol = wsPolster(t), w = hebelWinkel(WS_P, pol), L = pol.distanceTo(WS_P);
             return WS_P.clone().add(V(sg * 0.31, 0.03, -L).applyAxisAngle(V(1, 0, 0), w));
           }),
           handflaeche: khKnie ? undefined : seiten((s, sg) => V(-sg, 0, 0)), ellbogenPol: seiten((s, sg) => V(sg, 0, -1)), kniePol: seiten((s, sg) => V(0, 1, 1)) },
           props(g, z) {
-            if (khKnie) for (const s of ['l', 'r']) hantelAn(z['kh_' + s], g.knie[s].clone().lerp(g.huefte[s], 0.12).add(V(0, 0.075, 0)), V(1, 0, 0));
+            if (khKnie) for (const s of ['l', 'r']) hantelAn(z['kh_' + s], g.knie[s].clone().lerp(g.huefte[s], 0.12).add(V(0, 0.09, 0)), V(1, 0, 0));   // liegt auf, nicht darin
             if (z.ws) { z.ws.hebel.rotation.x = hebelWinkel(WS_P, wsPolster(t)); }
           } };
       }
@@ -677,7 +709,10 @@ export function wadenheben(o = {}) {
       const k = rumpf(becken, r);
       const hand = seiten((s, sg) => o.last === 'multipresse' ? k.brust.clone().add(k.R.links.clone().multiplyScalar(sg * 0.42)).sub(k.R.vor.clone().multiplyScalar(0.1)).add(k.R.oben.clone().multiplyScalar(0.02))
         : art === 'maschine' ? k.schulter[s].clone().add(V(sg * 0.1, 0.1, 0.1)) : o.last === 'kurzhanteln' ? k.schulter[s].clone().add(V(sg * 0.06, -ARM * 0.9995, 0)) : k.schulter[s].clone().add(V(sg * 0.12, -ARM * 0.9, 0.12)));
-      return { pose: { becken, rumpf: r, hand, handflaeche: art === 'maschine' ? seiten((s, sg) => V(-sg, 0, 0)) : undefined, ellbogenPol: art === 'maschine' ? seiten((s, sg) => V(sg, -1, 0)) : o.last === 'multipresse' ? seiten(() => V(0, -1, -0.6)) : undefined, fuss, zehen, kniePol: seiten((s, sg) => V(sg * 0.1, s === 'r' && art === 'einbeinig' ? -1 : 0, 1)) },
+      // Auf der Stufe bzw. Plattform: Fußballen auf der Fläche, die Zehen liegen darauf flach, auch oben auf den Zehenspitzen (bis 31.10. zeigten
+      // sie dort in die Kante, 2,5–2,8 cm)
+      const fussFlaeche = stufe ? { l: V(0, 1, 0), r: art === 'einbeinig' ? null : V(0, 1, 0) } : undefined;
+      return { pose: { becken, rumpf: r, hand, handflaeche: art === 'maschine' ? seiten((s, sg) => V(-sg, 0, 0)) : undefined, ellbogenPol: art === 'maschine' ? seiten((s, sg) => V(sg, -1, 0)) : o.last === 'multipresse' ? seiten(() => V(0, -1, -0.6)) : undefined, fuss, zehen, fussFlaeche, kniePol: seiten((s, sg) => V(sg * 0.1, s === 'r' && art === 'einbeinig' ? -1 : 0, 1)) },
         props(g, z) {
           if (o.last === 'kurzhanteln') kurzhantelnAn(z, g, 'hammer');
           if (z.lh) { stangeAn(z.lh, g); schienenAn(z); }
@@ -840,7 +875,7 @@ function armmaschineStellen(z, g, hub) {
 // Rücken: Rückenpolster unter den Schulterblättern, Gurtpolster über den Oberschenkeln, Fußplatte. Gewichtsblock rechts hinten
 function rumpfmaschineBauen(ger, z, becken, bauch) {
   const k0 = rumpf(becken, { neigung: 0 }), lok = (p) => p.clone().sub(becken);   // aufrecht: Rumpf-Lage = Welt-Lage
-  bodenrahmen(ger, -0.4, 0.4, becken.z - 0.5, becken.z + 0.62);
+  bodenrahmen(ger, -0.4, 0.4, becken.z - 0.5, becken.z + 0.72);   // vorn vor den Zehen (bis 31.10. 10 cm weiter hinten, Zehen darauf)
   sitzSaeule(ger, V(0, becken.y - 0.115, becken.z + 0.04), 0.42, 0.44);
   for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.37, 0.05, becken.z), V(sx * 0.37, becken.y - 0.06, becken.z), 0.07); drehlager(ger, V(sx * 0.37, becken.y, becken.z), V(1, 0, 0), 0.08); }
   const h = new THREE.Group(); h.position.copy(becken); ger.gruppe.add(h);
@@ -896,7 +931,8 @@ function scheibenHorn(ger, gruppe, pos, sx, n = 2, r = 0.2) {
 // Gewichtsblock dahinter, Kabel über eine Rolle oben. k0 = Rumpf zu Beginn (Schultern)
 function wadenmaschineBauen(ger, z, k0) {
   bodenrahmen(ger, -0.46, 0.46, -0.86, 0.3);
-  ger.box(0.62, 0.1, 0.26, V(0, 0.05, 0.1), ger.mRahmen); ger.box(0.6, 0.02, 0.24, V(0, 0.11, 0.1), ger.mGummi);   // Stufe, Oberkante 0,12
+  // Stufe, Oberkante 0,12, nur unter dem Vorfuß (bis 31.10. 10 cm weiter hinten: Fußgewölbe 2,8 cm in der Kante)
+  ger.box(0.62, 0.1, 0.26, V(0, 0.05, 0.2), ger.mRahmen); ger.box(0.6, 0.02, 0.24, V(0, 0.11, 0.2), ger.mGummi);
   for (const sx of [-1, 1]) {
     ger.vierkant(V(sx * 0.42, 0.05, -0.32), V(sx * 0.42, 2.08, -0.32), 0.08);
     ger.stab(V(sx * 0.42, 0.35, -0.25), V(sx * 0.42, 1.98, -0.25), 0.013, ger.mMetall);
@@ -1041,12 +1077,12 @@ function tbarBauen(ger, z, P, griff0, brust) {
   if (brust) {
     const k = rumpf(brust.becken, brust.r), R = rumpfRahmen(brust.r);
     const pad = k.brust.clone().add(R.vor.clone().multiplyScalar(0.27)).sub(R.oben.clone().multiplyScalar(0.05));   // an der Brust (gut 23 cm vor der Wirbelsäule)
-    ger.polster(0.36, 0.44, 0.08, pad, basisAus(R.oben, R.vor));
+    ger.polster(0.36, 0.36, 0.08, pad.clone().addScaledVector(R.oben, 0.04), basisAus(R.oben, R.vor));   // unten 8 cm kürzer: die Unterarme hängen frei (bis 31.10. 4,3 cm darin)
     const hinter = pad.clone().add(R.vor.clone().multiplyScalar(0.07));
     ger.vierkant(V(0, 0.05, hinter.z + 0.32), hinter.clone().add(R.oben.clone().multiplyScalar(0.12)), 0.08);
     ger.vierkant(V(0, 0.05, hinter.z + 0.32), V(0, 0.05, P.z), 0.07);
     for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.32, 0.035, P.z + 0.1), V(sx * 0.32, 0.035, hinter.z + 0.4), 0.07);
-    ger.box(0.62, 0.03, 0.34, V(0, 0.055, 0.15), ger.mGummi);   // Fußplatte
+    ger.box(0.62, 0.012, 0.34, V(0, 0.006, TB_FUSS_Z), ger.mGummi);   // Gummimatte unter den Füßen
   }
   z.tb = { P, hebel: h };
 }
@@ -1054,31 +1090,36 @@ function tbarBauen(ger, z, P, griff0, brust) {
 // den Waden. fuss = Knöchel (Mitte), bein = Richtung Knöchel → Hüfte
 function hyperBauen(ger, fuss, becken, bein) {
   const hinten = V(0, bein.z, -bein.y);   // Rückseite der Waden (nach oben-hinten)
-  bodenrahmen(ger, -0.3, 0.3, fuss.z - 0.25, becken.z + 0.4);
+  bodenrahmen(ger, -0.3, 0.3, fuss.z - 0.25, becken.z + 0.7);
   const fussMitte = fuss.clone().sub(bein.clone().multiplyScalar(SOHLE + 0.015)).add(hinten.clone().multiplyScalar(-0.05));
-  ger.vierkant(V(0, 0.05, fuss.z - 0.2), V(0, becken.y - 0.12, becken.z + 0.12), 0.08);                // Hauptholm
-  ger.vierkant(V(0, 0.05, becken.z + 0.3), V(0, becken.y - 0.12, becken.z + 0.12), 0.07);             // Stütze vorn
+  // Hauptholm und Stütze treffen sich unter dem Polster, nicht unter dem Bauch (vorher stak das Holmende 7 cm im Bauch, wenn der Rumpf vorklappt)
+  // Hüftpolster: schräg (45°) vor den Oberschenkeln, Oberkante knapp unter der Hüftbeuge: der Bauch klappt darüber (vorher 9 cm im Polster)
+  const pad = becken.clone().add(V(0, -0.07, 0.11)).sub(bein.clone().multiplyScalar(0.2)).sub(hinten.clone().multiplyScalar(0.14)), q = basisAus(bein, hinten.clone().negate());
+  const knoten = V(0, becken.y - 0.3, becken.z - 0.02);
+  ger.vierkant(V(0, 0.05, fuss.z - 0.2), knoten, 0.08);                // Hauptholm
+  ger.vierkant(V(0, 0.05, becken.z + 0.62), knoten, 0.07);             // Stütze vorn, weit vorn am Boden: der Rumpf hängt frei davor
+  ger.vierkant(knoten, pad.clone().add(hinten.clone().multiplyScalar(0.03)), 0.06);   // Träger endet im Polster
   ger.polster(0.5, 0.03, 0.34, fussMitte, basisAus(bein, hinten.clone().negate()), ger.mGummi);
   ger.vierkant(V(0, 0.05, fussMitte.z - 0.05), fussMitte.clone().sub(bein.clone().multiplyScalar(0.03)), 0.06);
   const rolle = fuss.clone().add(bein.clone().multiplyScalar(0.1)).add(hinten.clone().multiplyScalar(0.075));
   for (const sx of [-1, 1]) rollePolster(ger, 0.16, 0.045).position.copy(rolle).add(V(sx * 0.1, 0, 0));
   ger.vierkant(V(-0.2, rolle.y, rolle.z), V(0.2, rolle.y, rolle.z), 0.03);
   ger.vierkant(fussMitte.clone().add(hinten.clone().multiplyScalar(0.08)), V(0, rolle.y, rolle.z), 0.04);
-  // Hüftpolster: schräg (45°), Oberkante an der Leiste
-  const pad = becken.clone().add(V(0, -0.07, 0.11)).sub(bein.clone().multiplyScalar(0.1)).sub(hinten.clone().multiplyScalar(0.07)), q = basisAus(bein, hinten.clone().negate());   // an den Oberschenkeln, der Bauch klappt darüber
   for (const sx of [-1, 1]) ger.polster(0.17, 0.3, 0.08, pad.clone().add(V(sx * 0.1, 0, 0)), q);
 }
 // Glute Ham Raise (GHD): langer Rahmen, rundes Kniepolster vorn, Fußplatte hinten mit zwei Rollen um die Knöchel
 function ghdBauen(ger, knie, fussZ, fussY) {
   bodenrahmen(ger, -0.3, 0.3, fussZ - 0.25, 0.45);
-  ger.vierkant(V(0, 0.05, 0.12), V(0, knie.y - 0.2, 0.12), 0.08);
+  ger.vierkant(V(0, 0.05, 0.12), V(0, knie.y - 0.24, 0.12), 0.08);
   ger.vierkant(V(0, 0.05, fussZ - 0.12), V(0, fussY + 0.08, fussZ - 0.12), 0.08);
-  ger.vierkant(V(0, knie.y - 0.2, 0.12), V(0, knie.y - 0.2, fussZ - 0.12), 0.07);
-  maschTeil(ger.gruppe, new THREE.CylinderGeometry(0.11, 0.11, 0.44, 28), ger.mPolster, 0, knie.y - 0.19, 0.17).rotation.z = Math.PI / 2;   // runder Buckel unter bzw. vor den Oberschenkeln
-  ger.box(0.44, 0.04, 0.24, V(0, knie.y - 0.21, 0.17), ger.mRahmen);
+  ger.vierkant(V(0, knie.y - 0.24, 0.12), V(0, knie.y - 0.24, fussZ - 0.12), 0.07);
+  // runder Buckel unter den Oberschenkeln kurz vor dem Knie: die Oberschenkel liegen auf, statt 7 cm einzusinken
+  maschTeil(ger.gruppe, new THREE.CylinderGeometry(0.11, 0.11, 0.44, 28), ger.mPolster, 0, knie.y - 0.23, 0.2).rotation.z = Math.PI / 2;
+  ger.box(0.44, 0.04, 0.24, V(0, knie.y - 0.25, 0.2), ger.mRahmen);
   ger.box(0.4, 0.26, 0.03, V(0, fussY + 0.02, fussZ - 0.11), ger.mGummi);                             // Fußplatte hinter den Fußsohlen
-  for (const [dy, dz] of [[0.075, 0.0], [-0.07, 0.03]]) { const r = rollePolster(ger, 0.36, 0.045); r.position.set(0, fussY + dy, fussZ + 0.06 + dz); }
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.2, fussY - 0.07, fussZ - 0.11), V(sx * 0.2, fussY + 0.075, fussZ + 0.06), 0.03);
+  // untere Rolle liegt vorn am Schienbein an, nicht darin
+  for (const [dy, dz] of [[0.075, 0.0], [-0.105, 0.03]]) { const r = rollePolster(ger, 0.36, 0.045); r.position.set(0, fussY + dy, fussZ + 0.06 + dz); }
+  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.2, fussY - 0.105, fussZ - 0.11), V(sx * 0.2, fussY + 0.075, fussZ + 0.06), 0.03);
 }
 // Reverse Hyper: hohe Bank mit Griffen vorn, Pendel um die Hüftachse hinter der Bankkante, Rolle hinter den Waden, Scheibenhorn
 function reverseHyperBauen(ger, z, becken, griffZ) {
@@ -1167,11 +1208,12 @@ function trapBar(ger) {
   }
   ger.gruppe.add(g); return g;
 }
-// Butterfly (Brust) bzw. Reverse Butterfly (hintere Schulter): Arme hängen an Drehachsen über den Schultern (senkrecht), Griffe senkrecht.
-// richtung = 1: Figur sitzt mit dem Rücken zum Polster (Butterfly), -1: Brust am Polster (Reverse)
+// Butterfly (Brust) bzw. Reverse Butterfly (hintere Schulter): Drehachsen senkrecht über den Schultern, die Hebel laufen oben waagrecht
+// zum Griff hinüber und hängen dort senkrecht herab (sie drehen um die Schulter, um den Körper herum; vorher hing ein Rohr genau auf der
+// Achse und ging durch die Schulter, Devin 31.10.). richtung = 1: Figur sitzt mit dem Rücken zum Polster (Butterfly), -1: Brust am Polster (Reverse)
 function butterflyBauen(ger, z, becken, r, richtung) {
   const R = rumpfRahmen(r), k = rumpf(becken, r);
-  bodenrahmen(ger, -0.42, 0.42, -0.7, 0.52);   // vorderes Rahmenrohr vor den Füßen
+  bodenrahmen(ger, -0.42, 0.42, -0.7, 0.64);   // vorderes Rahmenrohr vor den Zehen (bis 31.10. bei 0,52: Zehen 2,8 cm darin)
   sitzSaeule(ger, V(0, becken.y - 0.115, becken.z + 0.02 * richtung), 0.44, 0.42);
   const lehne = richtung > 0 ? becken.clone().add(R.oben.clone().multiplyScalar(0.36)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045))
     : becken.clone().add(R.oben.clone().multiplyScalar(0.36)).add(R.vor.clone().multiplyScalar(0.245 + 0.045));   // Brustpolster vor der Brust, endet über dem Schoß
@@ -1193,9 +1235,9 @@ function butterflyBauen(ger, z, becken, r, richtung) {
 }
 function butterflyStellen(z, g, hub) {
   for (const s of ['l', 'r']) {
-    const P = z['bfDreh_' + s], h = g.hand[s], oben = V(P.x, h.y + 0.09, P.z);
-    seil(z['bfArm_' + s], P, oben);
-    seil(z['bfQuer_' + s], oben, V(h.x, h.y + 0.09, h.z));
+    const P = z['bfDreh_' + s], h = g.hand[s], ueber = V(h.x, P.y, h.z);   // über dem Griff, in Höhe des Drehlagers
+    seil(z['bfQuer_' + s], P, ueber);
+    seil(z['bfArm_' + s], ueber, V(h.x, h.y + 0.09, h.z));
     z['bfGriff_' + s].position.copy(h); z['bfGriff_' + s].quaternion.identity();
   }
   z.block.heben(0.28 * hub);
@@ -1305,14 +1347,16 @@ function rudergriffV(ger) {
 // Rudermaschine (brustgestützt): Sitz, Brustpolster an einer Säule, zwei Hebelarme mit senkrechten Griffen (Drehachse vorn oben)
 const RM_BECKEN = V(0, 0.58, -0.08), RM_RUMPF = { neigung: 18 };
 const rmSchulter = (sg) => rumpf(RM_BECKEN, RM_RUMPF).schulter[sg > 0 ? 'l' : 'r'];
-const rmVorn = (sg) => rmSchulter(sg).add(V(sg * 0.04, -0.06, ARM * 0.9995)), rmNah = (sg) => rmSchulter(sg).add(V(sg * 0.07, -0.2, 0.06));
+// hinten: Ellbogen gut 40° hinter der Rumpflinie, Unterarm waagrecht zum Hebel (vorher Hände neben der Brust, Ellbogen 64° zurück)
+const rmVorn = (sg) => rmSchulter(sg).add(V(sg * 0.04, -0.06, ARM * 0.9995)), rmNah = (sg) => ruderEnde(rumpf(RM_BECKEN, RM_RUMPF), sg > 0 ? 'l' : 'r', sg, { ext: 42, abd: 22, zug: V(0, -0.1, 1) });
 const RM_C = bogenMitte(rmVorn(1), rmNah(1), { y: 1.72 });
 function rudermaschineBauen(ger, z) {
   const R = rumpfRahmen(RM_RUMPF);
   bodenrahmen(ger, -0.45, 0.45, -0.45, 1.05);
   sitzSaeule(ger, V(0, RM_BECKEN.y - 0.115, RM_BECKEN.z), 0.42, 0.38);
-  const brust = RM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.36)).add(R.vor.clone().multiplyScalar(0.19 + 0.045));
-  ger.polster(0.36, 0.44, 0.09, brust, basisAus(R.oben, R.vor));
+  // Brustpolster 30 cm breit, 2,5 cm weiter vorn: die Oberarme gehen vorn daran vorbei, die Brust liegt an (bis 31.10. 4,7 cm darin)
+  const brust = RM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.36)).add(R.vor.clone().multiplyScalar(0.215 + 0.045));
+  ger.polster(0.3, 0.44, 0.09, brust, basisAus(R.oben, R.vor));
   ger.vierkant(V(0, 0.05, brust.z + 0.25), V(0, brust.y - 0.05, brust.z + 0.25), 0.08);
   ger.vierkant(V(0, brust.y - 0.05, brust.z + 0.25), brust.clone().add(R.vor.clone().multiplyScalar(0.05)), 0.06);
   for (const sx of [-1, 1]) {
@@ -1412,7 +1456,8 @@ export function beinmaschine(o = {}) {
       const z = {};
       if (art === 'beinpresse') return beinpresseBauen(ger, z);
       if (art === 'hackenschmidt') return hackBauen(ger, z, hw);
-      if (band) { ger.box(0.4, 0.45, 1.0, V(0, 0.225, -0.2), ger.mPolster); z.band = ger.stab(V(), V(0, 1, 0), 0.03, ger.mBand); return z; }
+      // Bank 2 cm niedriger und vorn 5 cm kürzer: Oberschenkel und Waden liegen an, statt 4 cm einzusinken (bis 31.10.)
+      if (band) { ger.box(0.4, 0.43, 0.95, V(0, 0.215, -0.225), ger.mPolster); z.band = ger.stab(V(), V(0, 1, 0), 0.03, ger.mBand); return z; }
       if (art === 'beuger_liegend') {
         // Liegender Beinbeuger: Brustpolster, etwas höheres Hüftpolster, Griffe vorn; Drehachse auf dem Kniegelenk, Rolle über den Fersen
         bodenrahmen(ger, -0.26, 0.26, -1.0, 0.72);
@@ -1478,7 +1523,13 @@ export function beinmaschine(o = {}) {
           // Hände an den Griffen neben dem Sitz (Neutralgriff: Handflächen zum Körper)
           hand: seiten((s, sg) => BP_BECKEN.clone().add(V(sg * 0.34, 0, 0)).add(R.oben.clone().multiplyScalar(Math.cos(35 * RAD) * 0.02)).add(R.vor.clone().multiplyScalar(0.02)).add(V(0, 0.012, 0.06))),
           handflaeche: seiten((s, sg) => V(-sg, 0, 0)), ellbogenPol: seiten((s, sg) => V(sg * 0.6, 0, -1)) };
-        if (o.einbeinig) { pose.fuss.r = V(-0.5, FY, 0.06); pose.fussFlaeche.r = V(0, 1, 0); pose.fussRicht.r = V(-0.15, 0, 1); pose.kniePol.r = V(-1, 0.6, 0.4); }   // rechtes Bein ruht unten neben dem Sitz
+        if (o.einbeinig) {
+          // Rechtes Bein ruht: Oberschenkel liegt auf dem Sitz, Knie an der Vorderkante, Unterschenkel hängt locker davor (zwischen den Stützen
+          // der Schienen). Bis 31.10. lag es quer über Sitzkante und Haltegriff zum Boden, 4–5 cm darin; daneben auf den Boden passt es nicht
+          const sitzN = R.oben.clone().multiplyScalar(Math.cos(35 * RAD)).add(R.vor.clone().multiplyScalar(Math.sin(35 * RAD))).normalize(), sitzVor = V(1, 0, 0).cross(sitzN).normalize();
+          const knie = BP_BECKEN.clone().addScaledVector(R.links, -MASS.hueftBreite).addScaledVector(R.oben, -0.02).addScaledVector(sitzVor, MASS.oberschenkel * 0.99).add(V(-0.03, 0, 0));
+          pose.fuss.r = knie.clone().add(V(-0.01, -MASS.unterschenkel * 0.97, 0.09)); pose.fussFlaeche.r = null; pose.fussRicht.r = V(-0.1, -0.4, 1); pose.kniePol.r = sitzVor.clone().addScaledVector(sitzN, 0.4);
+        }
         return { pose, props(g, z) { z.schlitten.position.copy(bpPlatte(hub)); } };
       }
       const becken = band ? V(0, 0.55, -0.1) : SM_BECKEN.clone();
@@ -1649,7 +1700,7 @@ export function bankdruecken(o = {}) {
         const sch = k.schulter[s];
         const brustOben = k.brust.clone().sub(k.R.oben.clone().multiplyScalar(0.14)).add(k.R.vor.clone().multiplyScalar(0.14));
         if (art === 'fliegende') {
-          const w = mix(15, 85, t) * RAD;  // 15° = Arme weit offen, 85° = über der Brust
+          const w = mix(15, 99, t) * RAD;  // 15° = Arme weit offen, 99° = Hanteln treffen sich fast über der Brust (vorher 85°: 52 cm auseinander)
           hand[s] = sch.clone().add(k.R.vor.clone().multiplyScalar(Math.sin(w) * ARM * 0.985)).add(k.R.links.clone().multiplyScalar(sg * Math.cos(w) * ARM * 0.985));   // Ellbogen leicht gebeugt (10–30°)
           epol[s] = k.R.vor.clone().multiplyScalar(-0.3).add(k.R.oben.clone().multiplyScalar(-0.2)).add(k.R.links.clone().multiplyScalar(sg));
         } else if (art === 'ueberzug') {
@@ -1765,7 +1816,8 @@ export function liegestuetz(o = {}) {
           if (!z.b1) return;
           const ruecken = (s) => g.schulter[s].clone().sub(g.R.vor.clone().multiplyScalar(0.135)).add(g.R.oben.clone().multiplyScalar(-0.06));
           const aussen = (sg) => g.R.links.clone().multiplyScalar(sg).sub(g.R.vor).normalize();   // außen am Arm vorbei auf den Rücken
-          bandKette(z, 'b1', umDenKoerper(g, g.hand.l, ruecken('l'), 0.014, aussen(1))); seil(z.b2, ruecken('l'), ruecken('r')); bandKette(z, 'b3', umDenKoerper(g, ruecken('r'), g.hand.r, 0.014, aussen(-1)));
+          // 4,5 cm Abstand zur Ersatzform: das Band liegt am Deltamuskel an statt 3 cm darin (bis 31.10.)
+          bandKette(z, 'b1', umDenKoerper(g, g.hand.l, ruecken('l'), 0.045, aussen(1))); seil(z.b2, ruecken('l'), ruecken('r')); bandKette(z, 'b3', umDenKoerper(g, ruecken('r'), g.hand.r, 0.045, aussen(-1)));
         } };
     },
     blick: V(0, 0.45, 0), abstand: 3.4, kameraRicht: V(1, 0.35, 0.3), dauer: art === 'plyo' ? [0.4, 0.2, 0.9, 0.2] : art === 'schulterblatt' ? [0.8, 0.3, 0.8, 0.3] : undefined
@@ -1827,6 +1879,14 @@ function liegestuetzSchwer(art) {
   };
 }
 
+// Pike auf der Box (45 cm hoch, vorn bei z = −0,3): Knöchel so hoch, dass der Fußballen bei 50° Fersenhub 1 cm über der Box liegt
+const PIKE_FERSE = 50, PIKE_KNOECHEL = V(0, 0.45 + 0.072 + MASS.fussLaenge * BALLEN * Math.sin(PIKE_FERSE * RAD), -0.47);
+// Rumpfrichtung (Becken → Schultern) mit den Schultern bei S, bei der die Hüftgelenke genau L vom Knöchel A liegen (Becken über den Schultern)
+function rumpfZuKnoechel(S, A, L) {
+  const p = Math.hypot(S.y - A.y, S.z - A.z), c = (p * p + 0.49 * 0.49 - L * L) / (2 * 0.49);
+  const psi = Math.atan2(S.z - A.z, S.y - A.y) + Math.acos(Math.max(-1, Math.min(1, c / p)));
+  return V(0, Math.cos(psi), Math.sin(psi));
+}
 // Kopfüber: Pike-Liegestütz, Handstand an der Wand (halten oder drücken)
 function kopfueber(art) {
   const pike = art.startsWith('pike'), stand = art.startsWith('handstand');
@@ -1844,9 +1904,11 @@ function kopfueber(art) {
         oben = mv(V(0, -0.6, 0.8), V(0, -0.42, 0.91), t);
         fuss = seiten((s, sg) => V(sg * 0.1, 0.11, -0.66));
       } else if (art === 'pike_erhoeht') {
+        // Fußballen auf der Box (Ferse 50° gehoben, Zehen flach darauf), Beine gestreckt: die Hüfte bleibt eine Beinlänge vom Knöchel weg und
+        // der Rumpf kippt dafür (bis 31.10. waren die Knie 40° gebeugt, zu Beginn seitlich weggeklappt, und die Zehen steckten 6 cm in der Box)
         sch = mv(V(0, 0.36, 0.45), V(0, 0.55, 0.38), t);   // unten: Scheitel tippt den Boden gerade an (Rumpf fast senkrecht)
-        oben = mv(V(0, -0.97, 0.25), V(0, -0.98, 0.17), t);
-        fuss = seiten((s, sg) => V(sg * 0.1, 0.45 + 0.16, -0.43));
+        oben = rumpfZuKnoechel(sch, PIKE_KNOECHEL, 0.886);
+        fuss = seiten((s, sg) => PIKE_KNOECHEL.clone().setX(sg * 0.1));
       } else {
         // Bauch zur Wand: Wand bei z = 0, Hände 0,3 m davor
         handZ = 0.3;
@@ -1860,10 +1922,12 @@ function kopfueber(art) {
       const o = oben.clone().normalize();
       const becken = sch.clone().sub(o.clone().multiplyScalar(MASS.rumpf - 0.03));
       const r = { basis: basisAus(o, stand ? V(0, 0, -1) : V(0, -1, -0.4)), neigung: 0 };
-      if (!fuss) fuss = seiten((s, sg) => { const f = becken.clone().sub(o.clone().multiplyScalar(BEIN * 0.96)).add(V(sg * 0.09, 0, 0)); if (stand) f.z = Math.max(f.z, -0.04); return f; });   // an der Wand: Zehen liegen an, nicht darin
+      // Beine fast gestreckt (bis 31.10. 0,96: Knie knickten 6 cm zur Wand, 2,6 cm hinein)
+      if (!fuss) fuss = seiten((s, sg) => { const f = becken.clone().sub(o.clone().multiplyScalar(BEIN * 0.98)).add(V(sg * 0.09, 0, 0)); if (stand) f.z = Math.max(f.z, -0.04); return f; });   // an der Wand: Zehen liegen an, nicht darin
       const hand = seiten((s, sg) => V(sg * 0.22, 0.04, handZ));
       return { pose: { becken, rumpf: r, kopf: { neigung: kopf }, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.5, 0.3, -1)),
-        fuss, kniePol: seiten(() => stand ? V(0, 0, -1) : V(0, 0.3, 1)), fussRicht: seiten(() => stand ? V(0, 1, -0.6) : art === 'pike_erhoeht' ? V(0, -0.7, 0.7) : V(0, -0.4, 1)), zehen: seiten(() => (pike ? 35 : 0)) } };
+        fuss, kniePol: seiten(() => stand ? V(0, 0, -1) : V(0, 0.3, 1)), fussRicht: seiten(() => stand ? V(0, 1, -0.6) : art === 'pike_erhoeht' ? V(0, 0, 1) : V(0, -0.4, 1)),
+        fussFlaeche: art === 'pike_erhoeht' ? seiten(() => V(0, 1, 0)) : undefined, zehen: seiten(() => (art === 'pike_erhoeht' ? PIKE_FERSE : pike ? 35 : 0)) } };
     },
     blick: V(0, 0.8, 0.2), abstand: 3.6, kameraRicht: stand ? V(0.9, 0.2, 1) : V(1, 0.25, 0.35), dauer: art === 'handstand' ? STATISCH : undefined
   };
@@ -1927,7 +1991,7 @@ export function schulterdruecken(o = {}) {
           if (z.kb) kettlebellAn(z.kb, g, 'l');
           if (z.kh_l && art === 'arnold') for (const s of ['l', 'r']) hantelAn(z['kh_' + s], g.hand[s], faustAchse(g, s));
           else if (z.kh_l) kurzhantelnAn(z, g, 'quer');
-          if (z.band_l) for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, V(sg * 0.14, 0.02, 0.06), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)));
+          if (z.band_l) for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, bandAmFuss(g, s, sg), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)));
         }
       };
     },
@@ -1957,6 +2021,7 @@ function landmine(o) {
   };
 }
 
+const KSH_TURM = V(-0.6, 0, 0.12);   // Kabel-Seitheben: Turm rechts neben der Figur
 // Heben für die Schulter: art: seitheben | frontheben | reverse_fly | ytw ; last: kurzhanteln | kabel | maschine | band ; vorgebeugt: bool ; sitzend ; brustgestuetzt: bool (Schrägbank)
 // Neu: art aufrecht (aufrechtes Rudern, Kabel vorn unten) | y (Y-Heben, zwei Kabel überkreuzt) ; last scheibe (Frontheben mit Hantelscheibe) ; angelehnt (Seitheben einarmig, rechts am Pfosten)
 export function schulterheben(o = {}) {
@@ -1995,7 +2060,8 @@ export function schulterheben(o = {}) {
       if (angelehnt) ger.box(0.08, 1.8, 0.08, V(-0.45, 0.9, 0.05), ger.mRahmen);
       if (yKabel) { ger.turm(V(0.62, 0, 0.12)); ger.turm(V(-0.62, 0, 0.12)); z.seil_l = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.seil_r = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); }
       else if (last === 'kabel') {
-        z.anker = ger.turm(V(art === 'seitheben' ? -0.55 : 0, 0, art === 'reverse_fly' || art === 'aufrecht' ? 0.7 : -0.55)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel);
+        // Seitheben: Turm rechts neben der Figur, Rolle unten etwas vor der Körperebene (das Kabel läuft vor den Beinen zur linken Hand)
+        z.anker = ger.turm(art === 'seitheben' ? KSH_TURM : V(0, 0, art === 'reverse_fly' || art === 'aufrecht' ? 0.7 : -0.55)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel);
         if (art === 'frontheben' || art === 'aufrecht') z.griff = ger.griff(art === 'aufrecht' ? 0.32 : 0.46);
       }
       if (o.brustgestuetzt) brustbankBauen(ger, V(0, 0.975, 0), { neigung: 45 });
@@ -2017,8 +2083,10 @@ export function schulterheben(o = {}) {
           props(g, z) {
             for (const [sd, sg] of [['l', 1], ['r', -1]]) {
               const P = z['shDreh_' + sd], ua = g.handgelenk[sd].clone().sub(g.ellbogen[sd]).normalize();
-              const aussen = V(0, 0, 1).cross(ua).normalize().multiplyScalar(-sg);   // senkrecht zum Unterarm, vom Körper weg (oben-außen)
-              const pad = g.ellbogen[sd].clone().lerp(g.handgelenk[sd], 0.5).add(aussen.clone().multiplyScalar(0.06));
+              // Polster außen am Arm kurz vor dem Ellbogen (die Seite, in die der Arm hebt: unten außen, oben obendrauf), es liegt an und schiebt
+              // nicht hinein (bis 31.10. lag es auf der Innenseite, 5 cm im Unterarm)
+              const aussen = V(0, 0, 1).cross(ua).normalize().multiplyScalar(sg);
+              const pad = g.ellbogen[sd].clone().lerp(g.handgelenk[sd], 0.3).add(aussen.clone().multiplyScalar(0.085));
               z['pad_' + sd].position.copy(pad); z['pad_' + sd].quaternion.copy(basisAus(ua, V(0, 0, 1)));
               const hinten = V(pad.x, pad.y, P.z);
               seil(z['shArm_' + sd], P, hinten); seil(z['shVor_' + sd], hinten, pad.clone().add(V(0, 0, -0.065)));
@@ -2031,6 +2099,14 @@ export function schulterheben(o = {}) {
       const hand = {}, epol = {};
       for (const [s, sg] of [['l', 1], ['r', -1]]) {
         if (last === 'kabel' && art === 'seitheben' && s === 'r') { hand[s] = becken.clone().add(V(-0.17, 0.05, 0.05)); epol[s] = V(-1, 0, -0.5); continue; }
+        if (last === 'kabel' && art === 'seitheben') {
+          // Kabel-Seitheben wie im Lehrbuch (ExRx, Strengthlog): Griff in der fernen Hand, sie startet vor der anderen Hüfte, das Kabel läuft vor
+          // dem Körper; Arm fast gestreckt seitlich in der Schulterblattebene bis Schulterhöhe. Bis 31.10. kam das Kabel von hinten durch das Bein
+          const d0 = becken.clone().add(V(-0.02, -0.145, 0.17)).sub(k.schulter[s]).normalize(), w1 = 82 * RAD;
+          const d1 = V(0, -Math.cos(w1), 0).addScaledVector(k.R.links, sg * Math.sin(w1)).addScaledVector(k.R.vor, 0.05 + 0.55 * Math.sin(w1)).normalize();
+          hand[s] = k.schulter[s].clone().addScaledVector(d0.clone().applyQuaternion(new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(d0, d1), t)), ARM * 0.985);
+          epol[s] = V(0, 1, 0).addScaledVector(k.R.vor, -0.3); continue;
+        }
         if (angelehnt && s === 'r') { hand[s] = V(-0.41, 1.15, 0.05); epol[s] = V(-0.5, -1, 0); continue; }
         const sch = k.schulter[s];
         if (art === 'aufrecht') {
@@ -2062,7 +2138,7 @@ export function schulterheben(o = {}) {
         epol[s] = art === 'frontheben' ? k.R.links.clone().multiplyScalar(sg) : V(0, 1, 0).add(k.R.vor.clone().multiplyScalar(-0.3));
       }
       const pose = Object.assign({ becken, rumpf: r, hand, ellbogenPol: epol, kniePol: seiten((s, sg) => sitzend ? V(sg * 0.2, 1, 1) : V(sg * 0.2, 0, 1)) }, sitzend ? { fuss: seiten((s, sg) => V(sg * 0.22, FY, 0.42)) } : stehFuesse(0.14, vorgebeugt ? 0.05 : 0));
-      if (art === 'frontheben' && !sitzend) vorDenBeinen(pose, last === 'kurzhanteln' ? 0.075 : last === 'scheibe' ? 0.035 : 0.018);
+      if (art === 'frontheben' && !sitzend) vorDenBeinen(pose, last === 'kurzhanteln' ? 0.085 : last === 'scheibe' ? 0.035 : 0.018);   // Hantelkopf liegt an (bis 31.10. 0,075: 2,6 cm im Oberschenkel)
       if (art === 'aufrecht') { vorDenBeinen(pose, 0.018); vorDemRumpf(pose, 0.018); }
       return {
         pose,
@@ -2080,7 +2156,7 @@ export function schulterheben(o = {}) {
           if (z.scheibe) { z.scheibe.position.copy(mitte); z.scheibe.quaternion.setFromUnitVectors(V(0, 1, 0), g.R.vor); }
           if (z.griff) kabelstangeAn(z.griff, g, V(0, 0.15, art === 'aufrecht' ? 0.7 : -0.55));
           if (z.seil_l) { seil(z.seil_l, V(-0.62, 0.15, 0.12), g.hand.l); seil(z.seil_r, V(0.62, 0.15, 0.12), g.hand.r); }
-          if (z.seil) { const a = V(art === 'seitheben' ? -0.55 : 0, art === 'reverse_fly' ? 1.6 : 0.15, art === 'reverse_fly' || art === 'aufrecht' ? 0.7 : -0.55); const ziel = z.griff ? mitte : g.hand.l; const d = ziel.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(ziel).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); }
+          if (z.seil) { const a = art === 'seitheben' ? KSH_TURM.clone().add(V(0.06, 0.15, 0)) : V(0, art === 'reverse_fly' ? 1.6 : 0.15, art === 'reverse_fly' || art === 'aufrecht' ? 0.7 : -0.55); const ziel = z.griff ? mitte : g.hand.l; const d = ziel.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(ziel).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); }
         }
       };
     },
@@ -2092,6 +2168,8 @@ export function schulterheben(o = {}) {
 /* Ziehen                                                               */
 /* =================================================================== */
 
+// T-Bar brustgestützt: Füße unter den Hüften statt weit vorn (bis 31.10. bei z = 0,15: Knie weit vor, Griffe oben 4 cm in den Oberschenkeln)
+const TB_FUSS_Z = 0.0;
 // Rudern. art: vorgebeugt | einarmig | brustgestuetzt | kabel_sitzend | maschine | umgekehrt | tbar ; last: langhantel | kurzhanteln | kabel | band
 // umgekehrt: knie (Knie gebeugt), einarmig ; kabel_sitzend: griff breit ; brustgestuetzt + langhantel = T-Bar ; tuerrahmen ; kabel_stehend (einarmig) ; tisch: true (umgekehrt an der Tischkante)
 // Neu: pendlay (Stange setzt jede Wdh am Boden ab) | seal (bäuchlings auf hoher Bank) ; last multipresse | kettlebell (einarmig) ;
@@ -2105,7 +2183,8 @@ export function rudern(o = {}) {
   const tbar = last === 'langhantel' && (art === 'brustgestuetzt' || art === 'tbar');
   const tbarBahn = () => {
     const brust = art === 'brustgestuetzt', becken = brust ? V(0, 0.68, -0.15) : V(0, 0.925, -0.17), r = { neigung: brust ? 48 : 47 }, k = rumpf(becken, r);
-    const h0 = (s, sg) => k.schulter[s].clone().add(V(-sg * 0.11, -ARM * 0.985, 0.02)), h1 = (s, sg) => k.brust.clone().sub(k.R.oben.clone().multiplyScalar(0.3)).add(k.R.links.clone().multiplyScalar(sg * 0.08)).add(k.R.vor.clone().multiplyScalar(0.22));   // Griff oben am Bauch (17 cm vor der Wirbelsäule)
+    // brustgestützt: unten hängen die Arme knapp vor der Polsterkante, oben kommt der Griff bis an den unteren Brustkorb
+    const h0 = (s, sg) => k.schulter[s].clone().add(V(-sg * 0.11, -ARM * 0.985, 0.02 + (brust ? 0.04 : 0))), h1 = (s, sg) => k.brust.clone().sub(k.R.oben.clone().multiplyScalar(0.3 - (brust ? 0.04 : 0))).add(k.R.links.clone().multiplyScalar(sg * 0.08)).add(k.R.vor.clone().multiplyScalar(0.22));   // Griff oben am Bauch (17 cm vor der Wirbelsäule)
     const P = bogenMitte(h0('l', 1).setX(0), h1('l', 1).setX(0), { y: 0.1 });
     return { becken, r, P, h0, h1, mitte: (t) => bogenHand(h0('l', 1).setX(0), h1('l', 1).setX(0), P, t) };
   };
@@ -2175,7 +2254,8 @@ export function rudern(o = {}) {
         const becken = V(0, 0.12, -0.25);
         const r = { neigung: mix(22, -4, t) };
         const k = rumpf(becken, r);
-        const hand = seiten((s, sg) => mv(V(sg * 0.12, 0.42, 0.42), k.brust.clone().add(V(sg * 0.18, -0.27, 0.06)), t));
+        // hinten: Ellbogen knapp hinter den Rumpf, Unterarm zum Band an den Füßen (vorher Hände an der Hüfte, Ellbogen 76° zurück)
+        const hand = seiten((s, sg) => mv(V(sg * 0.12, 0.42, 0.42), ruderEnde(k, s, sg, { ext: 40, abd: 15, zug: V(0, -0.3, 1) }), t));
         return { pose: { becken, rumpf: r, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.4, -0.4, -1)),
             fuss: seiten((s, sg) => V(sg * 0.12, FY, -0.25 + BEIN * 0.95)), fussRicht: seiten(() => V(0, 1, 0.25)), kniePol: seiten(() => V(0, 1, 0)) },
           props(g, z) { for (const s of ['l', 'r']) bandKette(z, 'band_' + s, umDenKoerper(g, g.zehe[s].clone().add(V(0, 0.02, 0.02)), g.hand[s])); } };
@@ -2222,12 +2302,14 @@ export function rudern(o = {}) {
         // Pendlay: Stange liegt unten auf dem Boden (Scheibenradius 0,225 m)
         const haengt = pendlay ? V(sg * 0.26, 0.23, k.schulter[s].z + 0.02) : k.schulter[s].clone().add(V(sg * breit, -ARM * 0.9995, 0.02));
         if (unter) flaeche[s] = V(0, 0.2, 1);
-        const gezogen = k.brust.clone().sub(k.R.oben.clone().multiplyScalar(0.3)).add(k.R.links.clone().multiplyScalar(sg * (last === 'kurzhanteln' ? 0.27 : 0.2))).add(k.R.vor.clone().multiplyScalar(0.12));
+        // Kurzhanteln: Ellbogen knapp hinter den Brustkorb, Unterarm senkrecht, Hantel neben dem Bauch (vorher 57° zurück); Stange wie gehabt am Bauch
+        const gezogen = last === 'kurzhanteln' ? ruderEnde(k, s, sg, { ext: 42, abd: brust ? 26 : 14 })   // brustgestützt: Hanteln außen an den Oberschenkeln vorbei
+          : k.brust.clone().sub(k.R.oben.clone().multiplyScalar(0.3)).add(k.R.links.clone().multiplyScalar(sg * 0.2)).add(k.R.vor.clone().multiplyScalar(0.12));
         hand[s] = mv(haengt, gezogen, t);
         epol[s] = V(sg * 0.3, 0.6, -1);
         if (tbar) { const tb = tbarBahn(); hand[s] = bogenHand(tb.h0(s, sg), tb.h1(s, sg), tb.P, t); flaeche[s] = V(-sg, 0, 0); epol[s] = V(sg * 0.5, 0.4, -1); }
       }
-      const pose = Object.assign({ becken, rumpf: r, kopf: { neigung: -20 }, hand, ellbogenPol: epol, handflaeche: flaeche, kniePol: seiten((s, sg) => V(sg * 0.2, 0, 1)) }, stehFuesse(0.15, brust ? (tbar ? 0.15 : -0.42) : 0.05));
+      const pose = Object.assign({ becken, rumpf: r, kopf: { neigung: -20 }, hand, ellbogenPol: epol, handflaeche: flaeche, kniePol: seiten((s, sg) => V(sg * 0.2, 0, 1)) }, stehFuesse(0.15, brust ? (tbar ? TB_FUSS_Z : -0.42) : 0.05));
       if (!tbar && last !== 'kurzhanteln') { vorDemRumpf(pose); vorDenBeinen(pose); }
       return {
         pose,
@@ -2254,9 +2336,11 @@ function sealRudern() {
       const becken = V(0, 1.07, 0.3), r = { basis: BAUCHLAGE, neigung: 0 };
       const k = rumpf(becken, r);
       const L = (sg, f) => k.R.links.clone().multiplyScalar(sg * f);
-      const hand = seiten((s, sg) => mv(k.schulter[s].clone().add(V(0, -ARM * 0.9995, 0)).add(L(sg, 0.04)), k.schulter[s].clone().add(V(0, -0.16, 0.2)).add(L(sg, 0.1)), t));   // unten Arme gestreckt
+      // unten Arme gestreckt; oben Ellbogen knapp hinter dem Rumpf, Unterarm hängt senkrecht (vorher 54° zurück)
+      const hand = seiten((s, sg) => mv(k.schulter[s].clone().add(V(0, -ARM * 0.9995, 0)).add(L(sg, 0.04)), ruderEnde(k, s, sg, { ext: 42, abd: 18 }), t));
       return { pose: { becken, rumpf: r, kopf: { neigung: -15 }, hand, ellbogenPol: seiten((s, sg) => L(sg, 0.4).add(V(0, 1, 0.4))),
-          fuss: seiten((s, sg) => V(0, 0.95, 0.3 + BEIN * 0.96).add(L(sg, 0.1))), kniePol: seiten(() => V(0, -1, 0)), fussRicht: seiten(() => V(0, -0.3, 1)) },
+          // Beine fast gestreckt, Schienbeine liegen vorn auf der Bank, die Knie knapp darüber (bis 31.10. drückten sie 3,7 cm hinein)
+          fuss: seiten((s, sg) => V(0, 0.91, 0.3 + BEIN * 0.995).add(L(sg, 0.1))), kniePol: seiten(() => V(0, -1, 0)), fussRicht: seiten(() => V(0, -0.3, 1)) },
         props(g, z) { kurzhantelnAn(z, g, 'hammer'); } };
     },
     blick: V(0, 0.7, 0), abstand: 3.4, kameraRicht: V(1, 0.3, 0.2)
@@ -2275,7 +2359,7 @@ function rudernStehend(art, o = {}) {
     },
     pose(t) {
       if (art === 'tuerrahmen') {
-        const a = mix(18, 7, t) * RAD;
+        const a = mix(18, 11, t) * RAD;   // oben nicht ganz an den Rahmen: Ellbogen nur knapp hinter den Rumpf (vorher 7°, Ellbogen 61° zurück)
         const fussP = V(0, FY, 0.24);
         const richt = V(0, Math.cos(a), -Math.sin(a));
         const becken = fussP.clone().add(richt.clone().multiplyScalar(BEIN + 0.02));
@@ -2286,7 +2370,8 @@ function rudernStehend(art, o = {}) {
       const becken = V(0, 0.95, 0.02);
       const r = { neigung: 10, drehung: mix(-12, 8, t) };
       const k = rumpf(becken, r);
-      const hand = { r: mv(V(-0.17, 1.18, 0.55), k.schulter.r.clone().add(V(-0.05, -0.3, 0.02)), t), l: becken.clone().add(V(0.17, 0.05, 0.06)) };
+      // hinten: Ellbogen knapp hinter dem Rumpf, Unterarm zum Kabel (vorher Hand an der Taille, Ellbogen 67° zurück)
+      const hand = { r: mv(V(-0.17, 1.18, 0.55), ruderEnde(k, 'r', -1, { ext: 35, abd: 10, zug: V(0, 0.08, 1) }), t), l: becken.clone().add(V(0.17, 0.05, 0.06)) };
       return { pose: { becken, rumpf: r, hand, ellbogenPol: { r: V(-0.4, -0.3, -1), l: V(1, 0, -0.5) }, fuss: { l: V(0.13, FY, 0.3), r: V(-0.13, FY, -0.25) }, zehen: { l: 0, r: 20 }, kniePol: seiten((s, sg) => V(sg * 0.1, 0, 1)) },
         props(g, z) { z.griff.position.copy(g.hand.r); seil(z.seil, V(-0.15, 1.2, 0.95), g.hand.r); } };
     },
@@ -2505,7 +2590,7 @@ export function curl(o = {}) {
       if (art === 'scott') scottBankBauen(ger, z, V(0, 0.56, -0.08));
       if (art === 'konzentration' || art === 'schraeg') ger.box(0.4, 0.45, 0.4, V(0, 0.225, -0.08), ger.mPolster);
       if (art === 'spider') brustbankBauen(ger, V(0, 0.68, -0.15), { neigung: 48 });
-      if (art === 'schraeg') ger.box(0.36, 0.8, 0.08, V(0, 0.8, -0.38), ger.mPolster, -30);
+      if (art === 'schraeg') ger.box(0.3, 0.8, 0.08, V(0, 0.8, -0.405), ger.mPolster, -30);   // Lehne liegt am Rücken an (vorher 4 cm darin), schmal: Oberarme hängen frei daneben
       if (last === 'langhantel' || last === 'sz') z.lh = last === 'sz' ? ger.sz() : ger.langhantel();
       if (last === 'kurzhanteln') khAufbauen(ger, z, art !== 'konzentration');
       if (last === 'kabel') {
@@ -2523,9 +2608,10 @@ export function curl(o = {}) {
       const hand = {}, epol = {}, flaeche = {};
       // Kurzhanteln stehend: unten neben dem Oberschenkel im Hammergriff und etwas außen (Tragewinkel des Ellbogens), beim Hochgehen
       // dreht die Hand in den Untergriff (Supination, Zottman runter in den Obergriff); sonst ginge die Hantel unten ins Bein
-      const khSteh = art === 'stehend' && last === 'kurzhanteln', dreh = khSteh && ['quer', 'ober'].includes(o.griff || 'quer');
+      // Schrägbank ebenso: unten neben der Hüfte im Hammergriff (sonst ragt die quer liegende Hantel ins Gesäß), über dem Gesäß in den Untergriff
+      const khSteh = art === 'stehend' && last === 'kurzhanteln', dreh = (khSteh || (art === 'schraeg' && last === 'kurzhanteln')) && ['quer', 'ober'].includes(o.griff || 'quer');
       // erst drehen, wenn die Hantel vor dem Oberschenkel (Schrägbank: über dem Gesäß) ist
-      const spaet = art === 'schraeg' ? 0.4 : 0, u = glatt((t - 0.15 - spaet) / 0.35), aussenWeg = 1 - glatt((t - spaet) / 0.5);
+      const spaet = art === 'schraeg' ? 0.62 : 0, u = glatt((t - 0.15 - spaet) / (art === 'schraeg' ? 0.25 : 0.35)), aussenWeg = 1 - glatt((t - spaet) / 0.5);
       const aussen = o.griff === 'ober' || (o.zottman && zst && zst.runter) ? -1 : 1;   // Daumen unten nach vorn, oben nach außen (Untergriff), Zottman runter nach innen
       const daumen = (s, sg, R) => ({ daumen: R.vor.clone().multiplyScalar(1 - u).add(R.links.clone().multiplyScalar(sg * aussen * u)).normalize() });
       for (const [s, sg] of [['l', 1], ['r', -1]]) {
@@ -2534,17 +2620,20 @@ export function curl(o = {}) {
         else if (art === 'konzentration') ell = becken.clone().add(V(sg * 0.15, 0.06, 0.35));
         // Ellbogen genau eine Oberarmlänge unter der Schulter, sonst kann der Arm unten nicht ganz strecken
         else if (art === 'spider') ell = k.schulter[s].clone().add(V(sg * 0.02, -MASS.oberarm * 0.97, 0.03).normalize().multiplyScalar(MASS.oberarm * 0.998));
-        else ell = k.schulter[s].clone().add(V(sg * 0.02, -MASS.oberarm * 0.97, art === 'schraeg' ? -0.08 : art === 'stehend' && last !== 'kurzhanteln' && last !== 'band' ? 0.035 : 0.02).normalize().multiplyScalar(MASS.oberarm * 0.998));
+        // Schrägbank: Arme hängen etwas seitlich neben der Bank, sonst streifen die Hanteln beim Hochkommen Hüfte und Gesäß (vorher 8 cm)
+        else ell = k.schulter[s].clone().add(V(sg * (art === 'schraeg' ? 0.09 : 0.02), -MASS.oberarm * 0.97, art === 'schraeg' ? -0.04 : art === 'stehend' && last !== 'kurzhanteln' && last !== 'band' ? 0.035 : 0.02).normalize().multiplyScalar(MASS.oberarm * 0.998));
         // Scott: unten nicht ganz durchstrecken (Bizepssehne), oben fast ganz beugen
         // unten Arm (fast) gestreckt, Scott nicht ganz (Bizepssehne); Schrägbank oben nicht übers Ziel hinaus
         // Stange (Lang-, SZ-Hantel, Kabel) stehend: unten vor den Oberschenkeln, Arm minimal gebeugt, nicht in den Beinen
-        const w = mix(art === 'stehend' && last !== 'kurzhanteln' && last !== 'band' ? 15 : 1, art === 'schraeg' ? 112 : 140, t) * RAD;   // Schrägbank: oben vor den Schultern, nicht über der Brust
+        const w = mix(art === 'stehend' && last !== 'kurzhanteln' && last !== 'band' ? 15 : 1, art === 'schraeg' ? 118 : 140, t) * RAD;   // Schrägbank: oben vor den Schultern, nicht über der Brust
         let ab = V(0, -Math.cos(w), Math.sin(w));
         if (art === 'scott') {   // Scott: Beugung im Ellbogen von SCOTT.beugung[0] bis [1] Grad, gemessen am Oberarm auf dem Polster
           const d = ell.clone().sub(k.schulter[s]).setX(0).normalize(), hoch = V(0, d.z, -d.y), b = mix(SCOTT.beugung[0], SCOTT.beugung[1], t) * RAD;
           ab = d.multiplyScalar(Math.cos(b)).add(hoch.multiplyScalar(Math.sin(b)));
         }
         if (khSteh && art === 'stehend') ab.x += sg * 0.17 * aussenWeg;
+        // Schrägbank: unten hängt der Unterarm in Verlängerung des leicht abgespreizten Oberarms (Arm gestreckt, bis 31.10. 20° gebeugt)
+        if (art === 'schraeg') ab.x += sg * 0.2 * Math.max(0, Math.cos(w));
         hand[s] = genau(ell.clone().add(ab.normalize().multiplyScalar(UNTERARM)));
         if (art === 'konzentration' && s === 'l') { hand[s] = becken.clone().add(V(0.2, 0.05, 0.3)); }
         if (last === 'langhantel' || last === 'sz') hand[s].x = sg * (last === 'sz' ? 0.18 : 0.21);   // etwa schulterbreit, Ellbogen bleiben seitlich am Körper
@@ -2678,10 +2767,11 @@ export function trizeps(o = {}) {
         if (art === 'pushdown') {
           // Oberarm bleibt am Körper (entlang der Rumpfachse), nur der Unterarm bewegt sich
           const ell = k.schulter[s].clone().sub(k.R.oben.clone().multiplyScalar(MASS.oberarm * 0.995)).add(k.R.vor.clone().multiplyScalar(0.01));
-          const w = mix(95, 4, t) * RAD;   // unten (fast) gestreckt, Hände vor den Oberschenkeln
+          const w = mix(95, o.einarmig ? 8 : 4, t) * RAD;   // unten (fast) gestreckt, Hände vor den Oberschenkeln (einarmig: neben dem Oberschenkel)
           hand[s] = genau(ell.clone().add(V(-sg * 0.05, -Math.cos(w) * UNTERARM, Math.sin(w) * UNTERARM)));
           if (o.seil) hand[s].x = sg * mix(0.05, 0.15, t);   // Seil: unten die Enden auseinander
-          epol[s] = V(0, 0, -1);
+          // Pol genau zum geplanten Ellbogen: der Oberarm bleibt an der Rumpfachse (bis 31.10. Pol nach hinten → Oberarm 11–12° davon weg)
+          epol[s] = ell.clone().sub(k.schulter[s].clone().lerp(hand[s], 0.5));
         } else {
           const ell = k.schulter[s].clone().add(V(-sg * 0.04, MASS.oberarm * 0.99, 0.03));
           const w = mix(135, -4, t) * RAD;   // oben ganz gestreckt, unten hinter dem Kopf (nicht im Nacken)
@@ -2689,7 +2779,8 @@ export function trizeps(o = {}) {
           epol[s] = V(sg * 0.2, 1, 0.4);
         }
       }
-      if (o.einarmig && art === 'pushdown') { hand.r.x += 0.04; hand.l = becken.clone().add(V(0.17, 0.05, 0.06)); epol.l = V(1, 0, -0.5); }
+      // einarmig: die Hand endet neben dem Oberschenkel, nicht davor (bis 31.10. Griff 2,6 cm im Oberschenkel)
+      if (o.einarmig && art === 'pushdown') { hand.r.x -= 0.03; hand.l = becken.clone().add(V(0.17, 0.05, 0.06)); epol.l = V(1, 0, -0.5); }
       // Band über Kopf: hinterer Fuß steht auf dem Band
       const fuesse = band ? { fuss: { l: V(0.13, FY, 0.22), r: V(-0.13, FY, -0.25) }, zehen: { l: 0, r: 15 }, kniePol: seiten((s, sg) => V(sg * 0.1, 0, 1)) } : stehFuesse(0.14, 0, 0.25);
       // Untergriff: Handflächen nach oben bzw. vorn ; Seil: Handflächen zueinander
@@ -2707,7 +2798,7 @@ export function trizeps(o = {}) {
             seil(z.seil, anker, mitte.clone().add(anker.clone().sub(mitte).normalize().multiplyScalar(o.einarmig || art !== 'pushdown' ? 0 : 0.03)));
           }
           if (z.band_l) for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, V(sg * 0.04, 2.0, 0.42), g.hand[s], 0.012, g.R.vor));
-          if (band) bandKette(z, 'seil', umDenKoerper(g, V(-0.13, 0.02, -0.25), mitte, 0.015, g.R.vor.clone().negate()));
+          if (band) bandKette(z, 'seil', umDenKoerper(g, bandAmFuss(g, 'r', -1), mitte, 0.015, g.R.vor.clone().negate()));
           if (z.kh_l && art === 'ueberkopf') { z.kh_l.position.copy(mitte); z.kh_l.quaternion.setFromUnitVectors(V(1, 0, 0), g.hand.l.clone().sub(g.ellbogen.l).normalize()); }
         }
       };
@@ -2721,6 +2812,7 @@ export function trizeps(o = {}) {
 /* Rumpf                                                                */
 /* =================================================================== */
 
+const KC_TURM_Z = 0.95;   // Kabelcrunch: Turm vor der knienden Figur
 // art: plank | seitstuetz | deadbug | birddog | crunch | curlup | beinheben_haengend | beinheben_liegend | rollout | pallof | hollow | russian | kabelcrunch | rueckenstrecker | superman
 //   | plank_knie | body_saw | rollout_stehend | reverse_crunch | knieheben_haengend | hollow_rock | bauchmaschine | rueckenstrecker_maschine ; pallof: last band ; rollout: last langhantel
 // Neu: situp | vup | fahrrad | schultertippen | mountain | lsitz | negativ_crunch ; seitstuetz + heben (Hüfte senken und heben)
@@ -2735,7 +2827,9 @@ export function rumpfuebung(o = {}) {
       if (['plank', 'seitstuetz', 'deadbug', 'birddog', 'crunch', 'curlup', 'beinheben_liegend', 'hollow', 'russian', 'superman', 'rollout'].includes(art)) ger.matte();
       if (art === 'beinheben_haengend') z.stange = ger.stange(2.25, 1.2, 0);
       if (band) { ger.box(0.08, 1.4, 0.08, V(-0.9, 0.7, 0), ger.mRahmen); z.seil = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand); z.griff = ger.griff(); z.griff.visible = false; }
-      else if (art === 'pallof' || art === 'kabelcrunch') { ger.turm(V(art === 'pallof' ? -0.9 : 0, 0, art === 'pallof' ? 0 : -0.45)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff = ger.griff(); }
+      else if (art === 'pallof') { ger.turm(V(-0.9, 0, 0)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff = ger.griff(); }
+      // Kabelcrunch: kniend vor dem Turm (Blick zur oberen Rolle), Seilgriff mit Knoten vor dem Gesicht, je ein Ende neben dem Kopf
+      else if (art === 'kabelcrunch') { ger.turm(V(0, 0, KC_TURM_Z)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mScheibe); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mScheibe); }
       if (art === 'rollout' && o.last === 'langhantel') z.lh = ger.langhantel();
       else if (art === 'rollout') { z.rad = ger.zyl(0.1, 0.08, ger.mScheibe, 24); z.rad.rotation.z = Math.PI / 2; }
       if (art === 'rueckenstrecker') { const f = V(0, 0.42, -0.45), bk = V(0, 0.98, 0.12); hyperBauen(ger, f, bk, bk.clone().sub(f).normalize()); }
@@ -2850,12 +2944,18 @@ export function rumpfuebung(o = {}) {
           props(g, z) { const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5); z.griff.position.copy(m); const a = V(-0.9, 1.1, 0); const d = m.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(m).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); } };
       }
       if (art === 'kabelcrunch') {
+        // Wie im Lehrbuch (Strengthlog, ExRx): kniend mit Blick zum Kabelturm, Seilenden neben dem Kopf, die Hüfte bleibt stehen, der Rumpf rollt ein,
+        // bis die Ellbogen zu den Oberschenkeln kommen. Bis 31.10. stand der Turm hinter der Figur und das Kabel lief 5 cm durch Nacken und Kopf
         const becken = V(0, 0.5, 0.0);
         const r = { neigung: mix(25, 75, t) };
         const k = rumpf(becken, r);
-        const hand = seiten((s, sg) => k.brust.clone().add(k.R.oben.clone().multiplyScalar(0.12)).add(k.R.links.clone().multiplyScalar(sg * 0.08)).add(k.R.vor.clone().multiplyScalar(0.1)));
+        const hand = seiten((s, sg) => k.brust.clone().addScaledVector(k.R.oben, 0.12).addScaledVector(k.R.links, sg * 0.14).addScaledVector(k.R.vor, 0.12));
         return { pose: { becken, rumpf: r, kopf: { neigung: 20 }, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.3, -1, 1)), fuss: seiten((s, sg) => V(sg * 0.15, 0.1, -0.42)), kniePol: seiten(() => V(0, -1, 0.4)), fussRicht: seiten(() => V(0, -0.3, -1)) },
-          props(g, z) { const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5); z.griff.position.copy(m); const a = V(0, 2.0, -0.45); const d = m.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(m).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); } };
+          props(g, z) {
+            const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5), a = V(0, 2.0, KC_TURM_Z - 0.07);
+            const knoten = m.clone().add(a.clone().sub(m).normalize().multiplyScalar(0.35));   // Knoten vor dem Gesicht, nicht im Kopf
+            seil(z.seil, a, knoten); seil(z.strang_l, knoten, g.hand.l); seil(z.strang_r, knoten, g.hand.r);
+          } };
       }
       if (art === 'rueckenstrecker') {
         const becken = V(0, 0.98, 0.12);
@@ -2969,9 +3069,10 @@ export function kabelstand(o = {}) {
       } else if (art === 'woodchop' || art === 'holzhacker_quer') {
         r = { neigung: 6, drehung: mix(40, -35, t) };
         const p0 = art === 'woodchop' ? mv(V(0.55, 1.55, 0.25), V(-0.35, 0.65, 0.35), t) : mv(V(0.38, 1.22, 0.38), V(-0.32, 1.18, 0.4), t);
-        // Arme bleiben fast gestreckt: Griff in Richtung p0, auf Armlänge von beiden Schultern
+        // Arme bleiben fast gestreckt: Griff in Richtung p0, auf Armlänge von beiden Schultern (quer: Arme gestreckt vor dem Brustbein, so streift
+        // das Kabel am Ende den linken Unterarm nur; bis 31.10. mit stärker gebeugten Armen 3,5 cm darin)
         const k2 = rumpf(becken, r), mitte = k2.schulter.l.clone().add(k2.schulter.r).multiplyScalar(0.5);
-        const p = mitte.clone().add(p0.sub(mitte).normalize().multiplyScalar(Math.sqrt((ARM * 0.96) ** 2 - MASS.schulterBreite ** 2)));
+        const p = mitte.clone().add(p0.sub(mitte).normalize().multiplyScalar(Math.sqrt((ARM * (art === 'woodchop' ? 0.96 : 0.99)) ** 2 - MASS.schulterBreite ** 2)));
         hand = { l: p.clone().add(V(0.03, 0, 0)), r: p.clone().add(V(-0.03, 0, 0)) }; epol = seiten((s, sg) => V(sg, -1, 0));
       } else {
         // Bein-Übungen am Kabel: rechtes Bein arbeitet
@@ -3003,7 +3104,7 @@ export function kabelstand(o = {}) {
             z.hebel.quaternion.setFromUnitVectors(V(0, -1, 0), d); z.block.heben(0.3 * t); return;
           }
           let ziele = art === 'crossover' || art === 'kabelfly_tief' ? [['seil_l', g.hand.l, anker], ['seil_r', g.hand.r, V(-anker.x, anker.y, anker.z)]] :
-            ['kickback_bein', 'abduktion_bein', 'adduktion_bein'].includes(art) ? [['seil_l', g.knoechel.r.clone().addScaledVector(anker.clone().sub(g.knoechel.r).normalize(), art === 'kickback_bein' ? 0 : 0.055), anker]]   // Kabel an der Manschette, auf der Seite zum Turm
+            ['kickback_bein', 'abduktion_bein', 'adduktion_bein'].includes(art) ? [['seil_l', art === 'kickback_bein' ? g.knoechel.r.clone().add(V(0, 0.035, 0.075)) /* Öse vorn an der Manschette: Kabel läuft über dem Fußrücken, nicht hindurch (bis 31.10. 3 cm) */ : g.knoechel.r.clone().addScaledVector(anker.clone().sub(g.knoechel.r).normalize(), 0.055), anker]]   // Kabel an der Manschette, auf der Seite zum Turm
               : [['seil_l', g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5), anker]];
           if (art === 'facepull') {
             const mitte = ziele[0][1], ueber = g.kopf.clone().addScaledVector(g.R.vor, 0.2).sub(mitte).dot(g.R.vor), knoten = ueber > 0 ? mitte.clone().addScaledVector(g.R.vor, ueber) : mitte;
@@ -3046,7 +3147,10 @@ export function kniestand(o = {}) {
   return {
     aufbau(ger) {
       if (ghd) { ghdBauen(ger, V(0, 0.07 + hy, 0), -MASS.unterschenkel * 0.98, 0.12 + hy); return {}; }   // GHD-Gerät: Kniepolster vorn, Fußplatte mit Rollen hinten
-      ger.matte(); if (art === 'nordic') ger.box(0.5, 0.1, 0.1, V(0, 0.12, -0.49), ger.mPolster); return {};
+      ger.matte();
+      // Polster liegt oben auf der Achillessehne (hält die Fersen unten), zwei Stützen außen; bis 31.10. stand es hinter den Füßen, 3,6 cm darin
+      if (art === 'nordic') { ger.box(0.5, 0.1, 0.1, V(0, 0.21, -0.39), ger.mPolster); for (const sx of [-1, 1]) ger.box(0.05, 0.21, 0.05, V(sx * 0.28, 0.105, -0.39), ger.mRahmen); }
+      return {};
     },
     pose(t) {
       const knie = V(0, 0.07 + hy, 0);
@@ -3088,8 +3192,16 @@ export function seitlage(o = {}) {
         fuss = { l: becken.clone().add(V(0.05, 0.08 + Math.sin(w) * BEIN, BEIN * 0.95 * Math.cos(w))), r: becken.clone().add(V(-0.05, -0.08, BEIN * 0.95)) };
         kpol = seiten(() => V(0, 0, 1));
       }
-      const hand = { l: art === 'aussenrotation' ? k.schulter.l.clone().add(V(0.05, -0.25, 0)).add(V(0, mix(0, 0.22, t), mix(0.25, 0.05, t))) : becken.clone().add(V(0.1, 0.2, 0.05)), r: k.schulter.r.clone().add(V(0, 0.08, -0.3)) };
-      return { pose: { becken, rumpf: r, hand, ellbogenPol: { l: V(0, -1, 0), r: V(0, 1, 0) }, fuss, kniePol: kpol, fussRicht: seiten(() => V(0, 0, 1)) },
+      const hand = { l: becken.clone().add(V(0.1, 0.2, 0.05)), r: k.schulter.r.clone().add(V(0, 0.08, -0.3)) }, epol = { l: V(0, -1, 0), r: V(0, 1, 0) };
+      if (art === 'aussenrotation') {
+        // Oberer Arm: Oberarm liegt seitlich am Rumpf (Ellbogen an der Taille, etwas vor der Körperlinie), Ellbogen 90°; der Unterarm dreht
+        // um den Oberarm von schräg unten vor dem Bauch bis fast senkrecht nach oben (vorher lag die Hantel bis 10 cm in Brust und Rücken)
+        const ober = k.R.oben.clone().negate().multiplyScalar(Math.cos(15 * RAD)).addScaledVector(k.R.vor, Math.sin(15 * RAD)).addScaledVector(k.R.links, -0.18).normalize();
+        const ell = k.schulter.l.clone().addScaledVector(ober, MASS.oberarm), phi = mix(-30, 80, t) * RAD;
+        hand.l = genau(ell.clone().addScaledVector(k.R.vor, Math.cos(phi) * UNTERARM).addScaledVector(k.R.links, Math.sin(phi) * UNTERARM));
+        epol.l = ell.clone().sub(k.schulter.l.clone().lerp(hand.l, 0.5));
+      }
+      return { pose: { becken, rumpf: r, hand, ellbogenPol: epol, fuss, kniePol: kpol, fussRicht: seiten(() => V(0, 0, 1)) },
         props(g, z) { if (z.kh_l) khHalten(z, g, 'l', z.kh_l, 'neutral'); } };
     },
     blick: V(0, 0.3, 0.2), abstand: 3.0, kameraRicht: V(0.6, 0.8, 0.5)
@@ -3150,7 +3262,8 @@ function rumpfNeu(art) {
         const pad = ger.box(0.32, 0.07, 1.3, V(), ger.mPolster); pad.position.copy(dreh(V(0, 0.0, 0.05))); pad.quaternion.copy(qNeg);
         const unter = (zz) => { const n = V(0, 1, 0).applyQuaternion(qNeg), c = pad.position, a = V(0, 0, 1).applyQuaternion(qNeg); return c.y + (zz - c.z) * a.y / a.z - 0.035 / n.y; };
         for (const zz of [-0.35, 0.55]) { const h = unter(zz); ger.box(0.06, h, 0.06, V(0, h / 2, zz), ger.mRahmen); }
-        const rolle = ger.zyl(0.05, 0.36, ger.mPolster); rolle.rotation.z = Math.PI / 2; rolle.position.copy(dreh(V(0, 0.175, 0.83)));
+        // Rolle über dem Rist (Füße eingehakt), nicht neben dem Knöchel (bis 31.10. steckte der Fuß 3,7 cm darin)
+        const rolle = ger.zyl(0.05, 0.36, ger.mPolster); rolle.rotation.z = Math.PI / 2; rolle.position.copy(dreh(V(0, 0.25, 0.83)));
       }
       return z;
     },
@@ -3381,7 +3494,7 @@ export function sonderkniebeuge(o = {}) {
         const becken = mv(V(0, 0.55, -0.32), V(0, 0.95, -0.02), t), r = { neigung: mix(24, 4, t) };
         const k = rumpf(becken, r);
         return { pose: { becken, rumpf: r, hand: seiten((s, sg) => k.schulter[s].clone().add(V(0, -0.05, ARM * 0.93))), ellbogenPol: seiten((s, sg) => V(sg, -1, 0)), fuss: seiten((s, sg) => V(sg * 0.15, FY, 0.1)), kniePol: seiten((s, sg) => V(sg * 0.2, 0, 1)) },
-          props(g, z) { for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, g.knie[s].clone().add(V(0, -0.03, -0.075)), V(sg * 0.47, 0.5, 0.95), 0.012, g.R.links.clone().multiplyScalar(sg))); } };
+          props(g, z) { for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, g.knie[s].clone().add(V(0, -0.05, -0.09)), V(sg * 0.47, 0.5, 0.95), 0.025, g.R.links.clone().multiplyScalar(sg))); } };
       }
       if (art === 'sissy') {
         const becken = mv(V(0, 0.64, 0.12), V(0, 1.03, 0.0), t), r = { neigung: mix(-40, 0, t) };
@@ -3465,11 +3578,13 @@ export function beincurl(o = {}) {
       // Stehend an der Maschine: rechtes Bein beugt, Oberschenkel bleibt senkrecht
       const becken = V(0, 0.975 + 0.1, 0.02), r = { neigung: 14 };
       const k = rumpf(becken, r);
-      const w = mix(26, 105, t) * RAD;   // unten Fuß knapp über der Plattform (Zehen zeigen nach unten)
+      // unten Fuß knapp über der Plattform; Fuß angezogen (15° über der Senkrechten zum Schienbein), so bleiben die Zehen über der Plattform
+      // (bis 31.10. zeigten sie nach unten, 4 cm in die Plattform)
+      const w = mix(26, 105, t) * RAD;
       const knieR = V(-0.1, becken.y - 0.47, 0.06);
       const fussR = knieR.clone().add(V(0, -Math.cos(w) * MASS.unterschenkel, -Math.sin(w) * MASS.unterschenkel));
       return { pose: { becken, rumpf: r, hand: seiten((s, sg) => V(sg * 0.24, 1.25, 0.3)), ellbogenPol: seiten((s, sg) => V(sg, -1, -0.5)),
-          fuss: { l: V(0.12, 0.1 + FY, 0.02), r: fussR }, fussRicht: { l: V(0.1, 0, 1), r: V(0, -Math.sin(w) - 0.15, Math.cos(w)) }, kniePol: { l: V(0.1, 0, 1), r: V(0, 0, 1) } },
+          fuss: { l: V(0.12, 0.1 + FY, 0.02), r: fussR }, fussRicht: { l: V(0.1, 0, 1), r: V(0, -Math.sin(w - 15 * RAD), Math.cos(w - 15 * RAD)) }, kniePol: { l: V(0.1, 0, 1), r: V(0, 0, 1) } },
         props(g, z) { hebelStellen(z, g, 'r', (phi) => 0.28 * Math.max(0, -phi - 26) / 79); } };   // Unterschenkel dreht nach hinten (phi negativ): Block hebt sich ab 26°
     },
     blick: V(0, 0.5, 0.2), abstand: 3.3, kameraRicht: V(1, art === 'stehend' ? 0.25 : 0.45, 0.25)
@@ -3516,9 +3631,10 @@ export function seitstuetz(o = {}) {
         fuss = { r: stuetz.clone(), l: huefteL.add(bein.multiplyScalar(BEIN * 0.97)) };
         kpol = seiten(() => V(-1, 0, 0));
       } else {
-        // oberes Bein liegt auf der Bank, unteres Bein hebt sich bis unter die Bank
+        // oberes Bein liegt auf der Bank, unteres Bein hebt sich bis knapp unter die Bank (kurz: das Knie bleibt unter der Bankkante, bis 31.10.
+        // ging es 4–5 cm hindurch)
         const oben = art === 'copenhagen_lang' ? stuetz.clone() : stuetz.clone().add(b.richt.clone().multiplyScalar(-0.43));
-        const unten = art === 'copenhagen_lang' ? mv(V(0, 0.09, 0.84), V(0, 0.37, 0.84), t) : mv(V(0, 0.09, 0.9), V(0, 0.36, 0.88), t);
+        const unten = art === 'copenhagen_lang' ? mv(V(0, 0.09, 0.84), V(0, 0.37, 0.84), t) : mv(V(0, 0.09, 0.9), V(0, 0.3, 0.86), t);
         fuss = { l: oben, r: unten };
       }
       return { pose: { becken: b.becken, rumpf: b.r, hand: { l: handL, r: handR }, ellbogenPol: { l: V(0, 1, 0), r: V(0.3, -1, 0) }, fuss, kniePol: kpol,
@@ -3586,6 +3702,7 @@ const BM_BECKEN = V(0, 0.56, -0.14), BM_RUMPF = { neigung: -6 };
 const bmSchulter = (sg) => rumpf(BM_BECKEN, BM_RUMPF).schulter[sg > 0 ? 'l' : 'r'];
 const bmUnten = (sg) => bmSchulter(sg).add(V(sg * 0.12, -0.15, 0.12)), bmOben = (sg) => bmSchulter(sg).add(V(-sg * 0.06, -0.12, ARM * 0.99));
 const BM_C = bogenMitte(bmUnten(1), bmOben(1), { y: 1.62 });
+const BAND_PFOSTEN = V(0.6, 1.15, -0.85);   // Band-Brustdrücken: Ansatz des Bands (x je Seite); so weit außen und hinten, dass der Weg hinein frei bleibt
 // Brust an Maschine bzw. mit Band im Stand: art: presse | butterfly | band_stehend
 // Neu: band_stehend + last kabel (zwei Kabeltürme hinter dem Körper)
 export function brustmaschine(o = {}) {
@@ -3596,7 +3713,9 @@ export function brustmaschine(o = {}) {
       const z = {};
       if (art === 'presse') drueckmaschineBauen(ger, z, BM_BECKEN, BM_RUMPF, BM_C, 'senkrecht');
       else if (sitzt) butterflyBauen(ger, z, BM_BECKEN, BM_RUMPF, 1); else if (kabel) { ger.turm(V(0.55, 0, -0.75)); ger.turm(V(-0.55, 0, -0.75)); z.band_l = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.band_r = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff_l = ger.griff(); z.griff_r = ger.griff(); }
-      else { ger.box(0.08, 1.5, 0.08, V(0, 0.75, -0.75), ger.mRahmen); z.band_l = ger.stab(V(), V(0, 1, 0), 0.013, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.013, ger.mBand); }
+      // Band: an zwei Pfosten hinter dem Körper (wie zwei Rack-Streben) knapp unter Brusthöhe, so läuft es unter den Armen nach vorn statt
+      // durch Oberarm und Schulter (bis 31.10.: ein Pfosten in der Mitte, Band 5 cm im Oberarm)
+      else { for (const sx of [-1, 1]) ger.box(0.06, 1.5, 0.06, V(sx * BAND_PFOSTEN.x, 0.75, BAND_PFOSTEN.z - 0.04), ger.mRahmen); z.band_l = ger.stab(V(), V(0, 1, 0), 0.013, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.013, ger.mBand); }
       return z;
     },
     pose(t) {
@@ -3605,7 +3724,9 @@ export function brustmaschine(o = {}) {
       const k = rumpf(becken, r);
       let hand, epol, handflaeche;
       if (art === 'butterfly') {
-        const w = mix(80, 10, t) * RAD;
+        // Bogen um die Schulter von 80° (Arme seitlich, nicht hinter der Rumpfebene) bis −13°: die Griffe treffen sich vor der Brust
+        // (Devin 31.10.: „man geht nicht zusammen“; vorher endete der Bogen außerhalb der Schultern, Hände 63 cm auseinander)
+        const w = mix(80, -13, t) * RAD;
         hand = seiten((s, sg) => k.schulter[s].clone().add(V(sg * Math.sin(w), -0.12, Math.cos(w)).normalize().multiplyScalar(ARM * 0.982)));   // Ellbogen leicht gebeugt
         epol = seiten((s, sg) => V(sg * 0.3, -1, -0.3));
         handflaeche = seiten((s, sg) => V(-sg * Math.cos(w), 0, Math.sin(w)));   // Handfläche zeigt in Zugrichtung (nach innen-vorn)
@@ -3624,7 +3745,7 @@ export function brustmaschine(o = {}) {
           if (z.dm) drueckmaschineStellen(z, g, t);
           if (z.bf) butterflyStellen(z, g, t);
           for (const [s, sg] of [['l', 1], ['r', -1]]) {
-            if (z['band_' + s]) bandKette(z, 'band_' + s, umDenKoerper(g, kabel ? V(sg * 0.5, 1.3, -0.72) : V(sg * 0.03, 1.3, -0.72), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg).addScaledVector(g.R.oben, 0.5).normalize()));
+            if (z['band_' + s]) bandKette(z, 'band_' + s, umDenKoerper(g, kabel ? V(sg * 0.5, 1.3, -0.72) : BAND_PFOSTEN.clone().setX(sg * BAND_PFOSTEN.x), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg).addScaledVector(g.R.oben, 0.5).normalize()));
             if (kabel) { z['griff_' + s].position.copy(g.hand[s]); z['griff_' + s].quaternion.setFromUnitVectors(V(1, 0, 0), V(0, 1, 0)); }
           }
         } };

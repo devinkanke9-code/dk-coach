@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Analyse für dich · DK Coach</title>
+<meta name="theme-color" content="#0b0b0b">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../icon-180.png">
+<!-- DK Coach — Analyse für dich (31.10.2026, Devin: „eine eigene Seite … ein Link, den du einfach draufklickst, da steht Analyse für dich …
+     dann kriegst du die auf WhatsApp und beantwortest diese 10 Fragen … dann kann ich einen Trainingsplan erstellen“). Eigene Seite unter
+     /analyse/, ohne Login, ohne Code, ohne Name. Die Fragen kommen aus der Wissensbasis (anamnese.json → kurzanalyse), build.js setzt sie
+     unten ein. Antworten bleiben auf dem Handy, bis der Kunde sie per WhatsApp an Devin schickt (lesbar plus Zeile DK-Analyse10:…:Ende,
+     die Devin auf seiner Seite einfügt). Kein Gesundheits-Check hier: der kommt danach per App-Link mit Code (a: 3) oder im Gespräch (Plan stoppt bis dahin).
+     Seit 31.10.2026 abends zum Schreiben und ohne Grunddaten (Alter, Geschlecht, Größe, Gewicht trägt Devin beim Einfügen ein). -->
+<link rel="stylesheet" href="../schriften/schriften.css">
+<link rel="stylesheet" href="../stil.css">
+<style>
+html, body { margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+.inhalt { max-width: 560px; }
+.kopf-innen { justify-content: space-between; }
+.zu { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--rand-weich); background: #1a1c20; color: var(--text); font-size: 18px; cursor: pointer; }
+.start { justify-items: center; text-align: center; padding: 28px 18px; }
+.start .logo { width: 84px; height: 84px; border-radius: 20px; }
+.fortschritt { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
+.fortschritt i { height: 5px; border-radius: 999px; background: var(--anthrazit); }
+.fortschritt i.an { background: var(--akzent-verlauf); }
+.nr { font-family: var(--f-zahl); font-size: 12px; letter-spacing: .12em; color: var(--text2); text-transform: uppercase; }
+.frage-titel { font-family: var(--f-display); font-stretch: 125%; font-weight: 800; font-size: clamp(22px, 6.4vw, 28px); line-height: 1.12; text-transform: uppercase; letter-spacing: .02em;
+  background: var(--akzent-verlauf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.eigene textarea { min-height: 72px; }
+.feld.gross textarea { min-height: 150px; font-size: 17px; }   /* Fragen zum Schreiben: das Feld ist die Antwort */
+.eigene > label { color: var(--akzent-hell); }
+.fuss { position: sticky; bottom: 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(180deg, transparent, var(--schwarz) 30%); }
+.zusammen { display: grid; gap: 10px; }
+.zusammen div { display: grid; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--linie); }
+.zusammen div:last-child { border-bottom: 0; }
+.zusammen b { font-size: 13px; color: var(--akzent-hell); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="kopf"><div class="kopf-innen"><span class="marke">DK COACH</span><button class="zu" id="zu" type="button" aria-label="Analyse verlassen" hidden>✕</button></div></header>
+  <main><div class="inhalt" id="inhalt"></div></main>
+</div>
+<script>
+var ANALYSE = {"fragen":[{"id":"ziel","frage":"Was willst du mit dem Training erreichen?","unter":"Tipp dein Hauptziel an und schreib in deinen Worten, woran du merkst, dass es geklappt hat.","frage_ist":"ziel","felder":[{"id":"ziel","label":"Hauptziel","typ":"auswahl","hilfe":"Nur ein Hauptziel. Alles andere ist Nebenziel.","optionen":[{"wert":"muskelaufbau","label":"Muskeln aufbauen"},{"wert":"kraft","label":"Stärker werden"},{"wert":"fettabbau","label":"Fett abbauen"},{"wert":"gesundheit","label":"Gesund und fit bleiben"},{"wert":"fitness_allgemein","label":"Allgemein fitter werden"},{"wert":"ruecken_gesund","label":"Rücken stärken"},{"wert":"beweglichkeit","label":"Beweglicher werden"},{"wert":"ausdauer","label":"Mehr Ausdauer"}],"kurz":"Ziel","pflicht_hier":true},{"id":"ziel_konkret","label":"Woran merkst du, dass du dein Ziel erreicht hast?","typ":"lang","hilfe":"Möglichst mit Zahl oder Bild: '10 Liegestütze am Stück', 'Hose eine Nummer kleiner', '100 kg Kniebeuge'."}]},{"id":"wunsch","frage":"Was soll unbedingt in deinen Plan?","unter":"Beruf, Sport, Körperstelle: Schreib, worauf dein Training genau achten soll.","frage_ist":"wunsch_training","felder":[{"id":"wunsch_training","label":"Was soll unbedingt in deinen Plan?","typ":"lang","hilfe":"Je genauer, desto besser passt dein Plan.","platzhalter":"z. B. Ich bin Dachdecker, mein Rücken soll stärker werden. Oder: Ich spiele Fußball, meine Beine sollen explosiver werden."}]},{"id":"koerper","frage":"Hast du Verletzungen oder Schmerzen?","unter":"Auch alte Verletzungen, die sich manchmal noch melden. Nach Krankheiten fragt danach der kurze Gesundheits-Check.","frage_ist":"beschwerden","felder":[{"id":"beschwerden","label":"Hast du Beschwerden oder alte Verletzungen?","typ":"mehrfach","hilfe":"Auch alte Verletzungen, die sich manchmal noch melden. Medizinische Fragen kommen im separaten Gesundheits-Check.","optionen":[{"wert":"keine","label":"Keine","exklusiv":true},{"wert":"knie","label":"Knie"},{"wert":"schulter","label":"Schulter"},{"wert":"ruecken","label":"Rücken"},{"wert":"huefte","label":"Hüfte"},{"wert":"ellbogen","label":"Ellbogen"},{"wert":"handgelenk","label":"Handgelenk"},{"wert":"sonstiges","label":"Sonstiges"}],"kurz":"Beschwerden","pflicht_hier":true},{"id":"beschwerden_details","label":"Was genau tut weh, und bei welcher Bewegung?","typ":"lang","hilfe":"Z. B. 'Knie vorne beim tiefen Beugen, seit 2 Jahren'. Auch: Was geht ohne Probleme?"}]},{"id":"behalten","frage":"Was willst du auf keinen Fall aufgeben?","unter":"Sport, Essen, Feiern, freie Abende: Dein Plan wird darum herum gebaut, nicht dagegen.","frage_ist":"nicht_aufgeben_details","felder":[{"id":"nicht_aufgeben_details","label":"Was genau?","typ":"lang","platzhalter":"z. B. Fußball am Wochenende, Pizza am Freitag, Feiern mit Freunden"}]},{"id":"tage","frage":"Wie viele Tage pro Woche kannst du sicher trainieren?","unter":"Ehrlich, auch in stressigen Wochen. Lieber 3 sichere als 5 geplante.","frage_ist":"tage_pro_woche","felder":[{"id":"tage_pro_woche","label":"Wie viele Tage pro Woche kannst du sicher trainieren?","typ":"zahl","einheit":"Tage","min":2,"max":6,"hilfe":"Ehrlich, auch in stressigen Wochen. Lieber 3 sichere als 5 geplante, die ausfallen.","schnell":[{"wert":1,"label":"1×"},{"wert":2,"label":"2×"},{"wert":3,"label":"3×"},{"wert":4,"label":"4×"},{"wert":5,"label":"5×"},{"wert":6,"label":"6×"}],"einheit_text":"pro Woche","pflicht_hier":true}]},{"id":"dauer","frage":"Wie viel Zeit hast du pro Training?","unter":"Mit Aufwärmen, ohne Umziehen und Anfahrt.","frage_ist":"minuten_pro_einheit","felder":[{"id":"minuten_pro_einheit","label":"Wie viel Zeit hast du pro Einheit?","typ":"zahl","einheit":"min","min":20,"max":150,"hilfe":"Inklusive Aufwärmen, ohne Umziehen und Anfahrt.","schnell":[{"wert":30,"label":"30 Min"},{"wert":45,"label":"45 Min"},{"wert":60,"label":"60 Min"},{"wert":75,"label":"75 Min"},{"wert":90,"label":"90 Min"}],"pflicht_hier":true}]},{"id":"ort","frage":"Wo trainierst du?","unter":"Im Plan steht nur, was du auch wirklich hast.","frage_ist":"ort","felder":[{"id":"ort","label":"Wo trainierst du?","typ":"auswahl","optionen":[{"wert":"zuhause","label":"Zuhause"},{"wert":"gym","label":"Im Gym"},{"wert":"beides","label":"Beides"}],"kurz":"Ort","pflicht_hier":true},{"id":"ausruestung","label":"Was hast du zu Hause?","typ":"mehrfach","hilfe":"Alles antippen, was da ist. Körpergewicht geht immer.","optionen":[{"wert":"koerpergewicht","label":"Nur Körpergewicht"},{"wert":"band","label":"Widerstandsbänder"},{"wert":"kurzhantel","label":"Kurzhanteln"},{"wert":"kettlebell","label":"Kettlebell"},{"wert":"langhantel","label":"Langhantel mit Scheiben"},{"wert":"sz_stange","label":"SZ-Stange"},{"wert":"maschine","label":"Geführte Maschinen"},{"wert":"kabel","label":"Kabelzug"},{"wert":"smith","label":"Multipresse (Smith)"},{"wert":"bank","label":"Hantelbank"},{"wert":"klimmzugstange","label":"Klimmzugstange"},{"wert":"dipstation","label":"Dipstation / Barren"},{"wert":"box","label":"Box / stabile Erhöhung"}],"kurz":"Geräte","pflicht_hier":true}]},{"id":"erfahrung","frage":"Wie lange machst du schon Krafttraining?","unter":"Kein Problem, wenn du bei null startest.","frage_ist":"erfahrung_monate","felder":[{"id":"erfahrung_monate","label":"Wie lange trainierst du schon regelmäßig Kraft?","typ":"zahl","einheit":"Monate","min":0,"max":600,"hilfe":"Nur Zeit mit mindestens 2 Einheiten pro Woche. Längere Pausen abziehen. Noch nie: 0.","schnell":[{"wert":0,"label":"Noch nie"},{"wert":3,"label":"Bis 6 Monate"},{"wert":9,"label":"6 bis 12 Monate"},{"wert":24,"label":"1 bis 3 Jahre"},{"wert":48,"label":"Über 3 Jahre"}],"kurz":"Training bisher"}]},{"id":"alltag","frage":"Wie sieht dein Alltag aus?","unter":"Job oder Schule, Schlaf, Stress: Erzähl kurz, was dich Kraft kostet.","frage_ist":"ueber_mich","felder":[{"id":"ueber_mich","label":"Was sollte ich sonst noch über dich wissen?","typ":"lang","hilfe":"Deine eigene Antwort, freiwillig.","platzhalter":"z. B. Dachdecker, oft nur 6 Stunden Schlaf, viel Stress"}]},{"id":"uebungen","frage":"Welche Übungen machst du gern, und welche gar nicht?","unter":"Was dir Spaß macht, bleibt drin. Was du nicht magst, fliegt raus.","felder":[{"id":"lieblingsuebungen","label":"Welche Übungen machst du gern?","typ":"lang","hilfe":"Wenn keine: 'keine' schreiben.","kurz":"Gern"},{"id":"abneigungen","label":"Welche Übungen magst du gar nicht?","typ":"lang","hilfe":"Wenn keine: 'keine' schreiben. Gern mit Grund (langweilig, unsicher, tut weh).","kurz":"Lieber nicht"}]}]};
+(function () {
+  'use strict';
+  var SPEICHER = 'dk_analyse10';
+  var S = { schritt: 0, a: {}, gemahnt: {}, raus: false, gesendet: false };
+  try { var alt = JSON.parse(localStorage.getItem(SPEICHER) || 'null'); if (alt && alt.a) { S.a = alt.a; S.schritt = Math.min(+alt.schritt || 0, 11); S.gesendet = !!alt.gesendet; } } catch (e) {}
+  function speichern() { try { localStorage.setItem(SPEICHER, JSON.stringify({ a: S.a, schritt: S.schritt, gesendet: S.gesendet })); } catch (e) {} }
+  var FRAGEN = (ANALYSE && ANALYSE.fragen) || [];
+  var inhalt = document.getElementById('inhalt'), zuKnopf = document.getElementById('zu');
+
+  function h(tag, attr) {
+    var el = document.createElement(tag);
+    for (var k in attr || {}) {
+      var v = attr[k]; if (v == null || v === false) continue;
+      if (k === 'text') el.textContent = v; else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), v);
+      else if (k === 'value') el.value = v; else if (k === 'checked') el.checked = !!v; else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (var i = 2; i < arguments.length; i++) [].concat(arguments[i]).forEach(function (c) { if (c != null && c !== false) el.append(c.nodeType ? c : String(c)); });
+    return el;
+  }
+  function leer(v) { return v == null || v === '' || (Array.isArray(v) && !v.length); }
+  function toast(t) {
+    var alt = document.querySelector('.toast'); if (alt) alt.remove();
+    var el = h('div', { class: 'toast', role: 'status', text: t }); document.body.append(el); setTimeout(function () { el.remove(); }, 2600);
+  }
+  // Im Gym gibt es alles: dann fragt die Seite die Geräte nicht ab (und vor der Wahl des Orts auch nicht)
+  function gymGeraete(f) { return (f.optionen || []).filter(function (o) { return !o.exklusiv && o.wert !== 'koerpergewicht'; }).map(function (o) { return o.wert; }); }
+  function sichtbar(f) { return f.id !== 'ausruestung' || (!!S.a.ort && S.a.ort !== 'gym'); }   // Geräte erst nach Zuhause/Beides
+
+  /* ---------- Felder ---------- */
+  function chips(f, mehr, werte) {
+    return h('div', { class: 'optionen' }, werte.map(function (o) {
+      var an = mehr ? (S.a[f.id] || []).indexOf(o.wert) >= 0 : S.a[f.id] === o.wert;
+      return h('label', null, h('input', { type: mehr ? 'checkbox' : 'radio', name: 'f_' + f.id, checked: an, onchange: function (e) {
+        if (mehr) {
+          var neu = (S.a[f.id] || []).filter(function (w) { return w !== o.wert; });
+          if (e.target.checked) neu = o.exklusiv ? [o.wert] : neu.filter(function (w) { return !werte.some(function (x) { return x.exklusiv && x.wert === w; }); }).concat([o.wert]);
+          S.a[f.id] = neu;
+        } else S.a[f.id] = o.wert;
+        speichern();
+        if (f.id === 'ort' || mehr) zeichne();
+      } }), h('span', { text: o.label }));
+    }));
+  }
+  function feld(f, frageIst) {
+    var label = frageIst ? null : h('label', { for: 'f_' + f.id, text: f.label + (f.pflicht_hier ? ' *' : '') });
+    var hilfe = f.hilfe && !frageIst ? h('p', { class: 'hilfe', text: f.hilfe }) : null;   // die Frage selbst (unter) erklärt schon
+    var eingabe;
+    if (f.typ === 'auswahl') eingabe = chips(f, false, f.optionen || []);
+    else if (f.typ === 'mehrfach') eingabe = chips(f, true, f.optionen || []);
+    else if (f.typ === 'zahl' && f.schnell) eingabe = chips(f, false, f.schnell);
+    else if (f.typ === 'zahl') {
+      var inp = h('input', { class: 'eingabe', id: 'f_' + f.id, type: 'number', inputmode: 'decimal', min: f.min, max: f.max, value: S.a[f.id] != null ? S.a[f.id] : '', autocomplete: 'off',
+        oninput: function (e) { S.a[f.id] = e.target.value === '' ? null : +e.target.value; speichern(); } });
+      eingabe = f.einheit ? h('div', { class: 'mit-einheit' }, inp, h('span', { text: f.einheit })) : inp;
+    } else {
+      eingabe = h('textarea', { class: 'eingabe', id: 'f_' + f.id, placeholder: f.platzhalter || 'Deine eigene Antwort', value: S.a[f.id] || '',
+        oninput: function (e) { S.a[f.id] = e.target.value; speichern(); } });
+    }
+    var eigen = f.typ === 'lang' || f.typ === 'text';
+    return h('div', { class: 'feld' + (eigen ? ' eigene' : '') + (eigen && frageIst ? ' gross' : '') }, label, hilfe, eingabe);
+  }
+
+  /* ---------- Was muss sein ---------- */
+  var MUSS = { ziel: 1, tage_pro_woche: 1, minuten_pro_einheit: 1, ort: 1, ausruestung: 1, beschwerden: 1 };   // Alter, Geschlecht usw. trägt Devin selbst ein
+  function fehlt(q) {
+    return q.felder.filter(function (f) { return MUSS[f.id] && sichtbar(f) && leer(S.a[f.id]); }).map(function (f) { return f.label; });
+  }
+
+  /* ---------- Ansichten ---------- */
+  function start() {
+    var angefangen = Object.keys(S.a).some(function (k) { return !leer(S.a[k]); });
+    return h('section', { class: 'block start' },
+      h('img', { class: 'logo', src: '../icon.svg', alt: '' }),
+      h('h1', { text: 'Analyse für dich' }),
+      h('p', { class: 'leise', text: '10 kurze Fragen, etwa 3 Minuten. Schreib einfach, was du willst, was dir wichtig ist und was weh tut. Danach schickst du deine Antworten per WhatsApp an Devin, und er baut dir einen Plan, der genau zu dir passt.' }),
+      h('p', { class: 'leise klein', text: 'Deine Antworten bleiben auf deinem Handy, bis du sie selbst abschickst. Kein Name, kein Konto.' }),
+      h('button', { class: 'knopf haupt', type: 'button', onclick: function () { S.schritt = angefangen && S.schritt > 0 && S.schritt < 11 ? S.schritt : 1; speichern(); zeichne(); }, text: angefangen && S.schritt > 0 && S.schritt < 11 ? 'Weitermachen (Frage ' + S.schritt + ')' : 'Los geht\'s' }),
+      angefangen ? h('button', { class: 'knopf text', type: 'button', onclick: function () { S.a = {}; S.schritt = 1; S.gesendet = false; S.gemahnt = {}; speichern(); zeichne(); }, text: 'Neu anfangen' }) : null);
+  }
+  function frage(n) {
+    var q = FRAGEN[n - 1];
+    return [
+      h('div', { class: 'fortschritt', 'aria-hidden': 'true' }, FRAGEN.map(function (_, i) { return h('i', { class: i < n ? 'an' : '' }); })),
+      h('section', { class: 'block' },
+        h('p', { class: 'nr', text: 'Frage ' + n + ' von ' + FRAGEN.length }),
+        h('h1', { class: 'frage-titel', text: q.frage }),
+        q.unter ? h('p', { class: 'leise', text: q.unter }) : null,
+        q.felder.filter(sichtbar).map(function (f) { return feld(f, q.frage_ist === f.id); })),
+      h('div', { class: 'fuss reihe' },
+        h('button', { class: 'knopf', type: 'button', onclick: function () { S.schritt = n - 1; speichern(); zeichne(); }, text: 'Zurück' }),
+        h('button', { class: 'knopf haupt', type: 'button', style: 'margin-left:auto', onclick: function () { weiter(n); }, text: n === FRAGEN.length ? 'Fertig' : 'Weiter' }))
+    ];
+  }
+  function weiter(n) {
+    var q = FRAGEN[n - 1], f = fehlt(q);
+    if (f.length) { toast('Bitte noch antippen: ' + f.slice(0, 3).join(', ')); return; }
+    var nichts = q.felder.every(function (x) { return leer(S.a[x.id]); });
+    if (nichts && !S.gemahnt[q.id]) {
+      S.gemahnt[q.id] = true;
+      toast(q.felder.some(function (x) { return x.typ === 'lang' || x.typ === 'text'; }) && !q.felder.some(function (x) { return MUSS[x.id]; }) ? 'Ein Satz reicht schon. Oder tipp nochmal auf Weiter.' : 'Tipp an, was passt. Oder tipp nochmal auf Weiter.');
+      return;
+    }
+    S.schritt = n + 1; speichern(); zeichne();
+  }
+
+  /* ---------- Antworten als Text und als Zeile für Devins Seite ---------- */
+  function wert(f, v) {
+    if (leer(v)) return '';
+    var nimm = function (liste, x) { for (var i = 0; i < (liste || []).length; i++) if (String(liste[i].wert) === String(x)) return liste[i].label; return String(x); };
+    if (f.typ === 'mehrfach') return v.map(function (x) { return nimm(f.optionen, x); }).join(', ');
+    if (f.typ === 'auswahl') return nimm(f.optionen, v);
+    if (f.typ === 'zahl') return f.schnell ? nimm(f.schnell, v) + (f.einheit_text ? ' ' + f.einheit_text : '') : v + (f.einheit ? ' ' + f.einheit : '');
+    return '„' + String(v).trim() + '“';
+  }
+  function antworten() {
+    var a = {};
+    FRAGEN.forEach(function (q) { q.felder.forEach(function (f) { if (!leer(S.a[f.id]) && sichtbar(f)) a[f.id] = S.a[f.id]; }); });
+    FRAGEN.forEach(function (q) { q.felder.forEach(function (f) { if (f.id === 'ausruestung' && a.ort === 'gym') a.ausruestung = gymGeraete(f); }); });
+    return a;
+  }
+  function zeilen() {
+    return FRAGEN.map(function (q, i) {
+      var teile = q.felder.filter(sichtbar).map(function (f) { var w = wert(f, S.a[f.id]); return w ? (f.kurz ? f.kurz + ': ' : '') + w : ''; }).filter(Boolean);
+      return { titel: (i + 1) + '. ' + q.frage, text: teile.join(' · ') || '–' };
+    });
+  }
+  function code() {
+    var json = JSON.stringify({ v: 10, t: Date.now(), a: antworten() }), bytes = new TextEncoder().encode(json), s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return 'DK-Analyse10:' + btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') + ':Ende';
+  }
+  function nachricht() {
+    return 'Hi Devin, hier ist meine Analyse für DK Coach:\n\n' + zeilen().map(function (z) { return z.titel + '\n' + z.text; }).join('\n\n') +
+      '\n\nCode für deine Seite (nicht ändern):\n' + code();
+  }
+  function senden() {
+    var text = nachricht();
+    var fertig = function () { S.gesendet = true; speichern(); zeichne(); };
+    if (navigator.share) { navigator.share({ text: text }).then(fertig).catch(function () {}); return; }
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+    fertig();
+  }
+  function kopieren() {
+    var text = nachricht();
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { toast('Kopiert. Jetzt in WhatsApp an Devin einfügen.'); }, function () {
+      var t = h('textarea', { class: 'eingabe', readonly: true, value: text }); inhalt.append(t); t.select(); toast('Markiert. Kopieren und an Devin schicken.');
+    });
+  }
+  function ende() {
+    if (S.gesendet) return h('section', { class: 'block start' },
+      h('img', { class: 'logo', src: '../icon.svg', alt: '' }),
+      h('h1', { text: 'Danke!' }),
+      h('p', { class: 'leise', text: 'Devin schaut sich deine Antworten an und meldet sich bei dir. Bevor dein Plan startet, kommt noch ein kurzer Gesundheits-Check (etwa 2 Minuten).' }),
+      h('button', { class: 'knopf', type: 'button', onclick: senden, text: 'Nochmal schicken' }),
+      h('button', { class: 'knopf text', type: 'button', onclick: function () { S.schritt = 1; S.gesendet = false; speichern(); zeichne(); }, text: 'Antworten ändern' }));
+    return [
+      h('div', { class: 'fortschritt', 'aria-hidden': 'true' }, FRAGEN.map(function () { return h('i', { class: 'an' }); })),
+      h('section', { class: 'block' },
+        h('h1', { class: 'frage-titel', text: 'Fertig!' }),
+        h('p', { class: 'leise', text: 'Das schickst du Devin. Stimmt alles?' }),
+        h('div', { class: 'zusammen' }, zeilen().map(function (z) { return h('div', null, h('b', { text: z.titel }), h('span', { text: z.text })); })),
+        h('p', { class: 'leise klein', text: 'Mit dem Abschicken gehen deine Antworten an Devin, damit er deinen Plan bauen kann. Sie liegen auf keinem Server.' })),
+      h('div', { class: 'fuss stapel' },
+        h('button', { class: 'knopf haupt', type: 'button', onclick: senden, text: 'Per WhatsApp an Devin schicken' }),
+        h('div', { class: 'reihe' },
+          h('button', { class: 'knopf', type: 'button', onclick: function () { S.schritt = FRAGEN.length; speichern(); zeichne(); }, text: 'Zurück' }),
+          h('button', { class: 'knopf text', type: 'button', style: 'margin-left:auto', onclick: kopieren, text: 'Text kopieren' })))
+    ];
+  }
+  // Ausstieg oben rechts: unterbrechen, die Antworten bleiben auf dem Handy
+  function raus() {
+    return h('section', { class: 'block start' },
+      h('h1', { text: 'Später weitermachen?' }),
+      h('p', { class: 'leise', text: 'Deine Antworten bleiben auf diesem Handy. Öffne einfach wieder den Link, dann geht es da weiter, wo du aufgehört hast.' }),
+      h('button', { class: 'knopf haupt', type: 'button', onclick: function () { S.raus = false; zeichne(); }, text: 'Weiter ausfüllen' }),
+      h('button', { class: 'knopf text', type: 'button', onclick: function () { S.raus = false; S.zurStart = true; zeichne(); }, text: 'Zur Startseite' }));
+  }
+  zuKnopf.addEventListener('click', function () { S.raus = true; zeichne(); });
+
+  function zeichne() {
+    inhalt.textContent = '';
+    if (!FRAGEN.length) { inhalt.append(h('p', { class: 'meldung', text: 'Die Fragen fehlen. Bitte Devin Bescheid geben.' })); return; }
+    var zeige = S.zurStart ? 0 : S.schritt;
+    S.zurStart = false;
+    zuKnopf.hidden = zeige === 0 || S.raus;
+    var teile = S.raus ? raus() : zeige === 0 ? start() : zeige <= FRAGEN.length ? frage(zeige) : ende();
+    [].concat(teile).forEach(function (t) { inhalt.append(t); });
+    window.scrollTo(0, 0);
+  }
+  zeichne();
+})();
+</script>
+</body>
+</html>

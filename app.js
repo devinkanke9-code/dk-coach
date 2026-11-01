@@ -132,9 +132,11 @@ function anmelden(d, code, teil) {
   gesehen(teil); S.wartet = null; speicher.schreib('dk_wartet', null);
   speicher.schreib('dk_konto', d.k); speicher.schreib('dk_aktiv', d.k);   // wer sich einloggt, sieht seinen eigenen Stand
   if (alt && alt.t > d.t) return;   // älterer Link (z. B. der Start-Link vom Home-Bildschirm) überschreibt nie einen neueren Stand
+  // a: 3 = nur Gesundheits-Check (die 10 Fragen kamen schon über die Seite „Analyse für dich“), 2 = Analyse in 10 Fragen, 1 = alle Fragen
+  const form = d.a === 3 ? 'gesundheit' : d.a === 2 ? 'kurz' : d.a ? 'lang' : (alt && alt.form) || null;
   alle[d.k] = { id: d.k, n: d.n || '', bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,
-    analyse: d.p ? null : (alt && alt.analyse) || null,
-    form: d.a === 2 ? 'kurz' : d.a ? 'lang' : (alt && alt.form) || null };   // a: 2 = Analyse in 10 Fragen, 1 = alle Fragen
+    analyse: d.p || (alt && alt.form && alt.form !== form) ? null : (alt && alt.analyse) || null, form,   // andere Abfrage als vorher: nicht mehr „schon geschickt“
+    g: /^(weiblich|maennlich|divers)$/.test(d.g || '') ? d.g : null };   // Geschlecht, das Devin eingetragen hat (die 10 Fragen fragen es nicht): für die Fragen nur für Frauen im Gesundheits-Check
   speicher.schreib('dk_konten', alle);
   if (d.p) {
     // Neuer Plan (anderes Erstelldatum) = Woche 1 ab heute; nur geändert = die Wochen zählen weiter
@@ -317,7 +319,7 @@ function wartenAnsicht() {
   if (geschickt) sendeTextVorbereiten(ko);
   return [h('section', { class: 'block willkommen' }, logo(),
     h('h1', { text: 'Danke' + (vn ? ', ' + vn : '') + '!' }),
-    h('p', { class: 'leise', text: 'Deine Analyse ist bei Devin. Er baut jetzt deinen Plan und schickt dir einen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' }),
+    h('p', { class: 'leise', text: (ko.form === 'gesundheit' ? 'Dein Gesundheits-Check' : 'Deine Analyse') + ' ist bei Devin. Er baut jetzt deinen Plan und schickt dir einen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' }),
     geschickt ? h('div', { class: 'aktionen' }, sendenKnopf(ko, 'Nochmal schicken', 'knopf'),
       h('button', { class: 'knopf', type: 'button', onclick: () => { kontoSetzen(ko.id, { analyse: null }); zeichne(); window.scrollTo(0, 0); }, text: 'Antworten ändern' })) : null,
     einfuegenBlock('Neuen Link einfügen'))];
@@ -329,7 +331,7 @@ function wartenAnsicht() {
  * Was eine Antwort bedeutet (Stopp, Anpassung), entscheidet allein die Trainer-Seite beim Einfügen. */
 let EN = null;   // Entwurf: { id, a: Antworten, s: Gesundheits-Check, zg: Zielgruppen, schritt }
 const entwurfKey = (ko) => 'dk_analyse_' + ko.id;
-function entwurfLaden(ko) { const e = speicher.lies(entwurfKey(ko), null) || {}; return { id: ko.id, a: Object.assign({ name: ko.n || '' }, e.a), s: e.s || {}, zg: e.zg || [], schritt: e.schritt || 0 }; }
+function entwurfLaden(ko) { const e = speicher.lies(entwurfKey(ko), null) || {}; return { id: ko.id, a: Object.assign({ name: ko.n || '' }, ko.g ? { geschlecht: ko.g } : null, e.a), s: e.s || {}, zg: e.zg || [], schritt: e.schritt || 0 }; }
 const entwurfSichern = () => speicher.schreib('dk_analyse_' + EN.id, EN);
 const istJa = (v) => v === true || v === 'weiss_nicht';
 const STEUER = new Set(), STEUER_S = new Set();   // Antworten, von denen Folgefragen abhängen: bei Änderung neu zeichnen
@@ -359,7 +361,7 @@ function anFehler(a) {
 function anFeld(f, ohneLabel) {   // ohneLabel: die Überschrift stellt die Frage schon (Analyse in 10 Fragen), Label nur für Vorleseprogramme
   const id = 'an_' + f.id, wert = EN.a[f.id];
   const setze = (v) => { if (v == null || v === '' || (Array.isArray(v) && !v.length)) delete EN.a[f.id]; else EN.a[f.id] = v; entwurfSichern(); if (STEUER.has(f.id)) zeichne(); };
-  const hilfe = f.hilfe ? h('p', { class: 'hilfe', text: f.hilfe }) : null;
+  const hilfe = f.hilfe && !ohneLabel ? h('p', { class: 'hilfe', text: f.hilfe }) : null;   // Analyse in 10 Fragen: die Frage selbst erklärt schon
   const titel = f.label + (f.pflicht && f.typ !== 'lang' ? ' *' : '');
   if (f.typ === 'auswahl' || f.typ === 'mehrfach' || f.typ === 'ja_nein') {
     const mehr = f.typ === 'mehrfach';
@@ -406,11 +408,11 @@ function sendeTextVorbereiten(ko) {
   if (SENDE.key === key) return;
   // Nur, was gerade sichtbar ist: eine Folgefrage, deren Ausgangsfrage jetzt Nein ist, geht nicht mit
   const a = {}, s = {};
-  ANALYSE.abschnitte.forEach((ab) => ab.felder.forEach((f) => { if (e.a[f.id] != null && anSichtbar(f, e)) a[f.id] = e.a[f.id]; }));
+  if (ko.form !== 'gesundheit') ANALYSE.abschnitte.forEach((ab) => ab.felder.forEach((f) => { if (e.a[f.id] != null && anSichtbar(f, e)) a[f.id] = e.a[f.id]; }));   // nur Check: die Analyse hat Devin schon
   ANALYSE.screening.forEach((f) => { if (e.s[f.id] !== undefined && frageAktiv(f, e)) s[f.id] = e.s[f.id]; });
   const vn = vorname(a.name || ko.n);
   SENDE = { key, text: '', p: K.verpacken(ko.code, { v: 1, k: ko.id, t: Date.now(), a, s, zg: e.zg || [] }).then((z) => {
-    SENDE.text = 'Hi Devin, hier ist meine Analyse für DK Coach' + (vn ? ' (' + vn + ')' : '') + '.\n\nCode für DK Coach (nicht ändern):\nDK-Analyse:' + z + ':Ende';
+    SENDE.text = 'Hi Devin, hier ist ' + (ko.form === 'gesundheit' ? 'mein Gesundheits-Check' : 'meine Analyse') + ' für DK Coach' + (vn ? ' (' + vn + ')' : '') + '.\n\nCode für DK Coach (nicht ändern):\nDK-Analyse:' + z + ':Ende';
     document.querySelectorAll('[data-senden]').forEach((b) => { b.disabled = false; b.textContent = b.dataset.senden; });
   }) };
 }
@@ -440,8 +442,8 @@ const leer = (v) => v == null || v === '' || (Array.isArray(v) && !v.length);
 function analyseAnsicht() {
   const ko = aktivesKonto();
   if (!EN || EN.id !== ko.id) EN = entwurfLaden(ko);
-  const kurz = ko.form === 'kurz' && (ANALYSE.kurz || []).length > 0;
-  const fragen = kurz ? ANALYSE.kurz.map((q, i) => ({ art: 'abschnitt', titel: 'Frage ' + (i + 1), q, a: { felder: q.felder.map((id) => FELD.get(id)).filter(Boolean) } }))
+  const kurz = ko.form === 'kurz' && (ANALYSE.kurz || []).length > 0, nurCheck = ko.form === 'gesundheit';   // nurCheck: Link a: 3
+  const fragen = nurCheck ? [] : kurz ? ANALYSE.kurz.map((q, i) => ({ art: 'abschnitt', titel: 'Frage ' + (i + 1), q, a: { felder: q.felder.map((id) => FELD.get(id)).filter(Boolean) } }))
     : ANALYSE.abschnitte.map((a) => ({ art: 'abschnitt', titel: a.titel, a }));
   const alle = fragen.concat([{ art: 'gesundheit', titel: 'Gesundheits-Check' }, { art: 'senden', titel: 'Abschicken' }]);
   EN.schritt = Math.min(EN.schritt || 0, alle.length - 1);
@@ -450,6 +452,7 @@ function analyseAnsicht() {
   const teile = [h('div', { class: 'plan-kopf' },
     h('h1', { text: EN.schritt === 0 ? 'Hi' + (vn ? ' ' + vn : '') + '!' : akt.q ? akt.titel + ' von ' + fragen.length : akt.titel }),
     EN.schritt === 0 || !akt.q ? h('p', { class: 'leise', text: EN.schritt > 0 ? 'Schritt ' + (EN.schritt + 1) + ' von ' + alle.length
+      : nurCheck ? 'Danke für deine Antworten! Bevor Devin deinen Plan baut, noch ein kurzer Gesundheits-Check (etwa 2 Minuten, nur Ja oder Nein). Deine Antworten bleiben auf dem Handy, bis du sie abschickst.'
       : kurz ? 'Bevor Devin deinen Plan baut, hat er ' + fragen.length + ' Fragen an dich. Danach kommt ein kurzer Gesundheits-Check. Deine Antworten bleiben auf dem Handy, bis du sie abschickst.'
       : 'Bevor Devin deinen Plan baut, braucht er ein paar Infos von dir. Dauert etwa 10 Minuten. Deine Antworten bleiben auf dem Handy, bis du sie abschickst.' }) : null),
     h('div', { class: 'schritte', style: 'grid-template-columns:repeat(' + alle.length + ',1fr)' }, alle.map((s, i) =>
@@ -474,7 +477,11 @@ function analyseAnsicht() {
   }
   const weiter = () => {
     if (akt.art === 'abschnitt') { const f = anFehler(akt.a); if (f.length) { toast('Bitte ausfüllen: ' + f.slice(0, 3).join(', ')); return; } }
-    if (akt.q && !GEMAHNT.has(akt.q.id) && akt.a.felder.every((x) => leer(EN.a[x.id]))) { GEMAHNT.add(akt.q.id); toast('Ein Satz reicht schon. Oder tipp nochmal auf Weiter.'); return; }
+    if (akt.q && !GEMAHNT.has(akt.q.id) && akt.a.felder.every((x) => leer(EN.a[x.id]))) {   // ganz leer: einmal nachhaken (Ankreuzen oder ein Satz), beim zweiten Tipp weiter
+      GEMAHNT.add(akt.q.id);
+      toast(akt.a.felder.some((x) => x.typ === 'auswahl' || x.typ === 'mehrfach') ? 'Tipp an, was passt. Oder tipp nochmal auf Weiter.' : 'Ein Satz reicht schon. Oder tipp nochmal auf Weiter.');
+      return;
+    }
     if (akt.art === 'gesundheit') { const offen = ANALYSE.screening.filter((f) => frageAktiv(f) && EN.s[f.id] === undefined).length; if (offen) { toast('Bitte jede Frage beantworten (' + offen + ' offen)'); return; } }
     gehZu(EN.schritt + 1);
   };
