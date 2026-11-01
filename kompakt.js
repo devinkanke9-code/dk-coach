@@ -110,7 +110,7 @@
    * Der Kunde füllt in der App die Anamnese (ohne Trainer-Felder) und den Gesundheits-Check aus und schickt beides verschlüsselt an Devin.
    * Übernehmen: nur bekannte Felder mit passenden Werten. Gesundheit nur strenger: ein Ja oder „Weiß nicht“ bleibt,
    * Beschwerden und Zielgruppen kommen nur dazu. Level, ärztliche Freigabe und Eltern-Einwilligung setzt nur Devin. */
-  var NUR_TRAINER = ['level', 'notizen_coach', 'schwerpunkt'];   // schwerpunkt seit 01.11.2026: setzt Devin, nie der Kunde
+  var NUR_TRAINER = ['level', 'notizen_coach', 'schwerpunkt', 'saetze_max'];   // schwerpunkt seit 01.11.2026: setzt Devin, nie der Kunde
   var ZG_NUR_TRAINER = ['einsteiger_erwachsene', 'frauen'];   // ergeben sich aus Erfahrung und Geschlecht, hakt Devin an
   function nurTrainer(f) { return NUR_TRAINER.indexOf(f.id) >= 0 || /nur für Devin|trägt Devin/.test(f.label || ''); }
   function analyseAbschnitte(abschnitte) {

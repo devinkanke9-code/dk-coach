@@ -80,14 +80,17 @@ function senkrecht(v, d, ersatz) {
 const richt = (A, B) => B.clone().sub(A).normalize();
 
 /* ---------- Körperform (Verhältnis zur Ruhelage des Modells) ---------- */
-// Körperbau (Devin, 29.10.: „größere Brust, breiter, nicht so dünn“). breite/tiefe je Rumpfknochen gegenüber dem Sportler: oben breit
-// und mit tiefer Brust, zur Taille schmal (V-Form). Die Schulterknochen bekommen ihre Breite aus MASS.schulterBreite, damit die Arme
+// Körperbau wie Devin im Video (1.11.: „1:1 … Muskelaufbau, Körpergröße, Breite“; davor 29.10. „größere Brust, breiter“): breite/tiefe je
+// Rumpfknochen gegenüber dem Sportler-Modell – weniger V als dessen Heldenform, Taille und Hüfte kräftiger, Brust etwas tiefer;
+// kopf = Kopfgröße (jüngere Proportionen). Die Schulterknochen bekommen ihre Breite aus MASS.schulterBreite, damit die Arme
 // genau an den Gelenkpunkten ansetzen. arm/bein = Dicke. brust = wie stark sich die Brust beim Drücken zusammenzieht und beim Absenken dehnt.
+// hals = so viel sitzt der Kopf tiefer als im Modell (m): Devin, 1.11. abends „Körper kürzer … 1,80 Meter“ (vorher 1,825 m Sohle bis
+// Scheitel; die Gelenke bleiben, sonst passten die Übungen nicht mehr). Zugleich „ein kleines bisschen breiter“: obere Brust, Arme, Beine.
 // Exportiert, damit die Werkstatt ihn einstellen kann
 export const BAU = {
-  breite: { Root: 0.92, Hips: 0.92, Spine: 0.95, Spine1: 1.06, Spine2: 1.12, Neck: 1.05 },
-  tiefe: { Root: 1, Hips: 1, Spine: 1, Spine1: 1.08, Spine2: 1.18, LeftShoulder: 1.1, RightShoulder: 1.1, Neck: 1.03 },
-  arm: 1.12, bein: 1.05, brust: 2
+  breite: { Root: 1.03, Hips: 1.04, Spine: 1.07, Spine1: 1.07, Spine2: 1.04, Neck: 1.04 },
+  tiefe: { Root: 1.0, Hips: 1.0, Spine: 1.06, Spine1: 1.06, Spine2: 1.08, LeftShoulder: 1.0, RightShoulder: 1.0, Neck: 1.03 },
+  arm: 1.04, bein: 1.08, brust: 2, kopf: 1.05, hals: 0.018
 };
 // Brustmuskel je Seite in Ruhelage (Mitte, Ausdehnung in m): dort zieht er sich zusammen bzw. dehnt sich
 const BRUST = { x: 0.085, y: 1.385, z: 0.06, bx: 0.075, by: 0.07 };
@@ -255,6 +258,75 @@ function hutRadius(y) {
   }
   return 0;
 }
+// Halskette wie bei Devin im Video (1.11.: „Halskette“): dünne Kette um den Halsansatz, hinten am Nacken, vorn bis aufs Brustbein, mit
+// kleinem Kreuz. Liegt 3 mm über der Haut (Strahlen von der Halsachse nach außen gegen die Haut in Ruhelage) und hängt am oberen
+// Brustkorb (Spine2) wie der Hut am Kopf. Die Form rechnet halsketteFormen einmal je geladenem Körper (nur die Haut um den Hals)
+function halskette(k, P) {
+  if (k.kette === undefined) k.kette = halsketteFormen(k, P) || null;
+  if (!k.kette) return null;
+  const { punkte, normale } = k.kette;
+  const gruppe = new THREE.Group();
+  const metall = new THREE.MeshStandardMaterial({ color: 0x77787c, metalness: 0.85, roughness: 0.32 });
+  gruppe.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(punkte, true), 192, 0.0011, 6, true), metall));
+  // Kreuz: hängt am vordersten, tiefsten Punkt, liegt flach auf dem Brustbein
+  const kreuz = new THREE.Group();
+  const balken = (b, h, y) => { const m = new THREE.Mesh(new THREE.BoxGeometry(b, h, 0.003), metall); m.position.y = y; kreuz.add(m); };
+  balken(0.0045, 0.026, -0.016); balken(0.016, 0.0045, -0.011);
+  kreuz.position.copy(punkte[0]).addScaledVector(normale, 0.002); kreuz.lookAt(kreuz.position.clone().add(normale));
+  gruppe.add(kreuz);
+  gruppe.matrixAutoUpdate = false;
+  gruppe.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+  return gruppe;
+}
+function halsketteFormen(k, P) {
+  const haut = k.meshes.find((m) => m.mat === 'haut');
+  if (!haut) return null;
+  // nur Dreiecke um den Hals (die feine Haut hat 50000; Arme liegen in der Ruhelage weit draußen)
+  const N = P('Neck'), hp = haut.pos, alle = haut.idx.array, um = [];
+  for (let f = 0; f < alle.length; f += 3) {
+    for (let c = 0; c < 3; c++) {
+      const v = alle[f + c];
+      if (Math.abs(hp.getY(v) - N.y + 0.04) < 0.16 && Math.abs(hp.getX(v) - N.x) < 0.22 && Math.abs(hp.getZ(v) - N.z) < 0.3) { um.push(alle[f], alle[f + 1], alle[f + 2]); break; }
+    }
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', hp); geo.setIndex(um);
+  const ziel = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })), strahl = new THREE.Raycaster();
+  const yHinten = N.y + 0.005, yVorn = N.y - 0.09, n96 = 96, punkte = new Array(n96).fill(null), normalen = [];
+  for (let i = 0; i < n96; i++) {
+    const w = (i / n96) * 2 * Math.PI, dir = V(Math.sin(w), 0, Math.cos(w));
+    const y = yHinten - (yHinten - yVorn) * ((1 + Math.cos(w)) / 2) ** 1.6;
+    // waagrecht von der Halsachse nach außen (seitlich läuft der Strahl in Schulter und Arm: dort aus den Nachbarn ergänzen)
+    // vorn hängt sie wie eine echte Kette von den Halsseiten zum Kreuz (seitlich nie weiter als der Hals): Strahl von vorn auf die Brust;
+    // hinten waagrecht von der Halsachse auf den Nacken
+    if (Math.cos(w) > 0) { strahl.set(V(N.x + Math.sin(w) * 0.075, y, N.z + 0.45), V(0, 0, -1)); strahl.far = 0.6; }
+    else { strahl.set(V(N.x, y, N.z), dir); strahl.far = 0.13; }
+    const t = strahl.intersectObject(ziel)[0];
+    // seitlich (Strahl läuft in Schulter und Arm): dicht am Halsansatz auf dem Trapezmuskel, nicht draußen auf der Schulter
+    punkte[i] = t ? t.point.clone() : V(N.x + Math.sin(w) * 0.07, N.y - 0.03, N.z + Math.cos(w) * 0.07);
+    normalen.push(dir);
+  }
+  if (!punkte[0]) return null;
+  // glätten (Rundum-Mittel) und jeden Punkt 3 mm über die nächste Hautstelle schieben (nie hinein)
+  const pos = hp, dreieck = new THREE.Triangle(), q = V(), nah = V(), nn = V();
+  const ueberHaut = (p) => {
+    let best = Infinity;
+    for (let f = 0; f < um.length; f += 3) {
+      dreieck.a.fromBufferAttribute(pos, um[f]); dreieck.b.fromBufferAttribute(pos, um[f + 1]); dreieck.c.fromBufferAttribute(pos, um[f + 2]);
+      if (Math.abs(dreieck.a.y - p.y) > 0.08) continue;
+      dreieck.closestPointToPoint(p, q); const d = q.distanceToSquared(p);
+      if (d < best) { best = d; nah.copy(q); dreieck.getNormal(nn); }
+    }
+    const aussen = nah.clone().sub(V(N.x, nah.y, N.z)).setY(0).normalize().add(V(0, 0.5, 0));   // grob nach außen (Hals, Brust, Trapez)
+    if (nn.dot(aussen) < 0) nn.negate();
+    if (p.clone().sub(nah).dot(nn) < 0.003) p.copy(nah).addScaledVector(nn, 0.003);
+  };
+  for (let r = 0; r < 4; r++) {
+    const alt = punkte.map((p) => p.clone());
+    for (let i = 0; i < n96; i++) punkte[i].copy(alt[(i + n96 - 1) % n96]).add(alt[i]).add(alt[i]).add(alt[(i + 1) % n96]).multiplyScalar(0.25);
+    for (const p of punkte) ueberHaut(p);
+  }
+  return { punkte, normale: normalen[0] };
+}
 function saunahut() {
   const aussen = HUT_AUSSEN;
   const innen = aussen.map(([r, h]) => [Math.max(0, r - 0.007), h + 0.003 - 0.009 * Math.min(1, h / 0.05)]).reverse();   // innen, von oben nach unten
@@ -323,6 +395,109 @@ function logoTextur() {
   }
   _logo = new THREE.CanvasTexture(c); _logo.colorSpace = THREE.SRGBColorSpace; _logo.anisotropy = 4;
   return _logo;
+}
+// Gesicht wie Devin (1.11.: „Haare und Gesicht“, Ziel 1:1): jünger und runder als das Sportler-Modell – untere Gesichtshälfte und Wangen
+// breiter und voller, Kinn kürzer und weniger vorstehend. Nur Kopfpunkte (Gewicht am Kopfknochen), Augenpartie bleibt (dort sitzen die
+// Augäpfel). Einmal je geladenem Körper in der Ruhelage; Maße am Modell gemessen (Kinn y 1,58, Mund 1,62, Nase 1,65, Augen 1,68–1,72)
+function gesichtFormen(k) {
+  const haut = k.meshes.find((m) => m.mat === 'haut'), kopf = k.index.Head;
+  if (!haut || kopf === undefined) return;
+  const p = haut.pos, gi = haut.gel, gw = haut.gew, glatt = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+  for (let i = 0; i < p.count; i++) {
+    let w = 0; for (let j = 0; j < 4; j++) if (gi.getComponent(i, j) === kopf) w += gw.getComponent(i, j);
+    if (w <= 0) continue;
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const vorn = glatt((z + 0.03) / 0.06);                                    // Vorderseite des Kopfes (Gesicht), hinten nichts
+    const unten = glatt((1.685 - y) / 0.03) * glatt((y - 1.555) / 0.02);      // von der Augenlinie abwärts bis unters Kinn
+    const breit = 0.09 * Math.exp(-(((y - 1.625) / 0.04) ** 2));              // am meisten auf Mundhöhe: Kiefer und Wangen
+    const kinn = glatt((1.605 - y) / 0.025) * glatt((z - 0.02) / 0.04);       // Kinnspitze
+    const nx = x * (1 + breit * unten * vorn * w);
+    const ny = y + 0.006 * kinn * w;                                          // Kinn 6 mm kürzer
+    const nz = z - 0.004 * kinn * w + 0.004 * Math.exp(-(((y - 1.645) / 0.02) ** 2)) * glatt((Math.abs(x) - 0.035) / 0.02) * vorn * w;   // Wangen voller
+    p.setXYZ(i, nx, ny, nz);
+  }
+  p.needsUpdate = true;
+}
+// Haut feiner (Devin, 1.11. abends: Muskeln „nicht so eckig … schön smooth … gleichmäßig und weit verteilt“): einmal Loop-Unterteilung
+// (jedes Dreieck → 4, die Punkte rücken auf die glatte Grenzfläche: Umrisse und Muskelübergänge werden rund), Normalen über die
+// Textur-Nähte gemittelt. Ränder (Augen, Mund) bleiben, wo sie sind. Schuhe und lockere Kleidung entstehen vorher aus dem groben Netz
+// (darauf sind sie abgestimmt). 7281 Punkte / 12566 Dreiecke → etwa 27000 / 50000; einmal je geladenem Körper
+function hautVerfeinern(k) {
+  const m = k.meshes.find((x) => x.mat === 'haut');
+  if (!m) return;
+  const P = m.pos.array, n0 = m.pos.count, ix = m.idx.array, T = ix.length / 3;
+  // Punkte gleicher Lage (Textur-Nähte) zusammenfassen
+  const id = new Int32Array(n0), lage = new Map(); let nw = 0;
+  for (let i = 0; i < n0; i++) {
+    const s = Math.round(P[i * 3] * 1e5) + ',' + Math.round(P[i * 3 + 1] * 1e5) + ',' + Math.round(P[i * 3 + 2] * 1e5);
+    let w = lage.get(s); if (w === undefined) lage.set(s, (w = nw++)); id[i] = w;
+  }
+  const W = new Float64Array(nw * 3);
+  for (let i = 0; i < n0; i++) for (let c = 0; c < 3; c++) W[id[i] * 3 + c] = P[i * 3 + c];
+  // Kanten (verschweißt) mit ihren Gegenpunkten; Rand = nicht genau zwei Dreiecke
+  const kante = new Map(), schl = (a, b) => (a < b ? a * nw + b : b * nw + a);
+  for (let t = 0; t < T; t++) for (let e = 0; e < 3; e++) {
+    const a = id[ix[t * 3 + e]], b = id[ix[t * 3 + (e + 1) % 3]], c = id[ix[t * 3 + (e + 2) % 3]];
+    const s = schl(a, b); let g = kante.get(s); if (!g) kante.set(s, (g = [])); g.push(c);
+  }
+  const nb = Array.from({ length: nw }, () => []), rand = new Uint8Array(nw);
+  for (const [s, g] of kante) { const a = Math.floor(s / nw), b = s % nw; nb[a].push(b); nb[b].push(a); if (g.length !== 2) rand[a] = rand[b] = 1; }
+  // Alte Punkte: Loop-Maske (Warren), Randpunkte bleiben
+  const neuW = new Float64Array(nw * 3);
+  for (let v = 0; v < nw; v++) {
+    const n = nb[v].length;
+    if (rand[v] || n < 3) { for (let c = 0; c < 3; c++) neuW[v * 3 + c] = W[v * 3 + c]; continue; }
+    const be = n === 3 ? 3 / 16 : 3 / (8 * n);
+    for (let c = 0; c < 3; c++) { let s = 0; for (const u of nb[v]) s += W[u * 3 + c]; neuW[v * 3 + c] = (1 - n * be) * W[v * 3 + c] + be * s; }
+  }
+  // Neue Punkte: die alten behalten ihre Nummern, dazu einer je Kante und Textur-Seite (an Nähten zwei an derselben Stelle)
+  const kpunkt = new Map(), paar = [], kschl = (i, j) => (i < j ? i * n0 + j : j * n0 + i);
+  for (let t = 0; t < T; t++) for (let e = 0; e < 3; e++) {
+    const i = ix[t * 3 + e], j = ix[t * 3 + (e + 1) % 3], s = kschl(i, j);
+    if (!kpunkt.has(s)) { kpunkt.set(s, n0 + paar.length / 2); paar.push(Math.min(i, j), Math.max(i, j)); }
+  }
+  const N = n0 + paar.length / 2;
+  const pos = new Float32Array(N * 3), uv = new Float32Array(N * 2), gel = new Uint8Array(N * 4), gew = new Uint8Array(N * 4), kleid = new Uint8Array(N * 2), teil = new Uint8Array(N);
+  const U = m.uv.array, GI = m.gel.array, GW = m.gew.array, KL = m.kleid.array, TE = m.teil;
+  for (let i = 0; i < n0; i++) {
+    for (let c = 0; c < 3; c++) pos[i * 3 + c] = neuW[id[i] * 3 + c];
+    for (let c = 0; c < 4; c++) { gel[i * 4 + c] = GI[i * 4 + c]; gew[i * 4 + c] = GW[i * 4 + c]; }
+    uv[i * 2] = U[i * 2]; uv[i * 2 + 1] = U[i * 2 + 1]; kleid[i * 2] = KL[i * 2]; kleid[i * 2 + 1] = KL[i * 2 + 1]; teil[i] = TE[i];
+  }
+  const kw = new Map();   // Knochen → Gewicht beider Endpunkte
+  for (let q = 0; q < paar.length / 2; q++) {
+    const i = paar[q * 2], j = paar[q * 2 + 1], v = n0 + q, a = id[i], b = id[j], g = kante.get(schl(a, b));
+    for (let c = 0; c < 3; c++) pos[v * 3 + c] = g.length === 2 ? 0.375 * (W[a * 3 + c] + W[b * 3 + c]) + 0.125 * (W[g[0] * 3 + c] + W[g[1] * 3 + c]) : 0.5 * (W[a * 3 + c] + W[b * 3 + c]);
+    uv[v * 2] = (U[i * 2] + U[j * 2]) / 2; uv[v * 2 + 1] = (U[i * 2 + 1] + U[j * 2 + 1]) / 2;
+    kleid[v * 2] = (KL[i * 2] + KL[j * 2] + 1) >> 1; kleid[v * 2 + 1] = (KL[i * 2 + 1] + KL[j * 2 + 1] + 1) >> 1;
+    teil[v] = TE[i];
+    kw.clear();
+    for (const x of [i, j]) for (let c = 0; c < 4; c++) { const w = GW[x * 4 + c]; if (w) kw.set(GI[x * 4 + c], (kw.get(GI[x * 4 + c]) || 0) + w); }
+    const best = [...kw].sort((x, y) => y[1] - x[1]).slice(0, 4), summe = best.reduce((s, x) => s + x[1], 0) || 1;
+    let rest = 255;
+    best.forEach(([kn, w], c) => { const q8 = c === best.length - 1 ? Math.max(0, rest) : Math.round(w / summe * 255); gel[v * 4 + c] = kn; gew[v * 4 + c] = q8; rest -= q8; });
+  }
+  const Ix = N > 65535 ? new Uint32Array(T * 12) : new Uint16Array(T * 12);
+  for (let t = 0; t < T; t++) {
+    const a = ix[t * 3], b = ix[t * 3 + 1], c = ix[t * 3 + 2], ab = kpunkt.get(kschl(a, b)), bc = kpunkt.get(kschl(b, c)), ca = kpunkt.get(kschl(c, a));
+    Ix.set([a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca], t * 12);
+  }
+  // Normalen aus den Flächen, über die Nähte gemittelt (Kantenpunkte einer Naht teilen sich ihre verschweißte Kante)
+  const wid = new Int32Array(N), kid = new Map(); let nk = nw;
+  for (let i = 0; i < n0; i++) wid[i] = id[i];
+  for (let q = 0; q < paar.length / 2; q++) { const s = schl(id[paar[q * 2]], id[paar[q * 2 + 1]]); let w = kid.get(s); if (w === undefined) kid.set(s, (w = nk++)); wid[n0 + q] = w; }
+  const acc = new Float64Array(nk * 3);
+  for (let t = 0; t < Ix.length; t += 3) {
+    const a = Ix[t] * 3, b = Ix[t + 1] * 3, c = Ix[t + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const x of [Ix[t], Ix[t + 1], Ix[t + 2]]) { acc[wid[x] * 3] += nx; acc[wid[x] * 3 + 1] += ny; acc[wid[x] * 3 + 2] += nz; }
+  }
+  const nor = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { const w = wid[i] * 3, l = Math.hypot(acc[w], acc[w + 1], acc[w + 2]) || 1; nor[i * 3] = acc[w] / l; nor[i * 3 + 1] = acc[w + 1] / l; nor[i * 3 + 2] = acc[w + 2] / l; }
+  m.pos = new THREE.BufferAttribute(pos, 3); m.uv = new THREE.BufferAttribute(uv, 2); m.nor = new THREE.BufferAttribute(nor, 3);
+  m.gel = new THREE.BufferAttribute(gel, 4); m.gew = new THREE.BufferAttribute(gew, 4, true); m.kleid = new THREE.BufferAttribute(kleid, 2, true);
+  m.idx = new THREE.BufferAttribute(Ix, 1); m.teil = teil;
 }
 // Turnschuhe: Das Modell hat nackte Füße mit Zehen (die Schuhe waren nur aufgemalt). Hier eine eigene Hülle aus den Dreiecken des
 // gemalten Schuhs: im Zehenbereich geglättet (Taubin, behält das Volumen) zu einer runden Kappe, dann 6 mm nach außen (Sohle 2 mm,
@@ -605,17 +780,19 @@ export class FigurModell {
     };
     const t = k.tex || {};   // ohne Texturen (Prüfung in Node): nur Form
     const stoff = {
-      haut: () => new THREE.MeshStandardMaterial({ map: t.haut, normalMap: t['haut-n'], roughness: 0.62, metalness: 0.02 }),
+      haut: () => new THREE.MeshStandardMaterial({ map: t.haut, normalMap: t['haut-n'], normalScale: new THREE.Vector2(0.3, 0.3), roughness: 0.62, metalness: 0.02 }),   // Muskelzeichnung weich und gleichmäßig (Devin 1.11. abends: „nicht so eckig“; vorher 0,55)
       augen: () => new THREE.MeshStandardMaterial({ map: t.augen, roughness: 0.3 }),
-      // Haar-Textur ist grau (Quaternius färbt im Spiel ein): hier dunkelbraun wie FARBEN.haar
-      haar: () => new THREE.MeshStandardMaterial({ map: t.haar, color: 0x4a3426, roughness: 0.85, side: THREE.DoubleSide }),
+      // Haar-Textur ist grau (Quaternius färbt im Spiel ein): hier hellbraun wie Devins Haare (bis 1.11. dunkelbraun)
+      haar: () => new THREE.MeshStandardMaterial({ map: t.haar, color: 0x8a6a48, roughness: 0.85, side: THREE.DoubleSide }),
       schuh: () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, side: THREE.DoubleSide }),
       // Lockere Kleidung (kleidungDaten): DK_STOFF 1 = Tanktop, 2 = Shorts; Kante, Farbe und Fall in shader()
       top: () => stoffMaterial(1), hose: () => stoffMaterial(2)
     };
+    if (!k.gesicht) { gesichtFormen(k); k.gesicht = true; }   // einmal je geladenem Körper, vor allem, was die Haut ausliest
     if (!k.schuhe) k.schuhe = turnschuhDaten(k) || false;   // einmal je geladenem Körper
     if (!k.kleidung) k.kleidung = kleidungDaten(k);
-    this.meshes = [...k.meshes, ...(k.schuhe ? [k.schuhe] : []), ...k.kleidung].map((m) => {
+    if (!k.fein) { hautVerfeinern(k); k.fein = true; }   // nach Schuhen und Stoff (beide auf das grobe Netz abgestimmt)
+    this.meshes =[...k.meshes, ...(k.schuhe ? [k.schuhe] : []), ...k.kleidung].map((m) => {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', m.pos); geo.setAttribute('normal', m.nor); geo.setAttribute('uv', m.uv);
       geo.setAttribute('skinIndex', m.gel); geo.setAttribute('skinWeight', m.gew); geo.setAttribute('kleid', m.kleid); geo.setIndex(m.idx);
@@ -647,6 +824,7 @@ export class FigurModell {
     this.hutPunkte = [];
     for (let i = 0; i < hp.count; i += 7) if (!hi.getX(i)) this.hutPunkte.push(V().fromBufferAttribute(hp, i));
     this.ruhe = this.ruhelage();
+    this.kette = halskette(this.k, this.ruhe.P); if (this.kette) this.gruppe.add(this.kette);
     this.markiere([]);
   }
   // Kleidung über die Haut legen (Devin, 31.10.: „das bin ich“ — graues Tanktop, schwarze Shorts bis übers Knie, weiße Socken und
@@ -775,7 +953,7 @@ export class FigurModell {
     }
     // Kopf: sitzt auf dem Hals, dreht mit kopfQ
     const kx = X.clone().applyQuaternion(g.kopfQ), ky = Y.clone().applyQuaternion(g.kopfQ);
-    setze('Head', abbilden(new THREE.Matrix4(), P('Head'), X, Y, P('Head').clone().applyMatrix4(rumpf.Neck), kx, ky));
+    setze('Head', abbilden(new THREE.Matrix4(), P('Head'), X, Y, P('Head').clone().applyMatrix4(rumpf.Neck).addScaledVector(R.oben, -BAU.hals), kx, ky, BAU.kopf, BAU.kopf, BAU.kopf));
     for (const s of ['l', 'r']) {
       const S = s === 'l' ? 'Left' : 'Right', sg = s === 'l' ? 1 : -1, ru = r[S];
       // Oberarm: Ellbogenbeuge in Ruhe vorn (+Z). Jetzt zeigt sie weg von der Ellbogenspitze (IK-Pol)
@@ -847,6 +1025,7 @@ export class FigurModell {
     // Übrige Knochen (Enden, Wurzel) gehen mit ihrem Elternknochen mit
     this.k.knochen.forEach((kn, i) => { if (!gesetzt.has(i)) A[i].copy(kn.eltern >= 0 ? A[kn.eltern] : rumpf.Hips); });
     this.hut.matrix.copy(A[I.Head]); this.hut.matrixWorldNeedsUpdate = true;
+    if (this.kette) { this.kette.matrix.copy(A[I.Spine2]); this.kette.matrixWorldNeedsUpdate = true; }
     // Brust: Oberarm vor den Körper geführt (Drücken, Butterfly zu) = angespannt, hinter den Körper (Bank unten, Rudern) = gedehnt
     const pec = (s, sg) => {
       const v = richt(g.schulter[s], g.ellbogen[s]), x = v.dot(R.links) * sg, z = v.dot(R.vor);
