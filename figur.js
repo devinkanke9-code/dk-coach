@@ -240,7 +240,8 @@ export function gelenke(pose) {
   return out;
 }
 
-// Hält die Hand etwas? Ja, wenn ein bewegtes Gerät der Vorlage (Stange, Hantel, Griff, Kabel …) oder eine feste Stange die Faustmitte berührt.
+// Hält die Hand etwas? Ja, wenn ein bewegtes Gerät der Vorlage (Stange, Hantel, Griff, Kabel …) oder eine feste Stange die Faustmitte berührt,
+// oder wenn irgendein Griff (dünner Zylinder) der Szene durch die Faust läuft (Maschinengriffe, T-Bar: bis 1.11. blieben dort die Finger offen).
 // g.haelt[s] = Radius des Griffs (m) oder false: dicker Gummigriff, dünne Stange … so schließen sich die Finger genau darum
 const _box = new THREE.Box3(), _gv = new THREE.Vector3(), _ga = new THREE.Vector3(), _gc = new THREE.Vector3();
 export function haltErkennen(g, z, festeStangen = [], gruppe = null) {
@@ -249,9 +250,10 @@ export function haltErkennen(g, z, festeStangen = [], gruppe = null) {
   if (gruppe) gruppe.updateMatrixWorld(true);
   for (const s of ['l', 'r']) {
     const p = g.hand[s];
-    const haelt = !g.flach[s] && (teile.some((o) => _box.setFromObject(o).expandByScalar(0.02).containsPoint(p)) || festeStangen.some((b) => b.containsPoint(p)));
+    const griff = !g.flach[s] && gruppe ? griffRadius([gruppe], p) : 0;
+    const haelt = !g.flach[s] && (griff > 0 || teile.some((o) => _box.setFromObject(o).expandByScalar(0.02).containsPoint(p)) || festeStangen.some((b) => b.containsPoint(p)));
     // pose.faust: Hand ohne Griff zur Faust geschlossen (Arme verschränkt), wie um eine dünne Stange
-    g.haelt[s] = haelt ? griffRadius(gruppe ? [gruppe] : teile, p) || GRIFF_R : g.faust && g.faust[s] ? 0.006 : false;
+    g.haelt[s] = haelt ? griff || griffRadius(teile, p) || GRIFF_R : g.faust && g.faust[s] ? 0.006 : false;
   }
 }
 // Radius des Griffs an einem Punkt: größter dünne Zylinder (Gummi über Chrom), dessen Achse durch die Faust läuft
@@ -899,8 +901,8 @@ export class Ansicht {
     sonne.shadow.mapSize.set(1024, 1024); Object.assign(sonne.shadow.camera, { left: -2, right: 2, top: 2.5, bottom: -1, near: 0.5, far: 12 });
     sonne.shadow.radius = 4; this.szene.add(sonne);
     // Zwei farbige Kantenlichter: Farbe A von hinten links, Farbe B von hinten rechts
-    const kante = new THREE.DirectionalLight(this.farbeA, 1.1); kante.position.set(-3, 2.5, -3); this.szene.add(kante);
-    const kante2 = new THREE.DirectionalLight(this.farbeB, 0.9); kante2.position.set(3, 1.8, -2.5); this.szene.add(kante2);
+    const kante = new THREE.DirectionalLight(this.farbeA, 1.85); kante.position.set(-3, 2.5, -3); this.szene.add(kante);   // Kantenlicht kräftig wie bei einer Spielfigur (bis 1.11.: 1,1 / 0,9)
+    const kante2 = new THREE.DirectionalLight(this.farbeB, 1.5); kante2.position.set(3, 1.8, -2.5); this.szene.add(kante2);
     const boden = new THREE.Mesh(new THREE.CircleGeometry(2.2, 64), mat(FARBEN.boden, { roughness: 0.9, transparent: this.effekte, opacity: this.effekte ? 0.92 : 1 }));
     boden.rotation.x = -Math.PI / 2; boden.receiveShadow = true; this.szene.add(boden);
     const ring = new THREE.Mesh(new THREE.RingGeometry(2.17, 2.2, 96), new THREE.MeshBasicMaterial({ color: this.effekte ? this.farbeB : 0x3a3226, transparent: true, opacity: this.effekte ? 0.55 : 1 }));

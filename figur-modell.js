@@ -85,12 +85,14 @@ const richt = (A, B) => B.clone().sub(A).normalize();
 // kopf = Kopfgröße (jüngere Proportionen). Die Schulterknochen bekommen ihre Breite aus MASS.schulterBreite, damit die Arme
 // genau an den Gelenkpunkten ansetzen. arm/bein = Dicke. brust = wie stark sich die Brust beim Drücken zusammenzieht und beim Absenken dehnt.
 // hals = so viel sitzt der Kopf tiefer als im Modell (m): Devin, 1.11. abends „Körper kürzer … 1,80 Meter“ (vorher 1,825 m Sohle bis
-// Scheitel; die Gelenke bleiben, sonst passten die Übungen nicht mehr). Zugleich „ein kleines bisschen breiter“: obere Brust, Arme, Beine.
+// Scheitel; die Gelenke bleiben, sonst passten die Übungen nicht mehr). Danach Look wie eine Spielfigur (Devin: „wie Fortnite-Skins …
+// sportlich athletischer Körper“, gewählt Muster B, eigener Look): athletisches V – Schultern, obere Brust und Lat breiter, Taille
+// schmaler, Arme und Beine kräftiger
 // Exportiert, damit die Werkstatt ihn einstellen kann
 export const BAU = {
-  breite: { Root: 1.03, Hips: 1.04, Spine: 1.07, Spine1: 1.07, Spine2: 1.04, Neck: 1.04 },
-  tiefe: { Root: 1.0, Hips: 1.0, Spine: 1.06, Spine1: 1.06, Spine2: 1.08, LeftShoulder: 1.0, RightShoulder: 1.0, Neck: 1.03 },
-  arm: 1.04, bein: 1.08, brust: 2, kopf: 1.05, hals: 0.018
+  breite: { Root: 0.98, Hips: 1.0, Spine: 1.0, Spine1: 1.1, Spine2: 1.14, Neck: 1.06 },
+  tiefe: { Root: 1.0, Hips: 1.0, Spine: 1.02, Spine1: 1.08, Spine2: 1.12, LeftShoulder: 1.08, RightShoulder: 1.08, Neck: 1.04 },
+  arm: 1.12, bein: 1.1, brust: 2, kopf: 1.03, hals: 0.018
 };
 // Brustmuskel je Seite in Ruhelage (Mitte, Ausdehnung in m): dort zieht er sich zusammen bzw. dehnt sich
 const BRUST = { x: 0.085, y: 1.385, z: 0.06, bx: 0.075, by: 0.07 };
@@ -103,9 +105,12 @@ const DAUMEN = [10, 18, 14];
 export const FAUST = { finger: [72, 88, 50], daumen: [30, 50, 40], daumenDreh: -60 };
 // Griff wie bei einer echten Hand: Die Stange (Radius r) liegt quer in der Handfläche knapp vor den Fingerknöcheln, parallel zur
 // Knöchellinie (gelenke() knickt die Hand dafür zur Kleinfingerseite). Jeder Finger beugt sich Glied für Glied, bis er die Stange
-// berührt (Fingerdicke ~2,3 cm); der Daumen dreht vor die Handfläche und schließt sich von der anderen Seite um die Stange, bis er
-// außen auf dem Mittelglied des Zeigefingers liegt. Gerechnet in der Ruhelage, einmal je Hand und Radius (auf mm gerundet)
-const DAUMEN_GRIFF = [30, 50, 40];
+// berührt (Fingerdicke ~2,3 cm), Mittel- und Endglied, bis ihr Ende aufliegt (bis 1.11. nur bis zur ersten Berührung: die Spitze stand
+// gerade ab, bei dicken Griffen 3,4–3,8 cm statt ~3 cm von der Achse, Devin: „unprofessionell“). Die Finger rücken dabei zusammen
+// (ANZUG: so viel der Spreizung des Modells fällt weg, sonst Lücken wie bei einer Kralle). Der Daumen dreht vor die Handfläche und
+// schließt sich von der anderen Seite um die Stange, bis er außen auf dem Mittelglied des Zeigefingers liegt. Gerechnet in der Ruhelage,
+// einmal je Hand und Radius (auf mm gerundet)
+const DAUMEN_GRIFF = [30, 50, 40], ANZUG = 0.85;
 const _griffe = new Map();
 const segAbstand = (c, p, q) => {
   const dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy;
@@ -119,8 +124,12 @@ export function griffLoesen(P, ru, S, r) {
   const B = P(S + 'Hand').clone().add(u.clone().multiplyScalar(MASS.griff)).add(v.clone().multiplyScalar(MASS.griffTief));
   const d = w.clone();   // Stange quer zu den Fingern (gelenke() legt sie senkrecht zum Unterarm in die Hand)
   const R = r + 0.0115, MAX = [95, 110, 80];
-  const loes = { finger: {}, glieder: {} };
+  const loes = { finger: {}, glieder: {}, spreiz: {} };
   const abstandZurStange = (p) => { const q = p.clone().sub(B); return q.sub(d.clone().multiplyScalar(q.dot(d))).length(); };
+  // Spreizung je Finger: Winkel des Grundglieds zum Mittelfinger in der Handfläche (um den Handrücken); beim Greifen fällt ANZUG davon weg
+  const inFlaeche = (f) => { const x = P(S + 'Hand' + f + '2').clone().sub(P(S + 'Hand' + f + '1')); return x.sub(v.clone().multiplyScalar(x.dot(v))).normalize(); };
+  const mitte = inFlaeche('Middle');
+  for (const f of FINGER) { const x = inFlaeche(f); loes.spreiz[f] = Math.atan2(mitte.clone().cross(x).dot(ru.ruecken), mitte.dot(x)) * ANZUG; }
   for (const f of FINGER) {
     const J = [1, 2, 3, 4].map((j) => P(S + 'Hand' + f + j));
     const C = B.clone().add(d.clone().multiplyScalar(J[0].clone().sub(B).dot(w) / d.dot(w)));
@@ -130,8 +139,9 @@ export function griffLoesen(P, ru, S, r) {
     const winkel = [];
     for (let k = 0; k < 3; k++) {
       const a = zw(J[k + 1]), b = zw(J[k]), L = Math.hypot(a[0] - b[0], a[1] - b[1]), e0 = Math.atan2(a[1] - b[1], a[0] - b[0]);
-      // Glied dreht, bis es die Stange berührt; liegt sein Anfang schon an der Stange (dicker Griff), bis sein Ende aufliegt
-      const innen = Math.hypot(p[0] - c[0], p[1] - c[1]) < R;
+      // Grundglied dreht, bis es die Stange berührt (liegt sein Anfang schon daran: dicker Griff, bis sein Ende aufliegt);
+      // Mittel- und Endglied legen sich ganz herum, bis ihr Ende aufliegt
+      const innen = k > 0 || Math.hypot(p[0] - c[0], p[1] - c[1]) < R;
       let th = 0;
       while (th < MAX[k]) {
         const ang = e0 + phi + th * RAD, q = [p[0] + Math.cos(ang) * L, p[1] + Math.sin(ang) * L];
@@ -145,7 +155,7 @@ export function griffLoesen(P, ru, S, r) {
   }
   // Gebeugte Finger (Gelenkpunkte in der Ruhelage), für das Ziel des Daumens und damit er nicht durch die Finger geht
   const gebeugt = (f) => {
-    let m = new THREE.Matrix4(); const pts = [P(S + 'Hand' + f + '1').clone()];
+    let m = umPunkt(P(S + 'Hand' + f + '1'), ru.ruecken, -loes.spreiz[f]); const pts = [P(S + 'Hand' + f + '1').clone()];
     for (let j = 1; j <= 3; j++) { m = m.clone().multiply(umPunkt(P(S + 'Hand' + f + j), w, loes.finger[f][j - 1] * RAD)); pts.push(P(S + 'Hand' + f + (j + 1)).clone().applyMatrix4(m)); }
     return pts;
   };
@@ -780,7 +790,10 @@ export class FigurModell {
     };
     const t = k.tex || {};   // ohne Texturen (Prüfung in Node): nur Form
     const stoff = {
-      haut: () => new THREE.MeshStandardMaterial({ map: t.haut, normalMap: t['haut-n'], normalScale: new THREE.Vector2(0.3, 0.3), roughness: 0.62, metalness: 0.02 }),   // Muskelzeichnung weich und gleichmäßig (Devin 1.11. abends: „nicht so eckig“; vorher 0,55)
+      // Haut wie eine Spielfigur (Muster B): glatt, weicher warmer Schimmer an den Kanten (sheen), leichter Glanz (clearcoat), Poren kaum
+      // (Normalen 0,15; bis 1.11. 0,55 → 0,3 → 0,15)
+      haut: () => new THREE.MeshPhysicalMaterial({ map: t.haut, normalMap: t['haut-n'], normalScale: new THREE.Vector2(0.15, 0.15), roughness: 0.5, metalness: 0,
+        sheen: 0.7, sheenColor: new THREE.Color(0xffb48c), sheenRoughness: 0.45, clearcoat: 0.12, clearcoatRoughness: 0.35, color: new THREE.Color(0xfff2ea) }),
       augen: () => new THREE.MeshStandardMaterial({ map: t.augen, roughness: 0.3 }),
       // Haar-Textur ist grau (Quaternius färbt im Spiel ein): hier hellbraun wie Devins Haare (bis 1.11. dunkelbraun)
       haar: () => new THREE.MeshStandardMaterial({ map: t.haar, color: 0x8a6a48, roughness: 0.85, side: THREE.DoubleSide }),
@@ -997,7 +1010,8 @@ export class FigurModell {
       const winkel = KRUEMMUNG;
       let krumm = flach ? 0 : haelt ? 1 : Math.max(0, Math.min(1, (wrist.y - 0.07) / 0.13));
       if (!flach && !haelt) for (const c of [krumm, 0.6, 1]) { krumm = c; if (P(S + 'HandMiddle4').clone().applyMatrix4(kette('Middle', zuHand, winkel, c)[3][1]).y > 0.01) break; }
-      for (const f of FINGER) for (const [n, m] of kette(f, zuHand, griff ? griff.finger[f] : winkel, griff ? 1 : krumm)) setze(n, m);
+      for (const f of FINGER) for (const [n, m] of kette(f, zuHand, griff ? griff.finger[f] : winkel, griff ? 1 : krumm,
+        griff ? hand.clone().multiply(umPunkt(P(S + 'Hand' + f + '1'), ru.ruecken, -griff.spreiz[f])) : hand)) setze(n, m);
       const daumenStart = flach ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, ru.daumenFlach))
         : griff ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.ruecken.clone().negate(), griff.daumen.abd * RAD)).multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, griff.daumen.dreh * RAD)) : hand;
       for (const [n, m] of kette('Thumb', daumenAchse, griff ? DAUMEN_GRIFF : DAUMEN, griff ? griff.daumen.curl : krumm, daumenStart)) setze(n, m);
