@@ -188,10 +188,13 @@ function schienenAn(z) {
     });
   }
 }
-// Hände an einer Multipresse: alle Hand-Ziele auf eine Linie (z fest = Mittel über die Bewegung), weil die Stange nur senkrecht fahren kann
-function smithFuehren(f, oben = false) {
+// Hände an einer Multipresse: alle Hand-Ziele auf eine Linie (z fest = Mittel über die Bewegung), weil die Stange nur senkrecht fahren kann.
+// anker 'oben': Linie durch die Stange oben (Schulterdrücken: über der Schulter), höchstens 8° schräg; 'mitte' (Bankdrücken): Linie durch die
+// Mitte zwischen Brustpunkt unten und Lockout über der Schulter, bis 13° schräg – so stehen die Unterarme unten fast senkrecht und die Stange
+// liegt oben noch über dem Schultergelenk (bis 1.11. Anker oben, 8°: Unterarm unten 19° zum Kopf geneigt)
+function smithFuehren(f, ankerVon = null) {
   return (o = {}) => {
-    const a = f(o);
+    const a = f(o), anker = typeof ankerVon === 'function' ? ankerVon(o) : ankerVon;
     if (o.last !== 'multipresse' || !a.pose) return a;
     const pose = a.pose;
     let zFest = null;
@@ -202,8 +205,8 @@ function smithFuehren(f, oben = false) {
         const bei = (u) => { const h = pose.call(a, u, z).pose.hand; return { y: (h.l.y + h.r.y) / 2, z: (h.l.z + h.r.z) / 2 }; };
         const o1 = bei(1), u0 = bei(0);
         // Bank-/Schulterdrücken: Linie durch die Stange oben (über der Schulter), höchstens 8° schräg zur Stange unten (wie echte Smith-Maschinen)
-        const kipp = oben ? Math.max(-8 * RAD, Math.min(8 * RAD, Math.atan2(o1.z - u0.z, o1.y - u0.y))) : 0;
-        zFest = oben ? { y: o1.y, z: o1.z, kipp } : { y: 0, z: [0, 0.25, 0.5, 0.75, 1].map((u) => bei(u).z).reduce((x, y) => x + y, 0) / 5, kipp: 0 };
+        const grenze = (anker === 'mitte' ? 13 : 8) * RAD, kipp = anker ? Math.max(-grenze, Math.min(grenze, Math.atan2(o1.z - u0.z, o1.y - u0.y))) : 0;
+        zFest = anker === 'oben' ? { y: o1.y, z: o1.z, kipp } : anker === 'mitte' ? { y: (o1.y + u0.y) / 2, z: (o1.z + u0.z) / 2, kipp } : { y: 0, z: [0, 0.25, 0.5, 0.75, 1].map((u) => bei(u).z).reduce((x, y) => x + y, 0) / 5, kipp: 0 };
       }
       if (z) z.smithLinie = zFest;
       for (const s of ['l', 'r']) { const n = genau(erg.pose.hand[s].clone()); n.z = zFest.z + (n.y - zFest.y) * Math.tan(zFest.kipp); erg.pose.hand[s] = n; }   // genau: die Faust bleibt auf der Linie, auch bei fast gestreckten Armen
@@ -262,7 +265,9 @@ export function kniebeuge(o = {}) {
     },
     pose(t) {
       // Unten Oberschenkel mindestens waagrecht, oben Knie gestreckt
-      const beckenUnten = V(0, mix(0.97, o.box ? 0.48 : 0.44, tiefe), -0.17 * tiefe * (last === 'vorne' || last === 'goblet' ? 0.75 : 1));
+      // Box: Gesäß setzt auf der Box auf, Oberschenkel dabei knapp unter waagrecht; Multipresse 1,5 cm tiefer (Füße weiter vorn: bis 1.11. blieb
+      // der Oberschenkel 2° über waagrecht, Box 5°)
+      const beckenUnten = V(0, mix(0.97, o.box ? 0.425 : last === 'multipresse' ? 0.425 : 0.44, tiefe), -0.17 * tiefe * (last === 'vorne' || last === 'goblet' ? 0.75 : 1));
       const becken = mv(beckenUnten, V(0, o.fersen ? 1.0 : sumo ? 0.946 : 0.985, 0.0), t);   // Sumo: weiter Stand, Füße bleiben flach
       const r = { neigung: mix(lean * tiefe, 4, t) };
       const k = rumpf(becken, r);
@@ -1719,10 +1724,23 @@ export function bankdruecken(o = {}) {
           const brustUnten = k.brust.clone().sub(k.R.oben.clone().multiplyScalar(neig > 10 ? 0.12 : neig < 0 ? 0.25 : 0.2)).add(k.R.vor.clone().multiplyScalar(0.14));
           const unten = brustUnten.add(k.R.links.clone().multiplyScalar(sg * breit)).add(k.R.vor.clone().multiplyScalar(boden ? 0.12 : last === 'kurzhanteln' ? 0.18 : 0.05));   // Bodendrücken: Oberarme liegen unten auf dem Boden auf
           const oben = sch.clone().add(k.R.links.clone().multiplyScalar(sg * (breit - MASS.schulterBreite))).add(V(0, ARM * 0.995, 0));
-          hand[s] = mv(unten, oben, t);
+          let untenZiel = unten, ellUnten = null;
+          if (last === 'kurzhanteln' && !boden && neig <= 0) {
+            // Kurzhanteln: unten steht der Unterarm senkrecht unter der Hantel (Lehrbuch; bis 1.11. 11–16° schräg). Ellbogen 55° vom Rumpf
+            // (Neutralgriff 40°, Negativbank 45°: Griff höchstens 2 Schulterbreiten), Oberarm 8° unter der Bankebene (nicht deutlich darunter);
+            // die Hand liegt senkrecht über dem Ellbogen
+            const a = (o.griff === 'neutral' ? 40 : neig < 0 ? 45 : 55) * RAD;
+            const fussH = k.R.oben.clone().negate().setY(0).normalize(), linksH = k.R.links.clone().setY(0).normalize();
+            const sinD = Math.sin(8 * RAD), cosD = Math.cos(8 * RAD);
+            const u = linksH.multiplyScalar(sg * Math.sin(a) * cosD).addScaledVector(fussH, Math.cos(a) * cosD).add(V(0, -sinD, 0));
+            ellUnten = sch.clone().addScaledVector(u, MASS.oberarm);
+            untenZiel = genau(ellUnten.clone().add(V(0, UNTERARM, 0)));
+          }
+          hand[s] = mv(untenZiel, oben, t);
           const eng = o.griff === 'eng' || o.griff === 'neutral';
           // Ellbogen unter der Stange (Unterarm senkrecht) und etwa 45–70° vom Körper, nicht seitlich ausgestellt
           epol[s] = k.R.links.clone().multiplyScalar(sg * (o.griff === 'eng' ? 0.3 : o.griff === 'neutral' ? 0.75 : 0.55)).add(V(0, -1, 0)).add(k.R.oben.clone().multiplyScalar(eng ? -0.7 : -0.45));
+          if (ellUnten) epol[s] = ellUnten.clone().sub(sch.clone().lerp(hand[s], 0.5));   // Ellbogen dorthin, wo er unten senkrecht unter der Hantel steht
           if (o.griff === 'neutral') flaeche[s] = k.R.links.clone().multiplyScalar(-sg);
         }
       }
@@ -1768,7 +1786,8 @@ export function liegestuetz(o = {}) {
     },
     pose(t) {
       // Körper als Brett um den Drehpunkt (Füße oder Knie); Hände stehen fest
-      const handZ = art === 'wand' ? 0.94 : art === 'schraeg' ? 0.72 : 0.42;
+      // Füße erhöht: Hände etwas weiter zur Brust (bis 1.11. 0,42: Brust blieb 10 cm über dem Boden, tiefer kamen die Ellbogen auf den Boden)
+      const handZ = art === 'wand' ? 0.94 : art === 'schraeg' ? 0.72 : art === 'erhoeht' ? 0.36 : 0.42;
       const flug = art === 'plyo' ? 0.13 * glatt((t - 0.72) / 0.28) : 0;   // explosiv: Hände heben oben kurz ab
       // Wand: Schulter liegt auf einem Kreis um die Füße (Körper als Brett), Hände etwa 12 cm unter der Schulter (Brusthöhe)
       const LW = MASS.rumpf - 0.01 + BEIN * 0.985, wandFuss = 0.2, wandSch = (d) => FY + Math.sqrt(LW * LW - (0.94 - d - wandFuss) ** 2);
@@ -1777,7 +1796,7 @@ export function liegestuetz(o = {}) {
       const fussPunkt = art === 'wand' ? V(0, FY, wandFuss) : art === 'erhoeht' ? V(0, 0.5, -0.98) : art === 'knie' ? V(0, 0.06, -0.46) : art === 'defizit' || art === 'plyo' ? V(0, 0.11, -0.92) : V(0, 0.11, -0.95);
       // Schulterhöhe über der Hand: oben Armlänge, unten knapp über Hand
       // Oben Arme gestreckt, unten Brust knapp über dem Boden
-      const abstandOben = STUETZ * 0.997, abstandUnten = art === 'wand' ? 0.25 : art === 'defizit' ? 0.11 : art === 'schulterblatt' ? STUETZ * 0.97 : art === 'erhoeht' ? 0.21 : art === 'knie' ? 0.16 : art === 'schraeg' ? 0.25 : 0.155;   // Brust berührt fast den Boden (breiter Körper: nicht tiefer)
+      const abstandOben = STUETZ * 0.997, abstandUnten = art === 'wand' ? 0.25 : art === 'defizit' ? 0.11 : art === 'schulterblatt' ? STUETZ * 0.97 : art === 'erhoeht' ? 0.15 : art === 'knie' ? 0.16 : art === 'schraeg' ? 0.25 : 0.155;   // Brust berührt fast den Boden (breiter Körper: nicht tiefer)
       const schulterMitte = V(0, handY, handZ).add(V(0, 0, 0));
       const hoch = mix(abstandUnten, abstandOben, t);
       // Schulter liegt auf der Linie von der Hand senkrecht zum Körper (vereinfacht: über der Hand, Richtung weg von der Wand)
@@ -1852,7 +1871,8 @@ function liegestuetzSchwer(art) {
       let hand, sch, epol, fussBreit = 0.09, fussZ = art === 'pseudo_planche' ? -1.12 : -0.95;
       if (art === 'archer') {
         hand = { l: V(0.5, handY, handZ), r: V(-0.5, handY, handZ) };
-        const x = mix(-0.24, 0, t), hoch = mix(0.22, Math.sqrt((STUETZ * 1.0) ** 2 - 0.31 ** 2), t);
+        // oben beide Arme gestreckt: Schulterhöhe aus Armlänge und dem tatsächlichen Abstand Schulter → Hand (bis 1.11. 0,31 statt 0,295: 23° gebeugt)
+        const x = mix(-0.24, 0, t), hoch = mix(0.22, Math.sqrt((STUETZ * 0.999) ** 2 - (0.5 - MASS.schulterBreite) ** 2 - 0.03 ** 2) + 0.005, t);   // + Handgelenk über der flachen Hand
         sch = V(x, handY + hoch, handZ - 0.03);
         epol = { l: V(0.3, 1, 0), r: V(-1, 0.3, -0.6) };
         fussBreit = 0.2;
@@ -1968,7 +1988,11 @@ export function schulterdruecken(o = {}) {
         const breit = stange || last === 'maschine' ? 0.1 : 0.08;
         // Arnold: unten Hände vor dem Gesicht, Ellbogen vorn; oben wie normales Drücken
         // Unten: Stange vorn auf Schulterhöhe (Schlüsselbein), Hanteln seitlich etwa auf Ohrhöhe; oben Arme gestreckt über den Schultern
-        const unten = art === 'arnold' ? sch.clone().add(V(-sg * 0.02, 0.07, 0.21)) : stange || last === 'maschine' ? sch.clone().add(V(sg * breit, 0.08, 0.14)) : sch.clone().add(V(sg * 0.17, 0.19, 0.13));
+        // Langhantel: Startposition wie im Lehrbuch – Unterarme von vorn und seitlich senkrecht unter der Stange, die vorn auf den Schultern
+        // vor dem Hals liegt; Höhe daraus, dass der Ellbogen eine Oberarmlänge von der Schulter weg genau unter der Hand steht (bis 1.11.: 8 cm
+        // über dem Schultergelenk, Unterarm 12° schräg)
+        const startHoch = Math.sqrt(MASS.oberarm ** 2 - breit ** 2 - 0.14 ** 2), ellStart = sch.clone().add(V(sg * breit, -startHoch, 0.14));
+        const unten = art === 'arnold' ? sch.clone().add(V(-sg * 0.02, 0.07, 0.21)) : last === 'langhantel' ? ellStart.clone().add(V(0, UNTERARM, 0)) : stange || last === 'maschine' ? sch.clone().add(V(sg * breit, 0.08, 0.14)) : sch.clone().add(V(sg * 0.17, 0.19, 0.13));
         const oben = sch.clone().add(V(sg * (breit - 0.03), ARM * 0.995, 0.02));
         hand[s] = last === 'maschine' ? bogenHand(spUnten(sg), spOben(sg), SP_C, t) : mv(unten, oben, t);
         // Stange: geht senkrecht vor dem Gesicht hoch (Kinn und Nase bleiben dahinter, der Kopf nimmt sich leicht zurück) und erst
@@ -1978,6 +2002,7 @@ export function schulterdruecken(o = {}) {
         else if (stange) hand[s].z = sch.z + 0.14 + 0.045 * Math.sin(Math.PI * Math.min(1, t / 0.7)) - 0.12 * glatt((t - 0.45) / 0.55);
         // Ellbogen unten etwa 30–60° vor der Körperseite (Schulterblattebene), nicht ganz seitlich
         epol[s] = art === 'arnold' ? mv(V(sg * 0.15, -1, 1), V(sg, -1, 0.6), glatt(t * 1.4)) : V(sg, -1, last === 'maschine' ? 1.35 : stange ? 1.2 : 1.0);
+        if (last === 'langhantel' && art !== 'arnold') epol[s] = ellStart.clone().sub(sch.clone().lerp(hand[s], 0.5)).normalize().lerp(epol[s].clone().normalize(), glatt(t));   // unten Ellbogen genau unter der Hand
       }
       if (o.einarmig) { hand.r = becken.clone().add(V(-0.17, 0.05, 0.06)); epol.r = V(-1, 0, -0.5); }
       const fuesse = boden ? { fuss: seiten((s, sg) => V(sg * 0.15, FY, -0.15 + BEIN * 0.97)), kniePol: seiten(() => V(0, 1, 0)), fussRicht: seiten((s, sg) => V(sg * 0.2, 1, 0.3)) }
@@ -3870,8 +3895,9 @@ export function bauchbank(o = {}) {
 
 export const VORLAGEN = { kniebeuge, kreuzheben, ausfallschritt, hueftheben, wadenheben, beinmaschine, bankdruecken, liegestuetz, schulterdruecken, schulterheben, rudern, klimmzug, curl, trizeps, rumpfuebung, tragen, kabelstand, swing, kniestand, seitlage,
   einbeinkniebeuge, sonderkniebeuge, bandgang, beincurl, seitstuetz, schulterzug, brustmaschine, sprung, vierfuessler, bauchbank };
-// Bankdrücken und Schulterdrücken: Führung liegt über der Schulter (Stange oben gestreckt über dem Schultergelenk)
-for (const n of ['kniebeuge', 'ausfallschritt', 'hueftheben', 'wadenheben', 'bankdruecken', 'schulterdruecken', 'rudern', 'tragen']) VORLAGEN[n] = smithFuehren(VORLAGEN[n], n === 'bankdruecken' || n === 'schulterdruecken');
+// Schulterdrücken und Schrägbank: Führung durch die Stange oben (gestreckt über dem Schultergelenk); flaches Bankdrücken: zwischen Brustpunkt
+// und Lockout (Schrägbank mit 'mitte' führte die Stange beim Hinlegen weiter durch den Rücken)
+for (const n of ['kniebeuge', 'ausfallschritt', 'hueftheben', 'wadenheben', 'bankdruecken', 'schulterdruecken', 'rudern', 'tragen']) VORLAGEN[n] = smithFuehren(VORLAGEN[n], n === 'bankdruecken' ? (o) => (o.neigung > 0 ? 'oben' : 'mitte') : n === 'schulterdruecken' ? 'oben' : null);
 
 export function animation(eintrag) {
   const f = VORLAGEN[eintrag && eintrag.vorlage];
