@@ -316,6 +316,8 @@ nav.leiste button:active { transform: scale(1.12); }
   transform: translateY(105%); transition: transform .42s var(--feder); color-scheme: light;
   padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 .blatt.offen { transform: translateY(0); }
+.blatt .meldung { background: color-mix(in srgb, var(--warn) 14%, #fff); color: var(--blatt-text); }
+.blatt .meldung.stopp { background: color-mix(in srgb, var(--stopp) 12%, #fff); }
 .blatt-griff { padding: 10px 0 4px; display: grid; place-items: center; cursor: grab; touch-action: none; }
 .blatt-griff i { width: 42px; height: 5px; border-radius: 999px; background: var(--blatt-linie); }
 .blatt-kopf { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: start; padding: 4px 20px 14px; border-bottom: 1px solid var(--blatt-linie); touch-action: none; }
