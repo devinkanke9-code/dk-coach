@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { koerper, FigurModell } from './figur-modell.js';
-import { baueEinleitung } from './einleitung.js';
+import { baueEinleitung, kategorie } from './einleitung.js';
 
 // griff: Mitte der geschlossenen Faust (dort liegen Stange, Hantel, Griff) vom Handgelenk aus Richtung Finger; griffTief: so weit zur Handfläche hin.
 // Beim echten Körper (vermessen am 30.10.): Fingerknöchel des Mittelfingers 11,7 cm vor dem Handgelenk, Handfläche 1,5 cm unter der Knochenlinie;
@@ -22,6 +22,8 @@ const FUSS_LUFT = 0.2;   // Knöchel höher als das und keine fussFlaeche: Fuß 
 // Greifende Hand knickt zur Kleinfingerseite: Die Fingerknöchel liegen schräg in der Hand (Zeigefinger vorn, kleiner Finger hinten),
 // so liegen sie parallel zur Stange und alle vier Finger schließen sich gleich um den Griff
 export const HAND_ULNAR = 0 * Math.PI / 180;
+// So weit winkelt das Handgelenk seitlich ab, damit die Fingerknöchel entlang eines Griffs liegen (Beweglichkeit: Kleinfingerseite ~30–40°, Daumenseite ~15–20°)
+const HAND_ULNAR_MAX = 30 * Math.PI / 180, HAND_RADIAL_MAX = 15 * Math.PI / 180;
 export const GRIFF_R = 0.016;   // Radius eines Griffs, wenn keiner gemessen werden kann
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -48,16 +50,52 @@ export function ik(A, Z, a, b, pol) {
   let v = pol.clone().sub(u.clone().multiplyScalar(pol.dot(u)));
   if (v.lengthSq() < 1e-8) v = Math.abs(u.y) < 0.9 ? V(0, 1, 0).sub(u.clone().multiplyScalar(u.y)) : V(0, 0, 1);
   v.normalize();
+  const achse = u.clone().cross(v);   // Achse, um die das Gelenk knickt: bleibt auch am gestreckten Arm eindeutig (FigurModell.stelle)
   const M = A.clone().add(u.clone().multiplyScalar(a * cosA)).add(v.multiplyScalar(a * sinA));
   const Ende = A.clone().add(u.multiplyScalar(l));
-  return { mitte: M, ende: Ende };
+  return { mitte: M, ende: Ende, achse };
 }
+
+// Weich 0…1 und eine ruhige Welle −1…1 aus zwei Sinus ohne gemeinsamen Takt (Atem und kleine Bewegungen)
+const glaettung = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+const welle = (z, f, p) => 0.65 * Math.sin(z * f + p) + 0.35 * Math.sin(z * f * 1.73 + p * 2.3);
+const grenze = (v, a, b) => Math.max(a, Math.min(b, v));
+// Gelenkgrenzen des Arms (Devin, 2.11.: „nicht … komplett 360 Grad drehen … nur 180 Grad … nicht hinter den Rücken … nur vorne“). Schulter: wie weit der Oberarm hinter die Körperebene darf, je nach seiner
+// Höhe y im Rumpf (-1 hängt, 0 waagerecht, 1 über Kopf): unten 70° (Rudern, Dips), waagerecht 45°, über Kopf 12°. Unterarm: rund 180° insgesamt, also höchstens 100° zu jeder Seite der neutralen Lage
+const hinterGrenze = (y) => (y < 0 ? 70 - 25 * glaettung(1 + y / 0.5) : 45 - 33 * Math.min(1, y / 0.9)) * RAD;
+export const UNTERARM_MAX = 100 * RAD;
+// Feder: ein Punkt läuft einem anderen mit Verzögerung nach und schwingt aus (Hut, Stoff, Stange). Liefert die Abweichung, höchstens max
+class Feder {
+  constructor(hz, daempfung, max) { this.w = 2 * Math.PI * hz; this.d = daempfung; this.max = max; this.p = null; this.v = V(); this.ab = V(); }
+  schritt(punkt, dt) {
+    if (!this.p) { this.p = punkt.clone(); return this.ab.set(0, 0, 0); }
+    const n = Math.max(1, Math.ceil(dt / 0.008)), h = dt / n, ww = this.w * this.w, dd = 2 * this.d * this.w;
+    for (let i = 0; i < n; i++) {
+      this.v.x += (ww * (punkt.x - this.p.x) - dd * this.v.x) * h; this.v.y += (ww * (punkt.y - this.p.y) - dd * this.v.y) * h; this.v.z += (ww * (punkt.z - this.p.z) - dd * this.v.z) * h;
+      this.p.addScaledVector(this.v, h);
+    }
+    return this.ab.copy(this.p).sub(punkt).clampLength(0, this.max);
+  }
+}
+// Arbeitet nur eine Seite (einarmig, einbeinig)? Dann spannt die andere nur wenig an
+const seitenAnteil = (g0, g1) => {
+  const weg = (s) => g0.hand[s].distanceTo(g1.hand[s]) + g0.knie[s].distanceTo(g1.knie[s]) + g0.knoechel[s].distanceTo(g1.knoechel[s]);
+  const l = weg('l'), r = weg('r');
+  return l > 2.5 * r + 0.03 ? [1, 0.25] : r > 2.5 * l + 0.03 ? [0.25, 1] : [1, 1];
+};
+// Kommen Hand, Griff oder Stange an die Brust (Bankdrücken unten, Goblet), wölbt sie sich dort nicht: voll eingeatmet ginge sie sonst bis 1,8 cm tiefer in die
+// Stange (Messung 2.11.). Maß ist der Abstand von Händen und Griffmitte zum Brustbein: bis 14 cm flach, ab 22 cm voll
+const brustFrei = (g) => {
+  const C = g.brust.clone().addScaledVector(g.R.vor, 0.11).addScaledVector(g.R.oben, -0.1), l = g.hand.l, r = g.hand.r;
+  return glaettung((Math.min(l.distanceTo(C), r.distanceTo(C), l.clone().add(r).multiplyScalar(0.5).distanceTo(C)) - 0.14) / 0.08);
+};
 
 /* ---------- Pose → Gelenkpunkte ---------- */
 // pose: { becken: Vector3, rumpf: {neigung, seit, drehung, basis?}, kopf: {neigung},
 //         hand: {l: V, r: V} (Mitte der Faust = wo Stange/Hantel sitzt), ellbogenPol: {l, r}, handflaeche: {l, r} (Richtung, in die die Handfläche zeigt),
 //         flach: {l: V, r: V} (Hand liegt flach auf einer Fläche, V = Richtung von der Fläche weg; hand = Handgelenk),
 //         greift: {l, r} (Ziel tiefer als HAND_BODEN, trotzdem greifen statt flach aufstützen, z. B. Hantel vom Boden),
+//         unterarm: {l, r} (Drehung des Unterarms in Bogenmaß statt handflaeche; nur im Ablauf davor),
 //         fuss: {l: V, r: V}, kniePol: {l, r}, fussRicht: {l, r} (Vektor), zehen: {l, r} (Grad, Fersenhub) }
 // g.hand = Faustmitte (Geräte hängen dort), g.handgelenk = Handgelenk (dort beginnt die Hand des Körpers)
 export function gelenke(pose) {
@@ -67,6 +105,7 @@ export function gelenke(pose) {
   const brust = becken.clone().add(R.oben.clone().multiplyScalar(m.rumpf));
   const nacken = brust.clone().add(R.oben.clone().multiplyScalar(m.hals));
   const kq = new THREE.Quaternion().setFromAxisAngle(R.links, ((pose.kopf && pose.kopf.neigung) || 0) * RAD);
+  if (pose.kopf && pose.kopf.dreh) kq.premultiply(new THREE.Quaternion().setFromAxisAngle(R.oben, pose.kopf.dreh * RAD));
   const kopfRicht = R.oben.clone().applyQuaternion(kq);
   const kopf = nacken.clone().add(kopfRicht.multiplyScalar(m.kopf + 0.03));
   // schulterHub (m): Schultern hochziehen (Shrugs), Schultergelenke wandern entlang der Rumpfachse
@@ -75,15 +114,52 @@ export function gelenke(pose) {
     l: brust.clone().add(R.links.clone().multiplyScalar(m.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03 - hubS)),
     r: brust.clone().add(R.links.clone().multiplyScalar(-m.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03 - hubS))
   };
+  const schulterBasis = { l: schulter.l.clone(), r: schulter.r.clone() };   // vor dem Mitdrehen des Schultergürtels (Maß für die Rumpfhöhe)
   const huefte = {
     l: becken.clone().add(R.links.clone().multiplyScalar(m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02)),
     r: becken.clone().add(R.links.clone().multiplyScalar(-m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02))
   };
-  const out = { schulterHub: hubS, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
+  // Schultergürtel geht mit (Devin, 2.11.: „dass die Schultern nicht ausgekugelt werden, wenn sie in der höheren Position gehen … Lat-Pull-Down, generell Übungen, wo die gestreckt
+  // sind“): zeigt der Oberarm über die Waagerechte, hebt sich das Schlüsselbein um sein Ende am Brustbein (Oberarm ganz oben 28°, das Schultergelenk steigt um 8 cm, wie beim Menschen).
+  // Sonst liegt der ganze Winkel im Schultergelenk und die Haut knickt dort zusammen (FigurModell.stelle dreht den Schlüsselbein-Knochen genauso). Maß ist der Oberarm, nicht die Hand:
+  // Hände oben mit Ellbogen unten (Schulterdrücken unten, Polster auf den Schultern) heben nichts. Der Arm bleibt so lang, wie die Vorlage ihn will: eine freie Hand geht mit;
+  // hängt oder stützt die Hand fest (Klimmzug, Handstand), sinkt stattdessen der Körper. Im Ablauf davor (fest.ablauf) sind Hände und Körper schon so gerechnet
+  const schulterDreh = {}, sink = V(), imAblauf = !!(pose.fest && pose.fest.ablauf);
+  let sinkN = 0;
+  for (const s of ['l', 'r']) {
+    const sg = s === 'l' ? 1 : -1, ziel = pose.hand && pose.hand[s];
+    if (!ziel) continue;
+    const pol = (pose.ellbogenPol && pose.ellbogenPol[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
+    const oa = ik(schulter[s], ziel, m.oberarm, m.unterarm + 0.8 * m.griff, pol).mitte.sub(schulter[s]).normalize();
+    const u = Math.max(0, Math.min(1, (oa.dot(R.oben) - 0.2) / 0.75)), winkel = 28 * RAD * u * u * (3 - 2 * u);
+    if (winkel < 0.003) continue;
+    const seite = R.links.clone().multiplyScalar(sg), q = new THREE.Quaternion().setFromAxisAngle(seite.clone().cross(R.oben).normalize(), winkel);
+    const punkt = brust.clone().addScaledVector(R.links, sg * 0.035).addScaledVector(R.oben, 0.009 + hubS);
+    const weg = schulter[s].clone().sub(punkt).applyQuaternion(q).add(punkt).sub(schulter[s]);
+    const fest = imAblauf || !!(pose.fest && pose.fest[s]) || !!(pose.flach && pose.flach[s]) || (ziel.y < HAND_BODEN && !(pose.greift && pose.greift[s]));
+    schulterDreh[s] = { q, punkt, weg, fest };
+    if (fest && !imAblauf) { sink.add(weg); sinkN++; }
+  }
+  if (sinkN) {
+    sink.divideScalar(sinkN);
+    for (const p of [becken, brust, nacken, kopf, schulter.l, schulter.r, huefte.l, huefte.r, schulterBasis.l, schulterBasis.r]) p.sub(sink);
+    for (const d of Object.values(schulterDreh)) d.punkt.sub(sink);
+  }
+  const out = { atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, schulterHub: hubS, schulterBasis, schulterDreh, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
     const hz = ((pose.hand && pose.hand[s]) || schulter[s].clone().add(V(0.05 * sg, -(m.oberarm + m.unterarm + m.griff) * 0.98, 0))).clone();
+    const sd = schulterDreh[s];
+    if (sd) {
+      schulter[s] = schulter[s].clone().sub(sd.punkt).applyQuaternion(sd.q).add(sd.punkt);
+      if (!sd.fest) hz.add(sd.weg);   // freie Hand geht mit der Schulter mit: der Arm bleibt so lang, wie die Vorlage ihn will (bei festem Griff sinkt stattdessen der Körper, oben)
+      if (!sd.fest && pose.griffRollt) {
+        // Griff rollt am Boden (Rollout): bleibt in seiner Höhe und rollt so weit, dass der Arm so lang bleibt
+        const lang = hz.distanceTo(schulter[s]), dy = pose.hand[s].y - schulter[s].y, seit = hz.clone().sub(schulter[s]).setY(0).normalize();
+        hz.copy(schulter[s]).addScaledVector(seit, Math.sqrt(Math.max(0, lang * lang - dy * dy))).setY(pose.hand[s].y);
+      }
+    }
     const epol = (pose.ellbogenPol && pose.ellbogenPol[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
     const knick = ((pose.handKnick && pose.handKnick[s]) || 0) * RAD;
     // Hand-Ausrichtung zu einer Unterarm-Richtung a: Handrücken n (ohne Angabe Obergriff, Fingerknöchel quer zum Körper wie an der
@@ -105,6 +181,11 @@ export function gelenke(pose) {
       d.sub(a.clone().multiplyScalar(d.dot(a)));
       return d.lengthSq() > 1e-8 ? d.normalize() : R.vor.clone();
     };
+    // Griff in der Faust (armNeu, aus haltErkennen) oder schon im Hingreifen (pose.griffVor, Ablauf davor): Achse und Anteil 0…1
+    const griffVor = pose.griffVor && pose.griffVor[s];
+    let griffIst = griffVor ? griffVor.achse : null, griffAnteil = griffVor ? griffVor.anteil : 0, knickAchse = null;
+    // Drehung des Unterarms: Winkel vom Handrücken des neutralen Unterarms (Knickachse des Ellbogens, nach außen) zum Handrücken n, um die Unterarm-Achse a
+    const unterarm = (a, n, achse) => { const nn = achse.clone().multiplyScalar(sg).addScaledVector(a, -achse.dot(a) * sg); return nn.lengthSq() < 1e-8 ? 0 : Math.atan2(nn.clone().cross(n).dot(a), nn.dot(n)); };
     const ausrichtung = (a, greift = true) => {
       let n = pose.handflaeche && pose.handflaeche[s] ? pose.handflaeche[s].clone().negate() : a.clone().cross(R.links);
       n.sub(a.clone().multiplyScalar(n.dot(a)));
@@ -113,6 +194,10 @@ export function gelenke(pose) {
       if (w > 0) n.add(ersatz.multiplyScalar(w * w));
       if (n.lengthSq() < 1e-8) n = R.oben.clone().sub(a.clone().multiplyScalar(R.oben.dot(a)));
       n.normalize();
+      if (knickAchse && pose.unterarm && pose.unterarm[s] != null) {
+        const nn = knickAchse.clone().multiplyScalar(sg).addScaledVector(a, -knickAchse.dot(a) * sg);
+        if (nn.lengthSq() > 1e-6) n = nn.normalize().applyAxisAngle(a, pose.unterarm[s]);
+      }
       // griffAchse (Kurzhantel): 'neutral' = Hammergriff, der Unterarm ist neutral gedreht (Daumen siehe daumenNeutral);
       // { daumen } = Daumen zeigt möglichst dorthin (Y-Heben: nach oben), am Arm, der fast dorthin zeigt, neutral;
       // sonst die Achse des Griffs quer zur Hand (Ober-/Untergriff): die Hand dreht um den Unterarm, bis die Fingerknöchel entlang
@@ -127,10 +212,40 @@ export function gelenke(pose) {
         const n2 = a.clone().cross(ga);
         if (n2.lengthSq() > 1e-6) { n2.normalize(); if (n2.dot(n) < 0) n2.negate(); n = n2; }
       }
+      // Griff in der Faust: der Unterarm dreht, bis die Griffachse in der Handfläche liegt. Zwei Lösungen (Handrücken hüben oder drüben):
+      // die, die der Vorlage näher ist; steht sie quer dazu (Griff längs zur Vorgabe), entscheidet der neutral gedrehte Unterarm
+      if (greift && griffIst) {
+        const n2 = a.clone().cross(griffIst), quer = Math.max(0, Math.min(1, (n2.length() - 0.25) / 0.25));   // Griff fast in der Linie des Unterarms (Seil): sagt nichts über dessen Drehung, sonst kippt er um
+        if (quer > 0) {
+          n2.normalize();
+          if (griffVor && knickAchse) {
+            // Im Ablauf davor: griffVor.achse hat eine Richtung (der Griff liegt so in der Hand wie in der Übung, griffEnde), die Hand fasst ihn also gleich richtig (Ober- oder Untergriff; bis 2.11. griff sie um, solange sie schon
+            // hielt, ein Umschlag um 180° in einem Bild), und der Unterarm dreht gleichmäßig dorthin
+            if (griffIst.dot(griffVor.achse) < 0) n2.negate();
+            n2.negate();
+            const t0 = unterarm(a, n, knickAchse), zu = griffVor.dreh || 0, tg = unterarm(a, n2, knickAchse), d = tg - zu;   // Ziel in der Nähe der Drehung, die der Griff in der Übung hat: der Unterarm nimmt den Weg durch seine Mitte und springt nicht bei ±180°
+            const nn = knickAchse.clone().multiplyScalar(sg).addScaledVector(a, -knickAchse.dot(a) * sg).normalize();
+            n = nn.applyAxisAngle(a, t0 + (zu + Math.atan2(Math.sin(d), Math.cos(d)) - t0) * griffAnteil * quer);
+          } else {
+            const neutral = daumenNeutral(a).cross(a).multiplyScalar(sg);
+            if (n2.dot(n.clone().addScaledVector(neutral, 0.5)) < 0) n2.negate();
+            n.lerp(n2, griffAnteil * quer).normalize();
+          }
+        }
+      }
       const achse = a.clone().cross(n).normalize();
       const ak = a.clone().applyAxisAngle(achse, knick), nk = n.clone().applyAxisAngle(achse, knick);
       // Kleinfingerseite = sg · (Handrücken × Finger); die Hand dreht um den Handrücken dorthin (nicht bei flacher Hand)
       if (greift) { const p = nk.clone().cross(ak).multiplyScalar(sg); ak.multiplyScalar(Math.cos(HAND_ULNAR)).add(p.multiplyScalar(Math.sin(HAND_ULNAR))).normalize(); }
+      // … und das Handgelenk winkelt seitlich ab, bis die Fingerknöchel entlang des Griffs liegen: zur Kleinfingerseite bis HAND_ULNAR_MAX,
+      // zur Daumenseite bis HAND_RADIAL_MAX (was darüber hinausgeht, liegt schräg in der Hand wie bei einer echten Faust)
+      if (greift && griffIst) {
+        const f = ak.clone().cross(nk).normalize(), h = griffIst.clone().addScaledVector(nk, -griffIst.dot(nk)).normalize();
+        let d = Math.atan2(f.clone().cross(h).dot(nk), f.dot(h));
+        if (d > Math.PI / 2) d -= Math.PI; else if (d < -Math.PI / 2) d += Math.PI;   // ein Griff hat keine Richtung
+        const zuKlein = Math.max(-HAND_RADIAL_MAX, Math.min(HAND_ULNAR_MAX, d * sg));
+        ak.applyAxisAngle(nk, zuKlein * sg * griffAnteil);
+      }
       return { n, ak, nk };
     };
     const faust = (r) => r.ak.clone().multiplyScalar(m.griff).sub(r.nk.clone().multiplyScalar(m.griffTief));
@@ -138,7 +253,64 @@ export function gelenke(pose) {
     let arm;
     // Hand flach am Boden: Handgelenk mindestens so hoch, wie Hand und Unterarm dick sind (sonst taucht der Daumen in den Boden)
     if (flach && !(pose.flach && pose.flach[s]) && hz.y < 0.045) hz.y = 0.045;
-    if (flach) { arm = ik(schulter[s], hz, m.oberarm, m.unterarm, epol); out.handZiel[s] = hz; }
+    // Schulter-Grenze: Liegt der Ellbogen dahinter, dreht sich der Pol um die Linie Schulter–Hand, bis er gerade drin liegt (die Hand bleibt, wo sie ist), lieber außen herum als zum Körper hin.
+    // Liegt die Hand selbst so weit hinten, dass es nicht geht, bleibt der Pol
+    const polImGelenk = (ziel, b, pol) => {
+      const lage = (p) => { const k = ik(schulter[s], ziel, m.oberarm, b, p), d = k.mitte.clone().sub(schulter[s]).normalize(); return { zuviel: Math.asin(grenze(-d.dot(R.vor), -1, 1)) - hinterGrenze(d.dot(R.oben)), aussen: d.dot(R.links) * sg }; };
+      if (lage(pol).zuviel <= 0) return pol;
+      const u = ziel.clone().sub(schulter[s]).normalize();
+      // Liegt schon die Linie zur Hand an der Grenze, bringt der Ellbogen nichts mehr (der gestreckte Arm hat keinen Spielraum): weich auslaufen, er bleibt, wie die Vorlage ihn will
+      const dz = ziel.distanceTo(schulter[s]), beugeW = Math.PI - Math.acos(grenze((m.oberarm ** 2 + b * b - dz * dz) / (2 * m.oberarm * b), -1, 1));
+      const w0 = glaettung((-0.02 - (Math.asin(grenze(-u.dot(R.vor), -1, 1)) - hinterGrenze(u.dot(R.oben)))) / 0.12) * glaettung((beugeW / RAD - 20) / 25);
+      if (w0 <= 0) return pol;
+      // Die Richtung, in der er nach vorn kommt, und wenn beide helfen, die nach außen. Höchstens 70° (reicht das nicht, bleibt er dort; ganz herum hieße: der Ellbogen spränge nach oben)
+      const plus = lage(pol.clone().applyAxisAngle(u, 0.05)), minus = lage(pol.clone().applyAxisAngle(u, -0.05)), z0 = lage(pol).zuviel;
+      const vz = plus.zuviel < z0 && minus.zuviel < z0 ? (plus.aussen >= minus.aussen ? 1 : -1) : plus.zuviel < minus.zuviel ? 1 : -1;
+      let a = 0, c = 1.2;
+      for (let w = 0.3; w <= 1.2; w += 0.3) { if (lage(pol.clone().applyAxisAngle(u, vz * w)).zuviel <= 0) { c = w; break; } a = w; }
+      if (lage(pol.clone().applyAxisAngle(u, vz * c)).zuviel <= 0) for (let i = 0; i < 6; i++) { const h = (a + c) / 2; if (lage(pol.clone().applyAxisAngle(u, vz * h)).zuviel <= 0) c = h; else a = h; }
+      return pol.clone().applyAxisAngle(u, vz * c * w0);
+    };
+    // Ellbogen → Faust neu legen, wenn die Faust genau auf ziel bleiben soll, und die Punkte der Hand eintragen
+    const armLegen = (ziel) => {
+      const zuFaust = (a) => a.clone().multiplyScalar(m.unterarm).add(faust(ausrichtung(a)));
+      const zuZiel = ziel.clone().sub(schulter[s]).normalize();
+      if (pose.unterarm) knickAchse = ik(schulter[s], ziel, m.oberarm, m.unterarm + m.griff, epol).achse;
+      const b = zuFaust(zuZiel).length();
+      const legen = (pol) => {
+        const k = ik(schulter[s], ziel, m.oberarm, b, pol);
+        if (pose.unterarm) knickAchse = k.achse;
+        const u = k.ende.clone().sub(k.mitte).normalize(), a = u.clone(), q = new THREE.Quaternion();
+        for (let i = 0; i < 6; i++) a.applyQuaternion(q.setFromUnitVectors(zuFaust(a).normalize(), u)).normalize();
+        return { mitte: k.mitte, ende: k.mitte.clone().add(a.multiplyScalar(m.unterarm)), achse: k.achse };
+      };
+      let pol = polImGelenk(ziel, b, epol), ar = legen(pol);
+      // Griff in der Hand und der Arm (fast) gestreckt: der Griff legt die Hand fest, der Ellbogen dreht frei um die Linie Schulter–Hand. Also dreht er so weit mit, dass der Unterarm nicht über
+      // seine Grenze verwunden ist (bei gebeugtem Arm würde das den Ellbogen sichtbar versetzen, da bleibt er)
+      const fest = griffIst ? griffAnteil : pose.griffAchse && pose.griffAchse[s] ? 1 : 0;
+      if (fest > 0) {
+        const alt = knickAchse; knickAchse = null;
+        for (let i = 0; i < 2; i++) {
+          const a = ar.ende.clone().sub(ar.mitte).normalize(), tau = unterarm(a, ausrichtung(a).n, ar.achse), ge = fest * glaettung((a.dot(ar.mitte.clone().sub(schulter[s]).normalize()) - 0.5) / 0.4);
+          if (Math.abs(tau) <= UNTERARM_MAX || ge <= 0) break;
+          // Steht die Hand fast gegenüber (nahe 180°), ist die Richtung nicht eindeutig: dort läuft die Korrektur aus, sonst schlüge der Ellbogen beim Durchgang um
+          pol = polImGelenk(ziel, b, pol.clone().applyAxisAngle(zuZiel, (tau - Math.sign(tau) * UNTERARM_MAX) * ge * Math.min(1, (Math.PI - Math.abs(tau)) / (35 * RAD)))); ar = legen(pol);
+        }
+        knickAchse = alt;
+      }
+      return ar;
+    };
+    const eintragen = () => {
+      knickAchse = arm.achse;
+      const a = arm.ende.clone().sub(arm.mitte).normalize(), r = ausrichtung(a, !flach);
+      out.ellbogen[s] = arm.mitte; out.ellbogenAchse[s] = arm.achse; out.handgelenk[s] = arm.ende; out.flach[s] = flach;
+      out.hand[s] = flach ? arm.ende.clone() : arm.ende.clone().add(faust(r));
+      out.handAchse[s] = a; out.handRuecken[s] = r.n;
+      // handMitte = Mitte der Hand (Leuchten, Coach erklärt)
+      out.handKnick[s] = knick; out.handFinger[s] = r.ak;
+      out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(r.ak.clone().multiplyScalar(0.047));
+    };
+    if (flach) { arm = ik(schulter[s], hz, m.oberarm, m.unterarm, polImGelenk(hz, m.unterarm, epol)); out.handZiel[s] = hz; }
     else {
       // Faustmitte aufs Ziel. Die Hand sitzt starr am Unterarm, also hat Ellbogen → Faust eine feste Länge L: Ellbogen per IK mit L,
       // dann den Unterarm um den kleinen Winkel zwischen Unterarm-Achse und Linie zur Faust zurückdrehen
@@ -159,20 +331,19 @@ export function gelenke(pose) {
         if (w > 0) hz.sub(schulter[s]).multiplyScalar(1 + (dNeu / d - 1) * w * w * (3 - 2 * w)).add(schulter[s]);
       }
       out.handZiel[s] = hz;
-      const k = ik(schulter[s], hz, m.oberarm, L, epol);
-      const u = k.ende.clone().sub(k.mitte).normalize(), a = u.clone(), q = new THREE.Quaternion();
-      for (let i = 0; i < 6; i++) a.applyQuaternion(q.setFromUnitVectors(zuFaust(a).normalize(), u)).normalize();
-      arm = { mitte: k.mitte, ende: k.mitte.clone().add(a.multiplyScalar(m.unterarm)) };
+      arm = armLegen(hz);
     }
-    const a = arm.ende.clone().sub(arm.mitte).normalize(), r = ausrichtung(a, !flach);
-    out.ellbogen[s] = arm.mitte; out.handgelenk[s] = arm.ende; out.flach[s] = flach;
-    out.hand[s] = flach ? arm.ende.clone() : arm.ende.clone().add(faust(r));
-    out.handAchse[s] = a; out.handRuecken[s] = r.n;
-    // handMitte = Mitte der Hand (Leuchten, Coach erklärt)
-    out.handKnick[s] = knick; out.handFinger[s] = r.ak;
-    out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(r.ak.clone().multiplyScalar(0.047));
+    eintragen();
+    // Griff in der Faust nachträglich berücksichtigen (haltErkennen): die Faust bleibt, wo sie ist, die Hand richtet sich nach dem Griff
+    (out.armNeu = out.armNeu || {})[s] = (griffAchse, anteil) => {
+      if (flach) return;
+      const ziel = out.hand[s].clone();
+      griffIst = griffAchse; griffAnteil = Math.max(anteil, griffVor ? griffVor.anteil : 0); knickAchse = null;
+      arm = armLegen(ziel); eintragen();
+    };
     // Beine: Knie zeigt nach vorn (leicht außen)
     let fz = (pose.fuss && pose.fuss[s]) || huefte[s].clone().add(V(0.02 * sg, -(m.oberschenkel + m.unterschenkel), 0));
+    if (sinkN && !pose.fussBleibt && fz.y > FUSS_LUFT + 0.1) fz = fz.clone().sub(sink);   // hängt der Körper, gehen die Füße in der Luft mit (nicht auf der Box: fussBleibt)
     // Fuß am Boden auf den Zehen (Fußspitze soll nach unten zeigen wie beim Liegestütz, oder Ferse gehoben wie hinten beim Ausfallschritt;
     // die Zehen zeigen dabei nicht vom Bein weg wie in Bauchlage): Knöchel mindestens so hoch, wie er über dem Fußballen steht, wenn der
     // Fuß so weit kippt. Und das Sprunggelenk beugt sich höchstens 40° (Winkel Schienbein–Fuß 130°): liegt das Schienbein flach, kippt
@@ -198,6 +369,8 @@ export function gelenke(pose) {
     }
     out.fussZiel[s] = fz;
     const bein = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol);
+    const fehlt = pose.fussFlaeche && pose.fussFlaeche[s] || fz.y < FUSS_LUFT ? bein.ende.distanceTo(fz) : 1;
+    if (fehlt > 1e-4 && fehlt < 0.03) { const d = fz.clone().sub(bein.ende); bein.mitte = bein.mitte.clone().addScaledVector(d, m.oberschenkel / (m.oberschenkel + m.unterschenkel)); bein.ende = fz.clone(); }   // die leichte Beugung bleibt
     out.knie[s] = bein.mitte; out.knoechel[s] = bein.ende;
     // Fuß: Richtung (Standard: nach vorn, leicht außen), Fersenhub in Grad.
     // fussFlaeche = Normale der Fläche, auf der der Fuß steht (schräge Platte der Beinpresse, Plattform, Stufe): Die Sohle liegt dann flach
@@ -250,27 +423,47 @@ export function haltErkennen(g, z, festeStangen = [], gruppe = null) {
   if (gruppe) gruppe.updateMatrixWorld(true);
   for (const s of ['l', 'r']) {
     const p = g.hand[s];
-    const griff = !g.flach[s] && gruppe ? griffRadius([gruppe], p) : 0;
-    const haelt = !g.flach[s] && (griff > 0 || teile.some((o) => _box.setFromObject(o).expandByScalar(0.02).containsPoint(p)) || festeStangen.some((b) => b.containsPoint(p)));
+    // Loser Griff am Kabel (ger.griff): dreht sich mit der Faust, die Hand muss sich nicht nach ihm richten
+    const faustAchse = () => g.handFinger[s].clone().cross(g.handRuecken[s].clone().applyAxisAngle(g.handAchse[s].clone().cross(g.handRuecken[s]).normalize(), g.handKnick[s] || 0)).normalize();
+    for (const o of teile) if (o.userData.frei && !g.flach[s] && o.position.distanceTo(p) < 0.03) {
+      o.quaternion.setFromUnitVectors(o.userData.frei, faustAchse());
+      o.updateMatrixWorld(true);
+    }
+    let griff = !g.flach[s] && gruppe ? griffFinden([gruppe], p) : null;
+    const haelt = !g.flach[s] && (griff || teile.some((o) => _box.setFromObject(o).expandByScalar(0.02).containsPoint(p)) || festeStangen.some((b) => b.containsPoint(p)));
+    // Starrer Griff in der Faust: die Hand richtet sich nach ihm (Unterarm dreht, Handgelenk winkelt ab; gelenke()), die Faust bleibt
+    // am Griff. Weich auf den letzten 2 cm, damit die Hand beim Hingreifen nicht springt. Bänder biegen sich mit der Hand. Liegt er schon
+    // richtig (Hantel, die der Faust folgt), bleibt alles
+    if (griff && !griff.biegsam && g.armNeu) {
+      const anteil = Math.max(0, Math.min(1, (griff.r + 0.015 - griff.abstand) / 0.02));
+      if (anteil < 1 || Math.abs(faustAchse().dot(griff.achse)) < 0.99996) g.armNeu[s](griff.achse, anteil);
+    }
+    if (!griff && haelt) griff = griffFinden(teile, p);
     // pose.faust: Hand ohne Griff zur Faust geschlossen (Arme verschränkt), wie um eine dünne Stange
-    g.haelt[s] = haelt ? griff || griffRadius(teile, p) || GRIFF_R : g.faust && g.faust[s] ? 0.006 : false;
+    g.haelt[s] = haelt ? (griff && griff.r) || GRIFF_R : g.faust && g.faust[s] ? 0.006 : false;
   }
 }
-// Radius des Griffs an einem Punkt: größter dünne Zylinder (Gummi über Chrom), dessen Achse durch die Faust läuft
-function griffRadius(wurzeln, p) {
-  let best = 0;
-  for (const w of wurzeln) w.traverse((m) => {
-    const par = m.isMesh && m.visible && m.geometry && m.geometry.parameters;
-    if (!par || !(par.radiusTop > 0) || !(par.height > 0)) return;
+// Griff an einem Punkt: dünner Zylinder (Gummi über Chrom), dessen Achse durch die Faust läuft; von mehreren der, dessen Oberfläche der
+// Faustmitte am nächsten ist. Radius, Achse, Abstand der Achse zur Faustmitte und ob er sich biegt (Gummiband)
+function griffFinden(wurzeln, p) {
+  let best = null, wert = Infinity;
+  for (const w of wurzeln) {
+    // Zylinder der Gruppe nur einmal zusammensuchen (die Geräte stehen nach dem Aufbau fest; läuft je Bild und Hand)
+    if (!w.userData.zylinder) { w.userData.zylinder = []; w.traverse((m) => { const par = m.isMesh && m.geometry && m.geometry.parameters; if (par && par.radiusTop > 0 && par.height > 0) w.userData.zylinder.push(m); }); }
+    for (const m of w.userData.zylinder) {
+    if (!m.visible) continue;
+    const par = m.geometry.parameters;
     const sx = _gv.setFromMatrixColumn(m.matrixWorld, 0).length(), sz = _gc.setFromMatrixColumn(m.matrixWorld, 2).length();
     const rr = par.radiusTop * Math.max(sx, sz);
-    if (rr < 0.008 || rr > 0.03) return;
+    if (rr < 0.008 || rr > 0.03) continue;
     _ga.setFromMatrixColumn(m.matrixWorld, 1); const halb = _ga.length() * par.height / 2; _ga.normalize();
     _gc.setFromMatrixPosition(m.matrixWorld);
     const d = _gv.copy(p).sub(_gc), t = d.dot(_ga);
-    if (Math.abs(t) > halb + 0.012) return;
-    if (d.sub(_ga.multiplyScalar(t)).length() <= rr + 0.015 && rr > best) best = rr;
-  });
+    const abstand = d.addScaledVector(_ga, -t).length();
+    if (Math.abs(t) > halb + 0.012 || abstand > rr + 0.015 || abstand - rr >= wert) continue;
+    wert = abstand - rr; best = { r: rr, abstand, achse: _ga.clone(), biegsam: !!(m.material && m.material.userData && m.material.userData.biegsam) };
+    }
+  }
   return best;
 }
 // Feste Stangen der Szene (Klimmzugstange, Barren, Pfosten): Teile, die sich über die Bewegung nicht rühren und in zwei Richtungen
@@ -300,7 +493,7 @@ export function festErkennen(pose, boxen) {
 
 /* ---------- Material ---------- */
 export const FARBEN = {
-  haut: 0xc4927a, hose: 0x16171b, schuh: 0xeceef0, haar: 0x1c1612, dkGold: 0xc29c5e, oberteil: 0x7c8086, socke: 0xf3f3f1,   // Devins Look: graues Tanktop, schwarze Shorts, weiße Socken
+  haut: 0xc4927a, hose: 0x1b1c20, schuh: 0xdcdedf, haar: 0x1c1612, dkGold: 0xc29c5e, oberteil: 0x7c8086, socke: 0xf3f3f1,   // Devins Look: graues Tanktop, schwarze Shorts, weiße Socken
   gold: 0xffa53a, metall: 0xb4bcc6, scheibe: 0x2a2f36,
   holz: 0x39404a, polster: 0x232a33, boden: 0x12161c, linie: 0x6b7077, cyan: 0x35c6d4, glut: 0xff7a1a
 };
@@ -616,20 +809,21 @@ export class Geraete {
     this.mRahmen = mat(0x2a2e35, { metalness: 0.3, roughness: 0.46 });      // Rahmen: Stahl, pulverbeschichtet (Lack, darum wenig Metallglanz)
     this.mGold = mat(FARBEN.gold, { metalness: 0.5, roughness: 0.35 });
     this.mKabel = mat(0x9aa1aa, { metalness: 0.75, roughness: 0.32 });      // Stahlseil
-    this.mBand = mat(0xc8463c, { roughness: 0.6 });                         // Gummiband
+    this.mBand = mat(0xc8463c, { roughness: 0.6 }); this.mBand.userData.biegsam = true;   // Gummiband
+    this.mSeil = mat(0x1c1e22, { roughness: 0.66, metalness: 0.06 }); this.mSeil.userData.biegsam = true;   // Seilgriff: gibt nach, die Hand richtet sich nicht danach (sonst kippt der Unterarm)
     this.mGummi = mat(0x0f1012, { roughness: 0.85 });                       // Griffe, Füße, Kappen
     this.mSechskant = mat(0x1c1e22, { roughness: 0.62, metalness: 0.06, flatShading: true });
     this.mAkzent = mat(0xff8a3d, { roughness: 0.4, metalness: 0.3 });       // Farbstreifen (Ansicht setzt die Farbe der Seite)
     this.tuerme = [];
   }
-  get materialien() { return [this.mMetall, this.mScheibe, this.mPolster, this.mRahmen, this.mGold, this.mKabel, this.mBand, this.mGummi, this.mSechskant, this.mAkzent]; }
+  get materialien() { return [this.mMetall, this.mScheibe, this.mPolster, this.mRahmen, this.mGold, this.mKabel, this.mBand, this.mSeil, this.mGummi, this.mSechskant, this.mAkzent]; }
   // Spiegelungen für alle Geräte-Materialien (Ansicht gibt ihre Umgebung mit)
   spiegeln(env, akzent) {
     for (const m of this.materialien) { m.envMap = env; m.needsUpdate = true; }
-    this.mPolster.envMapIntensity = 0.55; this.mScheibe.envMapIntensity = 0.5; this.mGummi.envMapIntensity = 0.3; this.mSechskant.envMapIntensity = 0.5;
+    this.mPolster.envMapIntensity = 0.55; this.mScheibe.envMapIntensity = 0.5; this.mSeil.envMapIntensity = 0.5; this.mGummi.envMapIntensity = 0.3; this.mSechskant.envMapIntensity = 0.5;
     if (akzent) this.mAkzent.color.copy(akzent);
   }
-  leeren() { while (this.gruppe.children.length) this.gruppe.remove(this.gruppe.children[0]); this.dyn = []; this.tuerme = []; }
+  leeren() { while (this.gruppe.children.length) this.gruppe.remove(this.gruppe.children[0]); this.dyn = []; this.tuerme = []; this.gruppe.userData.zylinder = null; }
   teil(geo, m, pos) { const o = new THREE.Mesh(geo, m); o.castShadow = true; o.receiveShadow = true; if (pos) o.position.copy(pos); this.gruppe.add(o); return o; }
   // Quader: Polster weich gerundet (Leder), alles andere mit kleiner Kante (Vierkantrohr, Platten)
   box(w, h, d, pos, m, rotX = 0, rotY = 0) {
@@ -707,6 +901,7 @@ export class Geraete {
     } else {
       quer(new THREE.CylinderGeometry(0.017, 0.017, 0.12, 14), this.mGummi, 0);
       for (const sx of [-1, 1]) quer(new THREE.CylinderGeometry(0.021, 0.021, 0.012, 14), this.mMetall, sx * 0.066);
+      w.userData.frei = V(1, 0, 0);   // hängt lose am Kabel: dreht sich mit der Faust (haltErkennen), Griffachse lokal X
     }
     this.gruppe.add(w); return w;
   }
@@ -797,7 +992,7 @@ export class Geraete {
     }
     return s;
   }
-  matte() { const m = this.box(0.7, 0.012, 1.9, V(0, 0.006, 0), mat(0x24282f, { roughness: 0.9 })); m.castShadow = false; return m; }
+  matte() { const m = this.box(0.7, 0.005, 1.9, V(0, 0.0025, 0), mat(0x24282f, { roughness: 0.9 })); m.castShadow = false; return m; }
 }
 // Umgebung für Spiegelungen (Chrom, Lack, Leder): kleiner dunkler Raum mit Deckenlicht, Softbox und zwei farbigen Lichtstreifen
 const _umgebung = new WeakMap();
@@ -882,13 +1077,14 @@ export class Ansicht {
   // opt: standbild (Vorschaubild, ohne Steuerung), hintergrund (Farbe), effekte (Leuchtboden, Partikel, Farblichter; Hintergrund kommt dann aus dem CSS)
   constructor(canvas, opt = {}) {
     this.canvas = canvas;
+    this.lebendig = !opt.standbild; this.lebenZeit = 0; this.lebenArt = null;   // Atem und kleine Bewegungen nur in der Live-Ansicht, Vorschaubilder stehen still
     this.effekte = !!opt.effekte && !opt.standbild;
     this.einleitung = opt.einleitung != null ? !!opt.einleitung : !opt.standbild;   // Ablauf vor der Übung (hinlaufen, greifen)
     // Farben der Bühne (Kantenlicht, Bodenring, Pulse, Funken): aus der Farbwelt der Seite (buehne.js gibt sie mit), sonst Orange/Türkis
     this.farbeA = new THREE.Color(opt.farbeA || 0xffa53a); this.farbeB = new THREE.Color(opt.farbeB || 0x35c6d4);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: this.effekte, preserveDrawingBuffer: !!opt.standbild });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.15;
     this.szene = new THREE.Scene();
@@ -896,13 +1092,18 @@ export class Ansicht {
     else this.szene.background = new THREE.Color(opt.hintergrund != null ? opt.hintergrund : 0x101214);
     this.kamera = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
     this.kamera.position.set(2.6, 1.6, 3.2);
-    const hemi = new THREE.HemisphereLight(0xe6eef8, 0x141a22, 1.0); this.szene.add(hemi);
-    const sonne = new THREE.DirectionalLight(0xfff1de, 1.9); sonne.position.set(2.5, 4.5, 3); sonne.castShadow = true;
+    // Licht wie in einem hellen Raum (Devin, 2.11.: „mehr realistischer“): Boden wirft warm zurück, Hauptlicht kräftiger, Figur bekommt auch Schatten von sich selbst (FigurModell: receiveShadow)
+    const hemi = new THREE.HemisphereLight(0xe2e7ee, 0x5e5044, 1.3); this.szene.add(hemi);
+    const sonne = new THREE.DirectionalLight(0xfff1de, 1.85); sonne.position.set(2.5, 4.5, 3); sonne.castShadow = true;
+    sonne.shadow.normalBias = 0.05; sonne.shadow.bias = -0.001;
     sonne.shadow.mapSize.set(1024, 1024); Object.assign(sonne.shadow.camera, { left: -2, right: 2, top: 2.5, bottom: -1, near: 0.5, far: 12 });
-    sonne.shadow.radius = 4; this.szene.add(sonne);
+    sonne.shadow.radius = 3.2; this.szene.add(sonne);
     // Zwei farbige Kantenlichter: Farbe A von hinten links, Farbe B von hinten rechts
-    const kante = new THREE.DirectionalLight(this.farbeA, 1.85); kante.position.set(-3, 2.5, -3); this.szene.add(kante);   // Kantenlicht kräftig wie bei einer Spielfigur (bis 1.11.: 1,1 / 0,9)
-    const kante2 = new THREE.DirectionalLight(this.farbeB, 1.5); kante2.position.set(3, 1.8, -2.5); this.szene.add(kante2);
+    // Kantenlichter nur noch mit einem Hauch der Farbwelt: kräftig farbig (bis 2.11.) färbten sie die Haut grün und orange
+    const weiss = new THREE.Color(0xffffff);
+    const kante = new THREE.DirectionalLight(this.farbeA.clone().lerp(weiss, 0.7), 0.85); kante.position.set(-3, 2.5, -3); this.szene.add(kante);
+    const kante2 = new THREE.DirectionalLight(this.farbeB.clone().lerp(weiss, 0.7), 0.7); kante2.position.set(3, 1.8, -2.5); this.szene.add(kante2);
+    const fuell = new THREE.DirectionalLight(0xffeee0, 0.38); fuell.position.set(-1.8, 1.0, 3.6); this.szene.add(fuell);
     const boden = new THREE.Mesh(new THREE.CircleGeometry(2.2, 64), mat(FARBEN.boden, { roughness: 0.9, transparent: this.effekte, opacity: this.effekte ? 0.92 : 1 }));
     boden.rotation.x = -Math.PI / 2; boden.receiveShadow = true; this.szene.add(boden);
     const ring = new THREE.Mesh(new THREE.RingGeometry(2.17, 2.2, 96), new THREE.MeshBasicMaterial({ color: this.effekte ? this.farbeB : 0x3a3226, transparent: true, opacity: this.effekte ? 0.55 : 1 }));
@@ -918,6 +1119,7 @@ export class Ansicht {
       this.steuerung.minDistance = 1.8; this.steuerung.maxDistance = 7;
       this.steuerung.maxPolarAngle = Math.PI * 0.53;
       this.steuerung.autoRotate = true; this.steuerung.autoRotateSpeed = 1.6;
+      this.steuerung.zoomToCursor = true;   // zwei Finger: dorthin zoomen, wo die Finger sind (bis ins Gesicht), sonst ginge es immer nur zur Körpermitte
       canvas.addEventListener('pointerdown', () => { this.steuerung.autoRotate = false; this.drehZiel = null; if (this.beiDrehStopp) this.beiDrehStopp(); });
     }
     this.ziel = V(0, 0.85, 0);
@@ -1091,13 +1293,14 @@ export class Ansicht {
     let hutAuf = !!hut;
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
       this.bild(t);
-      if (t === 0) this.g0 = this.gAktuell; else if (t === 1) this.g1 = this.gAktuell;
+      if (t === 0) { this.g0 = this.gAktuell; this.lebenArt = kategorie(this.g0); } else if (t === 1) this.g1 = this.gAktuell;
       this.figur.gruppe.updateMatrixWorld(true); this.geraete.gruppe.updateMatrixWorld(true);
       box.expandByObject(this.figur.gruppe);
       if (hutAuf) { hutAuf = this.figur.hutFrei(this.geraete.gruppe); hutBox.union(this.figur.hutBox.clone().applyMatrix4(hut.matrixWorld)); }
     }
     if (hutAuf && new THREE.Box3().setFromObject(this.geraete.gruppe).max.y > 0.3) hutAuf = hutImAblauf(animation, this.figur);   // Matte, Stufe, Hanteln am Boden stören nie
     if (hut) hut.visible = hutAuf;
+    if (this.lebendig && this.figur.spannung) this.figur.spannung(...seitenAnteil(this.g0, this.g1));
     if (hutAuf) box.union(hutBox);
     const nurFigur = box.clone();
     box.expandByObject(this.geraete.gruppe);
@@ -1111,7 +1314,7 @@ export class Ansicht {
     // Live-Ansicht: Knöpfe liegen unten über dem Bild, darum Figur etwas nach oben rücken
     if (this.effekte) mitte.y -= radius * 0.16;
     this.ziel.copy(mitte); this.basisAbstand = ab;
-    if (this.steuerung) { this.steuerung.target.copy(mitte); this.steuerung.minDistance = ab * 0.55; this.steuerung.maxDistance = ab * 1.8; }
+    if (this.steuerung) { this.steuerung.target.copy(mitte); this.steuerung.minDistance = Math.min(ab * 0.55, 0.95); this.steuerung.maxDistance = ab * 1.8; }
     const richt = (animation.kameraRicht || V(0.62, 0.32, 0.72)).clone().normalize();
     this.kamera.position.copy(mitte).add(richt.multiplyScalar(ab));
     this.kamera.lookAt(mitte);
@@ -1123,12 +1326,182 @@ export class Ansicht {
     if (this.einleitung) {
       try { this.intro = baueEinleitung(animation, this.geraete, this.zustand, richt.clone()); this.introZeit = 0; } catch (e) { this.intro = null; }
     }
+    this.anstrengung = 0; this.mundWert = 0; this.spannWert = 0; this.blickKopf = 0; this.blickFest = null; this.blickPunkt = null; this.folgePunkte = null; this.federn = null; if (this.figur) this.figur.hutLage = null; this.stillZeit = 0;   // neue Übung: Gesicht und Muskeln fangen entspannt an
+    // Wo die Hände greifen werden: dorthin schaut er kurz vorher
+    this.griffOrte = {};
+    if (this.intro && this.lebendig) for (const s of ['l', 'r']) {
+      const p = this.intro.griffPlan && this.intro.griffPlan[s], h = p && this.intro.pose(p.an).hand;
+      if (h && h[s]) this.griffOrte[s] = h[s].clone();
+    }
+  }
+  // Die Figur lebt (Devin, 1.11.: „ausatmen, dass der Körper ein bisschen hochgeht und wieder runter … von der Brust her“, „leichte
+  // Bewegungen, wenn man da steht … nicht die ganze Zeit still“, keine Zuckungen; 2.11.: „mehr aus der Brust atmen … Gesicht … ein bisschen
+  // verzieht, weil es schwer ist … kleine Details“). Läuft nach der echten Zeit, auch in Pausen, und liegt über der Bewegung der Übung.
+  // Atem: Brust und Bauch wölben sich (uAtem im Shader), Schultern und Kopf heben sich. In der Übung im Takt der Wiederholung: bei der Anstrengung
+  // ausatmen, beim Zurückgehen einatmen; sonst frei (rund 4 s, einatmen schneller). stand = { atemZiel, anstrengung, mund, spann } aus takt()
+  atme(pose, stand = null) {
+    const z = this.lebenZeit, dt = Math.min(0.1, Math.max(0, z - (this.lebenVorher == null ? z : this.lebenVorher))); this.lebenVorher = z; this.lebenDt = dt;
+    const ph = (z / 4.2) % 1, frei = ph < 0.4 ? glaettung(ph / 0.4) : 1 - glaettung((ph - 0.4) / 0.6);
+    const zieh = (alt, ziel, tempo) => (alt == null ? ziel : alt + (ziel - alt) * Math.min(1, dt * tempo));   // weich, kein Sprung zwischen Übung und Pause
+    this.atemWert = zieh(this.atemWert, stand && stand.atemZiel != null ? stand.atemZiel : frei, 7);
+    this.spannWert = zieh(this.spannWert, stand ? stand.spann : 0, 6);
+    this.laecheln = zieh(this.laecheln, this.laechelZiel || 0, 3);
+    pose.spann = this.spannWert;
+    this.anstrengung = zieh(this.anstrengung, stand ? stand.anstrengung : 0, 5);
+    this.mundWert = zieh(this.mundWert, stand ? stand.mund : 0, 9);
+    const atem = this.atemWert, an = this.anstrengung;
+    pose.atem = atem;
+    pose.schulterHub = (pose.schulterHub || 0) + 0.011 * atem;
+    // Lidschlag alle 2,5–6 s, dauert rund 0,17 s
+    if (this.blinzelAb == null) this.blinzelAb = z + 1.5;
+    if (z > this.blinzelAb + 0.17) this.blinzelAb = z + 2.5 + 3.5 * Math.random();
+    const bl = z > this.blinzelAb ? Math.sin(Math.PI * Math.min(1, (z - this.blinzelAb) / 0.17)) : 0;
+    // Blick: die Augen wandern alle 0,8–3,5 s um wenige Grad und springen schnell dorthin, unter Last bleiben sie fast geradeaus
+    if (this.blickAb == null || z > this.blickAb) { this.blickAb = z + 0.8 + 2.7 * Math.random(); this.blickZiel = [(Math.random() - 0.5) * 0.22, (Math.random() - 0.5) * 0.1]; }
+    const fest = this.blickFest;   // schaue(): gerade auf einen bestimmten Punkt
+    this.blickX = zieh(this.blickX, fest ? fest[0] : this.blickZiel[0] * (1 - 0.7 * an), 30); this.blickY = zieh(this.blickY, fest ? fest[1] : this.blickZiel[1] * (1 - 0.7 * an), 30);
+    pose.mimik = { an, bl, mund: this.mundWert, bx: this.blickX, by: this.blickY, la: this.laecheln };
+    // Kopf: langsam und wenig, zwei überlagerte Wellen ohne gemeinsamen Takt (wirkt nicht wie eine Schleife); bei Anstrengung etwas vor
+    pose.kopf = Object.assign({}, pose.kopf, { neigung: ((pose.kopf && pose.kopf.neigung) || 0) + 1.2 * welle(z, 0.71, 1.9) + 2.5 * an, dreh: ((pose.kopf && pose.kopf.dreh) || 0) + 1.8 * welle(z, 0.47, 0.4) });
+  }
+  // Wo steht die Wiederholung: Anstrengung 0…1 (hoch beim Hochdrücken/Ziehen, etwas auch beim Absenken, wird über die ersten Wiederholungen stärker),
+  // Atem und Mund (beim Anstrengen ausatmen, Lippen öffnen sich etwas), Spannung der Muskeln (beim Hochdrücken wachsend, oben voll, beim Absenken nachlassend, nie ganz weg).
+  // Ohne laufende Übung (Pause, Coach zeigt eine Stelle): null. Gleichmäßige Abläufe (nur eine Richtung, z. B. Marsch): gleichbleibend, Atem frei
+  takt() {
+    const dauer = this.uebung && this.uebung.dauer;
+    if (!this.laeuft || this.festT != null || this.intro) return null;
+    const d = dauer || [1.0, 0.4, 2.0, 0.5], ges = d[0] + d[1] + d[2] + d[3], x = this.zeit % ges, muede = 0.7 + 0.3 * Math.min(1, this.zeit / 20);
+    if (this.uebung.belastung) { const w = this.uebung.belastung(this.tJetzt); return { atemZiel: 1 - w, anstrengung: muede * (0.25 + 0.6 * w), mund: 0.5 * w, spann: muede * (0.45 + 0.55 * w) }; }   // Seitenwechsel in einem Durchgang: beim Strecken ausatmen, beim Zurückkommen einatmen
+    if (d[2] < 0.01 || d[0] < 0.01) return { atemZiel: null, anstrengung: muede * 0.5, mund: 0, spann: muede * 0.7 };
+    if (x < d[0]) { const u = x / d[0]; return { atemZiel: 1 - glaettung(u), anstrengung: muede * (0.6 + 0.4 * Math.sin(Math.PI * u)), mund: Math.sin(Math.PI * u), spann: muede * (0.45 + 0.55 * glaettung(u)) }; }
+    if (x < d[0] + d[1]) return { atemZiel: 0, anstrengung: muede * 0.45, mund: 0.1, spann: muede };
+    if (x < d[0] + d[1] + d[2]) { const u = (x - d[0] - d[1]) / d[2]; return { atemZiel: glaettung(u), anstrengung: muede * (0.4 + 0.35 * u), mund: 0, spann: muede * (1 - 0.55 * glaettung(u)) }; }
+    return { atemZiel: 1, anstrengung: muede * 0.75, mund: 0, spann: muede * 0.45 };
+  }
+  // Dazu: Im Stand verlagert sich das Gewicht (Becken unter 1 cm, Rumpf unter 1°), im Sitzen nur der Rumpf; die Füße bleiben stehen. Hände an
+  // losem Gerät wackeln um Millimeter, unter Last etwas mehr (Griff und Stange gehen mit), an festen Stangen nicht; die Hand drückt den Griff unter Last fester
+  belebe(pose) {
+    this.atme(pose, this.takt());
+    const still = !this.laeuft && this.festT == null;   // Pause: er schaut dich an und lächelt leicht, solange du nicht hinter ihm stehst
+    this.schaue(pose, still ? this.kamera.position : null, still ? 1 : 0, still);
+    // Steht er länger: alle paar Sekunden rollt er locker die Schultern
+    this.stillZeit = still ? (this.stillZeit || 0) + (this.lebenDt || 0) : 0;
+    if (this.stillZeit > 3) { const u = ((this.stillZeit - 3) % 7) / 1.6; if (u < 1) pose.schulterHub = (pose.schulterHub || 0) + 0.03 * Math.sin(Math.PI * u) ** 2; }
+    if (this.figur.glanz) this.figur.glanz(Math.min(1, this.zeit / 40));
+    const z = this.lebenZeit, art = this.lebenArt, stand = art === 'stehen', sitz = art === 'sitzen', last = this.anstrengung || 0, wackel = 0.0012 + 0.0012 * last;
+    const dx = stand ? 0.008 * welle(z, 0.53, 0.3) : 0, dz = stand ? 0.004 * welle(z, 0.37, 2.2) : 0;
+    if (stand || sitz) {
+      const faktor = stand ? 1 : 0.5, r = pose.rumpf || {};
+      pose.rumpf = Object.assign({}, r, { seit: (r.seit || 0) - 0.5 * faktor * welle(z, 0.53, 0.3), drehung: (r.drehung || 0) + 0.7 * faktor * welle(z, 0.31, 1.1) });
+    }
+    if (dx || dz) pose.becken = pose.becken.clone().add(V(dx, 0, dz));
+    if (pose.hand) {
+      const hand = {};
+      for (const s of ['l', 'r']) {
+        const h = pose.hand[s]; if (!h) continue;
+        if (pose.fest && pose.fest[s]) { hand[s] = h; continue; }
+        const n = h.clone().add(V(dx + wackel * welle(z, 6.1, 0.2), wackel * welle(z, 5.3, 1.3), dz + wackel * welle(z, 7.3, 2.6)));
+        if (h.genau) n.genau = h.genau;
+        hand[s] = n;
+      }
+      pose.hand = Object.assign({}, pose.hand, hand);
+    }
+    const druck = 1.02 + 0.03 * last + 0.012 * welle(z, 1.5, 0);
+    pose.griffZu = { l: druck, r: druck };
+  }
+  // Kopf und Augen schauen zu einem Punkt (ziel 0…1): die Augen springen hin, der Kopf kommt weich nach, den Rest des Winkels halten die Augen. Steht der Punkt
+  // hinter ihm, lässt er es. Kopf bis 42° zur Seite, 28° hoch, 38° runter
+  schaue(pose, punkt, ziel, laecheln = false) {
+    if (punkt) this.blickPunkt = punkt.clone();
+    this.laechelZiel = 0; this.blickFest = null;
+    if (!this.blickPunkt || (ziel < 0.01 && this.blickKopf < 0.005)) { this.blickKopf = 0; return; }
+    const g = gelenke(pose), auge = V(0, -0.09, 0.07).applyQuaternion(g.kopfQ).add(g.kopf);
+    const d = this.blickPunkt.clone().sub(auge).applyQuaternion(g.kopfQ.clone().invert());
+    const gier = Math.atan2(d.x, d.z) / RAD, nick = Math.atan2(-d.y, Math.hypot(d.x, d.z)) / RAD;
+    if (Math.abs(gier) > 75) ziel = 0;
+    this.blickKopf += (ziel - this.blickKopf) * Math.min(1, (this.lebenDt || 0) * 4.5);
+    const gk = grenze(gier, -42, 42) * this.blickKopf, nk = grenze(nick, -28, 38) * this.blickKopf;
+    pose.kopf = Object.assign({}, pose.kopf, { neigung: (pose.kopf.neigung || 0) + nk, dreh: (pose.kopf.dreh || 0) + gk });
+    if (ziel > 0.01) { this.blickFest = [grenze((gier - gk) * RAD, -0.38, 0.38), grenze((nk - nick) * RAD, -0.25, 0.25)]; if (laecheln) this.laechelZiel = 1; }
+  }
+  // Wohin er im Ablauf schaut: kurz bevor sich eine Hand auf den Weg macht zum Griff, bis sie zugegriffen hat
+  griffBlick(sek) {
+    const plan = this.intro.griffPlan || {}, summe = V();
+    let w = 0, n = 0;
+    for (const s of ['l', 'r']) {
+      const p = plan[s], o = this.griffOrte && this.griffOrte[s];
+      if (!p || !o) continue;
+      const g = glaettung((sek - p.an + p.weg + 0.4) / 0.25) * (1 - glaettung((sek - p.an - 0.1) / 0.4));
+      if (g > 0.001) { summe.addScaledVector(o, g); n += g; w = Math.max(w, g); }
+    }
+    return n ? { punkt: summe.divideScalar(n), w } : null;
+  }
+  // Was dem Körper nachschwingt: Spitze des Filzhuts, Saum von Shirt und Hosenbeinen, die Enden einer beladenen Langhantel (kommt sie aus dem Takt, federn die Scheiben)
+  schwingt(g) {
+    const dt = this.lebenDt || 0, f = this.figur;
+    if (!dt || !f.u || !f.u.uStoff) return;
+    const F = this.federn || (this.federn = { hut: new Feder(1.5, 0.13, 0.05), hutK: new Feder(2.1, 0.13, 0.03), hutD: new Feder(2.4, 0.16, 0.03), top: new Feder(1.6, 0.22, 0.03), l: new Feder(1.8, 0.22, 0.035), r: new Feder(1.8, 0.22, 0.035), stange: new Feder(3.2, 0.16, 0.05), alt: {}, e: { hut: 0, top: 0, l: 0, r: 0 } });
+    const z = this.lebenZeit || 0, tempo = (name, p) => { const a = F.alt[name], v = a ? a.distanceTo(p) / dt : 0; if (a) a.copy(p); else F.alt[name] = p.clone(); return Math.min(1, v / 0.55); };
+    const huell = (name, v) => { F.e[name] += (v - F.e[name]) * Math.min(1, dt * (v > F.e[name] ? 9 : 1.6)); return F.e[name]; };   // reagiert schnell, klingt langsam aus
+    // Hut (Devin, 2.11.: „ein bisschen wackeln … wie ein bisschen locker“): sitzt nicht fest. Die Spitze schwingt und hängt zur Schwerkraft, der ganze Hut läuft dem Kopf nach (kippt und dreht sich um den Scheitel,
+    // rutscht etwas) und schlackert, solange sich der Kopf bewegt; der Rand wellt sich dabei
+    if (f.hut && f.hut.visible) {
+      const inv = g.kopfQ.clone().invert(), schwer = V(0, -1, 0).applyQuaternion(inv);
+      const ab = F.hut.schritt(V(0, 0.17, 0).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv);
+      const kl = F.hutK.schritt(V(0, 0.09, 0).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv);
+      const dr = F.hutD.schritt(V(0, 0.09, 0.14).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv).sub(kl);
+      const e = huell('hut', Math.max(tempo('hut', g.kopf), 0.3 * tempo('hl', g.hand.l), 0.3 * tempo('hr', g.hand.r), 0.32 * tempo('kl', g.knie.l))), sch = e * 0.021;
+      f.hut.userData.schwung.value.set(ab.x * 1.6 + schwer.x * 0.03 + sch * 0.6 * Math.sin(z * 15.3) + 0.004 * Math.sin(z * 2.9), ab.z * 1.6 + schwer.z * 0.03 + sch * 0.6 * Math.sin(z * 18.9 + 1) + 0.003 * Math.sin(z * 2.3 + 2));
+      const kipp = (w) => grenze(w, -0.11, 0.11);
+      const ek = new THREE.Euler(kipp(-kl.z * 3.1 + schwer.z * 0.05 + sch * Math.sin(z * 17.1 + 2) + 0.005 * Math.sin(z * 1.7 + 1)), grenze(dr.x / 0.14 * 1.6, -0.09, 0.09), kipp(kl.x * 3.1 - schwer.x * 0.05 + sch * Math.sin(z * 21.3) + 0.006 * Math.sin(z * 2.3)));
+      const dq = new THREE.Quaternion().setFromEuler(ek), P = V(0, 1.83, -0.012), P2 = P.clone().applyQuaternion(dq);
+      f.hutLage = (f.hutLage || new THREE.Matrix4()).compose(P.clone().sub(P2).add(V(schwer.x * 0.005, grenze(kl.y * 0.45, -0.005, 0.007) - 0.0015 * Math.abs(schwer.y + 1), schwer.z * 0.005)), dq, V(1, 1, 1));
+      f.hut.userData.glocke.value.set(0.0009 + e * 0.0052, z * 8.5);
+    }
+    // Shirt und Hosenbeine laufen nach, der Saum wellt sich, solange sie in Bewegung sind
+    const v0 = F.top.schritt(g.becken, dt), v1 = F.l.schritt(g.knie.l, dt), v2 = F.r.schritt(g.knie.r, dt);
+    f.u.uStoff.value[0].copy(v0); f.u.uStoff.value[1].copy(v1); f.u.uStoff.value[2].copy(v2);
+    f.u.uWelle.value.set(0.012 + 0.17 * huell('top', tempo('top', g.becken)), 0.012 + 0.19 * huell('l', tempo('l', g.knie.l)), 0.012 + 0.19 * huell('r', tempo('r', g.knie.r)));
+    f.u.uStoffZeit.value = z;
+    const lh = this.zustand && this.zustand.lh;
+    if (lh && lh.children.length >= 11 && lh.children[0].scale.y === 1) {
+      const th = (0.02 - F.stange.schritt(lh.position, dt).y) * grenze((lh.position.y - 0.25) / 0.2, 0, 1);   // Ruhe: Scheiben hängen etwas (rund 1 cm), bremst oder beschleunigt die Stange, schwingen sie; am Boden liegen sie auf
+      for (let i = 1; i < lh.children.length; i++) {
+        const c = lh.children[i], b = c.userData.lage || (c.userData.lage = { x: c.position.x, y: c.position.y, r: c.rotation.z }), sg = Math.sign(b.x), hebel = Math.abs(b.x) - 0.3;
+        c.position.x = sg * (0.3 + hebel * Math.cos(th)); c.position.y = b.y - hebel * Math.sin(th); c.rotation.z = b.r - sg * th;
+      }
+    }
+  }
+  // Reingezoomt: die Kamera bleibt an dem Körperteil, das du dir ansiehst, und geht mit ihm mit (sonst liefe das Gesicht beim Kniebeugen aus dem Bild); beim Rauszoomen
+  // wieder zur Mitte der Übung
+  kameraFolgt(dt) {
+    const st = this.steuerung, g = this.gAktuell;
+    if (!st || !g || this.fokus) return;
+    const z = st.target, l = this.kamera.position.distanceTo(z);
+    const jetzt = [V(0, -0.09, 0.03).applyQuaternion(g.kopfQ).add(g.kopf), g.brust, g.becken, g.hand.l, g.hand.r, g.knie.l, g.knie.r, g.knoechel.l, g.knoechel.r];
+    if (this.folgePunkte && l < this.basisAbstand * 0.6) {
+      let beste = -1, min = 0.4;
+      this.folgePunkte.forEach((p, i) => { const d = p.distanceTo(z); if (d < min) { min = d; beste = i; } });
+      if (beste >= 0) { const d = jetzt[beste].clone().sub(this.folgePunkte[beste]); z.add(d); this.kamera.position.add(d); }
+    } else if (l > this.basisAbstand * 0.75 && z.distanceTo(this.ziel) > 0.003) {
+      const neu = z.clone().lerp(this.ziel, Math.min(1, dt * 2.5));
+      this.kamera.position.add(neu.clone().sub(z)); z.copy(neu);
+    }
+    this.folgePunkte = jetzt;
   }
   // Ein Bild des Ablaufs davor: Geräte gehen erst mit, wenn die Hände sie gegriffen haben
   introBild(sek) {
-    const pose = this.intro.pose(sek), g = gelenke(pose);
+    const pose = this.intro.pose(sek);
+    if (this.lebendig) {
+      this.atme(pose);
+      const b = this.griffBlick(sek), anfang = sek < 1.2;   // kommt rein, schaut dich kurz an; dann zum Griff
+      this.schaue(pose, b ? b.punkt : anfang ? this.kamera.position : null, b ? b.w : anfang ? 1 : 0, !b && anfang);
+    }
+    const g = gelenke(pose);
+    if (this.lebendig) g.atem *= brustFrei(g);
     this.gAktuell = g;
     if (this.intro.gehtMit(sek)) { const erg = this.uebung.pose(this.intro.tStart, this.zustand); if (erg.props) erg.props(g, this.zustand); }
+    if (this.lebendig) this.schwingt(g);
     this.geraete.nachBild();
     haltErkennen(g, this.zustand, this.stangen || [], this.geraete.gruppe);
     this.figur.stelle(g);
@@ -1141,11 +1514,14 @@ export class Ansicht {
     const griffAchse = this.zustand && this.zustand.griffAchse;
     if (griffAchse && !erg.pose.griffAchse) erg.pose.griffAchse = griffAchse;
     festErkennen(erg.pose, this.stangen || []);
+    if (this.lebendig) this.belebe(erg.pose);
     const g = gelenke(erg.pose);
+    if (this.lebendig) g.atem *= brustFrei(g);
     this.gAktuell = g;
     if (erg.props) erg.props(g, this.zustand);
     // Erstes Bild mit Kurzhantel: erst props kennt die Griffachse, also die Hand gleich danach ausrichten (sonst springt sie im nächsten Bild)
     if (!griffAchse && this.zustand && this.zustand.griffAchse) return this.bild(t);
+    if (this.lebendig) this.schwingt(g);
     this.geraete.nachBild();   // Kabelrollen, Gewichtsblock folgt dem Kabel
     haltErkennen(g, this.zustand, this.stangen || [], this.geraete.gruppe);   // erst die Geräte setzen, dann weiß die Hand, ob sie zur Faust wird
     this.figur.stelle(g);
@@ -1157,18 +1533,27 @@ export class Ansicht {
     const ges = dauer.reduce((a, b) => a + b, 0);
     let x = sek % ges;
     this.runter = x >= dauer[0] + dauer[1];
-    const glatt = (u) => u * u * (3 - 2 * u);
-    if (x < dauer[0]) return glatt(x / dauer[0]);
+    const glatt = (u) => (this.uebung && this.uebung.gleichmaessig ? u : u * u * (3 - 2 * u));   // gleichmäßig: die Vorlage bremst selbst (Seitenwechsel in einem Durchgang)
+    if (x < dauer[0]) {
+      let u = x / dauer[0];
+      // Es wird schwer: mitten im Hochdrücken wird er langsamer, umso mehr, je länger die Übung läuft (nicht bei Halten, Sprüngen, Seitenwechseln)
+      if (this.lebendig && dauer[0] >= 0.8 && dauer[2] > 0.01 && dauer[0] !== 1.5 && !(this.uebung && this.uebung.gleichmaessig)) u += (0.25 + 0.3 * Math.min(1, this.zeit / 20)) * Math.sin(2 * Math.PI * u) / (2 * Math.PI);
+      return glatt(u);
+    }
     x -= dauer[0]; if (x < dauer[1]) return 1;
     x -= dauer[1]; if (x < dauer[2]) return 1 - glatt(x / dauer[2]);
     return 0;
   }
   start() {
-    let vorher = performance.now();
+    let vorher = performance.now(), mess = 0, messN = 0;
     const schleife = (jetzt) => {
       this._raf = requestAnimationFrame(schleife);
+      // Schafft das Gerät das Bild nicht (im Schnitt unter 30 Bilder/s über 2 s), wird es etwas weniger scharf gerechnet: die Bewegung bleibt flüssig
+      if (jetzt - vorher < 100) { mess += jetzt - vorher; messN++; }
+      if (mess > 2000) { if (mess / messN > 34 && this.renderer.getPixelRatio() > 1) this.renderer.setPixelRatio(Math.max(1, this.renderer.getPixelRatio() * 0.8)); mess = 0; messN = 0; }
       const dt = Math.min((jetzt - vorher) / 1000, 0.1); vorher = jetzt;
-      if (this.laeuft) this.zeit += dt * this.tempo;
+      this.lebenZeit += dt;
+      if (this.laeuft) this.zeit += dt * this.tempo * (this.lebendig ? 1 + 0.05 * welle(this.lebenZeit, 0.37, 0.9) : 1);   // kein Takt wie vom Metronom: jede Wiederholung etwas anders
       let t = 0;
       if (this.uebung) {
         // Coach erklärt: Figur gleitet zur Stelle festT und bleibt dort stehen
@@ -1192,6 +1577,7 @@ export class Ansicht {
         let d = this.drehZiel - jetzt; d = Math.atan2(Math.sin(d), Math.cos(d));
         if (Math.abs(d) < 0.003) this.drehZiel = null; else this.setzeAzimut(jetzt + d * Math.min(1, dt * 7));
       }
+      this.kameraFolgt(dt);
       if (this.steuerung) this.steuerung.update();
       this.renderer.render(this.szene, this.kamera);
       if (this.beiBild) this.beiBild();
