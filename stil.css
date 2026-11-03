@@ -1,4 +1,5 @@
 /* DK Coach — gemeinsames Design für Trainer-Seite (app/build.js setzt es ein) und Kunden-App (kunden-app/build.js kopiert es). */
+/* Seit 02.11.2026 gelten die zwei Farbwelten am Ende dieser Datei (Abschnitt „Zwei Farbwelten“), sie überschreiben die Werte hier oben. */
 /* Farbwelt „Sunset“ (28.10.2026, Devin: das dunkle Braun-Gold war ihm zu trüb; gewählt aus Sunset / Electric / Volt).
    Alle Akzentfarben an einer Stelle. Andere Farbwelt = nur diese Werte ändern (Trainer-Seite, Kunden-App und 3D-Bühne zugleich).
    Vorher Gold: Verlauf #CDA868 → #A8834A (180deg), Akzent #A8834A, hell #C29C5E, Schrift #141109, Blatt #85601F. */

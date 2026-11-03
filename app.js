@@ -574,7 +574,7 @@ function ruhetagKarte(p, wt, heute) {
   return h('section', { class: 'block heute' },
     h('h3', { text: wt === heute ? 'Heute ist Ruhetag' : WOCHENTAGE[wt] + ': Ruhetag' }),
     h('p', { class: 'leise klein', text: 'Erholung gehört zum Training. Schlaf gut, iss genug, beweg dich locker.' }),
-    naechster ? h('p', null, 'Nächstes Training: ', h('b', { text: WOCHENTAGE[naechster.wt] + ' · T' + (naechster.ti + 1) + ' ' + p.t[naechster.ti].n })) : null,
+    naechster ? h('p', null, 'Nächstes Training: ', h('b', { text: WOCHENTAGE[naechster.wt] + ' · Training ' + (naechster.ti + 1) + ' · ' + p.t[naechster.ti].n })) : null,
     naechster ? h('button', { class: 'knopf', type: 'button', onclick: () => { S.tagWahl = naechster.wt; zeichne(); }, text: 'Training ansehen' }) : null);
 }
 // Große Muskeln an zwei Tagen direkt hintereinander? Dann ein Tipp (wie in der Trainer-Seite)
