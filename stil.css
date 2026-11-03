@@ -470,3 +470,283 @@ nav.leiste button.dk-druck { transform: scale(1.15); }
 @keyframes dk-plopp { from { transform: scale(.6); } }
 .ueb-karte { transition: opacity .3s var(--sanft), transform .28s var(--feder); }
 @media (prefers-reduced-motion: reduce) { .dk-druck, .dk-los, .haken input:checked + span { transform: none !important; animation: none !important; } }
+
+/* ---------- Zwei Farbwelten (02.11.2026, Devin: „Design von Apple … leichtes Blau, Weiß, Türkis … etwas, das sich leicht bewegt“, dann „Hintergrund dunkler … einstellen … Schwarz Gold, Luxus-Akzent, lila LED“).
+   Standard ist „Lagune“, <html data-look="gold"> ist „Schwarz-Gold“ (auf dem Gerät gemerkt, Knopf oben rechts). Alles läuft über die Tokens: beide Blöcke setzen dieselben Namen. ---------- */
+:root {
+  --verlauf-a: #4FB8F5;
+  --verlauf-b: #25D3C2;
+  --verlauf-winkel: 120deg;
+  --akzent: #0F86C4;
+  --akzent-hell: #07577A;      /* Schrift und Symbole auf Karten */
+  --auf-akzent: #06293B;
+  --blatt-akzent: #07577A;
+  --verlauf-schrift: linear-gradient(120deg, #075C85 0%, #087A76 100%);   /* Verlauf als Schrift: dunkler, sonst unlesbar */
+
+  --schwarz: #E2F2FA;          /* Name aus der dunklen Zeit: heller Grund für Felder und Abschnitte */
+  --anthrazit: #D6EBF6;
+  --flaeche: #FFFFFF;
+  --linie: #C6DFEC;
+  --text: #0B2434;
+  --text2: #3A5668;
+  --auf-grund: #082031;        /* Schrift direkt auf dem bewegten Hintergrund */
+  --auf-grund2: #0F2C3E;
+  --gut: #0F7A55;
+  --warn: #A25C08;
+  --stopp: #C4332A;
+  --f-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-zahl: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+  color-scheme: light;
+
+  --r: 22px;
+  --r-knopf: 16px;
+  --r-feld: 14px;
+  --seite: #86CBEE;
+  --flaechen: radial-gradient(34% 34% at 26% 22%, rgba(38, 142, 224, .9), transparent 72%), radial-gradient(30% 30% at 70% 32%, rgba(22, 196, 180, .78), transparent 72%), radial-gradient(36% 36% at 60% 72%, rgba(58, 160, 234, .86), transparent 74%), radial-gradient(26% 26% at 24% 74%, rgba(22, 196, 180, .62), transparent 72%);
+  --wellen: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 800' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='white' stop-opacity='.34'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 250C200 160 400 160 600 250S1000 340 1200 250V800H0Z' fill='url(%23a)'/%3E%3Cpath d='M0 470C200 560 400 560 600 470S1000 380 1200 470V800H0Z' fill='url(%23a)'/%3E%3C/svg%3E");
+  --karte: rgba(255, 255, 255, .93);
+  --flaeche-verlauf: linear-gradient(180deg, rgba(255, 255, 255, .97) 0%, rgba(255, 255, 255, .9) 100%);
+  --rand-weich: rgba(11, 60, 90, .12);
+  --schatten: 0 1px 2px rgba(10, 50, 80, .08), 0 14px 34px -14px rgba(10, 50, 80, .32);
+  --akzent-glanz: 0 10px 24px -8px rgba(15, 134, 196, .6), inset 0 1px 0 rgba(255, 255, 255, .45);
+  --feder: cubic-bezier(.3, 1.3, .5, 1);
+  --ios: cubic-bezier(.32, .72, 0, 1);
+  --blatt: #FFFFFF;
+  --blatt-text: #0B2434;
+  --blatt-text2: #3A5668;
+  --blatt-linie: #D3E5EF;
+  --blatt-feld: #E9F4FA;
+  --glas: rgba(255, 255, 255, .6);
+  --glas-rand: rgba(255, 255, 255, .72);
+  --glas-dicht: rgba(255, 255, 255, .84);
+  --knopf-grund: rgba(15, 134, 196, .14);
+  --knopf-grund2: rgba(15, 134, 196, .2);
+  --knopf-text: #05506F;
+  --feld: rgba(255, 255, 255, .95);
+  --reihe: #F1F8FC;
+  --chip-grund: rgba(255, 255, 255, .92);
+  --platzhalter: #4F6B7D;
+  --blatt-hg: rgba(8, 50, 80, .34);
+  --tm-grund: radial-gradient(120% 70% at 18% 0%, #A6DAF7 0%, transparent 62%), radial-gradient(110% 60% at 92% 8%, #A4EBE4 0%, transparent 62%), #D6EEF9;
+  --buehne-grund: radial-gradient(90% 50% at 50% 100%, rgba(255, 255, 255, .8), transparent 72%), radial-gradient(80% 50% at 18% 0%, rgba(79, 184, 245, .5), transparent 72%), radial-gradient(70% 45% at 88% 8%, rgba(37, 211, 194, .34), transparent 72%), linear-gradient(180deg, #BFE5FA 0%, #E2F4FC 64%, #CFF2ED 100%);
+  --buehne-rand: 0 0 0 1px rgba(11, 60, 90, .1) inset, 0 16px 36px -18px rgba(10, 50, 80, .5);
+  --rund-grund: rgba(255, 255, 255, .92);
+  --rund-rand: rgba(11, 60, 90, .14);
+  --mini-grund: linear-gradient(180deg, #DDF0FA, #CBE7F6);
+  --raum-grund: #8CCDEE;
+  --lila: #7C3AED;
+}
+:root[data-look="gold"] {
+  --verlauf-a: #F7DE93;
+  --verlauf-b: #CC9A33;
+  --verlauf-winkel: 120deg;
+  --akzent: #DCB453;
+  --akzent-hell: #EFD083;
+  --auf-akzent: #1B1304;
+  --blatt-akzent: #EFD083;
+  --verlauf-schrift: linear-gradient(120deg, #FBEAB2 0%, #D8AB44 100%);
+
+  --schwarz: #0E0E12;
+  --anthrazit: #212127;
+  --flaeche: #16161B;
+  --linie: #33333C;
+  --text: #F5F1E7;
+  --text2: #BDB7A8;
+  --auf-grund: #F5F1E7;
+  --auf-grund2: #CFC9BA;
+  --gut: #58D596;
+  --warn: #F4B650;
+  --stopp: #FF7263;
+  color-scheme: dark;
+
+  --seite: #060608;
+  --flaechen: radial-gradient(34% 30% at 28% 12%, rgba(124, 58, 237, .5), transparent 74%), radial-gradient(30% 28% at 74% 18%, rgba(139, 92, 246, .32), transparent 74%), radial-gradient(34% 34% at 62% 78%, rgba(204, 154, 51, .2), transparent 74%), radial-gradient(24% 24% at 22% 70%, rgba(124, 58, 237, .18), transparent 72%);
+  --wellen: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 800' preserveAspectRatio='none'%3E%3Cpath d='M0 250C200 160 400 160 600 250S1000 340 1200 250' fill='none' stroke='%23DCB453' stroke-opacity='.3' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3Cpath d='M0 470C200 560 400 560 600 470S1000 380 1200 470' fill='none' stroke='%23DCB453' stroke-opacity='.16' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  --karte: rgba(22, 22, 27, .9);
+  --flaeche-verlauf: linear-gradient(180deg, rgba(32, 32, 38, .96) 0%, rgba(20, 20, 24, .92) 100%);
+  --rand-weich: rgba(236, 200, 110, .17);
+  --schatten: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 18px 38px -18px rgba(0, 0, 0, .9);
+  --akzent-glanz: 0 10px 26px -8px rgba(220, 180, 83, .5), inset 0 1px 0 rgba(255, 255, 255, .55);
+  --blatt: #16161B;
+  --blatt-text: #F5F1E7;
+  --blatt-text2: #BDB7A8;
+  --blatt-linie: #33333C;
+  --blatt-feld: #212127;
+  --glas: rgba(16, 16, 20, .62);
+  --glas-rand: rgba(236, 200, 110, .24);
+  --glas-dicht: rgba(20, 20, 25, .86);
+  --knopf-grund: rgba(236, 200, 110, .14);
+  --knopf-grund2: rgba(236, 200, 110, .22);
+  --knopf-text: #F4D98F;
+  --feld: #1C1C22;
+  --reihe: #1C1C22;
+  --chip-grund: rgba(30, 30, 36, .92);
+  --platzhalter: #A7A192;
+  --blatt-hg: rgba(0, 0, 0, .55);
+  --tm-grund: radial-gradient(120% 60% at 22% 0%, rgba(124, 58, 237, .38) 0%, transparent 62%), radial-gradient(110% 50% at 90% 6%, rgba(204, 154, 51, .2) 0%, transparent 62%), #08080A;
+  --buehne-grund: radial-gradient(90% 46% at 50% 100%, rgba(220, 180, 83, .24), transparent 72%), radial-gradient(90% 46% at 50% 0%, rgba(124, 58, 237, .4), transparent 72%), linear-gradient(180deg, #121017 0%, #09090C 100%);
+  --buehne-rand: 0 0 0 1px rgba(236, 200, 110, .18) inset, 0 16px 36px -18px rgba(0, 0, 0, .9);
+  --rund-grund: rgba(26, 26, 32, .9);
+  --rund-rand: rgba(236, 200, 110, .28);
+  --mini-grund: linear-gradient(180deg, #1F1F25, #131317);
+  --raum-grund: #060608;
+  --lila: #8B5CF6;
+}
+
+/* Bewegter Hintergrund: Farbflächen treiben ineinander, darüber laufen Wellen seitlich durch. Nur transform, kein filter (schont das Handy). */
+html { background: var(--seite); min-height: 100%; }
+body { margin: 0; background: transparent; color: var(--text); font: 16px/1.45 var(--f-text); letter-spacing: -.003em; -webkit-font-smoothing: antialiased; }
+html::before, html::after { content: ""; position: fixed; z-index: -1; pointer-events: none; will-change: transform; }
+html::before { left: 50%; top: 50%; width: 125vmax; height: 125vmax; margin: -62.5vmax 0 0 -62.5vmax; background: var(--flaechen); animation: dk-treiben 42s ease-in-out infinite alternate; }
+html::after { left: 0; bottom: -4vh; width: 200vw; height: 64vh; background: var(--wellen) repeat-x 0 0 / 100vw 100%; animation: dk-wellenlauf 48s linear infinite; }
+@keyframes dk-treiben {
+  0% { transform: translate3d(-5vmax, -4vmax, 0) rotate(-8deg) scale(1); }
+  50% { transform: translate3d(6vmax, 3vmax, 0) rotate(14deg) scale(1.08); }
+  100% { transform: translate3d(-3vmax, 7vmax, 0) rotate(-16deg) scale(.98); }
+}
+@keyframes dk-wellenlauf { to { transform: translate3d(-100vw, 0, 0); } }
+/* Blatt offen oder Training läuft: Hintergrund steht (3D läuft dann, das spart Akku). Der Timer deckt alles ab, also ganz aus. */
+html:has(.blatt.offen)::before, html:has(.blatt.offen)::after { animation-play-state: paused; }
+html:has(.tm)::before, html:has(.tm)::after { animation: none; visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { html::before, html::after { animation: none; } }
+body::before { background: color-mix(in srgb, var(--seite) 86%, transparent); }
+/* Schwarz-Gold: lila LED-Leiste oben, atmet langsam */
+:root[data-look="gold"] body::after { content: ""; position: fixed; z-index: 11; left: 0; right: 0; top: env(safe-area-inset-top, 0px); height: 2px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--lila) 18%, #B794FF 50%, var(--lila) 82%, transparent); box-shadow: 0 0 22px 5px rgba(139, 92, 246, .75); animation: dk-led 5s ease-in-out infinite alternate; }
+@keyframes dk-led { from { opacity: .62; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { :root[data-look="gold"] body::after { animation: none; } }
+
+/* Kopf und Leiste: Glas */
+.kopf { background: var(--glas); backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); border-bottom: 1px solid var(--rand-weich); }
+.marke, .tm-kopf .marke { font-family: var(--f-display); font-stretch: normal; font-weight: 800; letter-spacing: -.012em; font-size: 17px; background: var(--verlauf-schrift); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tm-kopf .marke { font-size: 15px; font-weight: 700; }
+.marke small { font-size: 13px; letter-spacing: 0; }
+.kopf .rechts { color: var(--auf-grund2); }
+.look-wahl { flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--glas-rand); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); background: linear-gradient(135deg, #0A0A0D 0 48%, #E3BE63 52% 100%); transition: transform .28s var(--feder); -webkit-tap-highlight-color: transparent; }
+:root[data-look="gold"] .look-wahl { background: linear-gradient(135deg, #4FB8F5 0 48%, #25D3C2 52% 100%); }
+.look-wahl:active { transform: scale(1.12); }
+main { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
+.inhalt { gap: 18px; }
+.inhalt > .leise, .inhalt > .klein, .plan-kopf .leise, .plan-kopf .klein { color: var(--auf-grund2); }
+h1 { color: var(--auf-grund); }
+.block h1, .blatt h1, .tm h1 { color: var(--text); }
+nav.leiste { left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); padding: 6px; border-radius: 30px; border: 1px solid var(--glas-rand); background: var(--glas);
+  backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%); box-shadow: 0 14px 36px -10px rgba(5, 40, 70, .42), inset 0 1px 0 rgba(255, 255, 255, .16); }
+nav.leiste div { max-width: none; }
+nav.leiste button { padding: 7px 2px 6px; gap: 2px; border-radius: 24px; font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--auf-grund2); transition: transform .28s var(--feder), background .25s var(--sanft), color .2s var(--sanft); }
+nav.leiste button svg { padding: 0; width: 24px; height: 24px; border-radius: 0; stroke-width: 1.8; }
+nav.leiste button[aria-current="page"] { color: var(--knopf-text); background: var(--knopf-grund2); }
+nav.leiste button[aria-current="page"] svg { background: none; }
+@media (min-width: 640px) { nav.leiste { left: 50%; right: auto; width: 460px; margin-left: -230px; } }
+
+/* Schrift: große Titel wie in iOS, keine Großbuchstaben */
+h1, h2, .blatt-kopf h2, .statistik b, .tm-name, .tm-zeit, .tm-spruch, .tm-sum b, .tag-kopf .nr { font-stretch: normal; }
+h1 { font-weight: 800; font-size: clamp(30px, 8.6vw, 38px); letter-spacing: -.024em; text-transform: none; line-height: 1.08; }
+h2 { font-weight: 700; font-size: 20px; letter-spacing: -.014em; text-transform: none; color: var(--text); }
+h3 { font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+.fakten dt, table.ueb th, .woche small, table.lauf-tab th, .tm-label, .tm-werte small, .tm-uhr small, .tm-sum small, .tm-feier small, .tm-von, .tm-ring-mitte small, .blatt-abschnitt > b:first-child, .blatt .detail > div > b:first-child { text-transform: none; letter-spacing: 0; font-size: 13px; }
+.klein { font-size: 14px; }
+
+/* Karten */
+.block { background: var(--karte); border-color: var(--glas-rand); box-shadow: var(--schatten); }
+.kunde, .statistik div, .eintrag, .tm-karte, .tm-uhr, .tm-sum div, .tm-werte div { border-color: var(--glas-rand); }
+.statistik b { color: var(--akzent-hell); letter-spacing: -.02em; }
+.mono { background: var(--akzent-verlauf); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45); color: var(--auf-akzent); letter-spacing: 0; }
+.leer { background: var(--karte); }
+.fakten div { background: var(--flaeche); }
+
+/* Knöpfe */
+.knopf { background: var(--knopf-grund); border-color: transparent; color: var(--knopf-text); min-height: 46px; }
+.knopf:hover, .blatt .knopf:hover { border-color: transparent; background: var(--knopf-grund2); }
+.inhalt > .knopf:not(.haupt):not(.text), .inhalt > .aktionen .knopf:not(.haupt):not(.text), .plan-kopf .knopf:not(.haupt):not(.text), .inhalt > .reihe .knopf:not(.haupt):not(.text) { background: var(--karte); }
+.knopf.haupt { background: var(--akzent-verlauf); color: var(--auf-akzent); font-weight: 700; }
+.knopf.haupt:hover { background: var(--akzent-verlauf); filter: brightness(1.04); }
+.knopf.text, .knopf.text:hover { background: none; color: var(--auf-grund); }
+.block .knopf.text, .block .knopf.text:hover, .blatt .knopf.text, .blatt .knopf.text:hover { color: var(--akzent-hell); }
+.knopf:disabled { opacity: .5; }
+.blatt .knopf { background: var(--knopf-grund); color: var(--knopf-text); border: 0; box-shadow: none; }
+.blatt .knopf.haupt { background: var(--akzent-verlauf); color: var(--auf-akzent); box-shadow: var(--akzent-glanz); }
+.chip { background: var(--chip-grund); }
+.chip.gold { color: var(--akzent-hell); }
+
+/* Eingaben */
+.eingabe, .blatt .eingabe { background: var(--feld); border-color: var(--linie); color: var(--text); min-height: 46px; }
+.eingabe::placeholder { color: var(--platzhalter); }
+.eingabe:focus { border-color: var(--akzent); box-shadow: 0 0 0 4px var(--knopf-grund2); }
+.optionen span, .janein span, .blatt .optionen span { background: var(--feld); border-color: var(--linie); color: var(--text); }
+.optionen input:checked + span, .blatt .optionen input:checked + span { background: var(--akzent-verlauf); border-color: transparent; color: var(--auf-akzent); font-weight: 600; box-shadow: var(--akzent-glanz); }
+.janein input:checked + span.ja { border-color: var(--stopp); color: var(--stopp); background: color-mix(in srgb, var(--stopp) 12%, var(--flaeche)); font-weight: 600; }
+.janein input:checked + span.nein { border-color: var(--gut); color: var(--gut); background: color-mix(in srgb, var(--gut) 12%, var(--flaeche)); font-weight: 600; }
+.schritte button { background: var(--linie); }
+.schritte button.an { background: var(--akzent-verlauf); }
+.feld > label, .feld > .lbl { color: inherit; }
+
+/* Hinweise: bleiben klar anders als die Farbwelt */
+.meldung { color: var(--text); box-shadow: inset 4px 0 0 var(--warn); background: color-mix(in srgb, var(--warn) 13%, var(--flaeche)); }
+.meldung.stopp { box-shadow: inset 4px 0 0 var(--stopp); background: color-mix(in srgb, var(--stopp) 13%, var(--flaeche)); }
+.blatt .meldung { background: color-mix(in srgb, var(--warn) 14%, var(--blatt)); color: var(--blatt-text); }
+.blatt .meldung.stopp { background: color-mix(in srgb, var(--stopp) 14%, var(--blatt)); }
+
+/* Kunden-App: Heute */
+.block.heute { border-color: var(--glas-rand); gap: 14px; }
+.tag-kopf { row-gap: 2px; }
+.tag-kopf .nr { flex-basis: 100%; font-family: var(--f-text); font-size: 13px; font-weight: 600; color: var(--akzent-hell); }
+.block.heute .tag-kopf h3 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; line-height: 1.12; }
+.block.heute .aktionen .knopf.haupt { width: 100%; min-height: 56px; font-size: 18px; border-radius: 18px; }
+.wochenleiste .wt { background: var(--karte); border-color: var(--glas-rand); color: var(--text2); font-size: 13px; font-weight: 600; letter-spacing: 0; box-shadow: 0 1px 2px rgba(10, 50, 80, .08); }
+.wochenleiste .wt b, .wochenleiste .wt.training b { font-family: var(--f-text); font-size: 15px; line-height: 1; color: var(--akzent-hell); }
+.wochenleiste .wt.heute { border-color: var(--akzent); color: var(--text); }
+.wochenleiste .wt.an { background: var(--akzent-verlauf); border-color: transparent; color: var(--auf-akzent); box-shadow: var(--akzent-glanz); }
+.wochenleiste .wt.an b { color: var(--auf-akzent); }
+.ueb-karte { background: var(--reihe); border-color: var(--rand-weich); }
+.ueb-dosis { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+.ueb-dosis b { font-weight: 600; white-space: nowrap; }
+.ueb-dosis small { font-size: 13px; color: var(--text2); white-space: nowrap; }
+.haken span { border-color: var(--akzent); background: var(--flaeche); }
+.lauf-zeile { background: var(--flaeche); }
+.detail { background: var(--reihe); }
+.msg.agent { background: var(--flaeche); }
+@media (max-width: 520px) {
+  table.ueb tr { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  table.ueb td:first-child { flex-basis: 100%; }
+  table.ueb td.z::before { font-family: var(--f-text); font-size: 12px; letter-spacing: 0; }
+}
+
+/* Kleine Meldung unten */
+.toast { background: var(--flaeche); color: var(--text); border-color: var(--rand-weich); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 12px 32px -8px rgba(5, 30, 50, .45); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+
+/* Blatt von unten: weich wie in iOS, Glas */
+.blatt-hg { background: var(--blatt-hg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.blatt { background: color-mix(in srgb, var(--blatt) 94%, transparent); backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%); border-radius: 28px 28px 0 0; box-shadow: 0 -12px 44px rgba(5, 40, 70, .3); transition: transform .5s var(--ios); }
+:root[data-look="gold"] .blatt { color-scheme: dark; box-shadow: 0 -2px 0 rgba(139, 92, 246, .55), 0 -14px 44px rgba(124, 58, 237, .28); }
+.blatt-griff i { background: var(--blatt-linie); }
+.blatt-kopf h2 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+
+/* Ansicht wechselt: gleitet weicher herein */
+.inhalt > * { animation-duration: .55s; animation-timing-function: var(--ios); }
+@keyframes dk-auf { from { opacity: 0; transform: translateY(14px) scale(.985); } }
+
+/* Training */
+.tm { background: var(--tm-grund); }
+.tm-name { font-weight: 800; text-transform: none; font-size: clamp(27px, 7.6vw, 34px); letter-spacing: -.022em; line-height: 1.08; }
+.tm-zeit { font-family: var(--f-zahl); font-weight: 700; letter-spacing: -.02em; }
+.tm-uhr.pause .tm-zeit, .tm-ring.pause .tm-zeit { background: var(--verlauf-schrift); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tm-eingabe .eingabe { font-family: var(--f-zahl); font-weight: 600; }
+.tm-gross { letter-spacing: 0; font-size: 18px; }
+.tm-punkte i { border-color: var(--text2); }
+.tm-werte { background: var(--linie); }
+.tm-spruch { font-weight: 800; letter-spacing: -.02em; font-size: clamp(21px, 5.8vw, 26px); }
+.tm-sum b { font-family: var(--f-zahl); font-weight: 700; letter-spacing: -.01em; }
+.tm-frage .knopf { background: var(--flaeche); }
+
+/* Antippen: Federn etwas feiner */
+.knopf.dk-druck, .chip.dk-druck, .rund.dk-druck, .eb-knopf.dk-druck, .blatt-zu.dk-druck, .zu-rund.dk-druck, .wt.dk-druck, .mini3d.dk-druck,
+.haken.dk-druck, .ueb-name.dk-druck, .tm-zwei .knopf.dk-druck { transform: scale(1.05); }
+.optionen label.dk-druck span, .janein label.dk-druck span { transform: scale(1.05); }
+.eintrag.dk-druck, .kunde.dk-druck, .lauf-zeile.dk-druck { transform: scale(1.02); }
+.knopf.tm-gross.dk-druck { transform: scale(1.03); }
+nav.leiste button.dk-druck { transform: scale(1.1); }
+.knopf.haupt.dk-druck, .wt.an.dk-druck { box-shadow: 0 14px 32px -8px color-mix(in srgb, var(--akzent) 75%, transparent), inset 0 1px 0 rgba(255, 255, 255, .45); }
+.knopf:active, .chip:active, .ueb-name:active, .optionen label:active span, .janein label:active span { transform: scale(1.03); }
+@keyframes dk-feder { 0% { transform: scale(1.05); } 45% { transform: scale(.98); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .inhalt > * { animation: none; } .blatt { transition: none; } }

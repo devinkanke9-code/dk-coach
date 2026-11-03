@@ -1081,6 +1081,7 @@ export class Ansicht {
     this.effekte = !!opt.effekte && !opt.standbild;
     this.einleitung = opt.einleitung != null ? !!opt.einleitung : !opt.standbild;   // Ablauf vor der Übung (hinlaufen, greifen)
     // Farben der Bühne (Kantenlicht, Bodenring, Pulse, Funken): aus der Farbwelt der Seite (buehne.js gibt sie mit), sonst Orange/Türkis
+    this.mischung = opt.hell ? THREE.NormalBlending : THREE.AdditiveBlending;   // Leuchteffekte: auf hellem Grund wäre „additiv“ unsichtbar
     this.farbeA = new THREE.Color(opt.farbeA || 0xffa53a); this.farbeB = new THREE.Color(opt.farbeB || 0x35c6d4);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: this.effekte, preserveDrawingBuffer: !!opt.standbild });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1093,7 +1094,7 @@ export class Ansicht {
     this.kamera = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
     this.kamera.position.set(2.6, 1.6, 3.2);
     // Licht wie in einem hellen Raum (Devin, 2.11.: „mehr realistischer“): Boden wirft warm zurück, Hauptlicht kräftiger, Figur bekommt auch Schatten von sich selbst (FigurModell: receiveShadow)
-    const hemi = new THREE.HemisphereLight(0xe2e7ee, 0x5e5044, 1.3); this.szene.add(hemi);
+    const hemi = new THREE.HemisphereLight(0xe2e7ee, opt.hell ? 0xb4cfdf : 0x5e5044, 1.3); this.szene.add(hemi);
     const sonne = new THREE.DirectionalLight(0xfff1de, 1.85); sonne.position.set(2.5, 4.5, 3); sonne.castShadow = true;
     sonne.shadow.normalBias = 0.05; sonne.shadow.bias = -0.001;
     sonne.shadow.mapSize.set(1024, 1024); Object.assign(sonne.shadow.camera, { left: -2, right: 2, top: 2.5, bottom: -1, near: 0.5, far: 12 });
@@ -1104,9 +1105,9 @@ export class Ansicht {
     const kante = new THREE.DirectionalLight(this.farbeA.clone().lerp(weiss, 0.7), 0.85); kante.position.set(-3, 2.5, -3); this.szene.add(kante);
     const kante2 = new THREE.DirectionalLight(this.farbeB.clone().lerp(weiss, 0.7), 0.7); kante2.position.set(3, 1.8, -2.5); this.szene.add(kante2);
     const fuell = new THREE.DirectionalLight(0xffeee0, 0.38); fuell.position.set(-1.8, 1.0, 3.6); this.szene.add(fuell);
-    const boden = new THREE.Mesh(new THREE.CircleGeometry(2.2, 64), mat(FARBEN.boden, { roughness: 0.9, transparent: this.effekte, opacity: this.effekte ? 0.92 : 1 }));
+    const boden = new THREE.Mesh(new THREE.CircleGeometry(2.2, 64), mat(opt.hell ? 0xf2fafe : FARBEN.boden, { roughness: 0.9, emissive: opt.hell ? 0xcfeaf8 : 0x000000, emissiveIntensity: opt.hell ? 0.42 : 0, transparent: this.effekte, opacity: this.effekte ? 0.92 : 1 }));
     boden.rotation.x = -Math.PI / 2; boden.receiveShadow = true; this.szene.add(boden);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(2.17, 2.2, 96), new THREE.MeshBasicMaterial({ color: this.effekte ? this.farbeB : 0x3a3226, transparent: true, opacity: this.effekte ? 0.55 : 1 }));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(2.17, 2.2, 96), new THREE.MeshBasicMaterial({ color: this.effekte || opt.hell ? this.farbeB : 0x3a3226, transparent: true, opacity: this.effekte ? 0.55 : 1 }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002; this.szene.add(ring);
     if (this.effekte) this.effekteBauen();
     // Echter Körper (figur-modell.js), sobald koerper.bin geladen ist (app.js lädt ihn mit); sonst die gebaute Figur
@@ -1133,7 +1134,7 @@ export class Ansicht {
   hinweisBauen() {
     const glanz = leuchtTextur('rgba(255,255,255,0.95)', 'rgba(255,255,255,0)'), ring = ringTextur();
     const sprite = (map) => {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false, blending: this.mischung }));
       s.renderOrder = 10; s.visible = false; this.szene.add(s); return s;
     };
     this.marken = [0, 1].map(() => ({ glanz: sprite(glanz), ring: sprite(ring) }));
@@ -1229,10 +1230,10 @@ export class Ansicht {
   }
   // Leuchtender Bodenkreis, Pulsringe und schwebende Lichtpunkte
   effekteBauen() {
-    const kegel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: leuchtTextur(rgba(this.farbeA, 0.55), rgba(this.farbeA, 0)), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const kegel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: leuchtTextur(rgba(this.farbeA, 0.55), rgba(this.farbeA, 0)), transparent: true, depthWrite: false, blending: this.mischung }));
     kegel.rotation.x = -Math.PI / 2; kegel.position.y = 0.004; this.szene.add(kegel); this.kegel = kegel;
     this.pulse = [0, 1].map((i) => {
-      const r = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: i ? this.farbeB : this.farbeA, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const r = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: i ? this.farbeB : this.farbeA, transparent: true, depthWrite: false, blending: this.mischung }));
       r.rotation.x = -Math.PI / 2; r.position.y = 0.006; this.szene.add(r); return r;
     });
     const n = 140, pos = new Float32Array(n * 3), farbe = new Float32Array(n * 3);
@@ -1246,7 +1247,7 @@ export class Ansicht {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(farbe, 3));
-    this.partikel = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.035, map: leuchtTextur('rgba(255,255,255,1)', 'rgba(255,255,255,0)'), vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.partikel = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.035, map: leuchtTextur('rgba(255,255,255,1)', 'rgba(255,255,255,0)'), vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, blending: this.mischung }));
     this.szene.add(this.partikel);
   }
   effekteZeit(dt, t) {

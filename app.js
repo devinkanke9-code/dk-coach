@@ -265,7 +265,7 @@ function zeichne() {
     || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, info: ansichtInfo }[S.ansicht] || ansichtHeute;
   ziel.append(...ansicht().filter(Boolean));
   standbilder(lade3d, [...document.querySelectorAll('[data-vorschau]')].filter((el) => el.dataset.vorschau && !el.querySelector('img')), (id) => UEBUNGEN[id]).catch(() => {});
-  if (LAUF && LAUF.phase !== 'fertig' && !TM.el) setTimeout(timerZeigen, 0);   // laufendes Training nach Neuladen wieder zeigen
+  if (LAUF && LAUF.phase !== 'fertig' && !TM.el && !LAUF.gym) setTimeout(timerZeigen, 0);   // laufendes Training nach Neuladen wieder zeigen
 }
 
 /* ---------- Willkommen ---------- */
@@ -535,9 +535,9 @@ function wochenleiste(p, heute) {
   return h('div', { class: 'wochenleiste', role: 'group', 'aria-label': 'Wochentage' }, WOCHENTAGE.map((w, i) => {
     const ti = tagFuer(p, i);
     return h('button', { type: 'button', class: 'wt' + (i === S.tagWahl ? ' an' : '') + (i === heute ? ' heute' : '') + (ti >= 0 ? ' training' : ''),
-      'aria-pressed': i === S.tagWahl ? 'true' : 'false', 'aria-label': w + (i === heute ? ' (heute)' : '') + (ti >= 0 ? ': T' + (ti + 1) + ' ' + p.t[ti].n : ': Ruhetag'),
+      'aria-pressed': i === S.tagWahl ? 'true' : 'false', 'aria-label': w + (i === heute ? ' (heute)' : '') + (ti >= 0 ? ': Training ' + (ti + 1) + ', ' + p.t[ti].n : ': Ruhetag'),
       onclick: () => { S.tagWahl = i; zeichne(); } },
-      h('span', { text: w.slice(0, 2) }), h('b', { text: ti >= 0 ? 'T' + (ti + 1) : '–' }));
+      h('span', { text: w.slice(0, 2) }), h('b', { text: ti >= 0 ? '•' : '\u00a0' }));
   }));
 }
 function mini3d(u) {
@@ -548,9 +548,9 @@ function trainingsKarte(p, ti, istHeute) {
   const t = p.t[ti], erledigt = istHeute ? erledigtLaden(p, ti) : [];
   const alle = istHeute && t.u.length && erledigt.length >= t.u.length;
   return h('section', { class: 'block heute' },
-    h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'T' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' }) : null),
+    h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training ' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' }) : null),
     !istHeute ? h('p', { class: 'leise klein', text: WOCHENTAGE[S.tagWahl] + ' · Vorschau' }) : null,
-    h('div', { class: 'aktionen' }, startKnopf(p, ti, istHeute ? 'Training starten' : 'Diese Einheit starten')),
+    h('div', { class: 'aktionen' }, startKnopf(p, ti, istHeute ? 'Training starten' : 'Diese Einheit starten'), h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, ti), text: 'Ins Gym gehen' })),
     aufwaermen(t),
     istHeute ? h('p', { class: 'klein' + (alle ? '' : ' leise'), role: 'status', text: alle ? 'Alles erledigt. Stark, bis zum nächsten Training!' : erledigt.length + ' von ' + t.u.length + ' Übungen erledigt' }) : null,
     h('div', { class: 'ueb-liste' }, t.u.map((roh, ui) => {
@@ -559,7 +559,7 @@ function trainingsKarte(p, ti, istHeute) {
         istHeute ? h('label', { class: 'haken' }, h('input', { type: 'checkbox', checked: fertig, 'aria-label': anzeigeName(u) + ' erledigt',
           onchange: (e) => erledigtSetzen(p, ti, ui, e.target.checked) }), h('span', { 'aria-hidden': 'true' })) : null,
         h('button', { class: 'ueb-name', type: 'button', 'aria-haspopup': 'dialog', onclick: () => oeffneUebung(u, ti), text: anzeigeName(u) }),
-        h('div', { class: 'klein zahl leise', text: satzZahl(p, u) + ' × ' + dosis(u) + (u.rir ? ' · RIR ' + bereich(u.rir) : '') + (u.pause.length ? ' · Pause ' + pauseText(u) : '') }),
+        h('div', { class: 'ueb-dosis' }, h('b', { text: satzZahl(p, u) + ' × ' + dosis(u) }), u.pause.length ? h('small', { text: 'Pause ' + pauseText(u) }) : null),
         u.notiz ? h('div', { class: 'notiz', text: u.notiz }) : null,
         mini3d(u));
     })));
@@ -625,7 +625,7 @@ function trainingstageBlock(p) {
       text: 'Vorschlag nehmen: ' + vorschlag.map((i) => WOCHENTAGE[i].slice(0, 2)).join(', ') }) : null,
     tage.length > n ? h('p', { class: 'klein', text: 'Du hast mehr Tage gewählt, als dein Plan hat. Die letzten bleiben frei.' }) : null,
     nah.length ? h('p', { class: 'klein', text: 'Tipp: ' + nah.join(', ') + ' trainieren dieselben großen Muskeln. Besser einen Tag Pause dazwischen.' }) : null,
-    tage.length ? h('ul', { class: 'klein' }, tage.slice(0, n).map((i, k) => h('li', null, h('b', { text: WOCHENTAGE[i] + ': ' }), 'T' + (k + 1) + ' · ' + p.t[k].n))) : null);
+    tage.length ? h('ul', { class: 'klein' }, tage.slice(0, n).map((i, k) => h('li', null, h('b', { text: WOCHENTAGE[i] + ': ' }), 'Training ' + (k + 1) + ' · ' + p.t[k].n))) : null);
 }
 
 /* ---------- Plan ---------- */
@@ -651,17 +651,17 @@ function ansichtPlan() {
 function tagBlock(p, t, ti) {
   const sek = t.u.some((roh) => istSek(uebung(roh)));
   return h('section', { class: 'block', id: 'tag-' + (ti + 1) },
-    h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'T' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' }) : null),
+    h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training ' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' }) : null),
     aufwaermen(t),
     h('div', { class: 'tabelle-wrap' }, h('table', { class: 'ueb' },
-      h('thead', null, h('tr', null, ['Übung', 'Sätze', sek ? 'Wdh / Zeit' : 'Wdh', 'RIR', 'Pause'].map((x) => h('th', { text: x })))),
+      h('thead', null, h('tr', null, ['Übung', 'Sätze', sek ? 'Wdh / Zeit' : 'Wdh', 'Reserve', 'Pause'].map((x) => h('th', { text: x })))),
       h('tbody', null, t.u.map((roh) => {
         const u = uebung(roh);
         return h('tr', null,
           h('td', null, h('button', { class: 'ueb-name', type: 'button', 'aria-haspopup': 'dialog', onclick: () => oeffneUebung(u, ti), text: anzeigeName(u) }),
             u.notiz ? h('div', { class: 'notiz', text: u.notiz }) : null),
           h('td', { class: 'z', 'data-l': 'Sätze', text: satzZahl(p, u) }), h('td', { class: 'z', 'data-l': istSek(u) ? 'Zeit' : 'Wdh', text: bereich(u.wdh, istSek(u) ? 'sek' : '') }),
-          h('td', { class: 'z', 'data-l': 'RIR', text: bereich(u.rir) }), h('td', { class: 'z', 'data-l': 'Pause', text: u.pause.length ? pauseText(u) : '' }));
+          h('td', { class: 'z', 'data-l': 'Reserve', text: bereich(u.rir) }), h('td', { class: 'z', 'data-l': 'Pause', text: u.pause.length ? pauseText(u) : '' }));
       })))),
     h('div', { class: 'aktionen' }, startKnopf(p, ti, 'Diese Einheit starten')));
 }
@@ -801,6 +801,7 @@ let ZURUECK_LEISE = false;
 window.addEventListener('popstate', () => {
   if (ZURUECK_LEISE) { ZURUECK_LEISE = false; return; }
   if (BLATT) { BLATT.eintrag = false; schliesseBlatt(false, true); return; }
+  if (GYM) { if (GYM.raum) GYM.raum.schliessen(false); return; }
   if (TM.el && LAUF && LAUF.phase !== 'fertig') { history.pushState({ training: 1 }, ''); TM.frage = true; timerZeigen(); }
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') schliesseBlatt(); });
@@ -811,11 +812,11 @@ function oeffneUebung(u, ti) {
   const b = buehne({ lade3d, fotoGross });
   const muskeln = (d.m || []).map((m) => MUSKEL[m] || m).join(', ');
   const abschnitt = (titel, liste) => liste && liste.length ? h('div', { class: 'blatt-abschnitt' }, h('b', { text: titel }), h('ul', null, liste.map((x) => h('li', { text: x })))) : null;
-  oeffneBlatt(anzeigeName(u), [ti != null ? 'T' + (ti + 1) + ' · ' + p.t[ti].n : '', muskeln].filter(Boolean).join(' · '), [
+  oeffneBlatt(anzeigeName(u), [ti != null ? 'Training ' + (ti + 1) + ' · ' + p.t[ti].n : '', muskeln].filter(Boolean).join(' · '), [
     b.el,
     u.saetze ? h('div', { class: 'blatt-werte' },
       h('span', { class: 'chip', text: satzZahl(p, u) + ' Sätze' }), h('span', { class: 'chip', text: dosis(u) }),
-      u.rir ? h('span', { class: 'chip', text: 'RIR ' + bereich(u.rir) }) : null, u.pause.length ? h('span', { class: 'chip', text: pauseText(u) + ' Pause' }) : null) : null,
+      u.rir ? h('span', { class: 'chip', text: 'Reserve ' + bereich(u.rir) + ' Wdh' }) : null, u.pause.length ? h('span', { class: 'chip', text: pauseText(u) + ' Pause' }) : null) : null,
     u.notiz ? h('p', { class: 'notiz', text: u.notiz }) : null,
     abschnitt('So geht’s', d.t), abschnitt('Typische Fehler', d.f),
     d.v && d.v.length ? h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Vorsicht' }), h('p', { text: d.v.join(' ') })) : null
@@ -856,11 +857,52 @@ function wach(an) {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && LAUF && LAUF.phase !== 'fertig') { wach(true); timerTick(); } });
 
+/* ---------- Gym (raum.js): der Trainingstag als kleines 3D-Spiel. LAUF bleibt die eine Wahrheit: An der Station läuft der normale Satz-Ablauf, nur ohne eigene Bühne (die Figur trainiert in der Halle). ---------- */
+let GYM = null;
+function raumStarten(p, ti) {
+  if (GYM || !p) return;
+  if (LAUF && LAUF.phase !== 'fertig' && (LAUF.plan !== p.id || LAUF.tagNr !== ti + 1)) { toast('Da läuft noch ein anderes Training.'); return; }
+  if (!LAUF || LAUF.phase === 'fertig') laufStarten(p, ti, true);
+  LAUF.gym = true; LAUF.phase = 'frei'; laufSichern(); wach(true);
+  if (TM.buehne) { TM.buehne.weg(); TM.buehne = null; TM.gezeigt = null; }
+  if (TM.el) { TM.el.remove(); TM.el = null; }
+  GYM = {};
+  if (!(history.state && history.state.training)) history.pushState({ training: 1 }, '');
+  const heute = tagFuer(p, heuteIndex()) === ti, haken = heute ? erledigtLaden(p, ti) : [];
+  import('./raum.js').then((m) => m.raumOeffnen({ lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu,
+    uebungen: LAUF.uebungen.map((u, i) => ({ id: u.id, name: u.name, dosis: u.saetze + ' × ' + u.dosis, pause: '', d: UEBUNGEN[u.id] || { n: u.name, m: [] }, fertig: u.log.length >= u.saetze || haken.indexOf(i) >= 0 })) }))
+    .then((r) => { if (GYM) GYM.raum = r; }, () => { toast('Das Gym lädt gerade nicht.'); gymZu(false); });
+}
+function gymStation(i, ort) {
+  const u = LAUF.uebungen[i];
+  LAUF.ue = i; LAUF.satz = Math.min(u.log.length, u.saetze - 1); LAUF.phase = 'satz'; LAUF.seit = Date.now(); LAUF.uebungFertig = false;
+  TM.gym = ort; TM.frage = false; laufSichern(); timerZeigen();
+}
+function gymStationWeg() {
+  if (TM.el) { TM.el.remove(); TM.el = null; }
+  TM.gym = null;
+  if (LAUF && LAUF.phase !== 'fertig') { LAUF.phase = 'frei'; LAUF.uebungFertig = false; laufSichern(); }
+}
+function gymStationFertig() {
+  const i = LAUF.ue, p = S.plan;
+  if (p && p.id === LAUF.plan && tagFuer(p, heuteIndex()) === LAUF.tagNr - 1) erledigtSetzen(p, LAUF.tagNr - 1, i, true);
+  if (GYM && GYM.raum) GYM.raum.stationFertig(i);
+}
+function gymZu(geschafft) {
+  GYM = null; gymStationWeg(); document.body.style.overflow = '';
+  if (!LAUF) { zeichne(); return; }
+  if (geschafft) { laufBeenden('fertig'); return; }
+  wach(false);
+  if (!LAUF.uebungen.some((u) => u.log.length)) LAUF = null;   // noch kein Satz gemacht: dann ist auch kein Training offen
+  laufSichern();
+  if (history.state && history.state.training) { ZURUECK_LEISE = true; history.back(); }
+  zeichne();
+}
 function startKnopf(p, ti, text) {
-  if (LAUF && LAUF.phase !== 'fertig') return h('button', { class: 'knopf haupt', type: 'button', onclick: timerZeigen, text: 'Training läuft · fortsetzen' });
+  if (LAUF && LAUF.phase !== 'fertig') return h('button', { class: 'knopf haupt', type: 'button', onclick: () => (LAUF.gym ? raumStarten(aktiverPlan(), LAUF.tagNr - 1) : timerZeigen()), text: 'Training läuft · fortsetzen' });
   return h('button', { class: 'knopf haupt', type: 'button', onclick: () => laufStarten(p, ti), text: text || 'Training starten' });
 }
-function laufStarten(p, ti) {
+function laufStarten(p, ti, gym) {
   const jetzt = Date.now(), t = p.t[ti];
   LAUF = { v: 1, plan: p.id, kunde: p.n || '', tagNr: ti + 1, tagName: t.n, start: jetzt, ue: 0, satz: 0, phase: 'satz', seit: jetzt, pauseZiel: 0,
     uebungen: t.u.map((roh) => {
@@ -870,14 +912,15 @@ function laufStarten(p, ti) {
         tipp: (u.d.t || [])[0] || '', vorsicht: (u.d.v || [])[0] || '', log: [] };
     }) };
   TM.frage = false;
-  laufSichern(); piep(1); wach(true); timerZeigen();
+  if (gym) { LAUF.gym = true; LAUF.phase = 'frei'; }
+  laufSichern(); piep(1); wach(true); if (!gym) timerZeigen();
 }
 const aktUe = () => LAUF.uebungen[LAUF.ue];
 const letzterSatz = () => LAUF.ue === LAUF.uebungen.length - 1 && LAUF.satz === aktUe().saetze - 1;
 function satzFertig() {
   const u = aktUe(), jetzt = Date.now(), vor = u.log[u.log.length - 1];
   u.log.push({ s: LAUF.seit, e: jetzt, kg: vor ? vor.kg : '', wdh: '' });
-  if (letzterSatz()) LAUF.phase = 'letzter';
+  if (letzterSatz() && !LAUF.gym) LAUF.phase = 'letzter';
   else {
     LAUF.phase = 'pause'; LAUF.pauseZiel = u.pauseMax;
     LAUF.uebungFertig = LAUF.satz === u.saetze - 1;
@@ -913,6 +956,7 @@ function ergebnis(status) {
   return { v: 1, k: LAUF.kunde, t: LAUF.tagNr, tn: LAUF.tagName, s: LAUF.start, e: ende, st: status, u: ue };
 }
 function laufBeenden(status) {
+  if (GYM) { const raum = GYM.raum; GYM = null; gymStationWeg(); if (raum) raum.schliessen(false, true); }
   const r = ergebnis(status);
   const verlauf = [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40);
   speicher.schreib(VERLAUF_KEY, verlauf);
@@ -969,12 +1013,12 @@ function verlaufBlock() {
   return h('section', { class: 'block' }, h('h2', { text: 'Deine letzten Trainings' }),
     h('p', { class: 'leise klein', text: 'Gespeichert auf diesem Handy. Antippen zum Ansehen und nochmal an Devin schicken.' }),
     h('div', { class: 'laeufe' }, v.slice(0, 8).map((r) => h('button', { class: 'lauf-zeile', type: 'button', onclick: () => laufBlatt(r) },
-      h('b', { text: 'T' + r.t + ' · ' + r.tn }), h('span', { class: 'zahl', text: mmss(laufDauer(r)) }),
+      h('b', { text: 'Training ' + r.t + ' · ' + r.tn }), h('span', { class: 'zahl', text: mmss(laufDauer(r)) }),
       h('span', { class: 'leise klein', text: datumZeit(r.s) + ' · ' + saetzeGesamt(r) + ' Sätze' + (r.st === 'abgebrochen' ? ' · vorzeitig beendet' : '') })))));
 }
 function laufBlatt(r) {
   const knopf = h('button', { class: 'knopf', type: 'button', onclick: () => kopieren(laufAlsText(r), knopf), text: 'Text für Devin kopieren' });
-  oeffneBlatt('T' + r.t + ' · ' + r.tn, datumZeit(r.s), [h('div', { class: 'blatt-werte' }, h('span', { class: 'chip', text: 'Dauer ' + mmss(laufDauer(r)) }),
+  oeffneBlatt('Training ' + r.t + ' · ' + r.tn, datumZeit(r.s), [h('div', { class: 'blatt-werte' }, h('span', { class: 'chip', text: 'Dauer ' + mmss(laufDauer(r)) }),
     h('span', { class: 'chip', text: saetzeGesamt(r) + ' Sätze' }), r.st === 'abgebrochen' ? h('span', { class: 'chip', text: 'vorzeitig beendet' }) : null), laufTabelle(r), knopf]);
 }
 // Letztes Mal: aus den gespeicherten Trainings, sonst aus der alten Satz-Liste (App bis 28.10.)
@@ -1034,7 +1078,7 @@ function besterSatz(u) {
 function timerZeigen() {
   if (!LAUF) return;
   if (!TM.el) {
-    TM.el = h('div', { class: 'tm', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Training' }); document.body.append(TM.el);
+    TM.el = h('div', { class: 'tm', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Training' }); (TM.gym || document.body).append(TM.el);
     if (!(history.state && history.state.training)) history.pushState({ training: 1 }, '');
   }
   document.body.style.overflow = 'hidden';
@@ -1057,10 +1101,10 @@ function timerLaeuft() {
   const erledigt = LAUF.uebungen.reduce((s, x) => s + x.log.length, 0);
   const fort = []; for (let i = 0; i < gesamt; i++) fort.push(h('i', { class: i < erledigt ? 'an' : (i === erledigt && !pause && !letzter ? 'jetzt' : null) }));
   const teile = [
-    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: 'T' + LAUF.tagNr + ' · ' + LAUF.tagName }), h('div', { class: 'tm-gesamt' }, h('span', { id: 'tm-gesamt', text: mmss((Date.now() - LAUF.start) / 1000) }))),
+    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: 'Training ' + LAUF.tagNr + ' · ' + LAUF.tagName }), h('div', { class: 'tm-gesamt' }, h('span', { id: 'tm-gesamt', text: mmss((Date.now() - LAUF.start) / 1000) }))),
     h('div', { class: 'tm-fort', 'aria-label': erledigt + ' von ' + gesamt + ' Sätzen' }, fort)
   ];
-  const feier = pause && LAUF.uebungFertig;
+  const feier = pause && LAUF.uebungFertig, gymFeier = !!TM.gym && feier;
   if (feier) {
     const b = besterSatz(u), haken = h('div', { class: 'tm-haken', html: HAKEN });
     teile.push(h('div', { class: 'tm-feier' }, haken,
@@ -1080,11 +1124,12 @@ function timerLaeuft() {
     const s = u.log[u.log.length - 1];
     const kg = h('input', { class: 'eingabe', id: 'tm-kg', inputmode: 'decimal', autocomplete: 'off', placeholder: '–', value: s.kg, 'aria-label': 'Gewicht in kg', oninput: (e) => eintragen('kg', e.target.value) });
     const wdh = h('input', { class: 'eingabe', id: 'tm-wdh', inputmode: 'numeric', autocomplete: 'off', placeholder: '–', value: s.wdh, 'aria-label': u.sek ? 'Gehalten in Sekunden' : 'Wiederholungen', oninput: (e) => eintragen('wdh', e.target.value) });
-    if (pause) teile.push(ring('tm-ring', [h('small', { text: 'Pause' }), h('div', { class: 'tm-zeit', id: 'tm-uhr', text: mmss(LAUF.pauseZiel) })], 'pause'));
-    else teile.push(h('div', { class: 'tm-feier' }, h('div', { class: 'tm-haken', html: HAKEN }), h('small', { text: 'Letzter Satz geschafft' }), h('p', { class: 'tm-mini', text: 'Trag ihn noch ein, dann bist du durch.' })));
+    if (pause && !gymFeier) teile.push(ring('tm-ring', [h('small', { text: 'Pause' }), h('div', { class: 'tm-zeit', id: 'tm-uhr', text: mmss(LAUF.pauseZiel) })], 'pause'));
+    else if (!pause) teile.push(h('div', { class: 'tm-feier' }, h('div', { class: 'tm-haken', html: HAKEN }), h('small', { text: 'Letzter Satz geschafft' }), h('p', { class: 'tm-mini', text: 'Trag ihn noch ein, dann bist du durch.' })));
     teile.push(h('div', { class: 'tm-karte' }, h('small', { class: 'tm-label', text: 'Satz ' + u.log.length + (feier || letzter ? ' · ' + u.name : '') + ' eintragen' }),
       h('div', { class: 'tm-eingabe' }, h('label', null, kg, h('span', { text: 'kg' })), h('label', null, wdh, h('span', { text: u.sek ? 'Sekunden' : 'Wdh' })))));
-    if (pause) {
+    if (gymFeier) teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: gymStationFertig, text: 'Station geschafft' }));
+    else if (pause) {
       const nu = LAUF.satz < u.saetze - 1 ? { u, s: LAUF.satz + 2 } : { u: LAUF.uebungen[LAUF.ue + 1], s: 1 };
       teile.push(h('div', { class: 'tm-zwei' },
           h('button', { class: 'knopf', type: 'button', onclick: () => { LAUF.pauseZiel = Math.max(0, LAUF.pauseZiel - 30); laufSichern(); timerTick(); }, text: '− 30 s' }),
@@ -1098,7 +1143,8 @@ function timerLaeuft() {
     } else teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: () => laufBeenden('fertig'), text: 'Training abschließen' }));
   } else {
     // Satz läuft: die Figur zeigt die Übung, darunter die Satz-Uhr; ohne Figur (eigene Übung) der Ring wie in der Trainer-Seite
-    if ((UEBUNGEN[u.id] || {}).a) teile.push(trainingsBuehne(u), h('div', { class: 'tm-satzuhr' }, h('small', { text: 'Satz ' + (LAUF.satz + 1) + ' läuft' }), h('b', { class: 'zahl', id: 'tm-uhr', text: '0:00' })));
+    if (TM.gym) teile.push(h('div', { class: 'tm-satzuhr' }, h('small', { text: 'Satz ' + (LAUF.satz + 1) + ' läuft' }), h('b', { class: 'zahl', id: 'tm-uhr', text: '0:00' })));
+    else if ((UEBUNGEN[u.id] || {}).a) teile.push(trainingsBuehne(u), h('div', { class: 'tm-satzuhr' }, h('small', { text: 'Satz ' + (LAUF.satz + 1) + ' läuft' }), h('b', { class: 'zahl', id: 'tm-uhr', text: '0:00' })));
     else teile.push(ring('tm-ring', [h('small', { text: 'Satz ' + (LAUF.satz + 1) }), h('div', { class: 'tm-zeit', id: 'tm-uhr', text: '0:00' })], 'satz'));
     const vor = letztesMal(u, LAUF.satz), info = [];
     if (vor) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Letztes Mal ' }), (vor[0] != null ? String(vor[0]).replace('.', ',') + ' kg' : '–') + ' × ' + (vor[1] != null ? vor[1] + (u.sek ? ' s' : '') : '–')));
@@ -1130,7 +1176,7 @@ function timerFertig() {
     h('div', { class: 'tm-sum' }, h('div', null, h('small', { text: 'Dauer' }), h('b', { text: mmss(laufDauer(r)) })),
       h('div', null, h('small', { text: 'Sätze' }), h('b', { text: String(saetzeGesamt(r)) })),
       h('div', null, h('small', { text: 'Übungen' }), h('b', { text: String(r.u.length) }))),
-    h('section', { class: 'block' }, h('h2', { text: 'T' + r.t + ' · ' + r.tn }), laufTabelle(r)),
+    h('section', { class: 'block' }, h('h2', { text: 'Training ' + r.t + ' · ' + r.tn }), laufTabelle(r)),
     h('section', { class: 'block' }, h('h2', { text: 'An Devin schicken' }),
       h('p', { class: 'leise klein', text: 'Kopier den Text und schick ihn Devin, zum Beispiel per WhatsApp. Er sieht dann deine Zeiten, Gewichte und Wiederholungen.' }),
       knopf, feld),
@@ -1150,7 +1196,7 @@ function timerTick() {
     const rest = LAUF.pauseZiel - (jetzt - LAUF.seit) / 1000;
     if (u) u.textContent = mmss(Math.ceil(rest));
     if (rg) rg.setAttribute('stroke-dashoffset', String(RING_U * Math.min(1, Math.max(0, rest / Math.max(1, LAUF.pauseZiel)))));
-    if (rest <= 0) naechsterSatz();
+    if (rest <= 0 && !(TM.gym && LAUF.uebungFertig)) naechsterSatz();
   }
 }
 setInterval(timerTick, 250);

@@ -61,7 +61,7 @@ export function buehne({ lade3d, fotoGross }) {
       if (!ansicht) {
         // Licht und Ringe der Bühne in den Farben der Seite (Farbwelt in stil.css)
         const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || undefined;
-        ansicht = new M.Ansicht(canvas, { effekte: true, farbeA: css('--verlauf-a'), farbeB: css('--verlauf-b') });
+        ansicht = new M.Ansicht(canvas, { effekte: true, hell: document.documentElement.dataset.look !== 'gold', farbeA: css('--verlauf-a'), farbeB: css('--verlauf-b') });
         ansicht.beiDrehStopp = () => auto.setAttribute('aria-pressed', 'false');
         ansicht.start();
         if (beobachter) beobachter.observe(canvas); else window.addEventListener('resize', passe);
@@ -178,7 +178,7 @@ export async function standbilder(lade3d, ziele, datenZu) {
   if (!standAnsicht) {
     const c = document.createElement('canvas'); c.width = 192; c.height = 192; c.style.cssText = 'position:fixed;left:-500px;top:0;width:192px;height:192px';
     document.body.append(c);
-    standAnsicht = new M.Ansicht(c, { standbild: true, hintergrund: 0x1a1c20 });
+    standAnsicht = new M.Ansicht(c, { standbild: true, hell: document.documentElement.dataset.look !== 'gold', hintergrund: document.documentElement.dataset.look === 'gold' ? 0x17171c : 0xd6ecf8, farbeA: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-a').trim(), farbeB: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-b').trim() });
   }
   for (const el of ziele) {
     const id = el.dataset.vorschau, d = datenZu(id);

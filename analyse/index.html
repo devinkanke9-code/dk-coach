@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Analyse für dich · DK Coach</title>
-<meta name="theme-color" content="#0b0b0b">
+<meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#060608'}}catch(e){}</script>
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../icon-180.png">
 <!-- DK Coach — Analyse für dich (31.10.2026, Devin: „eine eigene Seite … ein Link, den du einfach draufklickst, da steht Analyse für dich …
@@ -20,19 +20,18 @@ html, body { margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 .inhalt { max-width: 560px; }
 .kopf-innen { justify-content: space-between; }
-.zu { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--rand-weich); background: #1a1c20; color: var(--text); font-size: 18px; cursor: pointer; }
+.zu { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--rand-weich); background: var(--flaeche); color: var(--text); font-size: 18px; cursor: pointer; }
 .start { justify-items: center; text-align: center; padding: 28px 18px; }
 .start .logo { width: 84px; height: 84px; border-radius: 20px; }
 .fortschritt { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
 .fortschritt i { height: 5px; border-radius: 999px; background: var(--anthrazit); }
 .fortschritt i.an { background: var(--akzent-verlauf); }
-.nr { font-family: var(--f-zahl); font-size: 12px; letter-spacing: .12em; color: var(--text2); text-transform: uppercase; }
-.frage-titel { font-family: var(--f-display); font-stretch: 125%; font-weight: 800; font-size: clamp(22px, 6.4vw, 28px); line-height: 1.12; text-transform: uppercase; letter-spacing: .02em;
-  background: var(--akzent-verlauf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nr { font-size: 14px; font-weight: 600; color: var(--akzent-hell); }
+.frage-titel { font-family: var(--f-display); font-weight: 800; font-size: clamp(27px, 7.4vw, 33px); line-height: 1.1; letter-spacing: -.022em; color: var(--text); }
 .eigene textarea { min-height: 72px; }
 .feld.gross textarea { min-height: 150px; font-size: 17px; }   /* Fragen zum Schreiben: das Feld ist die Antwort */
 .eigene > label { color: var(--akzent-hell); }
-.fuss { position: sticky; bottom: 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(180deg, transparent, var(--schwarz) 30%); }
+.fuss { position: sticky; bottom: 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--seite) 88%, transparent) 30%); }
 .zusammen { display: grid; gap: 10px; }
 .zusammen div { display: grid; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--linie); }
 .zusammen div:last-child { border-bottom: 0; }

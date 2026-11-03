@@ -149,7 +149,7 @@ function drehePose(p, m, w) {
 }
 // Stehend (oder gehend: phase in Bogenmaß, 0 = Füße nebeneinander) an pos (Becken x/z), Blick in Richtung winkel (0 = +z);
 // hoch = auf einer Box oder Stufe dieser Höhe
-function stehen(pos, winkel, o = {}) {
+export function stehen(pos, winkel, o = {}) {
   const q = drehY(winkel), d = (x, y, z) => V(x, y, z).applyQuaternion(q).add(V(pos.x, o.hoch || 0, pos.z));
   const ph = o.phase || 0, schritt = o.schritt == null ? 0.2 : o.schritt, s1 = Math.sin(ph), c1 = Math.cos(ph);
   // geht = wie weit im Gehen (Schrittlänge 0…0,2): Fuß heben, Becken wippen und Arme schwingen laufen damit aus, das letzte Bild des

@@ -77,3 +77,23 @@
     }
   }, true);   // vor dem eigenen Handler: der zeichnet neu, danach wäre der Haken schon weg
 })();
+
+/* Farbwelt wählen: Lagune oder Schwarz-Gold, auf diesem Gerät gemerkt (Knopf oben rechts im Kopf) */
+(function () {
+  var SCHLUESSEL = 'dk_look';
+  function lies() { try { return localStorage.getItem(SCHLUESSEL) || ''; } catch (e) { return ''; } }
+  function knopf() {
+    var kopf = document.querySelector('.kopf-innen');
+    if (!kopf || kopf.querySelector('.look-wahl')) return;
+    var jetzt = lies(), b = document.createElement('button');
+    b.type = 'button'; b.className = 'look-wahl'; b.title = jetzt === 'gold' ? 'Zu Lagune wechseln' : 'Zu Schwarz-Gold wechseln'; b.setAttribute('aria-label', b.title);
+    b.addEventListener('click', function () {
+      try { if (jetzt === 'gold') localStorage.removeItem(SCHLUESSEL); else localStorage.setItem(SCHLUESSEL, 'gold'); } catch (e) {}
+      document.documentElement.dataset.look = jetzt === 'gold' ? '' : 'gold';
+      location.reload();   // 3D-Bühne und Vorschaubilder entstehen dann in den neuen Farben
+    });
+    kopf.appendChild(b);
+  }
+  if (lies()) document.documentElement.dataset.look = lies();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', knopf); else knopf();
+})();
