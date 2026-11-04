@@ -64,17 +64,14 @@ const grenze = (v, a, b) => Math.max(a, Math.min(b, v));
 // Höhe y im Rumpf (-1 hängt, 0 waagerecht, 1 über Kopf): unten 70° (Rudern, Dips), waagerecht 45°, über Kopf 12°. Unterarm: rund 180° insgesamt, also höchstens 100° zu jeder Seite der neutralen Lage
 const hinterGrenze = (y) => (y < 0 ? 70 - 25 * glaettung(1 + y / 0.5) : 45 - 33 * Math.min(1, y / 0.9)) * RAD;
 export const UNTERARM_MAX = 100 * RAD;
-// Feder: ein Punkt läuft einem anderen mit Verzögerung nach und schwingt aus (Hut, Stoff, Stange). Liefert die Abweichung, höchstens max
+// Feder: ein Punkt läuft einem anderen mit Verzögerung nach und schwingt aus (Stoff, Stange). Liefert die Abweichung, höchstens max
 class Feder {
-  // mitgehen: bremst gegen den Punkt statt gegen den Raum, gleichmäßiges Gehen zieht dann nichts nach (nur Anfahren, Bremsen, Wippen)
-  constructor(hz, daempfung, max, mitgehen = false) { this.w = 2 * Math.PI * hz; this.d = daempfung; this.max = max; this.p = null; this.v = V(); this.ab = V(); this.vor = mitgehen ? V() : null; }
+  constructor(hz, daempfung, max) { this.w = 2 * Math.PI * hz; this.d = daempfung; this.max = max; this.p = null; this.v = V(); this.ab = V(); }
   schritt(punkt, dt) {
-    if (!this.p) { this.p = punkt.clone(); if (this.vor) this.vor.copy(punkt); return this.ab.set(0, 0, 0); }
+    if (!this.p) { this.p = punkt.clone(); return this.ab.set(0, 0, 0); }
     const n = Math.max(1, Math.ceil(dt / 0.008)), h = dt / n, ww = this.w * this.w, dd = 2 * this.d * this.w;
-    let tx = 0, ty = 0, tz = 0;
-    if (this.vor && dt > 0) { tx = (punkt.x - this.vor.x) / dt; ty = (punkt.y - this.vor.y) / dt; tz = (punkt.z - this.vor.z) / dt; this.vor.copy(punkt); }
     for (let i = 0; i < n; i++) {
-      this.v.x += (ww * (punkt.x - this.p.x) - dd * (this.v.x - tx)) * h; this.v.y += (ww * (punkt.y - this.p.y) - dd * (this.v.y - ty)) * h; this.v.z += (ww * (punkt.z - this.p.z) - dd * (this.v.z - tz)) * h;
+      this.v.x += (ww * (punkt.x - this.p.x) - dd * this.v.x) * h; this.v.y += (ww * (punkt.y - this.p.y) - dd * this.v.y) * h; this.v.z += (ww * (punkt.z - this.p.z) - dd * this.v.z) * h;
       this.p.addScaledVector(this.v, h);
     }
     return this.ab.copy(this.p).sub(punkt).clampLength(0, this.max);
@@ -1501,30 +1498,22 @@ export class Ansicht {
     }
     return n ? { punkt: summe.divideScalar(n), w } : null;
   }
-  // Was dem Körper nachschwingt: Spitze des Filzhuts, Saum von Shirt und Hosenbeinen, die Enden einer beladenen Langhantel (kommt sie aus dem Takt, federn die Scheiben)
+  // Was dem Körper nachschwingt: Saum von Shirt und Hosenbeinen, die Enden einer beladenen Langhantel (kommt sie aus dem Takt, federn die Scheiben)
   schwingt(g) {
     const dt = this.lebenDt || 0, f = this.figur;
     if (!dt || !f.u || !f.u.uStoff) return;
-    const F = this.federn || (this.federn = { hut: new Feder(3.4, 0.5, 0.025, true), hutK: new Feder(3.8, 0.55, 0.015, true), hutD: new Feder(4, 0.55, 0.015, true), top: new Feder(1.6, 0.22, 0.03), l: new Feder(1.8, 0.22, 0.035), r: new Feder(1.8, 0.22, 0.035), stange: new Feder(3.2, 0.16, 0.05), alt: {}, e: { hut: 0, lauf: 0, top: 0, l: 0, r: 0 } });
+    const F = this.federn || (this.federn = { top: new Feder(1.6, 0.22, 0.03), l: new Feder(1.8, 0.22, 0.035), r: new Feder(1.8, 0.22, 0.035), stange: new Feder(3.2, 0.16, 0.05), alt: {}, e: { hut: 1, top: 0, l: 0, r: 0 } });
     const z = this.lebenZeit || 0, tempo = (name, p) => { const a = F.alt[name], v = a ? a.distanceTo(p) / dt : 0; if (a) a.copy(p); else F.alt[name] = p.clone(); return Math.min(1, v / 0.55); };
-    const huell = (name, v) => { F.e[name] += (v - F.e[name]) * Math.min(1, dt * (v > F.e[name] ? 9 : 1.6)); return F.e[name]; };   // reagiert schnell, klingt langsam aus
-    // Hut (Devin, 2.11.: „ein bisschen wackeln … wie ein bisschen locker“): sitzt nicht fest. Die Spitze schwingt und hängt zur Schwerkraft, der ganze Hut läuft dem Kopf nach (kippt und dreht sich um den Scheitel,
-    // rutscht etwas) und schlackert, solange sich der Kopf bewegt; der Rand wellt sich dabei. 3.11.: „wackelt viel zu sehr“ beim Laufen, „vielleicht sogar teilweise Standbild“: stramme Federn ohne Eigenschwingen im Schritttakt. Danach (Karte: „noch zu unruhig“, „beim Laufen fast ganz stillstehen“): Beim Gehen sitzt er fest auf dem Kopf, auch das Hängen zur Schwerkraft und das leise Wogen ruhen, im Stehen und in der Übung bleibt alles wie vorher
+    const huell = (name, v, an = 9, ab = 1.6) => { F.e[name] += (v - F.e[name]) * Math.min(1, dt * (v > F.e[name] ? an : ab)); return F.e[name]; };   // reagiert schnell, klingt langsam aus
+    // Hut (Devin, 2.11.: „ein bisschen wackeln … wie ein bisschen locker“; 3.11.: „wackelt viel zu sehr“, „vielleicht sogar teilweise Standbild“; 4.11.: „nicht mehr bewegt, wenn er sich bewegt“): Er sitzt fest auf dem Kopf, bei jeder Bewegung des Körpers, auch in der Übung.
+    // Nur wer still steht, dessen Hut wogt noch ganz leise. Das blendet weich ein und aus, damit nichts ruckt, und bleibt über die Pause einer Wiederholung aus; es fängt aus an, sonst ruckt er beim Losgehen
     if (f.hut && f.hut.visible) {
-      const inv = g.kopfQ.clone().invert(), schwer = V(0, -1, 0).applyQuaternion(inv);
-      const ab = F.hut.schritt(V(0, 0.17, 0).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv);
-      const kl = F.hutK.schritt(V(0, 0.09, 0).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv);
-      const dr = F.hutD.schritt(V(0, 0.09, 0.14).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv).sub(kl);
-      F.beckenFlach = (F.beckenFlach || V()).set(g.becken.x, 0, g.becken.z);
-      const lauf = huell('lauf', Math.min(1, tempo('lauf', F.beckenFlach) * 2.5)), ruhig = 1 - 0.97 * lauf;   // Gehen: reagiert sofort, nach dem Stehenbleiben klingt es langsam aus
-      const e = huell('hut', Math.max(tempo('hut', g.kopf), 0.3 * tempo('hl', g.hand.l), 0.3 * tempo('hr', g.hand.r), 0.32 * tempo('kl', g.knie.l))) * ruhig * ruhig, sch = e * 0.008;
-      ab.multiplyScalar(ruhig); kl.multiplyScalar(ruhig); dr.multiplyScalar(ruhig);
-      f.hut.userData.schwung.value.set(ab.x * 1.6 + sch * 0.6 * Math.sin(z * 15.3) + ruhig * (schwer.x * 0.03 + 0.004 * Math.sin(z * 2.9)), ab.z * 1.6 + sch * 0.6 * Math.sin(z * 18.9 + 1) + ruhig * (schwer.z * 0.03 + 0.003 * Math.sin(z * 2.3 + 2)));
-      const kipp = (w) => grenze(w, -0.11, 0.11);
-      const ek = new THREE.Euler(kipp(-kl.z * 3.1 + sch * Math.sin(z * 17.1 + 2) + ruhig * (schwer.z * 0.05 + 0.005 * Math.sin(z * 1.7 + 1))), grenze(dr.x / 0.14 * 1.6, -0.09, 0.09), kipp(kl.x * 3.1 + sch * Math.sin(z * 21.3) + ruhig * (-schwer.x * 0.05 + 0.006 * Math.sin(z * 2.3))));
-      const dq = new THREE.Quaternion().setFromEuler(ek), P = V(0, 1.83, -0.012), P2 = P.clone().applyQuaternion(dq);
-      f.hutLage = (f.hutLage || new THREE.Matrix4()).compose(P.clone().sub(P2).add(V(ruhig * schwer.x * 0.005, grenze(kl.y * 0.45, -0.005, 0.007) - ruhig * 0.0015 * Math.abs(schwer.y + 1), ruhig * schwer.z * 0.005)), dq, V(1, 1, 1));
-      f.hut.userData.glocke.value.set(0.0009 * ruhig + e * 0.002, z * 8.5);
+      const bewegt = Math.max(tempo('hut', g.kopf), 0.6 * Math.max(tempo('hl', g.hand.l), tempo('hr', g.hand.r), tempo('kl', g.knie.l), tempo('kr', g.knie.r), tempo('fl', g.knoechel.l), tempo('fr', g.knoechel.r)));
+      const still = 1 - huell('hut', Math.min(1, bewegt * 5), 5, 0.7);
+      f.hut.userData.schwung.value.set(still * 0.004 * Math.sin(z * 2.9), still * 0.003 * Math.sin(z * 2.3 + 2));
+      const dq = new THREE.Quaternion().setFromEuler(new THREE.Euler(still * 0.005 * Math.sin(z * 1.7 + 1), 0, still * 0.006 * Math.sin(z * 2.3))), P = V(0, 1.83, -0.012), P2 = P.clone().applyQuaternion(dq);
+      f.hutLage = (f.hutLage || new THREE.Matrix4()).compose(P.clone().sub(P2), dq, V(1, 1, 1));
+      f.hut.userData.glocke.value.set(0.0009 * still, z * 8.5);
     }
     // Shirt und Hosenbeine laufen nach, der Saum wellt sich, solange sie in Bewegung sind
     const v0 = F.top.schritt(g.becken, dt), v1 = F.l.schritt(g.knie.l, dt), v2 = F.r.schritt(g.knie.r, dt);
