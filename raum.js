@@ -39,7 +39,8 @@ function zeichne(breite, hoehe, malen) {
 function runde(x, l, o, b, h, r) { x.beginPath(); x.moveTo(l + r, o); x.arcTo(l + b, o, l + b, o + h, r); x.arcTo(l + b, o + h, l, o + h, r); x.arcTo(l, o + h, l, o, r); x.arcTo(l, o, l + b, o, r); x.closePath(); }
 const SCHRIFT = '-apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-serif';
 
-export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu }) {
+// spieler (optional): der eigene Charakter statt der Standardfigur. { name, bauen(ansicht, M) vor dem Aufbau der Stationen, haltung(pose, winkel) im Gehen und Stehen }. Dann: Kamera näher dran, Einstieg durch die Tür, Name über dem Kopf, „Hier trainieren“ am Gerät
+export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler }) {
   const GOLD = document.documentElement.dataset.look === 'gold', P = GOLD ? FARBEN_GOLD : FARBEN_LAGUNE;
   // Oberfläche
   const wurzel = el('div', 'raum'); wurzel.setAttribute('role', 'dialog'); wurzel.setAttribute('aria-modal', 'true'); wurzel.setAttribute('aria-label', 'Trainingsraum');
@@ -48,7 +49,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const kopf = el('div', 'raum-kopf'), kopfT = el('b', null, titel || 'Dein Gym heute'), kopfS = el('span', 'raum-stand');
   const punkte = el('div', 'raum-punkte'); uebungen.forEach(() => punkte.append(el('i')));
   const kopfText = el('div', 'raum-kopftext'); kopfText.append(kopfT, kopfS); kopf.append(zu, kopfText, punkte);
-  const tipp = el('div', 'raum-tipp', 'Station antippen · Knüppel: selbst laufen');
+  const tipp = el('div', 'raum-tipp', spieler ? 'Knüppel: laufen · Wischen: Kamera' : 'Station antippen · Knüppel: selbst laufen');
   const stick = el('div', 'raum-stick'), stickK = el('i'); stick.append(stickK); stick.setAttribute('aria-hidden', 'true');
   const weiter = el('button', 'raum-weiter'); weiter.type = 'button';
   const unten = el('div', 'raum-unten'); unten.append(stick, weiter);
@@ -62,10 +63,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   wurzel.classList.add('faehrt');
   document.body.append(wurzel);
 
-  let a = null, offen = true, beobachter = null;
+  let a = null, offen = true, beobachter = null, aufraeumen = null;
   function schliessen(geschafft, still) {
     if (!offen) return; offen = false;
     if (beobachter) beobachter.disconnect();
+    if (aufraeumen) aufraeumen();
     if (a) { a.entsorgen(); if (a.renderer.forceContextLoss) a.renderer.forceContextLoss(); }
     wurzel.remove();
     if (beiZu && !still) beiZu(!!geschafft);
@@ -76,18 +78,21 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   try { M = await lade3d(); stehen = (await import('./einleitung.js')).stehen; } catch (e) { ladenT.textContent = 'Das Gym lädt gerade nicht. Später nochmal öffnen.'; return; }
   if (!offen) return;
   const { THREE, V, Ansicht, gelenke } = M;
-  const Y = V(0, 1, 0), css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const Y = V(0, 1, 0), css = (n) => getComputedStyle(wurzel).getPropertyValue(n).trim();
 
   a = new Ansicht(bild, { hell: !GOLD, hintergrund: P.himmel, farbeA: css('--verlauf-a'), farbeB: css('--verlauf-b') });
   a.steuerung.dispose();
   a.steuerung = { autoRotate: false, target: V(), minDistance: 0, maxDistance: 0, update() {}, dispose() {}, getAzimuthalAngle: () => 0 };   // die Kamera führt der Raum selbst
+  if (spieler && spieler.bauen) { try { await spieler.bauen(a, M); } catch (e) { schliessen(false, true); throw e; } if (!offen) return; }
   const hochkant = () => bild.clientHeight > bild.clientWidth * 1.2;
   const sichtOben = () => (hochkant() ? 60 : 44), sichtStation = () => (hochkant() ? 56 : 42);
   a.kamera.near = 0.1; a.kamera.far = 1200; a.kamera.fov = sichtOben(); a.kamera.updateProjectionMatrix();
   const szene = a.szene;
   for (const o of szene.children) if (o.isMesh && /Circle|Ring/.test(o.geometry.type)) o.visible = false;   // Boden und Ring der Bühne: hier nicht
-  if (GOLD) { const lila = new THREE.DirectionalLight(0x9b6cff, 1.5); lila.position.set(-1, 5, -2.5); szene.add(lila); }
+  if (GOLD) { const lila = new THREE.DirectionalLight(0x9b6cff, spieler ? 0.5 : 1.5); lila.position.set(-1, 5, -2.5); szene.add(lila); }
   const lichter = szene.children.filter((o) => o.isDirectionalLight);
+  let kameraLicht = null;   // eigener Charakter: warmes Licht aus Richtung der Kamera, so stimmt der Hautton von jeder Seite
+  if (spieler) { kameraLicht = new THREE.DirectionalLight(0xfff0e4, GOLD ? 1.1 : 0.6); szene.add(kameraLicht); }
   szene.fog = new THREE.Fog(P.nebel, 70, 520);
   // Geräte passend zum Raum
   const gm = a.geraete;
@@ -146,9 +151,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   /* ---------- Niedrige Wände (Sicht von oben wie in die offene Halle) ---------- */
   const wandM = grund(0xffffff, { vertexColors: true });
   const wand = (b, h, t, x, y, z) => { const m = new THREE.Mesh(kiste(b, h, t), wandM); m.position.set(x, y, z); raum.add(m); return m; };
-  wand(0.3, WAND, LAENGE, -BREITE / 2, WAND / 2, zMitte); wand(0.3, WAND, LAENGE, BREITE / 2, WAND / 2, zMitte);
+  const wandL = wand(0.3, WAND, LAENGE, -BREITE / 2, WAND / 2, zMitte), wandR = wand(0.3, WAND, LAENGE, BREITE / 2, WAND / 2, zMitte), wandVorn = [], wandHinten = [];
   const stueck = (BREITE - TUER_B) / 2;
-  for (const z of [zAnfang, zEnde]) { wand(stueck, WAND, 0.3, -(TUER_B + stueck) / 2, WAND / 2, z); wand(stueck, WAND, 0.3, (TUER_B + stueck) / 2, WAND / 2, z); }
+  for (const z of [zAnfang, zEnde]) (z === zAnfang ? wandVorn : wandHinten).push(wand(stueck, WAND, 0.3, -(TUER_B + stueck) / 2, WAND / 2, z), wand(stueck, WAND, 0.3, (TUER_B + stueck) / 2, WAND / 2, z));
 
   /* ---------- LED: leuchtende Schienen oben, Lichtschein drumherum ---------- */
   const scheinT = tex(zeichne(32, 128, (x, b, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, b, h); }));
@@ -166,7 +171,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
 
   /* ---------- Türen ---------- */
   const rahmenM = grund(GOLD ? 0xf0cd74 : 0x14c7b6, { transparent: true, opacity: 0.6, fog: false }), rahmenA = grund(GOLD ? 0xf0cd74 : 0x14c7b6, { fog: false });
-  const rahmen = (z, m) => { for (const [b, h, x, y] of [[0.14, TUER_H + 0.14, -TUER_B / 2, TUER_H / 2], [0.14, TUER_H + 0.14, TUER_B / 2, TUER_H / 2], [TUER_B + 0.14, 0.14, 0, TUER_H]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(b, h, 0.14), m); r.position.set(x, y, z); raum.add(r); } };
+  const rahmen = (z, m) => { for (const [b, h, x, y] of [[0.14, TUER_H + 0.14, -TUER_B / 2, TUER_H / 2], [0.14, TUER_H + 0.14, TUER_B / 2, TUER_H / 2], [TUER_B + 0.14, 0.14, 0, TUER_H]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(b, h, 0.14), m); r.position.set(x, y, z); raum.add(r); (z === zAnfang ? wandVorn : wandHinten).push(r); } };
   rahmen(zAnfang, rahmenA); rahmen(zEnde, rahmenM);
   const tuerGlas = grund(P.glas, { transparent: true, opacity: 0.42, depthWrite: false });
   const fluegelL = new THREE.Mesh(new THREE.BoxGeometry(TUER_B / 2 - 0.04, TUER_H, 0.06), tuerGlas), fluegelR = fluegelL.clone();
@@ -225,7 +230,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const platte = new THREE.CircleGeometry(STATION_R, 64), ringGeo = new THREE.RingGeometry(STATION_R - 0.08, STATION_R, 96);
   function namensSchild(s) {
     const c = zeichne(720, 180, () => {}), t = tex(c);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false, fog: false })); sp.scale.set(3.6, 0.9, 1); sp.renderOrder = 5;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false, fog: false })); sp.scale.set(spieler ? 2.8 : 3.6, spieler ? 0.7 : 0.9, 1); sp.renderOrder = 5;
     s.schildMalen = () => {
       const x = c.getContext('2d'), F2 = P.schild; x.clearRect(0, 0, 720, 180);
       x.fillStyle = F2.grund; runde(x, 6, 14, 708, 152, 76); x.fill();
@@ -282,11 +287,17 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const lichtSaeule = new THREE.Mesh(new THREE.CylinderGeometry(STATION_R * 0.98, STATION_R * 0.98, 3.2, 48, 1, true), grund(P.ring, { map: saeuleT, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: GOLD ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false, opacity: 0.55 }));
   lichtSaeule.renderOrder = 4; raum.add(lichtSaeule);
 
+  let namensTafel = null;
+  if (spieler && spieler.name) {
+    const t = zeichne(640, 128, (x, b) => { x.font = '800 60px ' + SCHRIFT; const w = Math.min(b - 8, x.measureText(spieler.name).width + 70); x.fillStyle = P.schild.grund; runde(x, (b - w) / 2, 10, w, 108, 54); x.fill(); x.fillStyle = P.schild.text; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(spieler.name, b / 2, 67, b - 50); });
+    namensTafel = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(t), transparent: true, depthWrite: false, depthTest: false, toneMapped: false, fog: false }));   // Der Name bleibt auch vor einem Gerät lesbar
+    namensTafel.scale.set(1.5, 0.3, 1); namensTafel.position.set(0, 2.2, 0); namensTafel.renderOrder = 7; szene.add(namensTafel);
+  }
   /* ---------- Figur und Kamera ---------- */
   const F = V(0, 0, zAnfang + 4), K = { pos: V(0, LAENGE * 0.95, zMitte + LAENGE * 0.62), blick: V(0, 0, zMitte), fov: sichtOben() };
   let H = Math.PI, zielH = Math.PI, ph = 0, schrittL = 0, gang = null, warte = 0, nachWarte = null, hupf = 0;
   let hallenWinkel = 0, aktiv = null, kamFlug = null, modus = 'draussen', orbit = null, zeit = 0, gehX = 0, gehY = 0;
-  let kamW = 0, kamZ = 1, bisZiel = 0, vonZiel = 0, tuerOffen = 0;
+  let kamW = 0, kamZ = 1, bisZiel = 0, vonZiel = 0, tuerOffen = 0, auftritt = null, nahe = null;
   const legeHalle = (p, w) => {
     const delta = w - hallenWinkel; hallenWinkel = w;
     raum.rotation.y = -w; raum.position.set(p.x, 0, p.z).applyAxisAngle(Y, -w).negate(); raum.updateMatrixWorld(true);
@@ -299,6 +310,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   };
   const verfolgen = () => {
     const dx = Math.sin(kamW), dz = Math.cos(kamW);
+    if (spieler) return { pos: V(F.x + dx * 4.5 * kamZ, 0.9 + 3.5 * kamZ, F.z + dz * 4.5 * kamZ), blick: V(F.x - dx * 0.9, 0.95, F.z - dz * 0.9), fov: sichtOben() };   // dein Charakter ist groß im Bild
     return { pos: V(F.x + dx * 7.4 * kamZ, 8.8 * kamZ, F.z + dz * 7.4 * kamZ), blick: V(F.x - dx * 1.5, 0.8, F.z - dz * 1.5), fov: sichtOben() };
   };
   function kameraZu(ziel, dauer, dann) {
@@ -313,14 +325,14 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     a.zeige(s.anim, s.d.m || []);
     s.sichtLokal = a.kamera.position.clone(); s.zielLokal = a.ziel.clone();
     if (s.statisch) s.statisch.visible = false;
-    spielerRing.visible = false;
+    spielerRing.visible = false; if (namensTafel) namensTafel.visible = false;
     legeKamera();
   }
   function frei(p, w) {
     if (aktiv != null && stationen[aktiv].statisch) stationen[aktiv].statisch.visible = true;
     aktiv = null; a.uebung = null; a.intro = null; a.geraete.leeren(); a.figur.markiere([]);
-    if (a.figur.hut) a.figur.hut.visible = true;
-    F.set(p.x, 0, p.z); H = zielH = w; legeHalle(F, 0); spielerRing.visible = true;
+    if (a.figur.hut) { a.figur.hut.visible = !a.figur.ohneHut; if (a.figur.haarAnzeige) a.figur.haarAnzeige(); }
+    F.set(p.x, 0, p.z); H = zielH = w; legeHalle(F, 0); spielerRing.visible = true; if (namensTafel) namensTafel.visible = true;
   }
   const offeneZahl = () => stationen.filter((s) => !s.fertig).length;
   const naechste = () => { const s = stationen.find((x) => !x.fertig); return s ? s.i : null; };
@@ -334,8 +346,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     bisZiel = n == null ? 1 : anteil(stationen[n].pos.z);
     wegU.von.value = vonZiel;
     weiter.textContent = '';
-    if (n == null) { weiter.append(el('small', null, 'Alles geschafft'), el('b', null, 'Zur Tür')); schildMalen(true); lichtSaeule.visible = false; rahmenM.opacity = 1; }
-    else { weiter.append(el('small', null, n === 0 ? 'Los geht’s' : 'Nächste Station: ' + (n + 1)), el('b', null, stationen[n].u.name)); lichtSaeule.visible = true; lichtSaeule.position.set(stationen[n].pos.x, 1.6, stationen[n].pos.z); }
+    if (nahe != null && !stationen[nahe].fertig) weiter.append(el('small', null, 'Hier trainieren'), el('b', null, stationen[nahe].u.name));
+    else if (n == null) weiter.append(el('small', null, 'Alles geschafft'), el('b', null, 'Zur Tür'));
+    else weiter.append(el('small', null, n === 0 ? 'Los geht’s' : 'Nächste Station: ' + (n + 1)), el('b', null, stationen[n].u.name));
+    if (n == null) { schildMalen(true); lichtSaeule.visible = false; rahmenM.opacity = 1; }
+    else { lichtSaeule.visible = true; lichtSaeule.position.set(stationen[n].pos.x, 1.6, stationen[n].pos.z); }
   }
   function modusSetzen(m) {
     modus = m;
@@ -365,8 +380,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     else { s.sichtLokal = V(0.8, 1.6, 4.2); s.zielLokal = V(0, 0.9, 0); }
     pop('Station ' + (i + 1), s.u.name);
     s.schild.visible = false; lichtSaeule.visible = false;
-    const blick = ausLokal(s, s.zielLokal), sicht = ausLokal(s, s.sichtLokal.clone().sub(s.zielLokal).multiplyScalar(hochkant() ? 1.4 : 1.14).add(s.zielLokal));
-    blick.y -= hochkant() ? 0.95 : 0.42;   // Figur steht oben im Bild, unten liegt die Karte
+    const nah = spieler && spieler.karteKlein;   // Probetag mit kleiner Karte: Figur groß. Die Karte der App mit den Sätzen ist höher, dort bleibt es beim normalen Abstand
+    const blick = ausLokal(s, s.zielLokal), sicht = ausLokal(s, s.sichtLokal.clone().sub(s.zielLokal).multiplyScalar(nah ? (hochkant() ? 1.08 : 0.98) : hochkant() ? 1.4 : 1.14).add(s.zielLokal));
+    blick.y -= hochkant() ? (nah ? 0.72 : spieler ? 1.65 : 0.95) : 0.42;   // Figur steht oben im Bild, unten liegt die Karte (eigener Charakter: ganz über der Karte)
     sicht.y = klemme(sicht.y, 1, 3);
     kameraZu({ pos: sicht, blick, fov: sichtStation() }, 1.5, () => {
       const off = K.pos.clone().sub(blick);
@@ -431,7 +447,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }
   let sagUhr = null;
   function sag(t) { meldung.textContent = t; meldung.classList.add('offen'); clearTimeout(sagUhr); sagUhr = setTimeout(() => meldung.classList.remove('offen'), 3200); }
-  weiter.addEventListener('click', () => { const n = naechste(); if (n == null) rausgehen(); else zurStation(n); });
+  weiter.addEventListener('click', () => { const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else zurStation(n); });
 
   /* ---------- Antippen, Wischen, Knüppel ---------- */
   const strahl = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -483,6 +499,16 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const stickLos = (e) => { if (e.pointerId !== stickId) return; stickId = null; gehX = gehY = 0; stickK.style.transform = ''; };
   stick.addEventListener('pointerup', stickLos); stick.addEventListener('pointercancel', stickLos);
 
+  // Am PC: Pfeiltasten oder WASD statt Knüppel
+  const tasten = new Set(), TASTE = { ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r', ArrowUp: 'v', w: 'v', W: 'v', ArrowDown: 'h', s: 'h', S: 'h' };
+  const tasteNeu = (e) => {
+    const t = TASTE[e.key]; if (!t || stickId != null) return;
+    if (e.type === 'keydown') tasten.add(t); else tasten.delete(t);
+    const x = (tasten.has('r') ? 1 : 0) - (tasten.has('l') ? 1 : 0), y = (tasten.has('h') ? 1 : 0) - (tasten.has('v') ? 1 : 0), l = Math.hypot(x, y) || 1;
+    gehX = x / l; gehY = y / l; e.preventDefault();
+    if (x || y) { gang = null; tipp.classList.add('weg'); }
+  };
+  if (spieler) { window.addEventListener('keydown', tasteNeu); window.addEventListener('keyup', tasteNeu); aufraeumen = () => { window.removeEventListener('keydown', tasteNeu); window.removeEventListener('keyup', tasteNeu); }; }
   /* ---------- Jedes Bild (die Ansicht ruft das direkt vor dem Zeichnen) ---------- */
   a.kameraFolgt = (dt) => {
     zeit += dt;
@@ -493,7 +519,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       else if (nachWarte) { const f = nachWarte; nachWarte = null; f(); }
       if (aktiv == null) {
         if (gang) {
-          let rest = (STILL ? 1000 : TEMPO) * dt;
+          let rest = (STILL ? 1000 : gang.tempo || TEMPO) * dt;
           while (rest > 0 && gang) {
             const z = gang.punkte[gang.i], dx = z.x - F.x, dz = z.z - F.z, l = Math.hypot(dx, dz);
             if (l <= rest) {
@@ -501,7 +527,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
               if (gang.i >= gang.punkte.length) { const dann = gang.dann; gang = null; if (dann) dann(); }
             } else { F.x += dx / l * rest; F.z += dz / l * rest; zielH = Math.atan2(dx, dz); rest = 0; }
           }
-          bewegt = 1;
+          bewegt = gang ? (gang.tempo || TEMPO) / TEMPO : 1;
         } else if (modus === 'gehen' && (gehX || gehY)) {
           const sin = Math.sin(kamW), cos = Math.cos(kamW), dx = gehX * cos + gehY * sin, dz = -gehX * sin + gehY * cos, st = Math.hypot(gehX, gehY);
           F.x += dx * TEMPO * dt; F.z += dz * TEMPO * dt; zielH = Math.atan2(dx, dz); bewegt = st;
@@ -517,13 +543,31 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         if (lauft) ph += (TEMPO * Math.max(0.6, bewegt || 0.6) / Math.max(0.2, schrittL)) * dt;
         const pose = lauft ? stehen(posi, H, { phase: ph, schritt: schrittL, neigung: 2 + 8 * (schrittL / SCHRITT) }) : stehen(posi, H);
         if (!lauft) pose.becken.y += Math.sin(zeit * 1.9) * 0.004;
+        if (spieler) {
+          if (spieler.haltung) spieler.haltung(pose, H);
+          a.atme(pose, null);   // er lebt: atmet, blinzelt, und steht er, schaut er dich an, solange du nicht hinter ihm stehst
+          a.schaue(pose, lauft ? null : a.kamera.position, lauft ? 0 : 1, !lauft);
+          if (modus === 'gehen') {
+            let b = null, bd = 2.5;
+            for (const s of stationen) { const d = Math.hypot(F.x - s.pos.x, F.z - s.pos.z); if (d < bd) { bd = d; b = s.i; } }
+            if (b !== nahe) { nahe = b; stand(); }
+          } else if (nahe != null) { nahe = null; stand(); }
+        }
         a.figur.stelle(gelenke(pose)); if (a.figur.glut) a.figur.glut(0);
         if (hupf > 0) { hupf = Math.max(0, hupf - dt / 0.62); const u = 1 - hupf; a.figur.gruppe.position.y = Math.sin(u * Math.PI) * 0.62; } else a.figur.gruppe.position.y = 0;
+        if (namensTafel) namensTafel.position.y = 2.2 + a.figur.gruppe.position.y;
         legeHalle(F, 0);
       }
     }
     // Kamera
-    if (kamFlug) {
+    if (auftritt) {
+      // Einstieg: Er kommt durch die Tür auf dich zu, dann fährt die Kamera seitlich um ihn herum nach hinten, ab da spielst du
+      auftritt.t += dt;
+      const u = glatt(klemme((auftritt.t - 1.1) / (auftritt.dauer - 1.1), 0, 1)), w = Math.PI * (1 - u) + kamW, z = verfolgen(), R = 2.75 + (Math.hypot(z.pos.x - F.x, z.pos.z - F.z) - 2.75) * u;
+      K.pos.set(F.x + Math.sin(w) * R, 1.34 + (z.pos.y - 1.34) * u, F.z + Math.cos(w) * R);
+      K.blick.set(F.x, 1.2, F.z).lerp(z.blick, u); K.fov = sichtStation() + (z.fov - sichtStation()) * u;
+      if (auftritt.t >= auftritt.dauer) auftritt = null;
+    } else if (kamFlug) {
       kamFlug.u = Math.min(1, kamFlug.u + dt / kamFlug.dauer);
       const u = glatt(kamFlug.u), z = kamFlug.ziel();
       K.pos.lerpVectors(kamFlug.vonPos, z.pos, u); K.blick.lerpVectors(kamFlug.vonBlick, z.blick, u); K.fov = kamFlug.vonFov + (z.fov - kamFlug.vonFov) * u;
@@ -535,6 +579,12 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       K.pos.lerp(z.pos, k); K.blick.lerp(z.blick, k); K.fov += (z.fov - K.fov) * k;
     }
     legeKamera();
+    if (spieler) {
+      kameraLicht.position.copy(a.kamera.position);
+      // Eine Wand zwischen Kamera und Halle geht weg, wie beim Blick in ein Puppenhaus
+      wandL.visible = K.pos.x > -BREITE / 2; wandR.visible = K.pos.x < BREITE / 2;
+      for (const m of wandVorn) m.visible = K.pos.z < zAnfang; for (const m of wandHinten) m.visible = K.pos.z > zEnde;
+    }
     // Licht und Bewegung im Raum
     wegU.zeit.value = zeit;
     wegU.bis.value += (bisZiel - wegU.bis.value) * Math.min(1, dt * 1.5);   // der Weg zur nächsten Station leuchtet nach und nach auf
@@ -545,6 +595,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       s.ring.material.color.set(s.fertig ? P.ringFertig : jetzt ? P.ring : P.ringAus);
       s.ring.material.opacity = jetzt ? 0.6 + 0.4 * puls : 0.9;
       s.teller.material.opacity = s.fertig ? P.tellerFertig : P.tellerSicht;
+      if (spieler) s.schild.material.opacity = klemme((Math.hypot(K.pos.x - s.pos.x, K.pos.z - s.pos.z) - 4.2) / 2.6, 0, 1);
     });
     lichtSaeule.material.opacity = 0.4 + 0.25 * puls;
     spielerRing.material.opacity = 0.5 + 0.4 * puls;
@@ -555,6 +606,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   /* ---------- Los: erst die ganze Halle von hoch oben, dann läuft die Figur durch die Tür hinein ---------- */
   stand();
   wegU.bis.value = 0;
+  if (spieler) F.z = zAnfang + 0.3;
   frei(F, Math.PI);
   a.figur.gruppe.visible = true;
   legeKamera();
@@ -563,8 +615,14 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   a.start();
   laden.classList.add('weg');
   setTimeout(() => laden.remove(), 500);
-  pop('Dein Gym heute', titel || 'Training');
-  setTimeout(() => {
+  pop(spieler ? 'Dein Charakter' : 'Dein Gym heute', (spieler && spieler.name) || titel || 'Training');
+  if (spieler) {
+    popEl.style.top = '70%'; setTimeout(() => { popEl.style.top = ''; }, 1600);   // das Gesicht bleibt frei
+    // Der Einstieg zeigt ihn von vorn. Bei „Bewegung reduzieren“ geht es ohne Fahrt gleich los
+    lauf([V(0, 0, 1.6)], () => { if (modus === 'draussen') { modusSetzen('gehen'); zielH = Math.PI; } });
+    gang.tempo = 1.5;
+    if (!STILL) auftritt = { t: 0, dauer: 3.7 }; else kameraZu(verfolgen, 0.01, null);
+  } else setTimeout(() => {
     if (!offen) return;
     lauf(route(F, V(0, 0, zStart)), () => { if (modus === 'draussen') { modusSetzen('gehen'); zielH = Math.PI; } });
     kameraZu(verfolgen, STILL ? 0.01 : 3, null);

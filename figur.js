@@ -66,12 +66,15 @@ const hinterGrenze = (y) => (y < 0 ? 70 - 25 * glaettung(1 + y / 0.5) : 45 - 33 
 export const UNTERARM_MAX = 100 * RAD;
 // Feder: ein Punkt läuft einem anderen mit Verzögerung nach und schwingt aus (Hut, Stoff, Stange). Liefert die Abweichung, höchstens max
 class Feder {
-  constructor(hz, daempfung, max) { this.w = 2 * Math.PI * hz; this.d = daempfung; this.max = max; this.p = null; this.v = V(); this.ab = V(); }
+  // mitgehen: bremst gegen den Punkt statt gegen den Raum, gleichmäßiges Gehen zieht dann nichts nach (nur Anfahren, Bremsen, Wippen)
+  constructor(hz, daempfung, max, mitgehen = false) { this.w = 2 * Math.PI * hz; this.d = daempfung; this.max = max; this.p = null; this.v = V(); this.ab = V(); this.vor = mitgehen ? V() : null; }
   schritt(punkt, dt) {
-    if (!this.p) { this.p = punkt.clone(); return this.ab.set(0, 0, 0); }
+    if (!this.p) { this.p = punkt.clone(); if (this.vor) this.vor.copy(punkt); return this.ab.set(0, 0, 0); }
     const n = Math.max(1, Math.ceil(dt / 0.008)), h = dt / n, ww = this.w * this.w, dd = 2 * this.d * this.w;
+    let tx = 0, ty = 0, tz = 0;
+    if (this.vor && dt > 0) { tx = (punkt.x - this.vor.x) / dt; ty = (punkt.y - this.vor.y) / dt; tz = (punkt.z - this.vor.z) / dt; this.vor.copy(punkt); }
     for (let i = 0; i < n; i++) {
-      this.v.x += (ww * (punkt.x - this.p.x) - dd * this.v.x) * h; this.v.y += (ww * (punkt.y - this.p.y) - dd * this.v.y) * h; this.v.z += (ww * (punkt.z - this.p.z) - dd * this.v.z) * h;
+      this.v.x += (ww * (punkt.x - this.p.x) - dd * (this.v.x - tx)) * h; this.v.y += (ww * (punkt.y - this.p.y) - dd * (this.v.y - ty)) * h; this.v.z += (ww * (punkt.z - this.p.z) - dd * (this.v.z - tz)) * h;
       this.p.addScaledVector(this.v, h);
     }
     return this.ab.copy(this.p).sub(punkt).clampLength(0, this.max);
@@ -98,6 +101,57 @@ const brustFrei = (g) => {
 //         unterarm: {l, r} (Drehung des Unterarms in Bogenmaß statt handflaeche; nur im Ablauf davor),
 //         fuss: {l: V, r: V}, kniePol: {l, r}, fussRicht: {l, r} (Vektor), zehen: {l, r} (Grad, Fersenhub) }
 // g.hand = Faustmitte (Geräte hängen dort), g.handgelenk = Handgelenk (dort beginnt die Hand des Körpers)
+// Griffe einer Kurzhantel in beiden Händen (Devin, 3.11.: „schwebt einfach nur zwischen den Händen … dass die sich aufeinander treffen und die Hantel wirklich perfekt halten“, dann: „Hände aufeinander“).
+// C = Mitte der Hantel, U = Achse zum oberen Kopf, vor = vom Körper weg, li = links der Figur. Ergebnis: Ziele der Hände und Lage der Hände (kelch) für gelenke(); kelch.lage: die Lage der Hantel dazu
+// Kelchgriff: Die Handflächen liegen von unten am oberen Kopf, die linke direkt darunter, die rechte unter ihr. Die Finger gehen vor dem Griff zur anderen Seite und liegen dort aufeinander, die Spitzen der oberen gehen vorn am Kopf hoch, die Daumen liegen seitlich am Kopf
+// innen: Arme über dem Kopf. Die Finger gehen vom Körper weg nach hinten, die Daumen liegen zur Mitte hin um den Griff
+export const KELCH_MASS = { hoehe: 0.085, x: 0.068, z: 0.03, dick: 0.015, gamma: 55, wolb: 8, kipp: -5, schwer: 1, kante: 30, unten: { hoehe: 0.071, kipp: 6 }, innen: { hoehe: 0.072, x: 0.089, z: 0, dick: 0.015, gamma: 55, wolb: 15, schwer: 1.25 } };
+// Haken: Die Arme hängen, die Handflächen liegen links und rechts am oberen Kopf, die Finger gehen unter ihm durch
+export const HAKEN_MASS = { hoehe: 0.105, x: 0.082, z: 0, dick: 0.015, neig: 8, kante: 0.018 };
+const KELCH_HAND = 0.06;   // Mitte der Handfläche vom Handgelenk aus
+const griffAchsen = (U, vor, li) => { const v = vor.clone().addScaledVector(U, -vor.dot(U)).normalize(); return { v, lk: li ? li.clone().addScaledVector(U, -li.dot(U)).normalize() : U.clone().cross(v).normalize() }; };
+const faustBei = (mitte, F, nk) => Object.assign(mitte.addScaledVector(nk, -MASS.griffTief).addScaledVector(F, MASS.griff - KELCH_HAND), { genau: true });
+export function kelchGriff(C, U, vor, li = null, innen = false) {
+  const m0 = innen ? KELCH_MASS.innen : KELCH_MASS, { v, lk } = griffAchsen(U, vor, li), hand = {}, kelch = {};
+  for (const [s, sg] of [['l', 1], ['r', -1]]) {
+    const m = !innen && s === 'r' ? Object.assign({}, m0, m0.unten) : m0, w = m.gamma * RAD, ro = m.wolb * RAD, kp = (m.kipp || 0) * RAD;
+    const F0 = v.clone().multiplyScalar(Math.cos(w)).addScaledVector(lk, -sg * Math.sin(w)), T = U.clone().cross(F0).multiplyScalar(sg);
+    const F = F0.clone().multiplyScalar(Math.cos(kp)).addScaledVector(U, -Math.sin(kp));   // kipp: die Finger gehen nach unten
+    const nk = U.clone().multiplyScalar(-Math.cos(kp)).addScaledVector(F0, -Math.sin(kp)).multiplyScalar(Math.cos(ro)).addScaledVector(T, innen ? -Math.sin(ro) : Math.sin(ro));   // Handrücken: nach unten und etwas außen, die Hand wölbt sich um den Kopf
+    const mitte = U.clone().multiplyScalar(m.hoehe).addScaledVector(lk, sg * m.x).addScaledVector(v, m.z).addScaledVector(nk, m.dick);
+    hand[s] = faustBei(C.clone().add(mitte), F, nk);
+    kelch[s] = { finger: F, ruecken: nk, innen, mitte };
+  }
+  kelch.lage = { C: C.clone(), U: U.clone(), vor: v, li: lk, innen, schwer: m0.schwer };
+  return { hand, kelch };
+}
+export function hakenGriff(C, U, vor, li = null, schwer = 1) {
+  const m = HAKEN_MASS, { v, lk } = griffAchsen(U, vor, li), a = m.neig * RAD, hand = {}, kelch = {};
+  for (const [s, sg] of [['l', 1], ['r', -1]]) {
+    const F = U.clone().multiplyScalar(-Math.cos(a)).addScaledVector(lk, -sg * Math.sin(a)), nk = lk.clone().multiplyScalar(sg * Math.cos(a)).addScaledVector(U, -Math.sin(a));
+    const mitte = U.clone().multiplyScalar(m.hoehe).addScaledVector(lk, sg * (m.x + (schwer - 1) * 0.059)).addScaledVector(v, m.z).addScaledVector(nk, m.dick);   // schwere Hantel: Kopf breiter (Fläche zu Fläche)
+    hand[s] = faustBei(C.clone().add(mitte), F, nk);
+    kelch[s] = { finger: F, ruecken: nk, innen: false, w: 0, mitte };
+  }
+  kelch.lage = { C: C.clone(), U: U.clone(), vor: v, li: lk, innen: false, schwer };
+  return { hand, kelch };
+}
+// Vom Haken (k 0) in den Kelchgriff (k 1): die Hand rollt um die Kante des Kopfs unter ihn und bleibt dabei an der Hantel
+const griffRahmen = (f) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(f.finger, f.ruecken, f.finger.clone().cross(f.ruecken)));
+export function griffBei(k, C, U, vor, li = null, innen = false, schwer = innen ? KELCH_MASS.innen.schwer : KELCH_MASS.schwer) {
+  if (k >= 1) return kelchGriff(C, U, vor, li, innen);
+  if (k <= 0) return hakenGriff(C, U, vor, li, schwer);
+  const a = hakenGriff(C, U, vor, li, schwer), b = kelchGriff(C, U, vor, li, innen), hand = {}, kelch = {};
+  for (const s of ['l', 'r']) {
+    const q = griffRahmen(a.kelch[s]).slerp(griffRahmen(b.kelch[s]), k), F = V(1, 0, 0).applyQuaternion(q), nk = V(0, 1, 0).applyQuaternion(q);
+    const mitte = a.kelch[s].mitte.clone().lerp(b.kelch[s].mitte, k).addScaledVector(nk, HAKEN_MASS.kante * Math.sin(Math.PI * k));
+    hand[s] = faustBei(C.clone().add(mitte), F, nk);
+    kelch[s] = { finger: F, ruecken: nk, innen, w: innen ? -k : k, mitte };
+  }
+  kelch.lage = b.kelch.lage;
+  return { hand, kelch };
+}
+
 export function gelenke(pose) {
   const m = MASS;
   const R = rumpfRahmen(pose.rumpf || {});
@@ -145,7 +199,7 @@ export function gelenke(pose) {
     for (const p of [becken, brust, nacken, kopf, schulter.l, schulter.r, huefte.l, huefte.r, schulterBasis.l, schulterBasis.r]) p.sub(sink);
     for (const d of Object.values(schulterDreh)) d.punkt.sub(sink);
   }
-  const out = { atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, schulterHub: hubS, schulterBasis, schulterDreh, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
+  const out = { atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterBasis, schulterDreh, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -186,7 +240,14 @@ export function gelenke(pose) {
     let griffIst = griffVor ? griffVor.achse : null, griffAnteil = griffVor ? griffVor.anteil : 0, knickAchse = null;
     // Drehung des Unterarms: Winkel vom Handrücken des neutralen Unterarms (Knickachse des Ellbogens, nach außen) zum Handrücken n, um die Unterarm-Achse a
     const unterarm = (a, n, achse) => { const nn = achse.clone().multiplyScalar(sg).addScaledVector(a, -achse.dot(a) * sg); return nn.lengthSq() < 1e-8 ? 0 : Math.atan2(nn.clone().cross(n).dot(a), nn.dot(n)); };
+    const kelchHand = pose.kelch && pose.kelch[s];
+    if (kelchHand) out.kelchW[s] = kelchHand.w != null ? kelchHand.w : kelchHand.innen ? -1 : 1;   // negativ: Daumen zur Mitte (Arme über dem Kopf)
     const ausrichtung = (a, greift = true) => {
+      // Kelchgriff (eine Hantel senkrecht in beiden Händen): Finger und Handrücken gibt die Vorlage vor, das Handgelenk nimmt den Winkel zum Unterarm
+      if (kelchHand) {
+        const nk = kelchHand.ruecken.clone().normalize(), ak = kelchHand.finger.clone().addScaledVector(nk, -kelchHand.finger.dot(nk)).normalize(), n = nk.clone().addScaledVector(a, -nk.dot(a));
+        if (n.lengthSq() > 1e-6) { n.normalize(); return { n, ak, nk, k: Math.atan2(-nk.dot(a), nk.dot(n)) }; }
+      }
       let n = pose.handflaeche && pose.handflaeche[s] ? pose.handflaeche[s].clone().negate() : a.clone().cross(R.links);
       n.sub(a.clone().multiplyScalar(n.dot(a)));
       const ersatz = R.vor.clone().sub(a.clone().multiplyScalar(R.vor.dot(a)));
@@ -273,6 +334,8 @@ export function gelenke(pose) {
     };
     // Ellbogen → Faust neu legen, wenn die Faust genau auf ziel bleiben soll, und die Punkte der Hand eintragen
     const armLegen = (ziel) => {
+      // Kelchgriff: Die Lage der Hand hängt nicht am Unterarm, das Handgelenk steht damit fest (sonst rutscht die Hand mit dem Arm bis 1 cm an der Hantel)
+      if (kelchHand) { const W = ziel.clone().sub(faust(ausrichtung(ziel.clone().sub(schulter[s]).normalize()))); return ik(schulter[s], W, m.oberarm, m.unterarm, polImGelenk(W, m.unterarm, epol)); }
       const zuFaust = (a) => a.clone().multiplyScalar(m.unterarm).add(faust(ausrichtung(a)));
       const zuZiel = ziel.clone().sub(schulter[s]).normalize();
       if (pose.unterarm) knickAchse = ik(schulter[s], ziel, m.oberarm, m.unterarm + m.griff, epol).achse;
@@ -307,7 +370,7 @@ export function gelenke(pose) {
       out.hand[s] = flach ? arm.ende.clone() : arm.ende.clone().add(faust(r));
       out.handAchse[s] = a; out.handRuecken[s] = r.n;
       // handMitte = Mitte der Hand (Leuchten, Coach erklärt)
-      out.handKnick[s] = knick; out.handFinger[s] = r.ak;
+      out.handKnick[s] = r.k != null ? r.k : knick; out.handFinger[s] = r.ak;
       out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(r.ak.clone().multiplyScalar(0.047));
     };
     if (flach) { arm = ik(schulter[s], hz, m.oberarm, m.unterarm, polImGelenk(hz, m.unterarm, epol)); out.handZiel[s] = hz; }
@@ -865,16 +928,17 @@ export class Geraete {
     this.gruppe.add(g); return g;
   }
   sz() { const g = this.langhantel(); g.children[0].scale.y = 0.6; g.children.forEach((c, i) => { if (i > 0) c.position.x *= 0.62; c.scale.multiplyScalar(i > 0 ? 0.62 : 1); }); return g; }
-  // Kurzhantel mit Sechskant-Köpfen aus Gummi und gerändeltem Chromgriff (Achse X, Griff in der Mitte)
-  kurzhantel() {
+  // Kurzhantel mit Sechskant-Köpfen aus Gummi und gerändeltem Chromgriff (Achse X, Griff in der Mitte). schwer: größere Köpfe (Faktor, Hantel für beide Hände)
+  kurzhantel(schwer = 1) {
     const g = new THREE.Group();
     const quer = (geo, m, x) => { const o = new THREE.Mesh(geo, m); o.rotation.z = Math.PI / 2; o.position.x = x; o.castShadow = true; g.add(o); return o; };
     quer(new THREE.CylinderGeometry(0.0165, 0.0165, 0.17, 16), this.mMetall, 0);
     for (const sx of [-1, 1]) {
       quer(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 20), this.mMetall, sx * 0.08);
-      const kopf = quer(new THREE.CylinderGeometry(0.068, 0.068, 0.085, 6), this.mSechskant, sx * 0.128);
+      const kopf = quer(new THREE.CylinderGeometry(0.068 * schwer, 0.068 * schwer, 0.085, 6), this.mSechskant, sx * 0.128);
       kopf.rotation.x = Math.PI / 6;
     }
+    g.userData.kopfR = 0.068 * schwer;
     this.gruppe.add(g); return g;
   }
   // Kettlebell: Kugel mit flachem Boden, Griff mit Hörnern (Griffmitte im Ursprung wie bisher)
@@ -884,7 +948,7 @@ export class Geraete {
     for (let i = 0; i <= 14; i++) { const w = -Math.PI / 2 + 0.55 + (Math.PI - 0.55 - 0.35) * i / 14; profil.push(new THREE.Vector2(Math.cos(w) * r, Math.sin(w) * r)); }
     profil.unshift(new THREE.Vector2(0, profil[0].y));
     const koerper = new THREE.Mesh(new THREE.LatheGeometry(profil, 28), this.mScheibe); koerper.position.y = -0.13; koerper.castShadow = true; g.add(koerper);
-    const bogen = new THREE.CatmullRomCurve3([V(-0.06, -0.075, 0), V(-0.068, -0.02, 0), V(-0.05, 0.012, 0), V(0, 0.022, 0), V(0.05, 0.012, 0), V(0.068, -0.02, 0), V(0.06, -0.075, 0)]);
+    const bogen = new THREE.CatmullRomCurve3([V(-0.078, -0.075, 0), V(-0.09, -0.02, 0), V(-0.068, 0.012, 0), V(0, 0.02, 0), V(0.068, 0.012, 0), V(0.09, -0.02, 0), V(0.078, -0.075, 0)]);
     const griff = new THREE.Mesh(new THREE.TubeGeometry(bogen, 30, 0.012, 10), this.mScheibe); griff.castShadow = true; g.add(griff);
     this.gruppe.add(g); return g;
   }
@@ -1291,7 +1355,7 @@ export class Ansicht {
     // Bewegung ausmessen: Figur + Geräte über mehrere Zeitpunkte, daraus Mittelpunkt und Abstand
     // Saunahut (FigurModell): bleibt nur auf, wenn er über die Übung und den Ablauf davor nirgends in Boden oder Gerät taucht
     const box = new THREE.Box3(), hut = this.figur.hut, hutBox = new THREE.Box3();
-    let hutAuf = !!hut;
+    let hutAuf = !!hut && !this.figur.ohneHut;
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
       this.bild(t);
       if (t === 0) { this.g0 = this.gAktuell; this.lebenArt = kategorie(this.g0); } else if (t === 1) this.g1 = this.gAktuell;
@@ -1300,7 +1364,7 @@ export class Ansicht {
       if (hutAuf) { hutAuf = this.figur.hutFrei(this.geraete.gruppe); hutBox.union(this.figur.hutBox.clone().applyMatrix4(hut.matrixWorld)); }
     }
     if (hutAuf && new THREE.Box3().setFromObject(this.geraete.gruppe).max.y > 0.3) hutAuf = hutImAblauf(animation, this.figur);   // Matte, Stufe, Hanteln am Boden stören nie
-    if (hut) hut.visible = hutAuf;
+    if (hut) { hut.visible = hutAuf; if (this.figur.haarAnzeige) this.figur.haarAnzeige(); }
     if (this.lebendig && this.figur.spannung) this.figur.spannung(...seitenAnteil(this.g0, this.g1));
     if (hutAuf) box.union(hutBox);
     const nurFigur = box.clone();
@@ -1345,10 +1409,10 @@ export class Ansicht {
     const ph = (z / 4.2) % 1, frei = ph < 0.4 ? glaettung(ph / 0.4) : 1 - glaettung((ph - 0.4) / 0.6);
     const zieh = (alt, ziel, tempo) => (alt == null ? ziel : alt + (ziel - alt) * Math.min(1, dt * tempo));   // weich, kein Sprung zwischen Übung und Pause
     this.atemWert = zieh(this.atemWert, stand && stand.atemZiel != null ? stand.atemZiel : frei, 7);
-    this.spannWert = zieh(this.spannWert, stand ? stand.spann : 0, 6);
+    this.spannWert = zieh(this.spannWert, stand ? stand.spann : pose.spannZiel || 0, 6);
     this.laecheln = zieh(this.laecheln, this.laechelZiel || 0, 3);
     pose.spann = this.spannWert;
-    this.anstrengung = zieh(this.anstrengung, stand ? stand.anstrengung : 0, 5);
+    this.anstrengung = zieh(this.anstrengung, stand ? stand.anstrengung : pose.anstrengungZiel || 0, 5);
     this.mundWert = zieh(this.mundWert, stand ? stand.mund : 0, 9);
     const atem = this.atemWert, an = this.anstrengung;
     pose.atem = atem;
@@ -1384,7 +1448,7 @@ export class Ansicht {
   belebe(pose) {
     this.atme(pose, this.takt());
     const still = !this.laeuft && this.festT == null;   // Pause: er schaut dich an und lächelt leicht, solange du nicht hinter ihm stehst
-    this.schaue(pose, still ? this.kamera.position : null, still ? 1 : 0, still);
+    this.schaue(pose, still ? pose.blickPunkt || this.kamera.position : null, still ? 1 : 0, still);
     // Steht er länger: alle paar Sekunden rollt er locker die Schultern
     this.stillZeit = still ? (this.stillZeit || 0) + (this.lebenDt || 0) : 0;
     if (this.stillZeit > 3) { const u = ((this.stillZeit - 3) % 7) / 1.6; if (u < 1) pose.schulterHub = (pose.schulterHub || 0) + 0.03 * Math.sin(Math.PI * u) ** 2; }
@@ -1441,23 +1505,26 @@ export class Ansicht {
   schwingt(g) {
     const dt = this.lebenDt || 0, f = this.figur;
     if (!dt || !f.u || !f.u.uStoff) return;
-    const F = this.federn || (this.federn = { hut: new Feder(1.5, 0.13, 0.05), hutK: new Feder(2.1, 0.13, 0.03), hutD: new Feder(2.4, 0.16, 0.03), top: new Feder(1.6, 0.22, 0.03), l: new Feder(1.8, 0.22, 0.035), r: new Feder(1.8, 0.22, 0.035), stange: new Feder(3.2, 0.16, 0.05), alt: {}, e: { hut: 0, top: 0, l: 0, r: 0 } });
+    const F = this.federn || (this.federn = { hut: new Feder(3.4, 0.5, 0.025, true), hutK: new Feder(3.8, 0.55, 0.015, true), hutD: new Feder(4, 0.55, 0.015, true), top: new Feder(1.6, 0.22, 0.03), l: new Feder(1.8, 0.22, 0.035), r: new Feder(1.8, 0.22, 0.035), stange: new Feder(3.2, 0.16, 0.05), alt: {}, e: { hut: 0, lauf: 0, top: 0, l: 0, r: 0 } });
     const z = this.lebenZeit || 0, tempo = (name, p) => { const a = F.alt[name], v = a ? a.distanceTo(p) / dt : 0; if (a) a.copy(p); else F.alt[name] = p.clone(); return Math.min(1, v / 0.55); };
     const huell = (name, v) => { F.e[name] += (v - F.e[name]) * Math.min(1, dt * (v > F.e[name] ? 9 : 1.6)); return F.e[name]; };   // reagiert schnell, klingt langsam aus
     // Hut (Devin, 2.11.: „ein bisschen wackeln … wie ein bisschen locker“): sitzt nicht fest. Die Spitze schwingt und hängt zur Schwerkraft, der ganze Hut läuft dem Kopf nach (kippt und dreht sich um den Scheitel,
-    // rutscht etwas) und schlackert, solange sich der Kopf bewegt; der Rand wellt sich dabei
+    // rutscht etwas) und schlackert, solange sich der Kopf bewegt; der Rand wellt sich dabei. 3.11.: „wackelt viel zu sehr“ beim Laufen, „vielleicht sogar teilweise Standbild“: stramme Federn ohne Eigenschwingen im Schritttakt. Danach (Karte: „noch zu unruhig“, „beim Laufen fast ganz stillstehen“): Beim Gehen sitzt er fest auf dem Kopf, auch das Hängen zur Schwerkraft und das leise Wogen ruhen, im Stehen und in der Übung bleibt alles wie vorher
     if (f.hut && f.hut.visible) {
       const inv = g.kopfQ.clone().invert(), schwer = V(0, -1, 0).applyQuaternion(inv);
       const ab = F.hut.schritt(V(0, 0.17, 0).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv);
       const kl = F.hutK.schritt(V(0, 0.09, 0).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv);
       const dr = F.hutD.schritt(V(0, 0.09, 0.14).applyQuaternion(g.kopfQ).add(g.kopf), dt).clone().applyQuaternion(inv).sub(kl);
-      const e = huell('hut', Math.max(tempo('hut', g.kopf), 0.3 * tempo('hl', g.hand.l), 0.3 * tempo('hr', g.hand.r), 0.32 * tempo('kl', g.knie.l))), sch = e * 0.021;
-      f.hut.userData.schwung.value.set(ab.x * 1.6 + schwer.x * 0.03 + sch * 0.6 * Math.sin(z * 15.3) + 0.004 * Math.sin(z * 2.9), ab.z * 1.6 + schwer.z * 0.03 + sch * 0.6 * Math.sin(z * 18.9 + 1) + 0.003 * Math.sin(z * 2.3 + 2));
+      F.beckenFlach = (F.beckenFlach || V()).set(g.becken.x, 0, g.becken.z);
+      const lauf = huell('lauf', Math.min(1, tempo('lauf', F.beckenFlach) * 2.5)), ruhig = 1 - 0.97 * lauf;   // Gehen: reagiert sofort, nach dem Stehenbleiben klingt es langsam aus
+      const e = huell('hut', Math.max(tempo('hut', g.kopf), 0.3 * tempo('hl', g.hand.l), 0.3 * tempo('hr', g.hand.r), 0.32 * tempo('kl', g.knie.l))) * ruhig * ruhig, sch = e * 0.008;
+      ab.multiplyScalar(ruhig); kl.multiplyScalar(ruhig); dr.multiplyScalar(ruhig);
+      f.hut.userData.schwung.value.set(ab.x * 1.6 + sch * 0.6 * Math.sin(z * 15.3) + ruhig * (schwer.x * 0.03 + 0.004 * Math.sin(z * 2.9)), ab.z * 1.6 + sch * 0.6 * Math.sin(z * 18.9 + 1) + ruhig * (schwer.z * 0.03 + 0.003 * Math.sin(z * 2.3 + 2)));
       const kipp = (w) => grenze(w, -0.11, 0.11);
-      const ek = new THREE.Euler(kipp(-kl.z * 3.1 + schwer.z * 0.05 + sch * Math.sin(z * 17.1 + 2) + 0.005 * Math.sin(z * 1.7 + 1)), grenze(dr.x / 0.14 * 1.6, -0.09, 0.09), kipp(kl.x * 3.1 - schwer.x * 0.05 + sch * Math.sin(z * 21.3) + 0.006 * Math.sin(z * 2.3)));
+      const ek = new THREE.Euler(kipp(-kl.z * 3.1 + sch * Math.sin(z * 17.1 + 2) + ruhig * (schwer.z * 0.05 + 0.005 * Math.sin(z * 1.7 + 1))), grenze(dr.x / 0.14 * 1.6, -0.09, 0.09), kipp(kl.x * 3.1 + sch * Math.sin(z * 21.3) + ruhig * (-schwer.x * 0.05 + 0.006 * Math.sin(z * 2.3))));
       const dq = new THREE.Quaternion().setFromEuler(ek), P = V(0, 1.83, -0.012), P2 = P.clone().applyQuaternion(dq);
-      f.hutLage = (f.hutLage || new THREE.Matrix4()).compose(P.clone().sub(P2).add(V(schwer.x * 0.005, grenze(kl.y * 0.45, -0.005, 0.007) - 0.0015 * Math.abs(schwer.y + 1), schwer.z * 0.005)), dq, V(1, 1, 1));
-      f.hut.userData.glocke.value.set(0.0009 + e * 0.0052, z * 8.5);
+      f.hutLage = (f.hutLage || new THREE.Matrix4()).compose(P.clone().sub(P2).add(V(ruhig * schwer.x * 0.005, grenze(kl.y * 0.45, -0.005, 0.007) - ruhig * 0.0015 * Math.abs(schwer.y + 1), ruhig * schwer.z * 0.005)), dq, V(1, 1, 1));
+      f.hut.userData.glocke.value.set(0.0009 * ruhig + e * 0.002, z * 8.5);
     }
     // Shirt und Hosenbeine laufen nach, der Saum wellt sich, solange sie in Bewegung sind
     const v0 = F.top.schritt(g.becken, dt), v1 = F.l.schritt(g.knie.l, dt), v2 = F.r.schritt(g.knie.r, dt);

@@ -181,6 +181,7 @@ html:has(.raum)::before, html:has(.raum)::after, html:has(.raum) body::after { a
 .raum-ende p { font-size: 17px; color: var(--text2); max-width: 30ch; }
 .raum-ende .knopf { min-width: 200px; min-height: 56px; font-size: 18px; margin-top: 12px; }
 .gym-knopf { width: 100%; min-height: 52px; font-weight: 700; }
+.charakter-knopf { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; box-sizing: border-box; font-weight: 700; text-decoration: none; }
 .raum-karte-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .raum-zurueck { border: 0; background: var(--knopf-grund); color: var(--knopf-text); font-size: 14px; font-weight: 600; min-height: 34px; padding: 4px 14px; border-radius: 999px; cursor: pointer; }
 .raum-inhalt { display: grid; gap: 4px; margin-top: 6px; }

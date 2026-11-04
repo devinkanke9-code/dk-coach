@@ -136,6 +136,7 @@ function anmelden(d, code, teil) {
   const form = d.a === 3 ? 'gesundheit' : d.a === 2 ? 'kurz' : d.a ? 'lang' : (alt && alt.form) || null;
   alle[d.k] = { id: d.k, n: d.n || '', bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,
     analyse: d.p || (alt && alt.form && alt.form !== form) ? null : (alt && alt.analyse) || null, form,   // andere Abfrage als vorher: nicht mehr „schon geschickt“
+    c: d.c === 0 ? null : d.c && d.c.v === 1 ? d.c : (alt && alt.c) || null,   // Charakter von Devin: nur Zahlen und Farben, kein Foto. Ein Link ohne Charakter lässt den alten stehen, 0 nimmt ihn weg
     g: /^(weiblich|maennlich|divers)$/.test(d.g || '') ? d.g : null };   // Geschlecht, das Devin eingetragen hat (die 10 Fragen fragen es nicht): für die Fragen nur für Frauen im Gesundheits-Check
   speicher.schreib('dk_konten', alle);
   if (d.p) {
@@ -322,6 +323,7 @@ function wartenAnsicht() {
     h('p', { class: 'leise', text: (ko.form === 'gesundheit' ? 'Dein Gesundheits-Check' : 'Deine Analyse') + ' ist bei Devin. Er baut jetzt deinen Plan und schickt dir einen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' }),
     geschickt ? h('div', { class: 'aktionen' }, sendenKnopf(ko, 'Nochmal schicken', 'knopf'),
       h('button', { class: 'knopf', type: 'button', onclick: () => { kontoSetzen(ko.id, { analyse: null }); zeichne(); window.scrollTo(0, 0); }, text: 'Antworten ändern' })) : null,
+    ko.c ? charakterLink() : null,
     einfuegenBlock('Neuen Link einfügen'))];
 }
 
@@ -508,11 +510,13 @@ function kopf(unter) {
   return h('div', { class: 'plan-kopf' }, h('h1', { text: n ? 'Hi ' + n : 'Dein Training' }), unter ? h('p', { class: 'leise', text: unter }) : null);
 }
 
+const charakterLink = () => h('a', { class: 'knopf charakter-knopf', href: 'charakter/kunde.html', text: 'Mein Charakter' });
 /* ---------- Heute: Wochenleiste, Training des Tages, Übungen abhaken ---------- */
 function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
   const ko = aktivesKonto();
+  if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
   if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
   // Erst wenn jeder Trainingstag einen Wochentag hat, kommt die Woche (vorher blieb nach dem ersten Haken nur ein Tag übrig)
   if (kundenTage(p).length < planTage(p)) {
@@ -752,6 +756,8 @@ function fotoGross(src) {
 // Fotos der Plan-Übungen einmal laden: Der Offline-Speicher behält sie, so sind sie auch ohne Netz im Gym da
 function fotosVorladen() {
   if (!S.plan || navigator.onLine === false) return;
+  const ko = aktivesKonto();
+  if (ko && ko.c) setTimeout(() => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}), 3000);   // der eigene Charakter ist auch ohne Internet im Gym dabei
   const pfade = new Set();
   for (const t of S.plan.t || []) for (const x of t.u || []) { const d = UEBUNGEN[x.i]; if (d && d.b) pfade.add(d.b); }
   if (pfade.size) setTimeout(() => pfade.forEach((p) => fetch(p).catch(() => {})), 2500);
@@ -869,9 +875,25 @@ function raumStarten(p, ti) {
   GYM = {};
   if (!(history.state && history.state.training)) history.pushState({ training: 1 }, '');
   const heute = tagFuer(p, heuteIndex()) === ti, haken = heute ? erledigtLaden(p, ti) : [];
-  import('./raum.js').then((m) => m.raumOeffnen({ lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu,
-    uebungen: LAUF.uebungen.map((u, i) => ({ id: u.id, name: u.name, dosis: u.saetze + ' × ' + u.dosis, pause: '', d: UEBUNGEN[u.id] || { n: u.name, m: [] }, fertig: u.log.length >= u.saetze || haken.indexOf(i) >= 0 })) }))
+  const wie = { lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu,
+    uebungen: LAUF.uebungen.map((u, i) => ({ id: u.id, name: u.name, dosis: u.saetze + ' × ' + u.dosis, pause: '', d: UEBUNGEN[u.id] || { n: u.name, m: [] }, fertig: u.log.length >= u.saetze || haken.indexOf(i) >= 0 })) };
+  const normal = () => import('./raum.js').then((m) => m.raumOeffnen(wie));
+  // Eigener Charakter: läuft aus dem Ordner charakter/ mit eigener Kopie der Figur. Klappt das nicht, trainiert die normale Figur, das Training selbst bleibt gleich
+  const ko = aktivesKonto(), c = ko && ko.id === p.id ? ko.c : null;
+  if (c) toast('Dein Charakter kommt …');
+  (c ? import('./charakter/gym.js').then((m) => m.oeffnen(c, { ...wie, name: vorname(p.n) })).catch(() => { toast('Dein Charakter lädt gerade nicht. Heute trainiert die normale Figur.'); return normal(); }) : normal())
     .then((r) => { if (GYM) GYM.raum = r; }, () => { toast('Das Gym lädt gerade nicht.'); gymZu(false); });
+}
+// Von der Seite „Mein Charakter“ (#gym): gleich ins Gym, mit dem laufenden Training, sonst dem von heute oder dem nächsten
+function gymAusLink() {
+  if (!/[#&]gym\b/.test(location.hash)) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  const p = S.plan;
+  if (!p) return;
+  if (LAUF && LAUF.phase !== 'fertig') { if (LAUF.gym && LAUF.plan === p.id) raumStarten(p, LAUF.tagNr - 1); return; }
+  let ti = -1;
+  for (let i = 0; i < 7 && ti < 0; i++) ti = tagFuer(p, (heuteIndex() + i) % 7);
+  raumStarten(p, Math.max(0, ti));
 }
 function gymStation(i, ort) {
   const u = LAUF.uebungen[i];
@@ -1209,6 +1231,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
   await linkEinlesen();
   zeichne();
   fotosVorladen();
+  gymAusLink();
 })();
 window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { zeichne(); window.scrollTo(0, 0); fotosVorladen(); } });
 window.addEventListener('online', zeichne);

@@ -143,6 +143,11 @@ export const FAUST = { finger: [72, 88, 50], daumen: [30, 50, 40], daumenDreh: -
 // schließt sich von der anderen Seite um die Stange, bis er außen auf dem Mittelglied des Zeigefingers liegt. Gerechnet in der Ruhelage,
 // einmal je Hand und Radius (auf mm gerundet)
 const DAUMEN_GRIFF = [30, 50, 40], ANZUG = 0.85;
+// Kelchgriff: Die Handfläche liegt von unten am Hantelkopf, die Finger gehen unter ihm durch und legen sich am Rand nach oben um ihn, der Daumen liegt außen am Kopf (Grad je Fingerglied; Ablauf davor: g.kelchW mischt mit der Faust)
+export const KELCH = { finger: { Index: [0, 60, 35], Middle: [0, 55, 35], Ring: [0, 45, 30], Pinky: [0, 15, 10] }, neigung: { Index: 16, Middle: 8, Ring: 0, Pinky: -8 }, daumen: { abd: 5, dreh: 34, curl: 0.9 },
+  unten: { finger: { Index: [5, 22, 15], Middle: [5, 28, 20], Ring: [5, 25, 20], Pinky: [5, 20, 15] }, neigung: { Index: 16, Middle: 8, Ring: 0, Pinky: -8 }, daumen: { abd: 5, dreh: 31, curl: 0.93 } },
+  haken: { finger: { Index: [60, 62, 28], Middle: [62, 58, 25], Ring: [65, 48, 20], Pinky: [75, 45, 20] }, daumen: { abd: 15, dreh: -45, curl: 1 } },
+  innen: { finger: { Index: [5, 0, 0], Middle: [0, 10, 5], Ring: [28, 5, 0], Pinky: [85, 0, 0] }, neigung: { Index: 0, Middle: 0, Ring: 0, Pinky: 0 }, daumen: { abd: 30, dreh: -30, curl: 0.3 } } };
 const _griffe = new Map();
 const segAbstand = (c, p, q) => {
   const dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy;
@@ -809,14 +814,16 @@ const SPIEL_PARS_GLSL = `
 uniform vec4 uMA[2];
 uniform vec4 uMB[2];
 uniform float uMC[2];
+uniform float uMasse;
 varying float vSpiel;
-void dkBauch(vec3 p, vec3 c, vec3 s, float a, vec3 d, vec3 k, float m, inout float h, inout vec3 g, inout float sp) {
-  if (abs(m) < 0.003) return;
+void dkBauch(vec3 p, vec3 c, vec3 s, float a, vec3 d, vec3 k, float m, float r, inout float h, inout vec3 g, inout float sp) {
+  float wa = m * (m > 0.0 ? 1.0 : 0.5) + uMasse * r;
+  if (abs(wa) < 0.003) return;
   float u = max(m, 0.0);
   vec3 z = (p - c - d * u) / (s * (vec3(1.0) - k * u));
   float q = dot(z, z);
   if (q > 7.0) return;
-  float w = exp(-q * (0.45 + 0.55 * q)), v = a * m * (m > 0.0 ? 1.0 : 0.5) * w;   // oben runder, zum Rand steiler als eine Glocke: so setzt sich der Muskel ab
+  float w = exp(-q * (0.45 + 0.55 * q)), v = a * wa * w;   // oben runder, zum Rand steiler als eine Glocke: so setzt sich der Muskel ab
   h += v; g -= 2.0 * v * (0.45 + 1.1 * q) * z / s; sp += u * w;
 }
 `;
@@ -834,24 +841,24 @@ vec3 dkMG = vec3(0.0);
   float mc = dkSp.x < 0.0 ? uMC[1] : uMC[0];
   if (p.y > 1.02) {
     if (p.x > 0.17) {
-      dkBauch(p, vec3(0.345, 1.436, -0.02), vec3(0.066, 0.044, 0.042), 0.024, vec3(-0.014, 0.0, 0.002), vec3(0.16, 0.0, 0.0), ma.x, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.33, 1.44, -0.125), vec3(0.075, 0.047, 0.042), 0.014, vec3(-0.01, 0.0, 0.0), vec3(0.12, 0.0, 0.0), ma.y, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.245, 1.5, -0.065), vec3(0.058, 0.05, 0.065), 0.007, vec3(-0.004, 0.004, 0.0), vec3(0.1, 0.0, 0.0), ma.w, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.54, 1.445, -0.083), vec3(0.07, 0.06, 0.06), 0.006, vec3(-0.008, 0.0, 0.0), vec3(0.1, 0.0, 0.0), mc, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.345, 1.436, -0.02), vec3(0.066, 0.044, 0.042), 0.024, vec3(-0.014, 0.0, 0.002), vec3(0.16, 0.0, 0.0), ma.x, 0.5, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.33, 1.44, -0.125), vec3(0.075, 0.047, 0.042), 0.014, vec3(-0.01, 0.0, 0.0), vec3(0.12, 0.0, 0.0), ma.y, 0.6, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.245, 1.5, -0.065), vec3(0.058, 0.05, 0.065), 0.007, vec3(-0.004, 0.004, 0.0), vec3(0.1, 0.0, 0.0), ma.w, 1.6, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.54, 1.445, -0.083), vec3(0.07, 0.06, 0.06), 0.006, vec3(-0.008, 0.0, 0.0), vec3(0.1, 0.0, 0.0), mc, 0.5, dkMH, dkMG, dkMS);
     }
     if (p.x < 0.27 && p.y < 1.48) {
-      dkBauch(p, vec3(0.155, 1.3, -0.115), vec3(0.065, 0.105, 0.065), 0.026, vec3(0.01, 0.014, 0.0), vec3(0.0, 0.1, 0.0), ma.z, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.11, 1.17, -0.125), vec3(0.06, 0.095, 0.055), 0.012, vec3(0.004, 0.008, 0.0), vec3(0.0, 0.08, 0.0), ma.z, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.155, 1.3, -0.115), vec3(0.065, 0.105, 0.065), 0.026, vec3(0.01, 0.014, 0.0), vec3(0.0, 0.1, 0.0), ma.z, 0.5, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.11, 1.17, -0.125), vec3(0.06, 0.095, 0.055), 0.012, vec3(0.004, 0.008, 0.0), vec3(0.0, 0.08, 0.0), ma.z, 0.6, dkMH, dkMG, dkMS);
     }
   } else {
     if (p.y > 0.5) {
-      dkBauch(p, vec3(0.115, 0.78, 0.05), vec3(0.06, 0.13, 0.05), 0.013, vec3(0.0, 0.012, 0.0), vec3(0.0, 0.1, 0.0), mb.x, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.07, 0.625, 0.03), vec3(0.03, 0.045, 0.035), 0.008, vec3(0.0, 0.006, 0.0), vec3(0.0, 0.08, 0.0), mb.x, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.18, 0.76, 0.0), vec3(0.03, 0.11, 0.06), 0.007, vec3(0.0, 0.008, 0.0), vec3(0.0, 0.08, 0.0), mb.x, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.105, 0.74, -0.115), vec3(0.06, 0.12, 0.04), 0.012, vec3(0.0, -0.012, 0.0), vec3(0.0, 0.12, 0.0), mb.y, dkMH, dkMG, dkMS);
-      dkBauch(p, vec3(0.095, 0.93, -0.125), vec3(0.06, 0.07, 0.05), 0.012, vec3(0.0, 0.006, 0.0), vec3(0.0, 0.06, 0.0), mb.z, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.115, 0.78, 0.05), vec3(0.06, 0.13, 0.05), 0.013, vec3(0.0, 0.012, 0.0), vec3(0.0, 0.1, 0.0), mb.x, 0.8, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.07, 0.625, 0.03), vec3(0.03, 0.045, 0.035), 0.008, vec3(0.0, 0.006, 0.0), vec3(0.0, 0.08, 0.0), mb.x, 0.6, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.18, 0.76, 0.0), vec3(0.03, 0.11, 0.06), 0.007, vec3(0.0, 0.008, 0.0), vec3(0.0, 0.08, 0.0), mb.x, 0.8, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.105, 0.74, -0.115), vec3(0.06, 0.12, 0.04), 0.012, vec3(0.0, -0.012, 0.0), vec3(0.0, 0.12, 0.0), mb.y, 0.7, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.095, 0.93, -0.125), vec3(0.06, 0.07, 0.05), 0.012, vec3(0.0, 0.006, 0.0), vec3(0.0, 0.06, 0.0), mb.z, 0.7, dkMH, dkMG, dkMS);
     } else {
-      dkBauch(p, vec3(0.125, 0.36, -0.14), vec3(0.055, 0.075, 0.04), 0.013, vec3(0.0, 0.014, 0.0), vec3(0.0, 0.14, 0.0), mb.w, dkMH, dkMG, dkMS);
+      dkBauch(p, vec3(0.125, 0.36, -0.14), vec3(0.055, 0.075, 0.04), 0.013, vec3(0.0, 0.014, 0.0), vec3(0.0, 0.14, 0.0), mb.w, 0.5, dkMH, dkMG, dkMS);
     }
   }
   dkMG.x *= dkSg;
@@ -1222,7 +1229,7 @@ export class FigurModell {
       uHose: { value: new THREE.Color(FARBEN.hose) }, uSchuh: { value: new THREE.Color(FARBEN.schuh) },
       uOberteil: { value: new THREE.Color(FARBEN.oberteil) }, uSocke: { value: new THREE.Color(FARBEN.socke) },
       uWelle: { value: new THREE.Vector3() }, uStoffZeit: { value: 0 }, uDetail: { value: detailTextur() }, uLogo: { value: logoTextur() }, uLogoAn: { value: logoTextur() ? 1 : 0 }, uSchweiss: { value: 0 },
-      uPec: { value: new THREE.Vector2() }, uAtem: { value: 0 }, uSpann: { value: 0 }, uMA: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMB: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMC: { value: [0, 0] }, uStoff: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, uMimik: { value: new THREE.Vector4() }, uBlick: { value: new THREE.Vector2() }
+      uPec: { value: new THREE.Vector2() }, uAtem: { value: 0 }, uSpann: { value: 0 }, uMA: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMB: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMC: { value: [0, 0] }, uMasse: { value: 0 }, uStoff: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, uMimik: { value: new THREE.Vector4() }, uBlick: { value: new THREE.Vector2() }
     };
     const t = k.tex || {};   // ohne Texturen (Prüfung in Node): nur Form
     const stoff = {
@@ -1287,7 +1294,7 @@ export class FigurModell {
     // Stoff-Hüllen (DK_STOFF): vRuhe ist der Punkt auf der Haut (Masken wie bei der aufgemalten Kleidung), die enge Hülle geht mit
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nuniform float uAtem;\nattribute vec4 spann;\nuniform float uSpann;\n' + SPIEL_PARS_GLSL + '\nuniform vec4 uMimik;\nuniform vec2 uBlick;\nfloat dkG(float v, float m, float b) { float d = (v - m) / b; return exp(-d * d); }\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nvarying vec3 vRN;\n#ifdef DK_STOFF\nattribute vec3 ruhe;\nattribute vec3 eng;\nuniform vec3 uStoff[3];\nuniform vec3 uWelle;\nuniform float uStoffZeit;\nvarying vec3 vH;\n#endif\n#ifdef DK_SCHUH\nattribute vec2 schuh;\nvarying vec2 vSchuh;\n#endif')
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = normalize(objectNormal - spann.xyz * uSpann);\n' + SPIEL_GLSL)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\nvec3 dkPecV = normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ndkPecV.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;\ndkPecV += normal * (spann.w * uSpann + dkMH);\n' + ATEM_GLSL + MIMIK_GLSL + 'transformed += dkPecV;\n' +
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\nvec3 dkPecV = normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ndkPecV.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;\ndkPecV += normal * (spann.w * uSpann + dkMH + (pec.x + pec.y) * 0.012 * uMasse);\n' + ATEM_GLSL + MIMIK_GLSL + 'transformed += dkPecV;\n' +
         'vRN = normal;\n#ifdef DK_SCHUH\nvSchuh = schuh;\n#endif\n#ifdef DK_STOFF\nvRuhe = ruhe;\nvH = position;\nvec3 dkEng = eng + dkPecV;\n#else\nvRuhe = position;\n#endif')
       .replace('#include <skinning_vertex>', '#include <skinning_vertex>\n' + STOFF_FALL_GLSL);
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vSpiel;\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nuniform vec4 uMimik;\nuniform float uGlut;\nuniform float uHinweis;\nuniform vec3 uGlutFarbe;\nuniform vec3 uMuskelFarbe;\nuniform vec3 uHinweisFarbe;\nuniform vec3 uHose;\nuniform vec3 uSchuh;\nuniform vec3 uOberteil;\nuniform vec3 uSocke;\n' + KLEIDUNG_GLSL + STOFF_PARS_GLSL)
@@ -1434,10 +1441,11 @@ export class FigurModell {
       const th = richt(g.huefte[s], g.knie[s]), sc = richt(g.knie[s], g.knoechel[s]), knie = wink(th, sc), huefte = wink(th, R.oben.clone().negate());
       const voll = (v) => { v = Math.max(0, Math.min(1, v)); return v * v * (3 - 2 * v); };
       const lat = voll((0.7 - y) / 1.4) * hart('lat', 0.22) - 0.3 * voll((y - 0.7) / 0.25);
-      this.u.uMA.value[i].set(voll((beuge - 25) / 110) * hart('bizeps', 0.42), voll((75 - beuge) / 65) * hart('trizeps', 0.12), lat, voll((y + 0.5) / 1.1) * hart('schulter', 0.3));
-      this.u.uMC.value[i] = (g.haelt && g.haelt[s] ? 0.55 : 0.12) * hart('unterarme', 0.3);
+      const pu = this.pump && this.pump[s], mit = (n, w) => (pu && pu[n] > w ? pu[n] : w);
+      this.u.uMA.value[i].set(mit('bizeps', voll((beuge - 25) / 110) * hart('bizeps', 0.42)), mit('trizeps', voll((75 - beuge) / 65) * hart('trizeps', 0.12)), mit('lat', lat), mit('schulter', voll((y + 0.5) / 1.1) * hart('schulter', 0.3)));
+      this.u.uMC.value[i] = mit('unterarme', (g.haelt && g.haelt[s] ? 0.55 : 0.12) * hart('unterarme', 0.3));
       const hub = g.ferse && g.zehe ? Math.max(0, (g.ferse[s].y - g.zehe[s].y) / MASS.fussLaenge) : 0;
-      this.u.uMB.value[i].set((0.65 + 0.35 * voll(knie / 90)) * hart('quadrizeps', 0.08), voll((knie - 40) / 100) * hart('beinbeuger', 0.2), (1 - 0.5 * voll(huefte / 90)) * hart('gesaess', 0.1), (0.4 + 0.6 * voll(hub / 0.45)) * hart('waden', 0.12));
+      this.u.uMB.value[i].set(mit('quadrizeps', (0.65 + 0.35 * voll(knie / 90)) * hart('quadrizeps', 0.08)), mit('beinbeuger', voll((knie - 40) / 100) * hart('beinbeuger', 0.2)), mit('gesaess', (1 - 0.5 * voll(huefte / 90)) * hart('gesaess', 0.1)), mit('waden', (0.4 + 0.6 * voll(hub / 0.45)) * hart('waden', 0.12)));
     });
   }
   // Schweiß: die Haut glänzt, je länger die Übung läuft (0…1)
@@ -1446,7 +1454,8 @@ export class FigurModell {
 
   // Knochen aus den Gelenkpunkten (g = gelenke(pose)) legen
   stelle(g) {
-    const r = this.ruhe, P = r.P, I = this.k.index, A = this.A, R = g.R;
+    const r = this.ruhe, P = r.P, I = this.k.index, A = this.A, R = g.R, masse = this.masse || 0, armB = BAU.arm * (1 + 0.03 * masse), beinB = BAU.bein * (1 + 0.03 * masse), rumpfB = 1 + 0.02 * masse;
+    this.u.uMasse.value = masse;
     const X = V(1, 0, 0), Y = V(0, 1, 0), Z = V(0, 0, 1);
     const gesetzt = new Set();
     const setze = (name, m) => { if (I[name] === undefined) return; A[I[name]].copy(m); gesetzt.add(I[name]); };
@@ -1455,8 +1464,8 @@ export class FigurModell {
     const sb = g.schulterBasis || g.schulter, sy = sb.l.clone().add(sb.r).multiplyScalar(0.5).sub(hueft).dot(R.oben) / r.rumpfHoehe;
     const rumpf = {};
     for (const n of ['Root', 'Hips', 'Spine', 'Spine1', 'Spine2', 'LeftShoulder', 'RightShoulder', 'Neck']) {
-      const sx = BAU.breite[n] || r.schulterSkala;
-      rumpf[n] = abbilden(new THREE.Matrix4(), r.hueftMitte, X, r.rumpfOben, hueft, R.links, R.oben, sx, sy, BAU.tiefe[n] || 1);
+      const sx = (BAU.breite[n] || r.schulterSkala) * rumpfB;
+      rumpf[n] = abbilden(new THREE.Matrix4(), r.hueftMitte, X, r.rumpfOben, hueft, R.links, R.oben, sx, sy, (BAU.tiefe[n] || 1) * rumpfB);
       // Shrugs: Schulterknochen (Schlüsselbein, Trapez-Ansatz) gehen mit dem Schulterhub nach oben
       if (g.schulterHub && /Shoulder$/.test(n)) rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(R.oben.x * g.schulterHub, R.oben.y * g.schulterHub, R.oben.z * g.schulterHub));
       // Schlüsselbein dreht mit dem gehobenen Arm (gelenke: schulterDreh)
@@ -1475,7 +1484,7 @@ export class FigurModell {
       const wrist = g.handgelenk[s];
       const beuge = senkrecht(dO.clone().cross(g.ellbogenAchse[s]), dO, R.vor.clone().sub(R.links.clone().multiplyScalar(0.4 * sg)));
       setze(S + 'Arm', abbilden(new THREE.Matrix4(), P(S + 'Arm'), ru.oberarm, senkrecht(Z, ru.oberarm), g.schulter[s], dO, beuge,
-        g.schulter[s].distanceTo(g.ellbogen[s]) / P(S + 'Arm').distanceTo(P(S + 'ForeArm')), BAU.arm, BAU.arm));
+        g.schulter[s].distanceTo(g.ellbogen[s]) / P(S + 'Arm').distanceTo(P(S + 'ForeArm')), armB, armB));
       // Unterarm: Handrücken dreht mit der Hand
       const dU = richt(g.ellbogen[s], wrist);
       let ruecken = senkrecht(g.handRuecken[s], dU, beuge);
@@ -1486,7 +1495,7 @@ export class FigurModell {
         if (Math.abs(tau) > UNTERARM_MAX) { drehFrei = (Math.sign(tau) * UNTERARM_MAX - tau) * Math.min(1, (Math.PI - Math.abs(tau)) / (35 * RAD)); ruecken.applyAxisAngle(dU, drehFrei); }
       }
       setze(S + 'ForeArm', abbilden(new THREE.Matrix4(), P(S + 'ForeArm'), ru.unterarm, senkrecht(ru.ruecken, ru.unterarm), g.ellbogen[s], dU, ruecken,
-        g.ellbogen[s].distanceTo(wrist) / P(S + 'ForeArm').distanceTo(P(S + 'Hand')), BAU.arm, BAU.arm));
+        g.ellbogen[s].distanceTo(wrist) / P(S + 'ForeArm').distanceTo(P(S + 'Hand')), armB, armB));
       // Hand: Finger-Richtung (mit Knick) und Handrücken; der Rücken knickt um dieselbe Achse wie in gelenke()
       let fing = g.handFinger[s].clone().normalize();
       const knickAchse = g.handAchse[s].clone().cross(g.handRuecken[s]).normalize();
@@ -1513,20 +1522,21 @@ export class FigurModell {
       };
       // Hält die Hand etwas: Finger und Daumen um den Griff (Radius aus haltErkennen); sonst locker bzw. flach
       const griff = haelt ? griffLoesen(P, ru, S, typeof g.haelt[s] === 'number' ? g.haelt[s] : GRIFF_R) : null;
+      const kw0 = griff ? (g.kelchW && g.kelchW[s]) || 0 : 0, kw = Math.abs(kw0), kwF = kw0 < 0 ? kw * kw : kw, KK = kw0 < 0 ? KELCH.innen : S === 'Right' ? KELCH.unten : KELCH, kSg = S === 'Left' ? 1 : -1, d0 = g.haken && griff ? { abd: kSg * KELCH.haken.daumen.abd, dreh: kSg * KELCH.haken.daumen.dreh, curl: KELCH.haken.daumen.curl } : griff && griff.daumen, griffD = griff ? (kw ? { abd: d0.abd + (kSg * KK.daumen.abd - d0.abd) * kw, dreh: d0.dreh + (kSg * KK.daumen.dreh - d0.dreh) * kw, curl: d0.curl + (KK.daumen.curl - d0.curl) * kw } : d0) : null;
       const winkel = KRUEMMUNG;
       let krumm = flach ? 0 : haelt ? 1 : Math.max(0, Math.min(1, (wrist.y - 0.07) / 0.13));
       if (!flach && !haelt) for (const c of [krumm, 0.6, 1]) { krumm = c; if (P(S + 'HandMiddle4').clone().applyMatrix4(kette('Middle', zuHand, winkel, c)[3][1]).y > 0.01) break; }
       // Greifen als Bewegung (Devin, 1.11.: „seine Hände öffnen … zu den Griffen … greift … drückt die auch“): zu = 0 offen … 1 am Griff anliegend,
       // darüber drückt die Hand; ohne Griff öffnet g.handAuf (0 locker … 1 offen) die lockere Hand. Ohne Angabe wie gehabt: am Griff zu, sonst locker
       // Freie Hand: halb offen (locker geschlossen sah sie in der Luft aus, als wolle sie etwas greifen; Devin, 2.11. zum Dead Bug)
-      const zu = griff ? (g.griffZu && g.griffZu[s] != null ? g.griffZu[s] : 1) : 0, offen = !griff && !flach ? Math.max(0.55, (g.handAuf && g.handAuf[s]) || 0) : 0;
+      const zu = griff ? (g.griffZu && g.griffZu[s] != null ? g.griffZu[s] : 1) : 0, offen = !griff && !flach ? (g.handAuf && g.handAuf.locker ? 0.22 : Math.max(0.55, (g.handAuf && g.handAuf[s]) || 0)) : 0;
       const mischW = (a, ca, b, cb) => [0, 1, 2].map((i) => a[i] * ca + b[i] * cb);
-      for (const f of FINGER) for (const [n, m] of kette(f, zuHand, griff ? mischW(griff.finger[f], zu, OFFEN, Math.max(0, 1 - zu)) : mischW(winkel, krumm * (1 - offen), OFFEN, offen), 1,
-        griff ? hand.clone().multiply(umPunkt(P(S + 'Hand' + f + '1'), ru.ruecken, -griff.spreiz[f] * Math.min(1, zu))) : hand)) setze(n, m);
+      for (const f of FINGER) for (const [n, m] of kette(f, zuHand, griff ? mischW(kw ? mischW(g.haken ? KELCH.haken.finger[f] : griff.finger[f], 1 - kwF, KK.finger[f], kwF) : g.haken ? KELCH.haken.finger[f] : griff.finger[f], zu, OFFEN, Math.max(0, 1 - zu)) : mischW(winkel, krumm * (1 - offen), OFFEN, offen), 1,
+        griff ? hand.clone().multiply(umPunkt(P(S + 'Hand' + f + '1'), ru.ruecken, -(griff.spreiz[f] * (1 - kw) + -kSg * KK.neigung[f] * RAD * kw) * Math.min(1, zu))) : hand)) setze(n, m);
       const zuD = Math.min(1, zu);
       const daumenStart = flach ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, ru.daumenFlach))
-        : griff ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.ruecken.clone().negate(), griff.daumen.abd * RAD * zuD)).multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, griff.daumen.dreh * RAD * zuD)) : hand;
-      for (const [n, m] of kette('Thumb', daumenAchse, griff ? mischW(DAUMEN_GRIFF, griff.daumen.curl * zuD, DAUMEN_OFFEN, 1 - zuD) : mischW(DAUMEN, krumm * (1 - offen), DAUMEN_OFFEN, offen), 1, daumenStart)) setze(n, m);
+        : griff ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.ruecken.clone().negate(), griffD.abd * RAD * zuD)).multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, griffD.dreh * RAD * zuD)) : hand;
+      for (const [n, m] of kette('Thumb', daumenAchse, griff ? mischW(DAUMEN_GRIFF, griffD.curl * zuD, DAUMEN_OFFEN, 1 - zuD) : mischW(DAUMEN, krumm * (1 - offen), DAUMEN_OFFEN, offen), 1, daumenStart)) setze(n, m);
       // Bein: Kniescheibe zeigt dorthin, wohin das Knie aus der Linie Hüfte–Knöchel herausragt
       const dB = richt(g.huefte[s], g.knie[s]);
       const bl = richt(g.huefte[s], g.knoechel[s]);
@@ -1534,11 +1544,11 @@ export class FigurModell {
       const fussVor = richt(g.ferse[s], g.zehe[s]);
       const ruheO = richt(P(S + 'UpLeg'), P(S + 'Leg'));
       setze(S + 'UpLeg', abbilden(new THREE.Matrix4(), P(S + 'UpLeg'), ruheO, senkrecht(Z, ruheO), g.huefte[s], dB, senkrecht(kn, dB, fussVor),
-        g.huefte[s].distanceTo(g.knie[s]) / P(S + 'UpLeg').distanceTo(P(S + 'Leg')), BAU.bein, BAU.bein));
+        g.huefte[s].distanceTo(g.knie[s]) / P(S + 'UpLeg').distanceTo(P(S + 'Leg')), beinB, beinB));
       const dS = richt(g.knie[s], g.knoechel[s]);
       const ruheS = richt(P(S + 'Leg'), P(S + 'Foot'));
       setze(S + 'Leg', abbilden(new THREE.Matrix4(), P(S + 'Leg'), ruheS, senkrecht(Z, ruheS), g.knie[s], dS, senkrecht(kn, dS, fussVor),
-        g.knie[s].distanceTo(g.knoechel[s]) / P(S + 'Leg').distanceTo(P(S + 'Foot')), BAU.bein, BAU.bein));
+        g.knie[s].distanceTo(g.knoechel[s]) / P(S + 'Leg').distanceTo(P(S + 'Foot')), beinB, beinB));
       // Fuß: Sohle wie die Linie Ferse → Zehe, Fußrücken zeigt von der Fläche weg, auf der er steht (g.sohleN: Boden, schräge Platte …),
       // so rollt er auf einer Platte nicht seitlich weg; Zehen bleiben flach auf der Fläche, wenn die Ferse hochgeht
       const auf = (g.sohleN && g.sohleN[s]) || Y;

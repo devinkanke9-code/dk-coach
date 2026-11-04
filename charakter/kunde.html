@@ -1,0 +1,652 @@
+<!doctype html><html lang="de"><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>DK Coach</title>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.min.js" } }</script>
+<style>
+/* Eine Bühne wie ein Spielerprofil: Figur groß im unscharfen Studio, Stats daneben, Knöpfe darunter. Darunter (am Handy) bzw. daneben (breit) die Zahlen dazu.
+   Farben und Schriften aus DK Coach. Nur dunkel: das Licht auf der Figur und das Studio gehören zusammen */
+@font-face { font-family: "Archivo"; font-style: normal; font-weight: 700 800; font-stretch: 125%; font-display: swap; src: url(../schriften/archivo.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 400 600; font-display: swap; src: url(../schriften/plex-sans.woff2) format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url(../schriften/plex-mono-500.woff2) format("woff2"); }
+:root {
+  color-scheme: dark;
+  --schwarz: #0b0b0b; --flaeche: #15171a; --anthrazit: #23262a; --linie: #30343a; --text: #eef0f4; --text2: #a3a8b3;
+  --verlauf-a: #ff8a3d; --verlauf-b: #ff3d81; --akzent: #ff5e6c; --akzent-hell: #ff9a8b; --auf-akzent: #1c0a10; --glas: rgba(11, 11, 13, .62);
+  --f-display: "Archivo", "Arial Black", Impact, system-ui, sans-serif; --f-text: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; --f-zahl: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --rand: max(16px, env(safe-area-inset-left, 0px)); --rand-r: max(16px, env(safe-area-inset-right, 0px));
+}
+html, body { height: 100%; }
+body { background: var(--schwarz); color: var(--text); font: 14px/1.45 var(--f-text); }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--akzent-hell); outline-offset: 2px; }
+#seite { display: grid; grid-template-columns: minmax(0, 1fr); }
+#buehne { position: relative; overflow: hidden; isolation: isolate; height: 100svh; min-height: 620px; max-height: 960px; background: #1a1714; }
+#studio { position: absolute; inset: -5% -16%; z-index: -2; background: url(studio.jpg) center 46% / cover no-repeat; will-change: transform; }
+#buehne::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(8, 8, 10, .72) 0, rgba(8, 8, 10, 0) 18%), linear-gradient(90deg, rgba(8, 8, 10, .42) 0, rgba(8, 8, 10, 0) 42%), linear-gradient(0deg, rgba(8, 8, 10, .88) 0, rgba(8, 8, 10, 0) 30%); }
+#c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; cursor: grab; }
+#kopf { position: absolute; z-index: 2; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) var(--rand-r) 0 var(--rand); }
+.marke { font: 800 15px/1 var(--f-display); font-stretch: 125%; letter-spacing: .02em; background: linear-gradient(135deg, var(--verlauf-a), var(--verlauf-b)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.titel { font: 700 13px/1.15 var(--f-display); font-stretch: 125%; letter-spacing: .01em; }
+.titel small { display: block; font: 400 11.5px/1.3 var(--f-text); font-stretch: normal; color: var(--text2); letter-spacing: 0; margin-top: 2px; }
+.rechts { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: auto; }
+.foto-knopf { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 13px; color: var(--auf-akzent); background: linear-gradient(135deg, var(--verlauf-a), var(--verlauf-b)); }
+.nur-bild:focus-visible + .fotofeld, .foto-knopf:focus-visible { outline: 2px solid var(--akzent-hell); outline-offset: 2px; }
+#arbeit { position: absolute; z-index: 4; left: 50%; top: 42%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 12px; background: rgba(11, 11, 13, .82); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); max-width: 80%; font-weight: 500; }
+#arbeit[hidden] { display: none; }
+#hinweis { position: absolute; z-index: 4; left: var(--rand); right: var(--rand-r); bottom: calc(112px + env(safe-area-inset-bottom, 0px)); padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(11, 11, 13, .86); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); text-align: left; font-size: 13px; line-height: 1.35; color: var(--text); cursor: pointer; }
+#hinweis.fehler { border-color: color-mix(in srgb, var(--akzent) 70%, transparent); color: var(--akzent-hell); }
+#hinweis[hidden] { display: none; }
+.arbeit-rechts { display: flex; flex-direction: column; gap: 6px; min-width: 200px; }
+.fortschritt { height: 5px; border-radius: 5px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.fortschritt i { display: block; height: 100%; width: 0; border-radius: 5px; background: linear-gradient(90deg, var(--verlauf-a), var(--verlauf-b)); transition: width .5s; }
+#arbeit small { font-size: 11.5px; color: var(--text2); }
+#kunde-zurueck { position: absolute; z-index: 5; left: 50%; transform: translateX(-50%); top: calc(10px + env(safe-area-inset-top, 0px)); padding: 6px 10px; border-radius: 99px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(11, 11, 13, .8); color: var(--text); font-size: 11.5px; white-space: nowrap; cursor: pointer; }
+#kunde-zurueck[hidden] { display: none; }
+#editor { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; height: 52%; display: flex; flex-direction: column; background: rgba(13, 13, 16, .95); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-top: 1px solid rgba(255, 255, 255, .12); border-radius: 16px 16px 0 0; padding: 10px var(--rand-r) calc(10px + env(safe-area-inset-bottom, 0px)) var(--rand); box-sizing: border-box; }
+#editor[hidden] { display: none; }
+.ed-kopf { display: flex; align-items: center; gap: 8px; }
+.tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; justify-content: space-between; }
+.tab { flex: 0 0 auto; height: 32px; padding: 0 6px; border-radius: 9px; border: 1px solid transparent; background: none; font-size: 12.5px; font-weight: 600; color: var(--text2); cursor: pointer; }
+.tab[aria-selected="true"] { background: rgba(255, 255, 255, .1); color: var(--text); }
+.tabinhalt { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 2px 6px; }
+.tabinhalt[hidden] { display: none; }
+.tabinhalt p { margin: 0; color: var(--text2); }
+.haupt-knopf { width: 100%; height: 46px; margin-top: 12px; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; color: var(--auf-akzent); background: linear-gradient(135deg, var(--verlauf-a), var(--verlauf-b)); cursor: pointer; }
+.haupt-knopf:disabled { opacity: .4; cursor: default; }
+.breit-knopf { width: 100%; justify-content: center; margin-top: 14px; }
+.farben { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.farben label { display: grid; gap: 4px; font-size: 12px; color: var(--text2); text-align: center; }
+.farben input { width: 100%; height: 40px; padding: 2px; border-radius: 10px; border: 1px solid var(--linie); background: var(--flaeche); box-sizing: border-box; }
+.ueber { margin: 16px 0 0 !important; font: 600 11px/1.2 var(--f-text); letter-spacing: .06em; text-transform: uppercase; }
+.wahlreihe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.wahlreihe.zwei { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wahlreihe.vier { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.wahlknopf { height: 40px; border-radius: 10px; border: 1px solid var(--linie); background: var(--flaeche); font-weight: 600; font-size: 13px; cursor: pointer; }
+.wahlknopf[aria-pressed="true"] { background: linear-gradient(135deg, var(--verlauf-a), var(--verlauf-b)); color: var(--auf-akzent); border-color: transparent; font-weight: 700; }
+body.kunde .nur-trainer { display: none !important; }
+body:not(.kunde) #werte .wert { pointer-events: auto; cursor: pointer; }
+@media (min-width: 900px) { #editor { left: auto; right: 16px; bottom: 16px; width: 380px; height: auto; max-height: calc(100% - 96px); border: 1px solid rgba(255, 255, 255, .12); border-radius: 16px; } .tabinhalt { flex: 1 1 auto; } }
+@media (max-width: 899px) { body.editiert #werte, body.editiert .titel small { display: none; } }
+.knopf[hidden] { display: none; }
+.dreher { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .25); border-top-color: var(--akzent-hell); animation: dk-dreh 1s linear infinite; }
+@keyframes dk-dreh { to { transform: rotate(360deg); } }
+.beispiel { font: 500 10.5px/1 var(--f-zahl); color: var(--akzent-hell); border: 1px solid color-mix(in srgb, var(--akzent-hell) 45%, transparent); border-radius: 99px; padding: 5px 8px; background: rgba(11, 11, 13, .5); white-space: nowrap; }
+#werte { position: absolute; z-index: 2; left: var(--rand); top: calc(66px + env(safe-area-inset-top, 0px)); width: 104px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.wert { background: var(--glas); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); border: 1px solid rgba(255, 255, 255, .09); border-radius: 12px; padding: 9px 10px 10px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wert b { font: 500 9.5px/1.2 var(--f-text); letter-spacing: .07em; text-transform: uppercase; color: var(--text2); }
+.wert strong { font: 800 19px/1.08 var(--f-display); font-stretch: 112%; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wert span { font: 500 10.5px/1.3 var(--f-zahl); color: var(--text2); }
+.wert.haupt { border-color: color-mix(in srgb, var(--akzent) 55%, transparent); }
+.spanne { position: relative; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .13); margin: 4px 0 1px; }
+.spanne i { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: linear-gradient(90deg, var(--verlauf-a), var(--verlauf-b)); transition: left .5s, right .5s; }
+#unten { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 8px; padding: 0 var(--rand-r) calc(14px + env(safe-area-inset-bottom, 0px)) var(--rand); }
+.zeile { display: flex; gap: 6px; min-width: 0; }
+.knopf { flex: 1 1 0; min-width: 0; height: 40px; padding: 0 2px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text);
+  background: var(--glas); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); border: 1px solid rgba(255, 255, 255, .12); transition: transform .18s, border-color .2s, background .2s; }
+.knopf:active { transform: scale(.97); }
+.knopf.breit { flex-grow: 1.3; }
+.knopf[aria-pressed="true"] { background: linear-gradient(135deg, var(--verlauf-a), var(--verlauf-b)); color: var(--auf-akzent); border-color: transparent; font-weight: 700; }
+.stand .knopf { height: 34px; font-size: 12px; }
+.stand .knopf[aria-pressed="true"] { background: rgba(255, 255, 255, .92); color: #111; }
+#monate { flex: 0 0 auto; width: 92px; height: 34px; border-radius: 10px; padding: 0 6px; font-size: 12px; background: var(--glas); border: 1px solid rgba(255, 255, 255, .12); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); }
+#monate option { color: #eee; background: #15171a; }
+.fett-zeile { display: grid; grid-template-columns: auto minmax(0, 1fr) 46px; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 10px; background: var(--glas); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); border: 1px solid rgba(255, 255, 255, .12); font-size: 12px; font-weight: 600; }
+.fett-zeile input { width: 100%; height: 26px; margin: 0; accent-color: var(--akzent); }
+.fett-zeile output { font: 500 12px/1 var(--f-zahl); text-align: right; white-space: nowrap; }
+#tipp { text-align: center; font-size: 11.5px; color: rgba(238, 240, 244, .72); transition: opacity .5s; pointer-events: none; }
+#lade { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; color: var(--text2); text-align: center; padding: 0 var(--rand-r) 0 var(--rand); }
+#blatt { padding-block: 22px 40px; padding-left: var(--rand); padding-right: var(--rand-r); display: flex; flex-direction: column; gap: 26px; background: var(--schwarz); min-width: 0; }
+#blatt h2 { margin: 0 0 4px; font: 800 17px/1.2 var(--f-display); font-stretch: 112%; text-wrap: balance; }
+#blatt p { margin: 0; color: var(--text2); max-width: 62ch; }
+.klein { font-size: 12.5px; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 8px 0; border-bottom: 1px solid var(--linie); }
+th:first-child, td:first-child { text-align: left; }
+th { font: 500 11px/1.2 var(--f-text); color: var(--text2); letter-spacing: .05em; text-transform: uppercase; }
+td { font: 500 14px/1.2 var(--f-zahl); }
+td:first-child { font-family: var(--f-text); }
+.feld { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: baseline; margin-top: 12px; }
+.feld label { color: var(--text); }
+.feld output { font: 500 13px/1 var(--f-zahl); color: var(--text2); }
+.feld input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--akzent); height: 26px; margin: 0; }
+.feld select { grid-column: 1 / -1; height: 38px; border-radius: 10px; background: var(--flaeche); border: 1px solid var(--linie); padding: 0 8px; margin-top: 4px; }
+.gruppen { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.gruppe { display: grid; grid-template-columns: 76px minmax(0, 1fr) 58px; gap: 10px; align-items: center; width: 100%; height: 40px; padding: 0 8px; background: none; border: 1px solid transparent; border-radius: 10px; cursor: pointer; text-align: left; }
+.gruppe:hover { background: var(--flaeche); }
+.gruppe[aria-pressed="true"] { background: var(--flaeche); border-color: color-mix(in srgb, var(--akzent) 60%, transparent); }
+.gruppe .balken { height: 6px; border-radius: 6px; background: var(--anthrazit); overflow: hidden; }
+.gruppe .balken i { display: block; height: 100%; border-radius: 6px; background: var(--akzent-hell); }
+.gruppe em { font: 500 12px/1 var(--f-zahl); font-style: normal; color: var(--text2); text-align: right; }
+@media (min-width: 900px) {
+  html, body { overflow: hidden; }
+  #seite { height: 100%; grid-template-columns: minmax(0, 1fr) 400px; }
+  #buehne { height: 100%; max-height: none; min-height: 0; }
+  #blatt { overflow-y: auto; border-left: 1px solid var(--linie); }
+  #werte { width: 148px; }
+  .wert strong { font-size: 23px; }
+  #unten { max-width: 620px; margin: 0 auto; }
+}
+@media (prefers-reduced-motion: reduce) { .spanne i, .knopf, #tipp { transition: none; } .dreher { animation-duration: 3s; } }
+.nur-bild { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.foto-zeile { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+.auswahl { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 10px; cursor: pointer; font-weight: 600; background: var(--flaeche); border: 1px solid var(--linie); }
+.tipps { margin: 8px 0 0; padding-left: 18px; color: var(--text2); font-size: 12.5px; display: grid; gap: 2px; }
+.eingaben { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.eingaben label { display: grid; gap: 4px; font-size: 12.5px; color: var(--text2); min-width: 0; }
+.eingaben input { height: 38px; border-radius: 10px; background: var(--flaeche); border: 1px solid var(--linie); padding: 0 10px; width: 100%; box-sizing: border-box; color: var(--text); font: 500 14px var(--f-zahl); }
+#foto-meldung { margin-top: 10px; font-size: 13px; color: var(--text); }
+#foto-meldung.fehler { color: var(--akzent-hell); }
+.fotos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.fotofeld { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; height: 128px; padding: 6px 4px 8px; border-radius: 12px; cursor: pointer; overflow: hidden; background: var(--flaeche); border: 1px dashed var(--linie); text-align: center; }
+.fotofeld.voll { border-style: solid; border-color: color-mix(in srgb, var(--akzent) 60%, transparent); }
+.fotofeld canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.fotofeld b, .fotofeld small { position: relative; display: block; line-height: 1.2; }
+.fotofeld b { font-size: 13px; font-weight: 600; }
+.fotofeld small { font-size: 11px; color: var(--text2); }
+.fotofeld.voll b, .fotofeld.voll small { color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .9); }
+.wahl { height: 38px; border-radius: 10px; background: var(--flaeche); border: 1px solid var(--linie); padding: 0 8px; width: 100%; box-sizing: border-box; }
+.schalter { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.schalter input { width: 18px; height: 18px; accent-color: var(--akzent); }
+.leer { color: var(--text2); }
+.wert[hidden] { display: none; }
+.kunde-zeile { display: flex; gap: 8px; align-items: center; }
+.kunde-zeile .wahl { flex: 1; min-width: 0; }
+.eingaben .ganz { grid-column: 1 / -1; }
+.breit-knopf.leise { margin-top: 8px; background: none; color: var(--text2); }
+a.foto-knopf { text-decoration: none; }
+#vorschau { position: fixed; inset: 0; z-index: 50; width: 100%; height: 100%; border: 0; background: var(--schwarz); }
+#vorschau-zu { position: fixed; z-index: 51; right: var(--rand-r); top: calc(10px + env(safe-area-inset-top, 0px)); padding: 8px 12px; border-radius: 99px; border: 1px solid rgba(255, 255, 255, .25); background: rgba(11, 11, 13, .88); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; }
+#vorschau-zu[hidden] { display: none; }
+.code-feld { width: 100%; margin-top: 6px; padding: 8px 10px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .06); color: var(--text); font: 12px/1.35 ui-monospace, monospace; word-break: break-all; }
+.spiel-knopf { display: flex; align-items: center; justify-content: center; gap: 10px; height: 46px; border: 0; border-radius: 12px; cursor: pointer; font: 800 15px/1 var(--f-display); font-stretch: 112%; letter-spacing: .01em; color: var(--auf-akzent); background: linear-gradient(135deg, var(--verlauf-a), var(--verlauf-b)); box-shadow: 0 10px 24px -10px rgba(255, 94, 108, .8), inset 0 1px 0 rgba(255, 255, 255, .35); transition: transform .18s; }
+.spiel-knopf:active { transform: scale(.98); }
+.spiel-reihe { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.spiel-knopf.neben { padding: 0 14px; font-size: 13px; color: var(--text); background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .24); box-shadow: none; }
+.spiel-knopf i { width: 0; height: 0; border-style: solid; border-width: 7px 0 7px 12px; border-color: transparent transparent transparent currentColor; }
+#spieler { position: absolute; z-index: 6; left: 0; right: 0; bottom: 0; max-height: 70%; display: flex; flex-direction: column; gap: 10px; padding: 14px var(--rand-r) calc(14px + env(safe-area-inset-bottom, 0px)) var(--rand); box-sizing: border-box; background: rgba(13, 13, 16, .96); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-top: 1px solid rgba(255, 255, 255, .12); border-radius: 16px 16px 0 0; }
+#spieler[hidden] { display: none; }
+.spieler-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.spieler-kopf b { font: 800 16px/1.2 var(--f-display); font-stretch: 112%; }
+#spieler-zu { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linie); background: var(--flaeche); cursor: pointer; }
+#spieler-liste { display: grid; gap: 8px; overflow-y: auto; }
+.spieler-zeile { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; width: 100%; min-height: 56px; padding: 8px 14px; text-align: left; border-radius: 12px; border: 1px solid var(--linie); background: var(--flaeche); cursor: pointer; }
+.spieler-zeile strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spieler-zeile span { grid-column: 1; font: 500 12px/1.3 var(--f-zahl); color: var(--text2); }
+.spieler-zeile em { grid-row: 1 / span 2; grid-column: 2; font-style: normal; font-weight: 700; font-size: 13px; color: var(--akzent-hell); }
+.raum { position: fixed; inset: 0; z-index: 35; overflow: hidden; background: var(--raum-grund); color: var(--text); -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
+.raum-bild { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.raum-kopf { position: absolute; z-index: 2; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top, 0px)); display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; padding: 8px 14px 10px 8px;
+  border-radius: 24px; background: var(--glas-dicht); border: 1px solid var(--glas-rand); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); box-shadow: 0 10px 30px -12px rgba(5, 30, 50, .5); }
+.raum-zu { grid-row: 1 / span 2; width: 42px; height: 42px; border-radius: 50%; border: 0; background: var(--knopf-grund); color: var(--text); font-size: 17px; cursor: pointer; }
+.raum-kopftext { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; min-width: 0; }
+.raum-kopftext b { font-size: 16px; font-weight: 700; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raum-stand { font-size: 13px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.raum-punkte { display: flex; gap: 4px; }
+.raum-punkte i { flex: 1; height: 5px; border-radius: 999px; background: var(--rand-weich); transition: background .4s var(--sanft); }
+.raum-punkte i.an { background: var(--akzent-verlauf); }
+.raum-punkte i.jetzt { background: var(--text); }
+.raum-tipp { position: absolute; z-index: 2; left: 50%; transform: translateX(-50%); top: calc(84px + env(safe-area-inset-top, 0px)); width: max-content; max-width: calc(100% - 32px); padding: 8px 14px; border-radius: 999px; font-size: 13px; text-align: center; color: var(--text);
+  background: var(--glas-dicht); box-shadow: 0 8px 22px -12px rgba(5, 30, 50, .5); transition: opacity .5s var(--sanft); pointer-events: none; }
+.raum-tipp.weg { opacity: 0; }
+.raum-unten { position: absolute; z-index: 2; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; transition: transform .5s var(--ios), opacity .3s var(--sanft); }
+.raum.an-station .raum-unten, .raum.faehrt .raum-unten { transform: translateY(150%); opacity: 0; pointer-events: none; }
+.raum-stick { position: relative; flex: 0 0 auto; width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; touch-action: none; cursor: grab; background: var(--glas); border: 1px solid var(--glas-rand);
+  backdrop-filter: blur(14px) saturate(170%); -webkit-backdrop-filter: blur(14px) saturate(170%); box-shadow: 0 10px 26px -12px rgba(5, 30, 50, .55), inset 0 1px 0 rgba(255, 255, 255, .2); }
+.raum-stick i { width: 46px; height: 46px; border-radius: 50%; background: var(--akzent-verlauf); box-shadow: var(--akzent-glanz); pointer-events: none; transition: transform .12s linear; }
+.raum-weiter { min-width: 0; flex: 0 1 auto; max-width: calc(100% - 118px); min-height: 66px; display: grid; gap: 1px; text-align: left; padding: 10px 20px; border: 0; border-radius: 22px; cursor: pointer; color: var(--auf-akzent); background: var(--akzent-verlauf); box-shadow: var(--akzent-glanz); transition: transform .28s var(--feder); }
+.raum-weiter small { font-size: 13px; font-weight: 600; }
+.raum-weiter b { font-size: 17px; font-weight: 800; letter-spacing: -.01em; overflow-wrap: anywhere; line-height: 1.15; }
+.raum-weiter:active { transform: scale(1.03); }
+.raum-karte { position: absolute; z-index: 3; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); max-height: min(56%, 520px); overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 14px; border-radius: 28px; display: grid; gap: 4px; background: var(--glas-dicht); border: 1px solid var(--glas-rand);
+  backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: 0 -8px 40px -12px rgba(5, 30, 50, .45); transform: translateY(120%); opacity: 0; transition: transform .55s var(--ios), opacity .3s var(--sanft); pointer-events: none; }
+.raum-karte.offen { transform: none; opacity: 1; pointer-events: auto; }
+@media (min-width: 640px) { .raum-karte { left: 50%; right: auto; width: 460px; margin-left: -230px; } }
+.raum-nr { font-size: 13px; font-weight: 600; color: var(--akzent-hell); }
+.raum-karte h2 { font-size: 24px; font-weight: 800; letter-spacing: -.022em; line-height: 1.12; }
+.raum-dosis { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.raum-klein { font-size: 14px; color: var(--text2); }
+.raum-knoepfe { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.raum-knoepfe .knopf { min-height: 52px; border-radius: 16px; }
+.raum-knoepfe .knopf[hidden] { display: none; }
+.raum-knoepfe .knopf[hidden] + .knopf { grid-column: 1 / -1; }
+.raum-meldung { position: absolute; z-index: 4; left: 16px; right: 16px; top: calc(92px + env(safe-area-inset-top, 0px)); padding: 12px 16px; border-radius: 18px; background: var(--glas-dicht); box-shadow: 0 10px 30px -10px rgba(5, 30, 50, .5); font-size: 14px; opacity: 0; transform: translateY(-8px); transition: opacity .3s, transform .4s var(--ios); pointer-events: none; }
+.raum-meldung.offen { opacity: 1; transform: none; }
+.raum-pop { position: absolute; z-index: 4; left: 0; right: 0; top: 30%; text-align: center; pointer-events: none; opacity: 0; font-family: var(--f-display); font-weight: 900; font-size: clamp(30px, 9vw, 46px); letter-spacing: -.025em; line-height: 1.05; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, .18), 0 6px 26px rgba(0, 0, 0, .45); }
+.raum-pop small { display: block; font-size: .46em; font-weight: 700; letter-spacing: 0; margin-bottom: 4px; }
+.raum-pop.an { animation: raum-pop 1.5s var(--ios) both; }
+@keyframes raum-pop { 0% { opacity: 0; transform: scale(.6) translateY(16px); } 18% { opacity: 1; transform: scale(1.06); } 28% { transform: scale(1); } 76% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.04) translateY(-14px); } }
+.raum-blitz { position: absolute; z-index: 4; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.raum-blitz.an { animation: raum-blitz .42s ease-out both; }
+@keyframes raum-blitz { 0% { opacity: .85; } 100% { opacity: 0; } }
+.raum-laden { position: absolute; z-index: 5; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: var(--tm-grund); transition: opacity .5s var(--sanft); font-weight: 600; }
+.raum-laden.weg { opacity: 0; pointer-events: none; }
+.raum-kreis { width: 42px; height: 42px; border-radius: 50%; border: 4px solid var(--knopf-grund2); border-top-color: var(--akzent); animation: raum-dreht .9s linear infinite; }
+@keyframes raum-dreht { to { transform: rotate(360deg); } }
+.raum-ende { position: absolute; z-index: 6; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; background: var(--tm-grund); opacity: 0; pointer-events: none; transition: opacity 1.1s var(--sanft); }
+.raum-ende.offen { opacity: 1; pointer-events: auto; }
+.raum-ende h1 { font-size: clamp(40px, 12vw, 56px); color: var(--text); }
+.raum-ende p { font-size: 17px; color: var(--text2); max-width: 30ch; }
+.raum-ende .knopf { min-width: 200px; min-height: 56px; font-size: 18px; margin-top: 12px; }
+.gym-knopf { width: 100%; min-height: 52px; font-weight: 700; }
+.raum-karte-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.raum-zurueck { border: 0; background: var(--knopf-grund); color: var(--knopf-text); font-size: 14px; font-weight: 600; min-height: 34px; padding: 4px 14px; border-radius: 999px; cursor: pointer; }
+.raum-inhalt { display: grid; gap: 4px; margin-top: 6px; }
+
+.raum { font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  --verlauf-a: #4FB8F5; --verlauf-b: #25D3C2; --verlauf-winkel: 120deg; --akzent: #0F86C4; --akzent-hell: #07577A; --auf-akzent: #06293B; --text: #0B2434; --text2: #3A5668; --f-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  --akzent-verlauf: linear-gradient(var(--verlauf-winkel), var(--verlauf-a) 0%, var(--verlauf-b) 100%); --akzent-glanz: 0 10px 24px -8px rgba(15, 134, 196, .6), inset 0 1px 0 rgba(255, 255, 255, .45); --rand-weich: rgba(11, 60, 90, .12); --sanft: cubic-bezier(.22, .61, .36, 1); --feder: cubic-bezier(.3, 1.3, .5, 1); --ios: cubic-bezier(.32, .72, 0, 1);
+  --glas: rgba(255, 255, 255, .6); --glas-rand: rgba(255, 255, 255, .72); --glas-dicht: rgba(255, 255, 255, .84); --knopf-grund: rgba(15, 134, 196, .14); --knopf-grund2: rgba(15, 134, 196, .2); --knopf-text: #05506F; --raum-grund: #8CCDEE; color-scheme: light;
+  --tm-grund: radial-gradient(120% 70% at 18% 0%, #A6DAF7 0%, transparent 62%), radial-gradient(110% 60% at 92% 8%, #A4EBE4 0%, transparent 62%), #D6EEF9; }
+:root[data-look="gold"] .raum {
+  --verlauf-a: #F7DE93; --verlauf-b: #CC9A33; --akzent: #DCB453; --akzent-hell: #EFD083; --auf-akzent: #1B1304; --text: #F5F1E7; --text2: #BDB7A8;
+  --akzent-glanz: 0 10px 26px -8px rgba(220, 180, 83, .5), inset 0 1px 0 rgba(255, 255, 255, .55); --rand-weich: rgba(236, 200, 110, .17);
+  --glas: rgba(16, 16, 20, .62); --glas-rand: rgba(236, 200, 110, .24); --glas-dicht: rgba(20, 20, 25, .86); --knopf-grund: rgba(236, 200, 110, .14); --knopf-grund2: rgba(236, 200, 110, .22); --knopf-text: #F4D98F; --raum-grund: #060608; color-scheme: dark;
+  --tm-grund: radial-gradient(120% 60% at 22% 0%, rgba(124, 58, 237, .38) 0%, transparent 62%), radial-gradient(110% 50% at 90% 6%, rgba(204, 154, 51, .2) 0%, transparent 62%), #08080A; }
+.raum h2 { margin: 0; }
+.raum p { margin: 0; }
+.raum-fertig { width: 100%; min-height: 52px; margin-top: 10px; border: 0; border-radius: 16px; cursor: pointer; font-size: 17px; font-weight: 800; color: var(--auf-akzent); background: var(--akzent-verlauf); box-shadow: var(--akzent-glanz); }
+.dk-funke { position: fixed; z-index: 60; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; pointer-events: none; background: var(--verlauf-a); box-shadow: 0 0 10px var(--verlauf-a); animation: dk-funke .65s cubic-bezier(.2, .7, .3, 1) forwards; }
+.dk-funke.b { background: var(--verlauf-b); box-shadow: 0 0 10px var(--verlauf-b); }
+@keyframes dk-funke { to { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 0; } }
+</style>
+
+<main id="seite">
+  <section id="buehne" aria-label="Deine Figur im Studio">
+    <div id="studio"></div>
+    <canvas id="c" aria-label="3D-Figur, ziehen zum Drehen"></canvas>
+    <div id="lade">3D-Figur lädt …</div>
+    <header id="kopf">
+      <div class="titel"><span class="marke">DK COACH</span><small id="untertitel">Dein Stand und deine Ziele</small></div>
+      <div class="rechts"><a class="foto-knopf" id="zurueck" href="../">Zurück</a></div>
+    </header>
+    
+    <aside id="werte" aria-label="Deine Werte">
+      <div class="wert haupt"><b id="w-muskel-titel">Muskeln</b><strong id="w-muskel">+0,4 kg</strong><div class="spanne"><i id="w-balken"></i></div><span id="w-muskel-unter">Schätzung</span></div>
+      <div class="wert"><b>Gewicht</b><strong id="w-gewicht">50 kg</strong><span id="w-gewicht-unter">Körperfett 10 %</span></div>
+      <div class="wert" id="k-training"><b>Training</b><strong id="w-training">92 %</strong><span id="w-training-unter">eingestellt</span></div>
+      <div class="wert" id="k-essen"><b>Ernährung</b><strong id="w-essen">87 %</strong><span id="w-essen-unter">eingestellt</span></div>
+    </aside>
+    
+    <div id="unten">
+      <div id="tipp">Ziehen zum Drehen, zwei Finger zum Heranzoomen</div>
+      <button class="spiel-knopf" id="ins-gym"><i aria-hidden="true"></i>Im Gym spielen</button>
+      <div class="fett-zeile"><label for="fett-regler">Körperfett</label><input type="range" id="fett-regler" min="6" max="45" step="0.5" value="15"><output id="fett-wert" for="fett-regler">15 %</output></div>
+      <div class="zeile stand" role="group" aria-label="Welchen Stand zeigen">
+        <button class="knopf" id="s-jetzt" data-stand="jetzt" aria-pressed="true">Jetzt</button>
+        <button class="knopf" id="s-min" data-stand="min" aria-pressed="false">Minimum</button>
+        <button class="knopf" id="s-max" data-stand="max" aria-pressed="false">Maximum</button>
+        <select id="monate" aria-label="Zeitraum">
+          <option value="1">1 Monat</option><option value="3">3 Monate</option><option value="6" selected>6 Monate</option><option value="12">12 Monate</option>
+        </select>
+      </div>
+      <div class="zeile" role="group" aria-label="Pose">
+        <button class="knopf" id="p-stand" data-pose="stand" aria-pressed="true">Stand</button>
+        <button class="knopf" id="p-bauch" data-pose="bauch" aria-pressed="false">Bauch</button>
+        <button class="knopf" id="p-bizeps" data-pose="bizeps" aria-pressed="false">Bizeps</button>
+        <button class="knopf" id="p-ruecken" data-pose="ruecken" aria-pressed="false">Rücken</button>
+        <button class="knopf" id="p-beine" data-pose="beine" aria-pressed="false">Beine</button>
+        <button class="knopf" id="p-ruhe" data-pose="ruhe" aria-pressed="false">Arme</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="blatt">
+    <div>
+      <h2>Deine Ziele</h2>
+      <p class="klein">Das ist realistisch erreichbar, ohne Übertreibung. Die Figur oben zeigt es mit Minimum und Maximum, der Regler zeigt, wie derselbe Körper mit mehr oder weniger Körperfett aussieht. Die Spanne kommt aus Trainingsjahren, Geschlecht und wie gut der Plan eingehalten wird.</p>
+      <table>
+        <thead><tr><th scope="col">Zeitraum</th><th scope="col">Muskeln</th><th scope="col">Fett</th></tr></thead>
+        <tbody id="tabelle"></tbody>
+      </table>
+      <p class="klein" id="grenze" style="margin-top:10px"></p>
+    </div>
+    <div>
+      <h2>Deine Monate</h2>
+      <p class="klein">Den Stand trägt Devin jeden Monat für dich ein.</p>
+      <table><thead><tr><th scope="col">Monat</th><th scope="col">Gewicht</th><th scope="col">Fettfrei</th></tr></thead><tbody id="monate-tabelle"><tr><td colspan="3" class="leer">Noch kein Eintrag.</td></tr></tbody></table>
+    </div>
+    <div>
+      <h2>Sätze je Muskelgruppe</h2>
+      <p class="klein" id="saetze-text">Sobald dein Plan in der App ist, siehst du hier, was du geschafft hast. Antippen zeigt die Gruppe an der Figur.</p>
+      <div class="gruppen" id="gruppen"></div>
+    </div>
+    <div>
+      <h2>Was dein Charakter nicht kann</h2>
+      <p class="klein">Er ist eine Spielfigur nach deinen Maßen, kein 3D-Scan. Gesichtsform und Körper sind aus den Fotos gemessen, die Farben daraus bestimmt. Bauchmuskeln und Fett zeigt er so, wie es bei diesem Körperfett und dieser Muskelmasse typisch ist, nicht deinen echten Bauch. Die Rückseite und die Körpertiefe sind geschätzt, weite Kleidung zählt mit. Die Haarlänge wird eingestellt, nicht gemessen, und der Grundkörper bleibt männlich. Im Gym hat er die Arm- und Beinlängen der Grundfigur, damit jeder Griff am Gerät sitzt. Muskelzuwachs und Körperfett sind Schätzungen.</p>
+    </div>
+  </section>
+  
+</main>
+
+<script type="module">
+import * as st from './stand.js';
+const $ = (id) => document.getElementById(id);
+const komma = (x, n = 1) => x.toLocaleString('de-DE', { minimumFractionDigits: n, maximumFractionDigits: n });
+
+// Kundenseite: Hier wird nichts bearbeitet. Der fertige Charakter kommt aus der App (oder, nur in der Vorschau, aus dem Link). Die Werte liegen als versteckte Felder im Dokument, der Rest rechnet damit genauso wie im Editor
+const ku = await import('./kurzform.js');
+const lies = (k, st) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : st; } catch (err) { return st; } };
+const VORSCHAU = /[#&]c=/.test(location.hash);
+async function kundenCharakter() {
+  const m = /[#&]c=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (m) { try { return await ku.ausText(m[1]); } catch (err) { return null; } }
+  const konto = lies('dk_konten', {})[lies('dk_konto', '')];
+  return (konto && konto.c) || null;
+}
+const D = ku.auspacken(await kundenCharakter());
+document.body.classList.add('kunde');
+{
+  const felder = document.createElement('div'); felder.hidden = true;
+  for (const id in D.felder) { const i = document.createElement('input'); i.id = id; i.value = D.felder[id]; felder.append(i); }
+  const m = document.createElement('input'); m.type = 'checkbox'; m.id = 'muetze'; m.checked = D.muetze; felder.append(m);
+  document.body.append(felder);
+}
+const speichernSpaeter = () => {}, merke = () => {}, zeigeNachstellen = () => {}, farbenZeigen = () => {};
+if (VORSCHAU) $('zurueck').hidden = true;
+const vorname = String(D.name || '').trim().split(/\s+/)[0];
+if (vorname) $('untertitel').textContent = vorname + ', dein Stand und deine Ziele';
+
+
+/* ---------- Zahlen ---------- */
+// Spanne je Monat aus den Trainingsjahren (bekannte Faustformeln für Naturalathleten: im ersten Jahr am meisten, danach immer weniger). Frauen rund 60 %, Plantreue kürzt beides. Mehr als die natürliche Grenze geht nicht
+const proMonat = (jahre) => (jahre < 1 ? [0.45, 1.0] : jahre < 2 ? [0.25, 0.6] : jahre < 4 ? [0.12, 0.3] : [0.05, 0.15]);
+const feldWert = (id) => $(id).value;
+const daten = () => st.daten(feldWert, form ? form.fettSchaetzung : null);
+// Fett: 1 bis 2 kg im Monat sind ohne Crashdiät machbar. Nur, wenn genug zum Abgeben da ist; wer schlank ist, soll nicht abnehmen
+function fettWeg(monate) { const d = daten(), ueber = d.gewicht * (d.fett - d.fettGrenze) / 100; return ueber <= 0 ? [0, 0] : [Math.min(ueber, monate), Math.min(ueber, 2 * monate)]; }
+function spanne(monate) {
+  const d = daten(), jahre = +$('e-jahre').value, treue = (+$('e-training').value + +$('e-essen').value) / 200, f = (d.frau ? 0.6 : 1) * (0.25 + 0.75 * treue) * (fettWeg(1)[1] > 0 ? 0.8 : 1), platz = Math.max(0, d.grenzeFfm - d.ffm);
+  let lo = 0, hi = 0;
+  for (let m = 0; m < monate; m++) { const [a, b] = proMonat(jahre + m / 12); lo += a * f; hi += b * f; }
+  return [Math.min(lo, platz), Math.min(hi, platz)];
+}
+let reglerFett = null;
+function standWerte(st, monate) {
+  const d = daten();
+  if (st === 'jetzt') return { gewicht: d.gewicht, fett: d.fett, muskel: 0, weg: 0 };
+  // Regler: dieselben Muskeln, nur das Fett ändert sich
+  if (st === 'regler') return { gewicht: d.ffm / (1 - reglerFett / 100), fett: reglerFett, muskel: 0, weg: 0 };
+  const [lo, hi] = spanne(monate), [fl, fh] = fettWeg(monate), muskel = st === 'min' ? lo : hi, weg = st === 'min' ? fl : fh, gewicht = d.gewicht + muskel - weg;
+  return { gewicht, fett: 100 * (d.gewicht * d.fett / 100 - weg) / gewicht, muskel, weg };
+}
+const GRUPPEN = [
+  { n: 'Brust', m: ['brust'], p: 'bizeps' }, { n: 'Rücken', m: ['lat', 'oberer_ruecken'], p: 'ruecken' }, { n: 'Schultern', m: ['schulter_vorne', 'schulter_seite', 'schulter_hinten'], p: 'bizeps' },
+  { n: 'Arme', m: ['bizeps', 'trizeps'], p: 'bizeps' }, { n: 'Beine', m: ['quadrizeps', 'beinbeuger', 'gesaess', 'waden'], p: 'beine' }, { n: 'Bauch', m: ['bauch'], p: 'bauch' }
+];
+
+// Was der Kunde wirklich trainiert hat: aus den Trainings auf seinem Handy, gegen den Plan in der App. Ohne Plan steht hier nichts, erfunden wird nichts
+let ECHT = null;
+async function echteZahlen() {
+  const plan = lies('dk_plaene', {})[lies('dk_aktiv', '')];
+  if (!plan || !Array.isArray(plan.t) || !plan.t.length) return null;
+  let U = {}; try { U = (await import('../daten.js')).UEBUNGEN || {}; } catch (err) { return null; }
+  const heute = new Date(), monat = new Date(heute.getFullYear(), heute.getMonth(), 1).getTime(), seit = Math.max(monat, plan.importiert ? new Date(plan.importiert).getTime() : monat), wochen = Math.max(1 / 7, (heute.getTime() - seit) / 6048e5);
+  const eigene = lies('dk_tage_' + plan.id, null), proWoche = Math.min(plan.t.length, ((Array.isArray(eigene) ? eigene : plan.ft) || []).length || plan.t.length);
+  const laeufe = lies('dk_verlauf', []).filter((r) => r && r.s >= seit), nachName = {}, soll = GRUPPEN.map(() => 0), ist = GRUPPEN.map(() => 0);
+  for (const id in U) nachName[U[id].n] = U[id].m || [];
+  const zaehle = (liste, m, n) => GRUPPEN.forEach((g, i) => { if (g.m.some((x) => m.includes(x))) liste[i] += n; });
+  plan.t.slice(0, proWoche).forEach((t) => (t.u || []).forEach((u) => zaehle(soll, (U[u.i] && U[u.i].m) || [], u.s || 0)));
+  laeufe.forEach((r) => (r.u || []).forEach((u) => zaehle(ist, nachName[u.n] || [], (u.z || []).length)));
+  return { einheiten: laeufe.length, geplant: Math.max(1, Math.round(proWoche * wochen)), soll: soll.map((x) => Math.round(x * wochen)), ist };
+}
+function zeigeKundenWerte() {
+  const tr = $('k-training'), es = $('k-essen');
+  if (ECHT) { $('w-training').textContent = Math.min(100, Math.round(100 * ECHT.einheiten / ECHT.geplant)) + ' %'; $('w-training-unter').textContent = ECHT.einheiten > ECHT.geplant ? ECHT.einheiten + ' Einheiten' : ECHT.einheiten + ' von ' + ECHT.geplant + (ECHT.geplant === 1 ? ' Einheit' : ' Einheiten'); tr.hidden = false; }
+  else if (D.gesetzt.training) { $('w-training').textContent = $('e-training').value + ' %'; $('w-training-unter').textContent = 'laut Devin'; tr.hidden = false; }
+  else tr.hidden = true;
+  es.hidden = !D.gesetzt.essen;
+  if (D.gesetzt.essen) { $('w-essen').textContent = $('e-essen').value + ' %'; $('w-essen-unter').textContent = 'laut Devin'; }
+}
+
+let stand = 'jetzt';
+const spanneText = (a, b) => (b <= 0 ? '–' : b - a < 0.05 ? 'rund ' + komma(b) + ' kg' : komma(a) + ' bis ' + komma(b) + ' kg');
+function zeigeZahlen() {
+  const monate = +$('monate').value, [lo1, hi1] = spanne(1), [lo, hi] = spanne(monate), MAXSK = Math.max(hi, 0.1), d = daten(), w = standWerte(stand, monate);
+  zeigeKundenWerte();
+  const bis = monate === 1 ? 'in 1 Monat' : 'in ' + monate + ' Monaten';
+  if (stand === 'regler') {
+    $('w-muskel-titel').textContent = 'Muskeln'; $('w-muskel').textContent = 'gleich'; $('w-muskel-unter').innerHTML = 'Vorschau:<br>nur das Fett ändert sich';
+    $('w-balken').style.left = '0%'; $('w-balken').style.right = '100%';
+  } else if (stand === 'jetzt') {
+    $('w-muskel-titel').textContent = 'Muskeln'; $('w-muskel').textContent = '+' + komma((lo1 + hi1) / 2) + ' kg'; $('w-muskel-unter').innerHTML = komma(lo1) + ' bis ' + komma(hi1) + ' kg<br>im Monat, geschätzt';
+    $('w-balken').style.left = '0%'; $('w-balken').style.right = (100 - 100 * ((lo1 + hi1) / 2) / Math.max(hi1, 0.1)) + '%';
+  } else {
+    const m = stand === 'min' ? lo : hi;
+    $('w-muskel-titel').textContent = stand === 'min' ? 'Minimum' : 'Maximum'; $('w-muskel').textContent = '+' + komma(m) + ' kg'; $('w-muskel-unter').innerHTML = bis + '<br>geschätzt';
+    $('w-balken').style.left = '0%'; $('w-balken').style.right = (100 - 100 * m / MAXSK) + '%';
+  }
+  $('w-gewicht').textContent = komma(w.gewicht, w.gewicht >= 100 ? 0 : 1) + ' kg';   // dreistellig passt die Kommastelle nicht mehr in die Karte
+  $('w-gewicht-unter').textContent = 'Körperfett ' + komma(w.fett, 0) + ' %' + (d.geschaetzt && stand !== 'regler' ? ' (geschätzt)' : '');
+  if (stand !== 'regler') $('fett-regler').value = Math.max(6, Math.min(45, w.fett));
+  $('fett-wert').textContent = komma(w.fett, 0) + ' %';
+  $('tabelle').innerHTML = [1, 3, 6, 12].map((m) => { const [a, b] = spanne(m), [f1, f2] = fettWeg(m); return '<tr><td>' + (m === 1 ? '1 Monat' : m + ' Monate') + '</td><td>+' + komma(a) + ' bis ' + komma(b) + ' kg</td><td>' + (f2 > 0 ? '−' + spanneText(f1, f2) : '–') + '</td></tr>'; }).join('');
+  const fehlt = Math.max(0, d.grenzeFfm - d.ffm);
+  $('grenze').textContent = 'Bei deiner Größe liegt die natürliche Grenze bei rund ' + komma(d.grenzeFfm, 0) + ' kg fettfreier Masse, du hast rund ' + komma(d.ffm, 0) + ' kg.' + (fehlt > 0 ? ' Die letzten Kilos davon dauern Jahre.' : ' Du bist also schon nah dran, mehr ist ohne Doping kaum drin.') + (fettWeg(1)[1] > 0 ? '' : ' Abnehmen steht bei dir nicht an.');
+  zielNeu();
+}
+function zeigeGruppen(e) { $('gruppen').innerHTML = GRUPPEN.map((g, i) => { const ist = e ? e.ist[i] : 0, soll = e ? e.soll[i] : 0; return '<button class="gruppe" id="gr-' + i + '" data-i="' + i + '" aria-pressed="false"><span>' + g.n + '</span><span class="balken"><i style="width:' + (soll ? Math.min(100, Math.round(100 * ist / soll)) : 0) + '%"></i></span><em>' + (soll ? ist + ' / ' + soll : '–') + '</em></button>'; }).join(''); }
+zeigeGruppen(null);
+$('monate').addEventListener('input', zeigeZahlen);
+
+for (const k of document.querySelectorAll('[data-stand]')) k.addEventListener('click', () => { stand = k.dataset.stand; wandelDauer = 1.5; for (const b of document.querySelectorAll('[data-stand]')) b.setAttribute('aria-pressed', String(b === k)); zeigeZahlen(); });
+$('fett-regler').addEventListener('input', () => { stand = 'regler'; reglerFett = +$('fett-regler').value; wandelDauer = 0.25; for (const b of document.querySelectorAll('[data-stand]')) b.setAttribute('aria-pressed', 'false'); zeigeZahlen(); });
+
+/* ---------- Bühne ---------- */
+let a = null, posing = null, THREE = null, vorher = 0, fm = null, BAU = null, MASS = null, basis = null, fris = null, kl = null;
+/* ---------- Charakter aus Zahlen und Fotos ---------- */
+const REGLER = ['schulter', 'brust', 'taille', 'arm', 'bein', 'kopf', 'beinl', 'huefte', 'hals'];
+const GESICHT_GRUPPEN = [['Form', [['breite', 'Gesichtsbreite'], ['kiefer', 'Kieferbreite'], ['kinn', 'Kinnlänge'], ['wangen', 'Wangen'], ['stirn', 'Stirnhöhe']]], ['Augen', [['augenAbstand', 'Augenabstand'], ['augenGroesse', 'Augengröße'], ['brauen', 'Brauenhöhe']]], ['Nase', [['nase', 'Nasengröße'], ['naseBreite', 'Nasenbreite']]], ['Mund', [['mundBreite', 'Mundbreite'], ['lippen', 'Lippen']]]];
+
+const GESICHT_REGLER = GESICHT_GRUPPEN.flatMap(([, l]) => l.map(([id]) => id));
+const gesichtWerte = () => Object.fromEntries(GESICHT_REGLER.map((n) => [n, +$('g-' + n).value / 100]));
+const { EINS, mischR } = st;
+let rJetzt = EINS(), rVon = EINS(), rZiel = EINS(), rZahl = null, rFoto = null, dFoto = null, wandel = 1, wandelDauer = 1.5, ges = null, form = null, cha = null, FIG = null, POS = null;
+const lZiel = 0.2; let spf = null, fJetzt = { bf: 10, rel: 1, a1: 0, a2: 0 }, fVon = fJetzt, fZiel = fJetzt, kopfVon = 0, kopfZiel = 0;
+const mischF = (p, q, u) => ({ bf: p.bf + (q.bf - p.bf) * u, rel: p.rel + (q.rel - p.rel) * u, a1: p.a1 + (q.a1 - p.a1) * u, a2: p.a2 + (q.a2 - p.a2) * u });
+function verwandle(dt) {
+  if (wandel >= 1) return;
+  wandel = Math.min(1, wandel + dt / wandelDauer);
+  const u = wandel * wandel * (3 - 2 * wandel);
+  rJetzt = mischR(rVon, rZiel, u);
+  fm.anwenden(rJetzt, basis, BAU, MASS, a.figur, 1);
+  fJetzt = mischF(fVon, fZiel, u); form.setzeForm(a.figur, fJetzt, lZiel); kl.falten(fJetzt.a2);
+  if (kopfVon !== kopfZiel) cha.setzeStaerke(kopfVon + (kopfZiel - kopfVon) * u);
+  posing.neu();
+  if (wandel >= 1) wandelDauer = 1.5;
+}
+function zielSetzen(r, f) { rVon = rJetzt; rZiel = r; fVon = fJetzt; fZiel = f; wandel = 0; }
+const mitNachstellen = (r) => st.mitNachstellen(r, feldWert), nachZahlen = (r0, g0, von, zu) => st.nachZahlen(form.modell, r0, g0, von, zu);
+let letztesZiel = '';
+function zielNeu() {
+  if (!a || !form || !rZahl) return;
+  const d = daten(), w = standWerte(stand, +$('monate').value);
+  const r0 = rFoto ? st.ausFoto(form.modell, rFoto, dFoto, d) : rZahl;
+  const r = nachZahlen(mitNachstellen(r0), d.groesse, d, w), f = formZiel(w, d), t = JSON.stringify([r, f]);
+  if (t === letztesZiel) return;
+  letztesZiel = t; zielSetzen(r, f); if (stand !== 'regler') speichernSpaeter();
+}
+const reliefMit = (ffm, h2) => st.reliefMit(ffm, h2, +$('t-relief').value / 100);
+// w: was gezeigt wird (Gewicht, Körperfett), d: die Eingaben
+function formZiel(w, d) { const s = form.fettSchichten(a.figur, w.gewicht, w.fett); return { bf: w.fett, rel: reliefMit(w.gewicht * (1 - w.fett / 100), d.h2), a1: s.a1, a2: s.a2 }; }
+
+/* Frisur */
+function frisurNeu(hutAb) {
+  const mm = +$('h-laenge').value; 
+  if (!a) return;
+  if (hutAb && $('muetze').checked) { $('muetze').checked = false; cha.setzeMuetze(a.figur, false); }
+  fris.setzeLaenge(a.figur, mm / 10); speichernSpaeter();
+}
+
+frisurNeu();
+/* Kleidung */
+// Oben ohne ist der Standard. Der Grundkörper ist männlich: Bei Frauen bleibt darum ein Oberteil an
+let oben = 'ohne', unten = 'kurz';
+function kleidungZeigen(o, u) {
+  oben = o; unten = u; if (a) kl.setze(a.figur, o === 'ohne' && $('e-geschlecht').value === 'w' ? 'tank' : o, u);
+  for (const b of document.querySelectorAll('[data-oben]')) b.setAttribute('aria-pressed', String(b.dataset.oben === o));
+  for (const b of document.querySelectorAll('[data-unten]')) b.setAttribute('aria-pressed', String(b.dataset.unten === u));
+}
+
+/* Farben */
+
+function farbeSetzen(id, hex) {
+  farbenGesetzt = true;
+  spf.farbe(a.figur, id, hex);
+  speichernSpaeter();
+}
+let farbenGesetzt = false;
+
+// Den gespeicherten Stand auf die Figur bringen, im Editor und beim Kunden derselbe Weg
+function wendeAn(d) {
+  if (!d.v && d.oben === 'tank') d.oben = 'ohne';   // Stand von vor dem 3.11.: Tanktop war nur der Standard
+  // Ebenso das Maß aus dem Foto: Es kannte die Fettschichten nicht und zählte das Fett doppelt. Der Körper kommt dann aus den Zahlen, das Gesicht bleibt
+  if (!d.v && d.rFoto) { d.rFoto = null; d.dFoto = null;  }
+  for (const id in d.felder) if ($(id)) $(id).value = d.felder[id];
+  $('muetze').checked = d.muetze !== false; rFoto = d.rFoto || null; dFoto = d.dFoto || null;
+  if (d.kopf) { cha.wiederherstellen(a.figur, d.kopf); kopfVon = kopfZiel = 1; }
+  cha.setzeMuetze(a.figur, $('muetze').checked);
+  if (d.farbenGesetzt) { for (const id of spf.FARBEN) farbeSetzen(id, $(id).value); farbenGesetzt = true; }
+  
+  kleidungZeigen(d.oben || 'ohne', d.unten || 'kurz'); frisurNeu();
+  zeigeNachstellen();
+}
+const MONATSNAME = (m) => new Date(m + '-15').toLocaleDateString('de-DE', { month: 'short', year: 'numeric' });
+function zeigeMonate(liste) {
+  $('monate-tabelle').innerHTML = liste.length ? liste.map((m) => '<tr><td>' + MONATSNAME(m.monat) + '</td><td>' + komma(m.gewicht) + ' kg</td><td>' + komma(m.fettfrei) + ' kg</td></tr>').join('') : '<tr><td colspan="3" class="leer">Noch kein Eintrag.</td></tr>';
+}
+zeigeMonate(D.monate);
+
+zeigeZahlen();
+function posenKnopf(name) { for (const b of document.querySelectorAll('[data-pose]')) b.setAttribute('aria-pressed', String(b.dataset.pose === name)); }
+function setzePose(name) { if (!posing) return; posing.wechsle(name); posenKnopf(name); if (a.steuerung) a.drehZiel = 0; }
+for (const k of document.querySelectorAll('[data-pose]')) k.addEventListener('click', () => setzePose(k.dataset.pose));
+$('gruppen').addEventListener('click', (ev) => {
+  const k = ev.target.closest('.gruppe'); if (!k) return;
+  const an = k.getAttribute('aria-pressed') === 'true', g = GRUPPEN[+k.dataset.i];
+  for (const b of document.querySelectorAll('.gruppe')) b.setAttribute('aria-pressed', 'false');
+  if (a) a.figur.markiere(an ? [] : g.m);
+  if (!an) { k.setAttribute('aria-pressed', 'true'); setzePose(g.p); }
+});
+/* ---------- Gym: dieser Charakter als Spielfigur (Devin, 4.11.: „du wählst ihn aus und das ist so wie dein Charakter“) ---------- */
+// Das Gym ist eine Ebene über der Bühne mit eigener Ansicht. Die Bühne pausiert solange. Im Gym zählt, was gerade auf der Bühne zu sehen ist
+let gymOffen = false, gymApi = null, gymSeit = 0;
+const gymBilder = () => (window.dkGym ? window.dkGym.renderer.info.render.frame : 0);
+const spielerName = () => String(D.name || '').trim().split(/\s+/)[0];
+function gymZu(text) {
+  merke({ spur: 'gym-zu', bilder: gymBilder(), sek: Math.round((performance.now() - gymSeit) / 1000) });   // Bilder je Sekunde am Handy
+  gymOffen = false; gymApi = null; window.dkGym = null; document.documentElement.style.overflow = '';
+  fm.anwenden(rJetzt, basis, BAU, MASS, a.figur, 1); posing.neu(); rahmen(); a.start();
+  if (text) { $('tipp').textContent = text; $('tipp').style.opacity = 1; setTimeout(() => { $('tipp').style.opacity = 0; }, 6000); }
+}
+function stationKarte(u, i, ort) {
+  const t = (tag, klasse, text) => { const e = document.createElement(tag); if (klasse) e.className = klasse; e.textContent = text; return e; };
+  const b = t('button', 'raum-fertig', 'Geschafft'); b.type = 'button'; b.addEventListener('click', () => { if (gymApi) gymApi.stationFertig(i); });
+  ort.append(t('h2', null, u.name), t('p', 'raum-dosis', u.dosis), b);
+}
+async function insGym() {
+  if (!a || gymOffen || !fm) return;
+  gymOffen = true; gymSeit = performance.now();
+  
+  a.stopp(); document.documentElement.style.overflow = 'hidden';
+  try {
+    const [raum, tag, be] = await Promise.all([import('./3d/raum.js'), import('./3d/spieltag.js'), import('./3d/bewegungen.js')]), sp = spf;
+    let look = null; try { look = localStorage.getItem('dk_look'); } catch (err) { /* dann der Standard */ }
+    document.documentElement.dataset.look = look || 'gold';
+    const name = spielerName(), f = { ...fZiel }, uebungen = tag.SPIELTAG.map((u) => ({ id: u.id, name: u.n, dosis: u.dosis, pause: '', d: u, fertig: false }));
+    gymApi = await raum.raumOeffnen({
+      lade3d: async () => ({ ...FIG, ...be }), titel: name ? name + ' im Gym' : 'Dein Gym', uebungen,
+      beiStation: (i, ort) => stationKarte(uebungen[i], i, ort),
+      beiZu: (geschafft) => gymZu(geschafft ? 'Training geschafft! Mit deinem Plan zählen hier deine echten Sätze.' : ''),
+      spieler: {
+        name, haltung: sp.haltung(f), karteKlein: true,
+        bauen: (ag) => { window.dkGym = ag; return sp.aufFigur(a.figur, ag.figur, { r: rZiel, f, L: lZiel, mm: +$('h-laenge').value, muetze: $('muetze').checked, oben: oben === 'ohne' && $('e-geschlecht').value === 'w' ? 'tank' : oben, unten, basis, BAU, MASS }); }
+      }
+    });
+    merke({ spur: 'gym-offen' });
+  } catch (err) {
+    const r = document.querySelector('.raum'); if (r) r.remove();
+    gymZu('Das Gym lädt gerade nicht: ' + err.message);
+    merke({ spur: 'gym-fehler', fehler: String(err.message).slice(0, 200) });
+  }
+}
+
+// In der App: Mit Plan trainiert der Kunde im Gym mit seinen echten Sätzen. Ohne Plan und in Devins Vorschau bleibt es beim Probetag
+$('ins-gym').addEventListener('click', () => {
+  const plan = lies('dk_plaene', {})[lies('dk_aktiv', '')];
+  if (!VORSCHAU && plan && Array.isArray(plan.t) && plan.t.length) { location.href = '../#gym'; return; }
+  insGym();
+});
+
+// Kamera wie beim Rendern des Studios (gleiche Brennweite, gleiche Höhe), die Figur rückt rechts neben die Werte und über die Knöpfe. Im Editor steht sie im Teil, den der Editor frei lässt
+const seitlich = () => window.matchMedia('(min-width: 900px)').matches;
+const versatz = { dx: 0, dy: 0, sdx: 0, sdy: 0 };
+function versatzSetzen() { const c = $('c'); a.kamera.setViewOffset(c.clientWidth || 300, c.clientHeight || 300, -versatz.dx, versatz.dy, c.clientWidth || 300, c.clientHeight || 300); $('studio').dataset.dx = versatz.dx; }
+function rahmen() {
+  const c = $('c'), W = c.clientWidth || 300, H = c.clientHeight || 300, ed = $('editor'), offen = !!ed && !ed.hidden;
+  a.groesse();
+  versatz.sdx = offen ? (seitlich() ? -Math.min(198, Math.round(W * 0.22)) : 0) : W >= 760 ? 0 : Math.round(W * 0.15);
+  versatz.sdy = offen && !seitlich() ? Math.round(H / 2 - (60 + H * 0.48) / 2) : Math.round(H * 0.045) + (W >= 760 ? 0 : 26);   // Handy: Die Figur steht über dem Knopf fürs Gym
+  const abstand = W >= 760 ? 4.1 : 4.6; if (!rahmen.fertig) { a.kamera.position.setZ(abstand); a.basisAbstand = abstand; versatz.dx = versatz.sdx; versatz.dy = versatz.sdy; rahmen.fertig = true; }
+  versatzSetzen();
+}
+
+async function los() {
+  
+  const [fig, modell, posen, three] = await Promise.all([import('./3d/figur.js'), import('./3d/figur-modell.js'), import('./3d/posen.js'), import('three')]);
+  THREE = three;
+  await modell.ladeKoerper('3d/koerper.bin');
+  a = new fig.Ansicht($('c'), { effekte: true, einleitung: false, farbeA: 0xffb060, farbeB: 0xbfd8ff });
+  window.dkAnsicht = a;
+  posing = new posen.Posing(); window.dkPosing = posing;
+  a.zeige(posing.anim, []);
+  a.laeuft = false;
+  // Bühne: nur Figur und ihr Schatten auf dem Boden, das Studio kommt aus dem Bild dahinter
+  for (const o of [a.kegel, a.partikel, ...a.pulse]) o.visible = false;
+  for (const o of a.szene.children) if (o.isMesh && o.geometry.type === 'RingGeometry') o.visible = false;
+  for (const o of a.szene.children) if (o.isMesh && o.geometry.type === 'CircleGeometry') { o.material = new THREE.ShadowMaterial({ opacity: 0.55 }); o.receiveShadow = true; }
+  [fm, form, ges, cha, fris, kl, spf] = await Promise.all([import('./fotomass.js'), import('./koerperform.js'), import('./gesicht.js'), import('./charakter.js'), import('./frisur.js'), import('./kleidung.js'), import('./spielfigur.js')]); BAU = modell.BAU; MASS = fig.MASS; FIG = fig; POS = posen;
+  basis = { BAU: JSON.parse(JSON.stringify(BAU)), MASS: JSON.parse(JSON.stringify(MASS)) };
+  // Startfigur: dünn, so schwer wie eingetragen
+  posing.pumpFaktor = 0.45;
+  for (const m of a.figur.meshes) if (m.material.defines && m.material.defines.DK_STOFF) m.receiveShadow = false;   // Die Schattenkarte kennt die Fettschichten nicht (Haut: koerperform.js)
+  cha.vorbereiten(a.figur); fris.vorbereiten(a.figur); kl.vorbereiten(a.figur); { const t0 = performance.now(); form.vorbereiten(a.figur); window.dkFormMs = Math.round(performance.now() - t0); merke({ spur: 'form-gerechnet', ms: window.dkFormMs }); } kl.setze(a.figur, 'ohne', 'kurz'); frisurNeu();
+  a.figur.farbenUr = { haut: a.figur.koerperMesh.material.color.clone(), haar: cha.netzVon(a.figur, 'Hair_Buzzed').material.color.clone(), brauen: cha.netzVon(a.figur, 'Eyebrows').material.color.clone() };
+  wendeAn(D);
+  { const d = daten(), r = form.modell(d.groesse, d.gewicht, d.fett); form.setzeForm(a.figur, { bf: d.fett, rel: reliefMit(d.ffm, d.h2), a1: 0, a2: 0 }, lZiel); form.aufGewicht({ ansicht: a, r, gewicht: d.gewicht, fett: d.fett, fm, gelenke: FIG.gelenke, haltung: () => POS.messHaltung(0), basis, BAU, MASS }); rZahl = r; if (!rFoto) rJetzt = rVon = rZiel = mischR(r, r, 0); else { const r0 = nachZahlen(rFoto, dFoto.groesse, dFoto, d); rJetzt = rVon = rZiel = mitNachstellen(r0); } fJetzt = fVon = fZiel = formZiel({ gewicht: d.gewicht, fett: d.fett }, d); form.setzeForm(a.figur, fJetzt, lZiel); kl.falten(fJetzt.a2); letztesZiel = JSON.stringify([rJetzt, fJetzt]); fm.anwenden(rJetzt, basis, BAU, MASS, a.figur, 1); posing.neu(); { const gesetzt = farbenGesetzt; farbenZeigen(); farbenGesetzt = gesetzt; } }
+  const k = a.kamera, st = a.steuerung;
+  k.fov = 38; k.near = 0.1; k.updateProjectionMatrix();
+  k.position.set(0, 1.12, 4.1);
+  st.target.set(0, 1.0, 0); st.autoRotate = false; st.minDistance = 1.6; st.maxDistance = 6; st.minPolarAngle = Math.PI * 0.36; st.maxPolarAngle = Math.PI * 0.54;
+  a.ziel = new THREE.Vector3(0, 1.0, 0); a.basisAbstand = 4.1;
+  rahmen();
+  posing.blick = () => new THREE.Vector3(k.position.x * 0.8, 1.74, k.position.z);
+  a.beiBild = () => {
+    const jetzt = performance.now(), dt = Math.min(0.1, (jetzt - (vorher || jetzt)) / 1000); vorher = jetzt;
+    posing.pumpFaktor = 0.12 + 0.6 * fJetzt.rel * Math.max(0, Math.min(1, (28 - fJetzt.bf) / 16)); posing.fettZu = fJetzt.a1 * 0.012 + fJetzt.a2 * 0.03;
+    posing.schritt(dt); a.figur.pump = posing.pump;
+    if (posing.name !== 'ruhe' && posing.name !== 'stand') a.stillZeit = 0;
+    a.figur.masse = 0;
+    verwandle(dt);
+    // Die Figur gleitet in den freien Teil, wenn der Editor auf- oder zugeht
+    if (versatz.dx !== versatz.sdx || versatz.dy !== versatz.sdy) { const q = Math.min(1, dt * 6); versatz.dx += (versatz.sdx - versatz.dx) * q; versatz.dy += (versatz.sdy - versatz.dy) * q; if (Math.abs(versatz.dx - versatz.sdx) < 0.5) versatz.dx = versatz.sdx; if (Math.abs(versatz.dy - versatz.sdy) < 0.5) versatz.dy = versatz.sdy; versatzSetzen(); }
+    // Studio schiebt sich beim Drehen leicht mit
+    const az = st.getAzimuthalAngle(), s = $('studio'); s.style.transform = 'translate(' + ((+s.dataset.dx || 0) * 0.5 - Math.sin(az) * 26) + 'px,0)';
+  };
+  a.start();
+  if (window.ResizeObserver) new ResizeObserver(rahmen).observe($('c')); else window.addEventListener('resize', rahmen);
+  $('c').addEventListener('pointerdown', () => { $('tipp').style.opacity = 0; }, { once: true });
+  zeigeZahlen();
+  $('lade').hidden = true;
+  merke({ spur: 'seite-offen' });
+  
+  if (VORSCHAU) parent.postMessage('dk-kunde-bereit', '*');
+  $('c').addEventListener('webglcontextlost', () => { merke({ spur: 'webgl-verloren' }); });
+}
+
+if (D.leer) { $('lade').textContent = 'Dein Charakter ist noch nicht da. Devin baut ihn für dich und schickt dir dann einen neuen Link.'; for (const id of ['werte', 'unten', 'blatt']) $(id).hidden = true; if (window.parent !== window) { $('zurueck').hidden = true; parent.postMessage('dk-kunde-bereit', '*'); } }
+else echteZahlen().then((e) => { ECHT = e; zeigeGruppen(e); zeigeZahlen(); if (e) $('saetze-text').textContent = 'Diesen Monat geschafft von geplant. Antippen zeigt die Gruppe an der Figur.'; }).catch(() => {});
+if (!D.leer)
+
+los().catch((e) => { $('lade').textContent = 'Die Figur konnte nicht laden: ' + e.message; merke({ spur: 'figur-fehler', fehler: String(e.message).slice(0, 200) }); });
+</script>
+</body></html>
