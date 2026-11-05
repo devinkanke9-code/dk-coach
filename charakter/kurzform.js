@@ -21,21 +21,49 @@ export function packen(d, kopf, name) {
   if (d.gesetzt && d.gesetzt.essen) o.ge = 1;
   return o;
 }
+// Was hier ankommt, stammt aus einem Link oder dem Speicher und kann gefälscht sein: Durch kommen nur Zahlen, Farben und kurze Texte
+const zahl = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const kurzText = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+const zeichen = (v) => (typeof v === 'string' && /^[A-Za-z0-9_-]{1,8000}$/.test(v) ? v : null);
+function kopfSauber(k) {
+  if (!k || typeof k !== 'object' || Array.isArray(k)) return null;
+  if (k.ohneFoto === true) return { ohneFoto: true };
+  const form = zeichen(k.form), raster = zeichen(k.raster), rest = { hutHoch: zahl(k.hutHoch) || 0, iris: k.iris ? 1 : 0 };
+  if (form && raster) return { form, raster, ...rest };
+  if (Array.isArray(k.M) && k.M.every((v) => zahl(v) != null) && typeof k.farbe === 'string' && /^[A-Za-z0-9+/=]*$/.test(k.farbe)) return { M: k.M, farbe: k.farbe, ...rest };
+  return null;
+}
 // Zurück in die Form, die die Seite versteht. Ohne Daten: die Startfigur
 export function auspacken(o) {
   const felder = { ...STANDARD };
   for (const id of ZAHLEN) if (felder[id] == null) felder[id] = '0';
-  if (!o) return { felder, leer: true, name: '', muetze: true, oben: 'ohne', unten: 'kurz', farbenGesetzt: false, herkunft: '', rFoto: null, dFoto: null, kopf: null, monate: [], gesetzt: {} };
-  (o.z || []).forEach((v, i) => { felder[ZAHLEN[i]] = v == null ? '' : String(v); });
-  FARBEN.forEach((id, i) => { felder[id] = '#' + String(o.c).substr(i * 6, 6); });
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return { felder, leer: true, name: '', muetze: true, oben: 'ohne', unten: 'kurz', farbenGesetzt: false, herkunft: '', rFoto: null, dFoto: null, kopf: null, monate: [], gesetzt: {} };
+  (Array.isArray(o.z) ? o.z.slice(0, ZAHLEN.length) : []).forEach((v, i) => { const n = zahl(v); felder[ZAHLEN[i]] = n == null ? '' : String(n); });
+  FARBEN.forEach((id, i) => { const hex = String(o.c).substr(i * 6, 6); if (/^[0-9a-fA-F]{6}$/.test(hex)) felder[id] = '#' + hex; });
   if (o.w) felder['e-geschlecht'] = 'w';
-  const a = o.a || [0, 0, 1, 0], d = { v: 13, felder, name: o.n || '', muetze: !!a[2], oben: OBEN[a[0]] || 'ohne', unten: UNTEN[a[1]] || 'kurz', farbenGesetzt: !!a[3], herkunft: o.h || '', rFoto: null, dFoto: null, kopf: null, monate: (o.m || []).map((m) => ({ monat: m[0], gewicht: m[1], fett: m[2], fettfrei: m[3] })), gesetzt: { training: !!o.gt, essen: !!o.ge } };
-  if (o.r) { d.rFoto = ausFlach(o.r); d.dFoto = { groesse: o.d[0], gewicht: o.d[1], fett: o.d[2] }; }
-  if (o.k) d.kopf = { ...o.k, regler: Object.fromEntries(GESICHT.map((n) => [n, (+felder['g-' + n] || 0) / 100])) };
+  const a = Array.isArray(o.a) ? o.a : [0, 0, 1, 0], d = { v: 13, felder, name: kurzText(o.n, 120), muetze: !!a[2], oben: OBEN[+a[0]] || 'ohne', unten: UNTEN[+a[1]] || 'kurz', farbenGesetzt: !!a[3], herkunft: kurzText(o.h, 200), rFoto: null, dFoto: null, kopf: null, monate: (Array.isArray(o.m) ? o.m : []).filter((m) => Array.isArray(m) && /^\d{4}-\d{2}$/.test(m[0]) && zahl(m[1]) != null && zahl(m[3]) != null).slice(-12).map((m) => ({ monat: m[0], gewicht: m[1], fett: zahl(m[2]), fettfrei: m[3] })), gesetzt: { training: !!o.gt, essen: !!o.ge } };
+  if (Array.isArray(o.r) && o.r.length === 19 && o.r.every((v) => zahl(v) != null) && Array.isArray(o.d) && o.d.length === 3 && o.d.every((v) => zahl(v) != null)) { d.rFoto = ausFlach(o.r); d.dFoto = { groesse: o.d[0], gewicht: o.d[1], fett: o.d[2] }; }
+  const kopf = kopfSauber(o.k);
+  if (kopf) d.kopf = { ...kopf, regler: Object.fromEntries(GESICHT.map((n) => [n, (+felder['g-' + n] || 0) / 100])) };
   return d;
 }
 const zuB64 = (b) => { let t = ''; for (let i = 0; i < b.length; i += 8192) t += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return btoa(t).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 const ausB64 = (t) => { const s = atob(t.replace(/-/g, '+').replace(/_/g, '/')), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b; };
-const strom = (b, Art) => new Response(new Blob([b]).stream().pipeThrough(new Art('deflate-raw'))).arrayBuffer().then((x) => new Uint8Array(x));
+const GRENZE = 4e6;   // größer ist kein echter Charakter: Ein gefälschter Link soll das Handy nicht volllaufen lassen
+async function strom(b, Art) {
+  const leser = new Blob([b]).stream().pipeThrough(new Art('deflate-raw')).getReader(), teile = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await leser.read();
+    if (done) break;
+    n += value.length;
+    if (n > GRENZE) { leser.cancel(); throw new Error('zu groß'); }
+    teile.push(value);
+  }
+  const aus = new Uint8Array(n);
+  let p = 0;
+  for (const t of teile) { aus.set(t, p); p += t.length; }
+  return aus;
+}
 export const zuText = async (o) => zuB64(await strom(new TextEncoder().encode(JSON.stringify(o)), CompressionStream));
 export const ausText = async (t) => JSON.parse(new TextDecoder().decode(await strom(ausB64(t), DecompressionStream)));

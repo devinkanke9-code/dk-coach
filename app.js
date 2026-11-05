@@ -53,13 +53,10 @@ function vonBase64url(s) {
 async function entpacke(code) {
   const art = code[0], bytes = vonBase64url(code.slice(1));
   if (art === 'j') return JSON.parse(new TextDecoder().decode(bytes));
-  if (art === 'z') {
-    const strom = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-    return JSON.parse(await new Response(strom).text());
-  }
+  if (art === 'z') return JSON.parse(new TextDecoder().decode(await K.ausDeflate(bytes)));
   throw new Error('unbekanntes Format');
 }
-function pruefePlan(p) { return p && p.v === 1 && Array.isArray(p.t) && p.t.length && p.t.every((t) => Array.isArray(t.u)); }
+function pruefePlan(p) { return !!K.planSauber(p); }
 
 /* iPhone: Apps vom Home-Bildschirm haben einen eigenen Speicher, sie sehen nicht, was Safari gespeichert hat.
  * Deshalb bleibt der Link in Safari in der Adresszeile, und das iPhone bekommt kein Manifest: „Zum Home-Bildschirm“
@@ -85,12 +82,14 @@ async function linkEinlesen() {
 // Alte Links (#p=…, bis 28.10.2026): Plan offen im Link, ohne Code und ohne Laufzeit
 async function planEinlesen(code) {
   try {
-    const p = await entpacke(code);
-    if (!pruefePlan(p)) throw new Error('kein Plan');
+    const p = K.planSauber(await entpacke(code));
+    if (!p) throw new Error('kein Plan');
     p.id = p.id || ('p' + Date.now().toString(36));
     const plaene = speicher.lies('dk_plaene', {});
     const alt = plaene[p.id];
     gesehen(code);
+    // Fremder Link will einen vorhandenen Plan ersetzen: nur mit Ja. Ein neuer Stand desselben Plans geht ohne Frage
+    if (!alt && (Object.keys(plaene).length || aktivesKonto()) && !confirm('Dieser Link will deinen Plan ersetzen. Nur übernehmen, wenn er wirklich von Devin kommt.')) { toast('Link nicht übernommen.'); return false; }
     if (alt && alt.d && p.d && alt.d > p.d) return false;   // ein älterer Link überschreibt nie einen neueren Plan
     p.importiert = alt && alt.importiert || isoHeute();
     plaene[p.id] = p;
@@ -116,7 +115,8 @@ const datumDe = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('de-DE')
 const tageBis = (ko) => Math.round((new Date(ko.bis + 'T12:00:00') - new Date(isoHeute() + 'T12:00:00')) / 864e5);
 function kontoSetzen(id, aenderung) { const alle = konten(); if (alle[id]) { Object.assign(alle[id], aenderung); speicher.schreib('dk_konten', alle); } }
 function linkDatenOk(d) {
-  return !!d && d.v === 2 && /^k[A-Za-z0-9]{1,16}$/.test(d.k || '') && typeof d.t === 'number' && (!d.bis || /^\d{4}-\d{2}-\d{2}$/.test(d.bis)) && (!d.p || pruefePlan(d.p));
+  // t darf nicht in der Zukunft liegen: Sonst könnte ein gefälschter Link alle echten als „älter“ aussperren
+  return !!d && d.v === 2 && /^k[A-Za-z0-9]{1,16}$/.test(d.k || '') && typeof d.t === 'number' && d.t <= Date.now() + 1728e5 && (!d.n || typeof d.n === 'string') && (!d.bis || /^\d{4}-\d{2}-\d{2}$/.test(d.bis)) && (!d.p || pruefePlan(d.p));
 }
 async function zugangEinlesen(teil) {
   for (const c of new Set(Object.values(konten()).map((k) => k.code).filter(Boolean))) {   // Code schon bekannt? Dann ohne Eingabe
@@ -130,11 +130,14 @@ async function zugangEinlesen(teil) {
 function anmelden(d, code, teil) {
   const alle = konten(), alt = alle[d.k];
   gesehen(teil); S.wartet = null; speicher.schreib('dk_wartet', null);
+  // Link für ein anderes Konto oder mit anderem Code fürs selbe Konto: Wer schon eingeloggt ist, entscheidet selbst
+  if (!alt && aktivesKonto() && !confirm('Dieser Link gehört zu einem anderen Konto' + (d.n ? ' („' + d.n.slice(0, 40) + '“)' : '') + '. Nur wechseln, wenn er wirklich von Devin kommt.')) { toast('Link nicht übernommen.'); return; }
+  if (alt && alt.code && K.appCodeNormal(alt.code) !== K.appCodeNormal(code) && !confirm('Dieser Link will den Code deines Kontos ändern. Nur weitermachen, wenn er wirklich von Devin kommt.')) { toast('Link nicht übernommen.'); return; }
   speicher.schreib('dk_konto', d.k); speicher.schreib('dk_aktiv', d.k);   // wer sich einloggt, sieht seinen eigenen Stand
   if (alt && alt.t > d.t) return;   // älterer Link (z. B. der Start-Link vom Home-Bildschirm) überschreibt nie einen neueren Stand
   // a: 3 = nur Gesundheits-Check (die 10 Fragen kamen schon über die Seite „Analyse für dich“), 2 = Analyse in 10 Fragen, 1 = alle Fragen
   const form = d.a === 3 ? 'gesundheit' : d.a === 2 ? 'kurz' : d.a ? 'lang' : (alt && alt.form) || null;
-  alle[d.k] = { id: d.k, n: d.n || '', bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,
+  alle[d.k] = { id: d.k, n: (d.n || '').slice(0, 120), bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,
     analyse: d.p || (alt && alt.form && alt.form !== form) ? null : (alt && alt.analyse) || null, form,   // andere Abfrage als vorher: nicht mehr „schon geschickt“
     c: d.c === 0 ? null : d.c && d.c.v === 1 ? d.c : (alt && alt.c) || null,   // Charakter von Devin: nur Zahlen und Farben, kein Foto. Ein Link ohne Charakter lässt den alten stehen, 0 nimmt ihn weg
     g: /^(weiblich|maennlich|divers)$/.test(d.g || '') ? d.g : null };   // Geschlecht, das Devin eingetragen hat (die 10 Fragen fragen es nicht): für die Fragen nur für Frauen im Gesundheits-Check
@@ -142,7 +145,8 @@ function anmelden(d, code, teil) {
   if (d.p) {
     // Neuer Plan (anderes Erstelldatum) = Woche 1 ab heute; nur geändert = die Wochen zählen weiter
     const plaene = speicher.lies('dk_plaene', {}), vorher = plaene[d.k];
-    plaene[d.k] = Object.assign({}, d.p, { id: d.k, importiert: (vorher && vorher.d === d.p.d && vorher.importiert) || isoHeute() });
+    const sauber = K.planSauber(d.p);
+    plaene[d.k] = Object.assign(sauber, { id: d.k, importiert: (vorher && vorher.d === sauber.d && vorher.importiert) || isoHeute() });
     speicher.schreib('dk_plaene', plaene);
   }
   dauerhaft();
@@ -264,7 +268,12 @@ function zeichne() {
   const ziel = $('#ansicht'); ziel.textContent = '';
   const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen }[z]
     || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, info: ansichtInfo }[S.ansicht] || ansichtHeute;
-  ziel.append(...ansicht().filter(Boolean));
+  try { ziel.append(...ansicht().filter(Boolean)); }
+  catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
+    console.error(e); ziel.textContent = '';
+    ziel.append(h('section', { class: 'block willkommen' }, logo(), h('h1', { text: 'Hier stimmt etwas nicht' }),
+      h('p', { class: 'leise', text: 'Die gespeicherten Daten passen nicht zusammen. Füg Devins letzte Nachricht nochmal ein, dann geht es weiter.' }), einfuegenBlock('Link von Devin einfügen')));
+  }
   standbilder(lade3d, [...document.querySelectorAll('[data-vorschau]')].filter((el) => el.dataset.vorschau && !el.querySelector('img')), (id) => UEBUNGEN[id]).catch(() => {});
   if (LAUF && LAUF.phase !== 'fertig' && !TM.el && !LAUF.gym) setTimeout(timerZeigen, 0);   // laufendes Training nach Neuladen wieder zeigen
 }
@@ -470,7 +479,7 @@ function analyseAnsicht() {
       h('p', { text: 'Tipp auf „An Devin schicken“ und wähl WhatsApp. Devin baut daraus deinen Plan und schickt dir einen neuen Link.' }),
       ja ? h('p', { class: 'meldung klein', text: 'Du hast ' + ja + '× „Ja“ oder „Weiß nicht“ im Gesundheits-Check. Devin schaut sich das an. Vielleicht brauchst du vorher eine ärztliche Freigabe.' }) : null,
       EN.a.alter != null && +EN.a.alter < 18 ? h('p', { class: 'meldung klein', text: 'Du bist unter 18: Devin braucht die schriftliche Einwilligung deiner Eltern, bevor es losgeht.' }) : null,
-      h('p', { class: 'leise klein', text: 'Deine Antworten gehen verschlüsselt raus. Lesen kann sie nur Devin mit deinem Code.' }),
+      h('p', { class: 'leise klein', text: 'Deine Antworten gehen mit deinem Code verschlüsselt an Devin.' }),
       sendenKnopf(ko, 'An Devin schicken', 'knopf haupt')));
   }
   const ges = alle.findIndex((x) => x.art === 'gesundheit');
@@ -507,7 +516,10 @@ function beispiel() {
 /* ---------- Kopf jeder Ansicht ---------- */
 function kopf(unter) {
   const n = vorname(S.plan.n);
-  return h('div', { class: 'plan-kopf' }, h('h1', { text: n ? 'Hi ' + n : 'Dein Training' }), unter ? h('p', { class: 'leise', text: unter }) : null);
+  // Ein Plan ohne Konto kam über einen alten Link ohne Code: Den kann jeder bauen, also sagt die App das auch
+  const ohneCode = S.plan.id !== 'beispiel' && !konten()[S.plan.id];
+  return h('div', { class: 'plan-kopf' }, h('h1', { text: n ? 'Hi ' + n : 'Dein Training' }), unter ? h('p', { class: 'leise', text: unter }) : null,
+    ohneCode ? h('p', { class: 'meldung klein', text: 'Dieser Plan kam über einen Link ohne Code. Frag Devin, ob er wirklich von ihm ist.' }) : null);
 }
 
 const charakterLink = () => h('a', { class: 'knopf charakter-knopf', href: 'charakter/kunde.html', text: 'Mein Charakter' });
@@ -727,6 +739,7 @@ function abmelden(e) {
   const ko = aktivesKonto(), alle = konten(), plaene = speicher.lies('dk_plaene', {});
   delete alle[ko.id]; delete plaene[ko.id];
   speicher.schreib('dk_konten', alle); speicher.schreib('dk_plaene', plaene); speicher.schreib(entwurfKey(ko), null);
+  speicher.schreib(VERLAUF_KEY, null); speicher.schreib('dk_tage_' + ko.id, null); if (LAUF) laufSchliessen();   // der nächste auf diesem Handy soll nichts davon sehen
   speicher.schreib('dk_konto', Object.keys(alle)[0] || null); speicher.schreib('dk_aktiv', Object.keys(plaene)[0] || null);
   EN = null; S.tagWahl = null; S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
 }
@@ -1224,9 +1237,21 @@ function timerTick() {
 setInterval(timerTick, 250);
 
 /* ---------- Start ---------- */
+// Schon Gespeichertes einmal beim Start prüfen: So wird auch ein Handy wieder gesund, das vor der Sicherheitsprüfung (4.11.2026) einen gefälschten Link geöffnet hat
+function gespeichertesPruefen() {
+  const istObjekt = (o) => o && typeof o === 'object' && !Array.isArray(o);
+  const plaene = speicher.lies('dk_plaene', {}), neuP = {};
+  for (const id of istObjekt(plaene) ? Object.keys(plaene) : []) { const p = K.idOk(id) && K.planSauber(plaene[id]); if (p) neuP[id] = Object.assign(p, { id }); }
+  if (JSON.stringify(neuP) !== JSON.stringify(plaene)) speicher.schreib('dk_plaene', neuP);
+  const alle = konten(), neuK = {};
+  for (const id of istObjekt(alle) ? Object.keys(alle) : []) if (K.idOk(id) && istObjekt(alle[id])) neuK[id] = Object.assign(alle[id], { id, n: typeof alle[id].n === 'string' ? alle[id].n.slice(0, 120) : '', bis: /^\d{4}-\d{2}-\d{2}$/.test(alle[id].bis || '') ? alle[id].bis : '' });
+  if (JSON.stringify(neuK) !== JSON.stringify(alle)) speicher.schreib('dk_konten', neuK);
+  for (const k of ['dk_aktiv', 'dk_konto']) { const v = speicher.lies(k, null); if (v != null && !K.idOk(v)) speicher.schreib(k, null); }
+}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 (async () => {
   altesAbhakenWeg();
+  gespeichertesPruefen();
   S.wartet = speicher.lies('dk_wartet', null);
   await linkEinlesen();
   zeichne();

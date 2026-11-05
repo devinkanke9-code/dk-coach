@@ -321,7 +321,7 @@ a.foto-knopf { text-decoration: none; }
 <script type="module">
 import * as st from './stand.js';
 const $ = (id) => document.getElementById(id);
-const komma = (x, n = 1) => x.toLocaleString('de-DE', { minimumFractionDigits: n, maximumFractionDigits: n });
+const komma = (x, n = 1) => (+x).toLocaleString('de-DE', { minimumFractionDigits: n, maximumFractionDigits: n });   // immer als Zahl: Das Ergebnis landet in innerHTML
 
 // Kundenseite: Hier wird nichts bearbeitet. Der fertige Charakter kommt aus der App (oder, nur in der Vorschau, aus dem Link). Die Werte liegen als versteckte Felder im Dokument, der Rest rechnet damit genauso wie im Editor
 const ku = await import('./kurzform.js');

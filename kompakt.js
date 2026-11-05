@@ -64,7 +64,8 @@
 
   /* ---------- App-Zugang (29.10.2026): Link + 8-stelliger Code ----------
    * Der Link trägt Name, Laufzeit und Plan verschlüsselt (#z=…), der Code ist der Schlüssel: PBKDF2 (SHA-256) → AES-GCM.
-   * Ohne Code ist der Link wertlos. Dasselbe Verfahren für die Analyse, die der Kunde zurückschickt (DK-Analyse:…:Ende).
+   * Ohne Code lässt sich der Link nicht einfach lesen, 8 Ziffern kann man mit genug Rechenzeit aber durchprobieren, und bauen kann so einen Link jeder.
+   * Dasselbe Verfahren für die Analyse, die der Kunde zurückschickt (DK-Analyse:…:Ende).
    * Aufbau: 1 Byte Art (1 = deflate-raw, 0 = roh; als AAD mitgeprüft) | 16 Byte Salz | 12 Byte IV | Geheimtext */
   var APP_RUNDEN = 250000;
   function zufall(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return a; }
@@ -76,8 +77,19 @@
   function appCodeNormal(c) { return String(c || '').replace(/\D/g, ''); }
   function appCodeGueltig(c) { return appCodeNormal(c).length === 8; }
   function appCodeAnzeige(c) { var n = appCodeNormal(c); return n.slice(0, 4) + '-' + n.slice(4, 8); }
+  var GRENZE = 4000000;   // größer ist kein echter Plan: Ein gefälschter Link soll das Handy nicht volllaufen lassen
   function strom(bytes, Art) {   // Art = CompressionStream oder DecompressionStream
-    return new Response(new Blob([bytes]).stream().pipeThrough(new Art('deflate-raw'))).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+    var leser = new Blob([bytes]).stream().pipeThrough(new Art('deflate-raw')).getReader(), teile = [], n = 0;
+    function weiter() {
+      return leser.read().then(function (r) {
+        if (r.done) { var aus = new Uint8Array(n), p = 0; teile.forEach(function (t) { aus.set(t, p); p += t.length; }); return aus; }
+        n += r.value.length;
+        if (n > GRENZE) { leser.cancel(); throw new Error('zu groß'); }
+        teile.push(r.value);
+        return weiter();
+      });
+    }
+    return weiter();
   }
   function appSchluessel(code, salz) {
     return crypto.subtle.importKey('raw', new TextEncoder().encode(appCodeNormal(code)), 'PBKDF2', false, ['deriveKey']).then(function (basis) {
@@ -104,6 +116,48 @@
         return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.slice(17, 29), additionalData: b.slice(0, 1) }, key, b.slice(29));
       }).then(function (roh) { roh = new Uint8Array(roh); return b[0] ? strom(roh, DecompressionStream) : roh; });
     }).then(function (roh) { return JSON.parse(new TextDecoder().decode(roh)); });
+  }
+
+  /* ---------- Plan aus einem Link prüfen (Sicherheitsprüfung 4.11.2026) ----------
+   * Ein Link kann gefälscht sein: Durch kommt nur, was die Form eines echten Plans hat. Angezeigt wird ohnehin nur als Text,
+   * hier geht es darum, dass falsche Typen die App nicht abstürzen lassen und riesige Zahlen sie nicht lahmlegen.
+   * Neues Feld in planKompakt? Dann auch hier eintragen, sonst stoppt kunden-app/sicherheit-pruefen.js das Veröffentlichen. */
+  function idOk(v) { return typeof v === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,40}$/.test(v) && !(v in {}); }
+  function text(v, n) { return typeof v === 'string' ? v.slice(0, n) : typeof v === 'number' && isFinite(v) ? String(v) : ''; }
+  function liste(v, n) { return Array.isArray(v) ? v.slice(0, n) : []; }
+  function texte(v, n, l) { return liste(v, n).filter(function (x) { return typeof x === 'string'; }).map(function (x) { return x.slice(0, l); }); }
+  function zahl(v, von, bis) { return typeof v === 'number' && isFinite(v) ? Math.min(bis, Math.max(von, v)) : undefined; }
+  function zahlen(v, von, bis) {   // Wiederholungen, RIR, Pause: [von, bis]
+    var a = liste(Array.isArray(v) ? v : [v], 4).map(function (x) { return zahl(x, von, bis); }).filter(function (x) { return x !== undefined; });
+    return a.length ? a : undefined;
+  }
+  function datum(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : ''; }
+  function planSauber(p) {
+    if (!p || typeof p !== 'object' || p.v !== 1 || !Array.isArray(p.t) || !p.t.length) return null;
+    if (!p.t.every(function (t) { return t && typeof t === 'object' && Array.isArray(t.u); })) return null;
+    var aus = {
+      v: 1, n: text(p.n, 120), z: text(p.z, 60), l: typeof p.l === 'number' ? zahl(p.l, 0, 9) : text(p.l, 20), s: text(p.s, 120), d: datum(p.d),
+      w: liste(p.w, 104).filter(function (x) { return x === 'e' || x === 'a' || x === 'd'; }),
+      ft: liste(p.ft, 7).filter(function (x) { return x === Math.floor(x) && x >= 0 && x < 7; }),
+      t: p.t.slice(0, 14).map(function (t) {
+        var tag = { n: text(t.n, 200), m: zahl(t.m, 0, 600), u: t.u.slice(0, 40).filter(function (u) { return u && typeof u === 'object'; }).map(function (u) {
+          var o = { i: typeof u.i === 'string' && idOk(u.i) ? u.i : 'eigene', s: Math.round(zahl(u.s, 1, 20) || 1), w: zahlen(u.w, 0, 1000), r: zahlen(u.r, -1, 20), p: zahlen(u.p, 0, 3600) };
+          if (u.e === 'sek') o.e = 'sek';
+          if (u.j) o.j = 1;
+          if (u.x) o.x = text(u.x, 400);
+          if (u.nm) o.nm = text(u.nm, 160);
+          return o;
+        }) };
+        if (t.a && typeof t.a === 'object') tag.a = { d: zahl(t.a.d, 0, 120), u: liste(t.a.u, 30).filter(Array.isArray).map(function (x) { return [text(x[0], 200), text(x[1], 120)]; }) };
+        return tag;
+      }),
+      pr: text(p.pr, 6000), dl: text(p.dl, 6000), h: texte(p.h, 60, 1500), ab: texte(p.ab, 40, 600),
+      ar: liste(p.ar, 40).filter(function (r) { return r && typeof r === 'object'; }).map(function (r) { return { t: text(r.t, 200), x: text(r.x, 3000) }; }),
+      sh: text(p.sh, 6000), ki: text(p.ki, 6000)
+    };
+    if (idOk(p.id)) aus.id = p.id;
+    if (datum(p.importiert)) aus.importiert = datum(p.importiert);
+    return aus;
   }
 
   /* ---------- Analyse vom Kunden (29.10.2026) ----------
@@ -139,7 +193,8 @@
     var a = (antwort && antwort.a) || {}, s = (antwort && antwort.s) || {}, hat = Object.prototype.hasOwnProperty;
     analyseAbschnitte(wissen.abschnitte).forEach(function (ab) {
       ab.felder.forEach(function (f) {
-        if (!hat.call(a, f.id) || (f.id === 'name' && k.name)) return;   // den Namen hat Devin schon eingetragen
+        // Name, Alter und Geschlecht, die Devin schon eingetragen hat, ändert keine Kundennachricht: Davon hängen Eltern-Einwilligung und Gesundheitsfragen ab
+        if (!hat.call(a, f.id) || (['name', 'alter', 'geschlecht'].indexOf(f.id) >= 0 && k[f.id] != null && k[f.id] !== '')) return;
         var v = feldWert(f, a[f.id]);
         if (v === undefined) return;
         if (f.id === 'beschwerden') {
@@ -184,7 +239,8 @@
   var API = { planKompakt: planKompakt, planCode: planCode, base64url: base64url, kundenId: kundenId,
     appCodeNeu: appCodeNeu, appCodeNormal: appCodeNormal, appCodeGueltig: appCodeGueltig, appCodeAnzeige: appCodeAnzeige,
     verpacken: verpacken, entpacken: entpacken, analyseAbschnitte: analyseAbschnitte, analyseUebernehmen: analyseUebernehmen,
-    analyseSeiteLesen: analyseSeiteLesen, ZG_NUR_TRAINER: ZG_NUR_TRAINER };
+    analyseSeiteLesen: analyseSeiteLesen, ZG_NUR_TRAINER: ZG_NUR_TRAINER, planSauber: planSauber, idOk: idOk,
+    ausDeflate: function (b) { return strom(b, DecompressionStream); } };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.DKKompakt = API;
 })(this);

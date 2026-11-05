@@ -1,5 +1,5 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = 'f583e3c6b0';
+const VERSION = 'b16a4a421c';
 const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'raum.js', 'stil.css',
   'schriften/schriften.css', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
   'koerper.bin', 'koerper-haut.jpg', 'koerper-haut-n.jpg', 'koerper-haar.jpg', 'koerper-augen.jpg'];
@@ -11,7 +11,8 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(NAME).then((c) => c.addAll(DATEIEN.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((namen) => Promise.all(namen.filter((n) => n.startsWith('dk-coach-') && n !== NAME).map((n) => caches.delete(n)))).then(() => self.clients.claim())
+  // Alles außer der aktuellen Fassung löschen, auch fremd benannte Speicher: So überlebt nichts Untergeschobenes ein Update
+  e.waitUntil(caches.keys().then((namen) => Promise.all(namen.filter((n) => n !== NAME).map((n) => caches.delete(n)))).then(() => self.clients.claim())
     // Steht noch ein Code-Link (#z=…) in der Adresse, hat ihn eine ältere App-Fassung (vor dem 29.10.2026) nicht gekannt: einmal neu laden.
     // ?neu=… macht die Adresse anders, sonst springt der Browser nur zum #-Teil statt neu zu laden.
     .then(() => self.clients.matchAll({ type: 'window' })).then((fenster) => fenster.forEach((c) => {
@@ -31,10 +32,10 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.indexOf('/analyse/') >= 0) return;   // eigene Seite „Analyse für dich“ (seit 31.10.2026): nie die App ausliefern
   // Seitenaufruf der App: immer die gespeicherte App (der Plan steckt im #-Teil, der geht nie ans Netz)
   if (req.mode === 'navigate' && /(\/|index\.html)$/.test(url.pathname)) {
-    e.respondWith(caches.match('index.html').then((r) => r || fetch(req)));
+    e.respondWith(caches.open(NAME).then((c) => c.match('index.html')).then((r) => r || fetch(req)));
     return;
   }
-  e.respondWith(caches.match(req, { ignoreSearch: true }).then((r) => r || fetch(req).then((antwort) => {
+  e.respondWith(caches.open(NAME).then((c) => c.match(req, { ignoreSearch: true })).then((r) => r || fetch(req).then((antwort) => {
     if (antwort.ok) { const kopie = antwort.clone(); caches.open(NAME).then((c) => c.put(req, kopie)); }
     return antwort;
   })));
