@@ -1,0 +1,624 @@
+// DK Coach — echtere 3D-Figur: ein durchgehender Körper mit Haut, Gesicht und Haaren (Quaternius-Sportler, CC0)
+// statt einzelner Formen. Die Bewegung kommt weiter aus gelenke() in figur.js; hier wird jeder Knochen so gelegt,
+// dass er genau zwischen den Gelenkpunkten liegt (gedreht und auf die Länge gestreckt).
+// Gleiche Schnittstelle wie class Figur: gruppe, teile, markiere, hebeHervor, matHinweis, glut, stelle(g).
+// koerper.bin und koerper-*.jpg baut kunden-app/modelle/umwandeln.js. Die Punkte liegen dort in der Ruhelage
+// (T-Pose, Blick nach +Z, linke Seite +X, Meter), darum ist jede Knochen-Matrix direkt die Abbildung Ruhelage → jetzt.
+import * as THREE from 'three';
+import { FARBEN, MUSKEL_TEILE, LEUCHTET_MIT, MASS, GRIFF_R } from './figur.js';
+
+const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const RAD = Math.PI / 180;
+
+/* ---------- Laden ---------- */
+let laden = null, geladen = null;
+export const koerper = () => geladen;
+// url = koerper.bin, oder koerper.txt (derselbe Inhalt als Base64: claude.ai liefert keine .bin-Dateien aus, darum nimmt die Trainer-Seite die .txt)
+export function ladeKoerper(url = 'koerper.bin') {
+  const ausBase64 = (t) => { const s = atob(t.trim()), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b.buffer; };
+  if (!laden) laden = fetch(url).then((r) => { if (!r.ok) throw new Error(url + ': ' + r.status); return /\.txt$/.test(url) ? r.text().then(ausBase64) : r.arrayBuffer(); })
+    .then(async (b) => { const k = liesKoerper(b); await ladeTexturen(k, new URL(url, location.href)); return (geladen = k); });
+  return laden;
+}
+export function liesKoerper(buf) {
+  const dv = new DataView(buf);
+  if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== 'DKK2') throw new Error('koerper.bin: falsches Format');
+  const n = dv.getUint32(4, true);
+  const kopf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, n)));
+  const basis = 8 + n, { min, max } = kopf;
+  const ent = (q, lo, hi, k) => lo[k] + (q / 65535) * (hi[k] - lo[k]);
+  const meshes = kopf.meshes.map((m) => {
+    const q = new Uint16Array(buf, basis + m.pos, m.punkte * 3), pos = new Float32Array(m.punkte * 3);
+    for (let k = 0; k < pos.length; k++) pos[k] = ent(q[k], min, max, k % 3);
+    const qu = new Uint16Array(buf, basis + m.uv, m.punkte * 2), uv = new Float32Array(m.punkte * 2);
+    for (let k = 0; k < uv.length; k++) uv[k] = ent(qu[k], m.uvMin, m.uvMax, k % 2);
+    return {
+      name: m.name, mat: m.mat,
+      pos: new THREE.BufferAttribute(pos, 3), uv: new THREE.BufferAttribute(uv, 2),
+      nor: new THREE.BufferAttribute(new Int8Array(buf, basis + m.nor, m.punkte * 3), 3, true),
+      gel: new THREE.BufferAttribute(new Uint8Array(buf, basis + m.gel, m.punkte * 4), 4),
+      gew: new THREE.BufferAttribute(new Uint8Array(buf, basis + m.gew, m.punkte * 4), 4, true),
+      kleid: new THREE.BufferAttribute(new Uint8Array(buf, basis + m.kleid, m.punkte * 2), 2, true),
+      idx: new THREE.BufferAttribute(new Uint16Array(buf, basis + m.idx, m.dreiecke * 3), 1),
+      teil: new Uint8Array(buf, basis + m.teil, m.punkte)
+    };
+  });
+  const index = {}; kopf.knochen.forEach((k, i) => { index[k.n] = i; });
+  return { knochen: kopf.knochen.map((k) => ({ name: k.n, eltern: k.e, p: V(...k.p) })), index, teile: kopf.teile, texturen: kopf.texturen, meshes };
+}
+// Texturen wie glTF: nicht gespiegelt (flipY aus), Farbe in sRGB, Normalen linear
+async function ladeTexturen(k, basis) {
+  const lader = new THREE.TextureLoader();
+  k.tex = {};
+  await Promise.all(k.texturen.map(async (datei) => {
+    const t = await lader.loadAsync(new URL(datei, basis).href);
+    t.flipY = false; t.anisotropy = 4;
+    if (!datei.endsWith('-n.jpg')) t.colorSpace = THREE.SRGBColorSpace;
+    k.tex[datei.replace(/^koerper-|\.jpg$/g, '')] = t;
+  }));
+}
+
+/* ---------- Abbildung eines Knochens ---------- */
+// M = T(p1) · B1 · S · B0ᵀ · T(−P0): Ruhe-Ursprung P0 → p1, Ruhe-Basis B0 → B1, S streckt in den Achsen von B0
+const _B0 = new THREE.Matrix4(), _B1 = new THREE.Matrix4(), _S = new THREE.Matrix4(), _T = new THREE.Matrix4();
+function basis(m, x, y) { const z = x.clone().cross(y); return m.makeBasis(x, y, z); }
+function abbilden(out, P0, x0, y0, p1, x1, y1, sx = 1, sy = 1, sz = 1) {
+  basis(_B0, x0, y0).transpose(); basis(_B1, x1, y1);
+  out.makeTranslation(p1.x, p1.y, p1.z).multiply(_B1).multiply(_S.makeScale(sx, sy, sz)).multiply(_B0).multiply(_T.makeTranslation(-P0.x, -P0.y, -P0.z));
+  return out;
+}
+// Drehung um einen Punkt (in Ruhe-Koordinaten): für Finger- und Zehenkrümmung
+function umPunkt(P, achse, winkel) {
+  return new THREE.Matrix4().makeTranslation(P.x, P.y, P.z).multiply(_T.makeRotationAxis(achse, winkel)).multiply(new THREE.Matrix4().makeTranslation(-P.x, -P.y, -P.z));
+}
+// Anteil von v senkrecht zu d (normiert); ersatz, wenn v fast parallel zu d liegt
+function senkrecht(v, d, ersatz) {
+  const s = v.clone().sub(d.clone().multiplyScalar(v.dot(d)));
+  if (s.lengthSq() > 1e-10) return s.normalize();
+  return ersatz ? senkrecht(ersatz, d, null) : (Math.abs(d.y) < 0.9 ? senkrecht(V(0, 1, 0), d, null) : senkrecht(V(0, 0, 1), d, null));
+}
+const richt = (A, B) => B.clone().sub(A).normalize();
+
+/* ---------- Körperform (Verhältnis zur Ruhelage des Modells) ---------- */
+// Körperbau (Devin, 29.10.: „größere Brust, breiter, nicht so dünn“). breite/tiefe je Rumpfknochen gegenüber dem Sportler: oben breit
+// und mit tiefer Brust, zur Taille schmal (V-Form). Die Schulterknochen bekommen ihre Breite aus MASS.schulterBreite, damit die Arme
+// genau an den Gelenkpunkten ansetzen. arm/bein = Dicke. brust = wie stark sich die Brust beim Drücken zusammenzieht und beim Absenken dehnt.
+// Exportiert, damit die Werkstatt ihn einstellen kann
+export const BAU = {
+  breite: { Root: 0.92, Hips: 0.92, Spine: 0.95, Spine1: 1.06, Spine2: 1.12, Neck: 1.05 },
+  tiefe: { Root: 1, Hips: 1, Spine: 1, Spine1: 1.08, Spine2: 1.18, LeftShoulder: 1.1, RightShoulder: 1.1, Neck: 1.03 },
+  arm: 1.12, bein: 1.05, brust: 2
+};
+// Brustmuskel je Seite in Ruhelage (Mitte, Ausdehnung in m): dort zieht er sich zusammen bzw. dehnt sich
+const BRUST = { x: 0.085, y: 1.385, z: 0.06, bx: 0.075, by: 0.07 };
+const FUSS_HOEHE = 0.88;               // Knöchel liegt beim Modell etwas höher über der Sohle als in gelenke()
+const FINGER = ['Index', 'Middle', 'Ring', 'Pinky'];
+const KRUEMMUNG = [38, 48, 32];        // Grad je Fingerglied: locker geschlossene Hand (nichts in der Hand)
+const DAUMEN = [10, 18, 14];
+// Faust um Stange oder Griff (g.haelt): Finger schließen sich um die Faustmitte g.hand, der Daumen dreht vor die Handfläche
+// (daumenDreh, Grad um die Fingerachse) und legt sich von der anderen Seite um den Griff. Exportiert, damit die Werkstatt sie einstellen kann
+export const FAUST = { finger: [72, 88, 50], daumen: [30, 50, 40], daumenDreh: -60 };
+// Griff wie bei einer echten Hand: Die Stange (Radius r) liegt quer in der Handfläche knapp vor den Fingerknöcheln, parallel zur
+// Knöchellinie (gelenke() knickt die Hand dafür zur Kleinfingerseite). Jeder Finger beugt sich Glied für Glied, bis er die Stange
+// berührt (Fingerdicke ~2,3 cm); der Daumen dreht vor die Handfläche und schließt sich von der anderen Seite um die Stange, bis er
+// außen auf dem Mittelglied des Zeigefingers liegt. Gerechnet in der Ruhelage, einmal je Hand und Radius (auf mm gerundet)
+const DAUMEN_GRIFF = [30, 50, 40];
+const _griffe = new Map();
+const segAbstand = (c, p, q) => {
+  const dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((c[0] - p[0]) * dx + (c[1] - p[1]) * dy) / l2)) : 0;
+  return Math.hypot(c[0] - p[0] - t * dx, c[1] - p[1] - t * dy);
+};
+export function griffLoesen(P, ru, S, r) {
+  const key = S + Math.round(r * 1000);
+  if (_griffe.has(key)) return _griffe.get(key);
+  const u = ru.finger.clone(), v = ru.ruecken.clone().negate(), w = u.clone().cross(v).normalize();
+  const B = P(S + 'Hand').clone().add(u.clone().multiplyScalar(MASS.griff)).add(v.clone().multiplyScalar(MASS.griffTief));
+  const d = w.clone();   // Stange quer zu den Fingern (gelenke() legt sie senkrecht zum Unterarm in die Hand)
+  const R = r + 0.0115, MAX = [95, 110, 80];
+  const loes = { finger: {}, glieder: {} };
+  const abstandZurStange = (p) => { const q = p.clone().sub(B); return q.sub(d.clone().multiplyScalar(q.dot(d))).length(); };
+  for (const f of FINGER) {
+    const J = [1, 2, 3, 4].map((j) => P(S + 'Hand' + f + j));
+    const C = B.clone().add(d.clone().multiplyScalar(J[0].clone().sub(B).dot(w) / d.dot(w)));
+    const zw = (p) => [p.clone().sub(J[0]).dot(u), p.clone().sub(J[0]).dot(v)];
+    const c = zw(C);
+    let p = [0, 0], phi = 0;
+    const winkel = [];
+    for (let k = 0; k < 3; k++) {
+      const a = zw(J[k + 1]), b = zw(J[k]), L = Math.hypot(a[0] - b[0], a[1] - b[1]), e0 = Math.atan2(a[1] - b[1], a[0] - b[0]);
+      // Glied dreht, bis es die Stange berührt; liegt sein Anfang schon an der Stange (dicker Griff), bis sein Ende aufliegt
+      const innen = Math.hypot(p[0] - c[0], p[1] - c[1]) < R;
+      let th = 0;
+      while (th < MAX[k]) {
+        const ang = e0 + phi + th * RAD, q = [p[0] + Math.cos(ang) * L, p[1] + Math.sin(ang) * L];
+        if (innen ? Math.hypot(q[0] - c[0], q[1] - c[1]) <= R : segAbstand(c, p, q) <= R) break;
+        th += 1;
+      }
+      winkel.push(th); phi += th * RAD;
+      const ang = e0 + phi; p = [p[0] + Math.cos(ang) * L, p[1] + Math.sin(ang) * L];
+    }
+    loes.finger[f] = winkel;
+  }
+  // Gebeugte Finger (Gelenkpunkte in der Ruhelage), für das Ziel des Daumens und damit er nicht durch die Finger geht
+  const gebeugt = (f) => {
+    let m = new THREE.Matrix4(); const pts = [P(S + 'Hand' + f + '1').clone()];
+    for (let j = 1; j <= 3; j++) { m = m.clone().multiply(umPunkt(P(S + 'Hand' + f + j), w, loes.finger[f][j - 1] * RAD)); pts.push(P(S + 'Hand' + f + (j + 1)).clone().applyMatrix4(m)); }
+    return pts;
+  };
+  const zeige = gebeugt('Index'), mittel = gebeugt('Middle');
+  // Ziel des Daumens: legt sich vorn um die Stange und quer über den Zeigefinger kurz vor dem Endgelenk, die Spitze zeigt zum
+  // Mittelfinger (wie bei einer geschlossenen Faust; das Mittelglied liegt bei dieser Hand zu weit hinter der Stange)
+  const auf = zeige[2].clone().lerp(zeige[3], 0.35);
+  const q = auf.clone().sub(B), aussen = q.sub(d.clone().multiplyScalar(q.dot(d))).normalize();
+  const ziel = auf.clone().add(aussen.multiplyScalar(0.0115 + 0.009));
+  const ulnar = P(S + 'HandPinky1').clone().sub(P(S + 'HandIndex1')).dot(w) > 0 ? w.clone() : w.clone().negate();
+  const fingerPunkte = [];
+  for (const kette of [zeige, mittel]) for (let i = 0; i < 3; i++) for (const u2 of [0.25, 0.75]) fingerPunkte.push(kette[i].clone().lerp(kette[i + 1], u2));
+  const achse = ru.daumen.clone().cross(ru.ruecken.clone().negate()).normalize();
+  const D = [1, 2, 3, 4].map((j) => P(S + 'HandThumb' + j));
+  // Daumen: zur Hand schwenken (um die Handflächen-Normale), vor die Handfläche drehen (um die Fingerachse), dann beugen
+  const daumen = (abd, dreh, curl) => {
+    let mm = umPunkt(D[0], v, abd * RAD).multiply(umPunkt(D[0], u, dreh * RAD)); const pts = [];
+    for (let j = 1; j <= 3; j++) { mm = mm.clone().multiply(umPunkt(D[j - 1], achse, DAUMEN_GRIFF[j - 1] * curl * RAD)); pts.push(D[j].clone().applyMatrix4(mm)); }
+    return pts;
+  };
+  // Bewertung: Spitze am Ziel, Endglied quer zu den Fingern; Strafe, wenn der Daumen in der Stange oder in Zeige-/Mittelfinger steckt
+  const wert = (pts) => {
+    let e = pts[2].distanceTo(ziel) + 0.02 * (1 - pts[2].clone().sub(pts[1]).normalize().dot(ulnar));
+    const glieder = [pts[0], pts[1], pts[2], pts[0].clone().lerp(pts[1], 0.5), pts[1].clone().lerp(pts[2], 0.5), D[0].clone().lerp(pts[0], 0.5)];
+    for (const x of glieder) { if (abstandZurStange(x) < r + 0.0085) e += 1; }
+    for (const x of glieder.slice(0, 2).concat(glieder.slice(3))) for (const f of fingerPunkte) if (x.distanceTo(f) < 0.017) e += 0.2;
+    return e;
+  };
+  let best = { abd: 0, dreh: 0, curl: 1, e: Infinity };
+  for (let abd = -40; abd <= 70; abd += 5) for (let dreh = -90; dreh <= 90; dreh += 10) for (let curl = 0; curl <= 2.01; curl += 0.1) {
+    const e = wert(daumen(abd, dreh, curl));
+    if (e < best.e) best = { abd, dreh, curl, e };
+  }
+  // fein nachsuchen um die beste Stelle
+  const grob = best;
+  for (let abd = grob.abd - 5; abd <= grob.abd + 5; abd += 1) for (let dreh = grob.dreh - 10; dreh <= grob.dreh + 10; dreh += 2) for (let curl = Math.max(0, grob.curl - 0.1); curl <= grob.curl + 0.1; curl += 0.02) {
+    const e = wert(daumen(abd, dreh, curl));
+    if (e < best.e) best = { abd, dreh, curl, e };
+  }
+  loes.daumen = best;
+  _griffe.set(key, loes);
+  return loes;
+}
+// Hinweis: FARBEN & Co. aus figur.js erst in Funktionen benutzen (figur.js importiert diese Datei, die Module hängen im Kreis)
+
+/* ---------- Kleidung und Saunahut (Devins Look) ---------- */
+// Masken in der Ruhelage (p = Punkt vor dem Skinning). Tanktop: Saum über dem Hosenbund, Ausschnitt vorn tief (U), hinten flacher,
+// tiefe Armlöcher (Ellipse um das Schultergelenk), dazwischen die Träger über den Trapez. Hosenbeine bis knapp übers Knie,
+// Socken bis ein Drittel der Wade mit geripptem Bund. dkNaht: Saum etwas dunkler (umgeschlagener Stoff)
+const KLEIDUNG_GLSL = `
+float dkTanktop(vec3 p) {
+  float ax = abs(p.x);
+  if (ax > 0.24 || p.y < 0.94 || p.y > 1.63) return 0.0;
+  float vorn = smoothstep(-0.03, 0.03, p.z);
+  float hals = mix(1.48 + 8.0 * ax * ax, 1.415 + 11.0 * ax * ax, vorn);
+  vec2 e = vec2((ax - 0.235) / 0.115, (p.y - 1.43) / 0.19);
+  return smoothstep(0.952, 0.958, p.y) * (1.0 - smoothstep(hals - 0.003, hals + 0.003, p.y)) * smoothstep(1.0, 1.04, dot(e, e));
+}
+float dkHosenbein(vec3 p) {
+  if (abs(p.x) > 0.215 || p.y > 0.86) return 0.0;
+  return smoothstep(0.597, 0.603, p.y);
+}
+float dkSocke(vec3 p) {
+  if (abs(p.x) > 0.215 || p.y > 0.26) return 0.0;
+  return 1.0 - smoothstep(0.242, 0.248, p.y);
+}
+float dkNaht(float y, float kante, float breite) { return 1.0 - 0.14 * (1.0 - smoothstep(kante + breite - 0.002, kante + breite, y)); }
+float dkRippe(vec3 p) {
+  float a = atan(p.z + 0.075, abs(p.x) - 0.114);
+  return 1.0 - smoothstep(0.212, 0.218, p.y) * 0.07 * (0.5 + 0.5 * sin(a * 30.0));
+}
+// Weißer Sneaker (Ruhelage, linker Fuß um x = 0,131): graue Laufsohle, Zwischensohle mit feiner grauer Kante, leicht abgesetzte
+// Fersenkappe, Schnürung auf dem Rist, dunklerer Rand am Übergang zur Socke
+float dkTurnschuh(vec3 p, float schuh) {
+  float lauf = 1.0 - smoothstep(-0.0055, -0.0035, p.y);
+  float kante = smoothstep(0.0175, 0.0185, p.y) * (1.0 - smoothstep(0.0205, 0.0215, p.y));
+  float ferse = (1.0 - smoothstep(-0.085, -0.075, p.z)) * smoothstep(0.022, 0.026, p.y) * (1.0 - smoothstep(0.075, 0.08, p.y));
+  float mitte = abs(abs(p.x) - 0.131);
+  float rist = (1.0 - smoothstep(0.016, 0.019, mitte)) * smoothstep(0.055, 0.062, p.y) * smoothstep(-0.035, -0.03, p.z) * (1.0 - smoothstep(0.055, 0.06, p.z));
+  float schnuer = rist * (0.5 + 0.5 * smoothstep(0.35, 0.65, fract(p.z / 0.013))) * (1.0 - smoothstep(0.012, 0.015, mitte));
+  float kragen = smoothstep(0.3, 0.55, schuh) * (1.0 - smoothstep(0.72, 0.95, schuh));
+  return (1.0 - 0.5 * lauf) * (1.0 - 0.3 * kante) * (1.0 - 0.07 * ferse) * (1.0 - 0.06 * rist) * (1.0 - 0.14 * schnuer) * (1.0 - 0.3 * kragen);
+}
+`;
+// Saunahut aus weißem Filz (Devins Markenzeichen, wie im Video vom 31.10.): zwei Filzhälften mit Naht von vorn über den Scheitel nach
+// hinten, oben schmal und gerundet, unten glockig mit dicker, weicher Kante; sitzt bis an die Augenbrauen, hinten tiefer. Vorn seitlich
+// das DK-Logo als Aufdruck. Geometrie in der Ruhelage; stelle() legt ihn jedes Bild mit dem Kopfknochen
+const HUT_LAGE = () => new THREE.Matrix4().makeRotationX(-10 * RAD).setPosition(0, 1.693, -0.012);
+const HUT_LOGO = { winkel: 28 * RAD, hoehe: 0.085, groesse: 0.066 };   // Aufdruck: Richtung von vorn zur linken Seite, Höhe über der Kante
+const HUT_AUSSEN = [[0.124, 0], [0.122, 0.01], [0.115, 0.028], [0.108, 0.05], [0.102, 0.078], [0.097, 0.108], [0.091, 0.136], [0.082, 0.16],
+  [0.069, 0.181], [0.052, 0.198], [0.032, 0.209], [0.014, 0.214], [0, 0.216]];   // Außenseite: Radius, Höhe über der Kante (m)
+// Radius der Außenseite in der Höhe y (zwischen den Profilpunkten linear)
+function hutRadius(y) {
+  for (let i = 1; i < HUT_AUSSEN.length; i++) {
+    const [r0, h0] = HUT_AUSSEN[i - 1], [r1, h1] = HUT_AUSSEN[i];
+    if (y <= h1) return r0 + (r1 - r0) * Math.max(0, (y - h0) / (h1 - h0));
+  }
+  return 0;
+}
+function saunahut() {
+  const aussen = HUT_AUSSEN;
+  const innen = aussen.map(([r, h]) => [Math.max(0, r - 0.007), h + 0.003 - 0.009 * Math.min(1, h / 0.05)]).reverse();   // innen, von oben nach unten
+  const kante = [[0.118, -0.002], [0.1205, -0.0035], [0.123, -0.002]];   // dicke, gerundete Filzkante
+  const profil = [...innen, ...kante, ...aussen].map(([r, h]) => new THREE.Vector2(r, h)), nP = profil.length, nS = 72;
+  const geo = new THREE.LatheGeometry(profil, nS);
+  // Grat an der Naht (vorn und hinten, x ≈ 0) und eine leicht unregelmäßige Form wie gewalkter Filz; dazu Innen-Kennung für den Shader
+  const pos = geo.attributes.position, innenA = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), r = Math.hypot(x, z), w = Math.atan2(x, z);
+    innenA[i] = (i % nP) < innen.length ? 1 : 0;
+    if (r < 1e-6) continue;
+    const f = 1 + 0.03 * Math.exp(-((x / r / 0.16) ** 2)) + 0.007 * Math.sin(3 * w + 1.1) + 0.004 * Math.sin(5 * w + 0.4) * Math.min(1, y / 0.15);
+    pos.setXYZ(i, x * f, y, z * f * 1.13);   // Kopf ist länger als breit
+  }
+  geo.setAttribute('innen', new THREE.BufferAttribute(innenA, 1));
+  geo.setAttribute('lokal', pos.clone());
+  geo.computeVertexNormals();
+  // Naht der Drehfläche (erste = letzte Spalte) und die Spitzen: Normalen angleichen, sonst sieht man einen Knick
+  const nor = geo.attributes.normal, n = new THREE.Vector3(), m = new THREE.Vector3();
+  for (let j = 0; j < nP; j++) {
+    n.fromBufferAttribute(nor, j).add(m.fromBufferAttribute(nor, nS * nP + j)).normalize();
+    nor.setXYZ(j, n.x, n.y, n.z); nor.setXYZ(nS * nP + j, n.x, n.y, n.z);
+    if (profil[j].x < 1e-6) for (let i = 0; i <= nS; i++) nor.setXYZ(i * nP + j, 0, innenA[j] ? -1 : 1, 0);
+  }
+  geo.applyMatrix4(HUT_LAGE());
+  const mat = new THREE.MeshPhysicalMaterial({ color: 0xede5d3, roughness: 0.96, metalness: 0, sheen: 1, sheenRoughness: 0.42,
+    sheenColor: new THREE.Color(0xfff8ec), side: THREE.DoubleSide });
+  const logo = logoTextur();
+  // Filz: Fasern und Walkflecken (Helligkeit und Normale leicht verrauscht, an den Hut gebunden), Naht als feine Rille, innen dunkler, Aufdruck
+  mat.onBeforeCompile = (s) => {
+    s.uniforms.uLogo = { value: logo }; s.uniforms.uLogoAn = { value: logo ? 1 : 0 };
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute float innen;\nattribute vec3 lokal;\nvarying float vInnen;\nvarying vec3 vLokal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvInnen = innen;\nvLokal = lokal;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vInnen;\nvarying vec3 vLokal;\nuniform sampler2D uLogo;\nuniform float uLogoAn;\n' + FILZ_GLSL)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+float dkF = dkFilz(vLokal * 280.0) * 0.55 + dkFilz(vLokal * 60.0) * 0.45;
+float dkNahtR = (1.0 - smoothstep(0.0012, 0.0032, abs(vLokal.x))) * (1.0 - vInnen);
+diffuseColor.rgb *= (0.93 + 0.1 * dkF) * (1.0 - 0.07 * dkNahtR) * (1.0 - 0.24 * vInnen);
+vec3 dkLR = vec3(cos(${HUT_LOGO.winkel.toFixed(4)}), 0.0, -sin(${HUT_LOGO.winkel.toFixed(4)}));
+vec2 dkLP = vec2(sin(${HUT_LOGO.winkel.toFixed(4)}), cos(${HUT_LOGO.winkel.toFixed(4)}));
+vec2 dkLU = vec2(dot(vLokal - vec3(0.0, ${HUT_LOGO.hoehe.toFixed(3)}, 0.0), dkLR) / ${HUT_LOGO.groesse.toFixed(3)} + 0.5, (vLokal.y - ${HUT_LOGO.hoehe.toFixed(3)}) / ${HUT_LOGO.groesse.toFixed(3)} + 0.5);
+if (uLogoAn > 0.5 && vInnen < 0.5 && dot(normalize(vLokal.xz + 1e-6), dkLP) > 0.6 && all(greaterThan(dkLU, vec2(0.0))) && all(lessThan(dkLU, vec2(1.0)))) {
+  vec4 dkL = texture2D(uLogo, dkLU);
+  diffuseColor.rgb = mix(diffuseColor.rgb, dkL.rgb * (0.9 + 0.1 * dkF), dkL.a * 0.92);
+}`)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(normal + 0.09 * vec3(dkFilz(vLokal * 320.0 + 7.0) - 0.5, dkFilz(vLokal * 320.0 + 19.0) - 0.5, dkFilz(vLokal * 320.0 + 31.0) - 0.5));');
+  };
+  const hut = new THREE.Mesh(geo, mat);
+  hut.castShadow = true; hut.matrixAutoUpdate = false;
+  return hut;
+}
+// DK-Logo (wie icon.svg: D und K im Verlauf der Farbwelt) als Textur für den Aufdruck; ohne Browser (Prüfung in Node) keins
+let _logo;
+function logoTextur() {
+  if (_logo !== undefined) return _logo;
+  if (typeof document === 'undefined' || typeof Path2D === 'undefined') return (_logo = null);
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.scale(256 / 400, 256 / 400); g.translate(-88, -56);   // Ausschnitt um die Buchstaben (viewBox 512)
+  // Verlauf je Buchstabe von oben links nach unten rechts (wie im SVG: objectBoundingBox)
+  for (const [d, x0, x1] of [['M132 150h76c62 0 104 42 104 106s-42 106-104 106h-76zM178 196v120h28c35 0 58-24 58-60s-23-60-58-60z', 132, 312],
+    ['M300 150h46v86l62-86h54l-74 98 78 114h-56l-64-96v96h-46z', 300, 466]]) {
+    const v = g.createLinearGradient(x0, 150, x1, 362); v.addColorStop(0, '#ff8a3d'); v.addColorStop(1, '#ff3d81');
+    g.fillStyle = v; g.fill(new Path2D(d));
+  }
+  _logo = new THREE.CanvasTexture(c); _logo.colorSpace = THREE.SRGBColorSpace; _logo.anisotropy = 4;
+  return _logo;
+}
+// Turnschuhe: Das Modell hat nackte Füße mit Zehen (die Schuhe waren nur aufgemalt). Hier eine eigene Hülle aus den Dreiecken des
+// gemalten Schuhs: im Zehenbereich geglättet (Taubin, behält das Volumen) zu einer runden Kappe, dann 6 mm nach außen (Sohle 2 mm,
+// damit nichts im Boden steckt). Gleiche Knochen-Gewichte wie der Fuß: der Schuh knickt mit den Zehen. Format wie ein Mesh aus koerper.bin
+function turnschuhDaten(k) {
+  const m = k.meshes.find((x) => x.mat === 'haut');
+  if (!m) return null;
+  const kl = m.kleid.array, idx = m.idx.array, P = m.pos.array, neu = new Map(), alt = [], tri = [];
+  for (let i = 0; i < idx.length; i += 3) {
+    const v = [idx[i], idx[i + 1], idx[i + 2]];
+    if (v.some((x) => kl[x * 2 + 1] < 128)) continue;
+    for (const x of v) if (!neu.has(x)) { neu.set(x, alt.length); alt.push(x); }
+    tri.push(...v.map((x) => neu.get(x)));
+  }
+  const n = alt.length;
+  if (!n) return null;
+  const pos = new Float32Array(n * 3);
+  alt.forEach((v, i) => { for (let c = 0; c < 3; c++) pos[i * 3 + c] = P[v * 3 + c]; });
+  const nb = Array.from({ length: n }, () => new Set());
+  for (let i = 0; i < tri.length; i += 3) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) if (a !== b) nb[tri[i + a]].add(tri[i + b]);
+  const vorn = Array.from({ length: n }, (_, i) => Math.max(0, Math.min(1, (pos[i * 3 + 2] - 0.025) / 0.045)));   // Zehen: z ab etwa 2,5 cm vor der Fußmitte
+  for (let it = 0; it < 40; it++) {
+    const f = it % 2 ? -0.53 : 0.5, q = pos.slice();
+    for (let i = 0; i < n; i++) {
+      if (!vorn[i] || !nb[i].size) continue;
+      let sx = 0, sy = 0, sz = 0; for (const j of nb[i]) { sx += q[j * 3]; sy += q[j * 3 + 1]; sz += q[j * 3 + 2]; }
+      const c = nb[i].size, w = f * vorn[i];
+      pos[i * 3] += (sx / c - q[i * 3]) * w; pos[i * 3 + 1] += (sy / c - q[i * 3 + 1]) * w; pos[i * 3 + 2] += (sz / c - q[i * 3 + 2]) * w;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(tri); geo.computeVertexNormals();
+  const nr = geo.attributes.normal.array;
+  for (let i = 0; i < n; i++) { const d = nr[i * 3 + 1] < -0.5 ? 0.002 : 0.006; for (let c = 0; c < 3; c++) pos[i * 3 + c] += nr[i * 3 + c] * d; }
+  geo.computeVertexNormals();
+  const kopie = (attr, groesse, Typ) => { const a = new Typ(n * groesse); alt.forEach((v, i) => { for (let c = 0; c < groesse; c++) a[i * groesse + c] = attr[v * groesse + c]; }); return a; };
+  return {
+    name: 'Turnschuhe', mat: 'schuh', pos: geo.attributes.position, nor: geo.attributes.normal,
+    uv: new THREE.BufferAttribute(new Float32Array(n * 2), 2),
+    gel: new THREE.BufferAttribute(kopie(m.gel.array, 4, Uint8Array), 4), gew: new THREE.BufferAttribute(kopie(m.gew.array, 4, Uint8Array), 4, true),
+    kleid: new THREE.BufferAttribute(kopie(kl, 2, Uint8Array), 2, true), idx: new THREE.BufferAttribute(new Uint16Array(tri), 1),
+    teil: kopie(m.teil, 1, Uint8Array)
+  };
+}
+// Wertrauschen 0…1 (für den Filz)
+const FILZ_GLSL = `
+float dkHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float dkFilz(vec3 x) {
+  vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(dkHash(i), dkHash(i + vec3(1, 0, 0)), f.x), mix(dkHash(i + vec3(0, 1, 0)), dkHash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(dkHash(i + vec3(0, 0, 1)), dkHash(i + vec3(1, 0, 1)), f.x), mix(dkHash(i + vec3(0, 1, 1)), dkHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+`;
+
+export class FigurModell {
+  constructor(k = geladen) {
+    if (!k) throw new Error('Körper noch nicht geladen (ladeKoerper())');
+    this.k = k;
+    this.gruppe = new THREE.Group();
+    // Teile wie in class Figur (Ansicht fragt teile[name], um Seitennamen _l/_r zu bilden)
+    this.teile = {}; for (const t of k.teile) this.teile[t] = true;
+    this.knochen = k.knochen.map(() => { const b = new THREE.Bone(); b.matrixAutoUpdate = false; return b; });
+    this.skelett = new THREE.Skeleton(this.knochen, this.knochen.map(() => new THREE.Matrix4()));
+    this.A = this.knochen.map((b) => b.matrixWorld);
+    // Leuchten: x = arbeitender Muskel, y = Coach erklärt (pro Punkt, weich zwischen Teilen)
+    this.matHinweis = { color: new THREE.Color(FARBEN.cyan), emissive: new THREE.Color(FARBEN.cyan), emissiveIntensity: 0.9 };
+    const mh = this.matHinweis;
+    this.u = {
+      uGlut: { value: 0.5 }, uGlutFarbe: { value: new THREE.Color(FARBEN.glut) }, uMuskelFarbe: { value: new THREE.Color(FARBEN.gold) },
+      uHinweisFarbe: { value: mh.color }, uHinweis: { get value() { return mh.emissiveIntensity; } },
+      uHose: { value: new THREE.Color(FARBEN.hose) }, uSchuh: { value: new THREE.Color(FARBEN.schuh) },
+      uOberteil: { value: new THREE.Color(FARBEN.oberteil) }, uSocke: { value: new THREE.Color(FARBEN.socke) },
+      uPec: { value: new THREE.Vector2() }
+    };
+    const t = k.tex || {};   // ohne Texturen (Prüfung in Node): nur Form
+    const stoff = {
+      haut: () => new THREE.MeshStandardMaterial({ map: t.haut, normalMap: t['haut-n'], roughness: 0.62, metalness: 0.02 }),
+      augen: () => new THREE.MeshStandardMaterial({ map: t.augen, roughness: 0.3 }),
+      // Haar-Textur ist grau (Quaternius färbt im Spiel ein): hier dunkelbraun wie FARBEN.haar
+      haar: () => new THREE.MeshStandardMaterial({ map: t.haar, color: 0x4a3426, roughness: 0.85, side: THREE.DoubleSide }),
+      schuh: () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, side: THREE.DoubleSide })
+    };
+    if (!k.schuhe) k.schuhe = turnschuhDaten(k) || false;   // einmal je geladenem Körper
+    this.meshes = [...k.meshes, ...(k.schuhe ? [k.schuhe] : [])].map((m) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', m.pos); geo.setAttribute('normal', m.nor); geo.setAttribute('uv', m.uv);
+      geo.setAttribute('skinIndex', m.gel); geo.setAttribute('skinWeight', m.gew); geo.setAttribute('kleid', m.kleid); geo.setIndex(m.idx);
+      geo.setAttribute('leucht', new THREE.BufferAttribute(new Float32Array(m.teil.length * 2), 2));
+      // Gewicht je Punkt für den linken (x) und rechten (y) Brustmuskel: weich um die Muskelmitte, nur vorn
+      const pec = new Float32Array(m.teil.length * 2), p = m.pos.array;
+      for (let i = 0; i < m.teil.length; i++) {
+        const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2], vorn = Math.max(0, Math.min(1, z / BRUST.z));
+        for (const [j, sx] of [[0, 1], [1, -1]]) pec[i * 2 + j] = vorn * Math.exp(-(((x - sx * BRUST.x) / BRUST.bx) ** 2) - (((y - BRUST.y) / BRUST.by) ** 2));
+      }
+      geo.setAttribute('pec', new THREE.BufferAttribute(pec, 2));
+      const mat = stoff[m.mat]();
+      mat.onBeforeCompile = (s) => this.shader(s);
+      const mesh = new THREE.SkinnedMesh(geo, mat);
+      mesh.bindMode = 'detached'; mesh.bind(this.skelett, new THREE.Matrix4());
+      mesh.castShadow = true; mesh.frustumCulled = false;
+      mesh.boundingBox = new THREE.Box3(V(-0.9, 0, -0.2), V(0.9, 1.8, 0.2));
+      mesh.userData.teil = m.teil; mesh.userData.koerper = m.mat === 'haut';   // Haut-Mesh eindeutig (für huelle.js/pruefe-3d statt über die Punktzahl)
+      this.gruppe.add(mesh);
+      return mesh;
+    });
+    this.koerperMesh = this.meshes.find((m) => m.userData.koerper);
+    this.hut = saunahut(); this.gruppe.add(this.hut);
+    // Hut zählt für die Kamera nur, wenn er sichtbar ist (Ansicht.zeige nimmt hutBox dazu); Prüfpunkte = Außenseite, ausgedünnt
+    this.hutBox = this.hut.geometry.boundingBox || (this.hut.geometry.computeBoundingBox(), this.hut.geometry.boundingBox);
+    this.hut.geometry.boundingBox = new THREE.Box3();
+    const hp = this.hut.geometry.attributes.position, hi = this.hut.geometry.attributes.innen;
+    this.hutPunkte = [];
+    for (let i = 0; i < hp.count; i += 7) if (!hi.getX(i)) this.hutPunkte.push(V().fromBufferAttribute(hp, i));
+    this.ruhe = this.ruhelage();
+    this.markiere([]);
+  }
+  // Kleidung über die Haut legen (Devin, 31.10.: „das bin ich“ — graues Tanktop, schwarze Shorts bis übers Knie, weiße Socken und
+  // Schuhe), dann Muskel-Glühen und Coach-Hinweis. Shorts und Schuhe kommen aus koerper.bin (kleid je Punkt); Tanktop, längere
+  // Hosenbeine und Socken rechnet der Shader pro Pixel aus der Ruhelage (T-Pose, Meter, +x links, +z vorn): scharfe Kanten,
+  // unabhängig vom Netz. Stoff ist rauer und zeigt die Poren der Haut-Normalen kaum noch.
+  shader(s) {
+    Object.assign(s.uniforms, this.u);
+    // Brust (vor dem Skinning, in der Ruhelage): angespannt wölbt sie sich nach vorn und rückt zum Brustbein, gedehnt wird sie flacher
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nvRuhe = position;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\ntransformed += normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ntransformed.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nuniform float uGlut;\nuniform float uHinweis;\nuniform vec3 uGlutFarbe;\nuniform vec3 uMuskelFarbe;\nuniform vec3 uHinweisFarbe;\nuniform vec3 uHose;\nuniform vec3 uSchuh;\nuniform vec3 uOberteil;\nuniform vec3 uSocke;\n' + KLEIDUNG_GLSL)
+      .replace('#include <color_fragment>', '#include <color_fragment>\nfloat dkHose = max(vKleid.x, dkHosenbein(vRuhe));\nfloat dkTop = dkTanktop(vRuhe);\nfloat dkSock = dkSocke(vRuhe);\n' +
+        'diffuseColor.rgb = mix(diffuseColor.rgb, uHose * dkNaht(vRuhe.y, 0.6, 0.012), dkHose);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uOberteil * dkNaht(vRuhe.y, 0.955, 0.014), dkTop);\n' +
+        'diffuseColor.rgb = mix(diffuseColor.rgb, uSocke * dkRippe(vRuhe), dkSock);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uSchuh * dkTurnschuh(vRuhe, vKleid.y), vKleid.y);\nfloat dkStoff = max(max(dkHose, dkTop), dkSock * (1.0 - vKleid.y));\n' +
+        'float dkMuskel = vLeucht.x * (1.0 - vLeucht.y);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uMuskelFarbe, dkMuskel * 0.75);\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHinweisFarbe, vLeucht.y);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(roughnessFactor, 0.9, dkStoff), 0.55, vKleid.y);')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(mix(normal, nonPerturbedNormal, dkStoff * 0.75));')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uGlutFarbe * (uGlut * dkMuskel) + uHinweisFarbe * (uHinweis * vLeucht.y);');
+  }
+  // Feste Größen der Ruhelage: Gelenkpunkte, Rumpfachse, Richtungen von Armen, Händen und Daumen
+  ruhelage() {
+    const P = (n) => this.k.knochen[this.k.index[n]].p;
+    const hueftMitte = P('LeftUpLeg').clone().add(P('RightUpLeg')).multiplyScalar(0.5);
+    const schulterMitte = P('LeftArm').clone().add(P('RightArm')).multiplyScalar(0.5);
+    const oben = schulterMitte.clone().sub(hueftMitte), rumpfHoehe = oben.length();
+    const r = { P, hueftMitte, rumpfOben: oben.normalize(), rumpfHoehe, schulterSkala: MASS.schulterBreite / P('LeftArm').x };
+    for (const S of ['Left', 'Right']) {
+      const sg = S === 'Left' ? 1 : -1;
+      const finger = richt(P(S + 'Hand'), P(S + 'HandMiddle1'));
+      // Handrücken: senkrecht zur Handfläche (Zeigefinger liegt vorn, kleiner Finger hinten), zeigt nach oben
+      const ruecken = P(S + 'HandIndex1').clone().sub(P(S + 'HandPinky1')).cross(finger).multiplyScalar(sg).normalize();
+      const daumen = richt(P(S + 'HandThumb1'), P(S + 'HandThumb2'));
+      // Winkel um die Fingerachse, der den Daumen in die Ebene der Hand klappt (zur Zeigefinger-Seite): für die flache Hand am Boden
+      const quer = (v) => senkrecht(v, finger);
+      const d = quer(daumen), ziel = quer(P(S + 'HandIndex1').clone().sub(P(S + 'HandPinky1')));
+      r[S] = { oberarm: richt(P(S + 'Arm'), P(S + 'ForeArm')), unterarm: richt(P(S + 'ForeArm'), P(S + 'Hand')), finger, ruecken, daumen,
+        daumenFlach: Math.atan2(d.clone().cross(ziel).dot(finger), d.dot(ziel)) * 0.85 };
+    }
+    return r;
+  }
+  // Darf der Hut in der jetzigen Pose auf dem Kopf sein? Nein, wenn der Kopf fast liegt (Hut stünde seitlich ab), der Hut in den Boden
+  // taucht oder mehr als 1 cm in ein Geräteteil (Bank, Stange, Polster). Ansicht prüft das über Übung und Ablauf davor
+  hutFrei(geraete) {
+    const h = this.hut; h.updateMatrixWorld(true);
+    const e = h.matrixWorld.elements;
+    if (e[5] / Math.hypot(e[4], e[5], e[6]) < 0.2) return false;
+    const p = V();
+    if (this.hutPunkte.some((q) => p.copy(q).applyMatrix4(h.matrixWorld).y < 0.015)) return false;
+    if (!geraete) return true;
+    // Geräteteile in Kopfnähe als gedrehte Quader abtasten (Raster ≤ 2 cm, dünne Stangen entlang ihrer Achse) und jeden Punkt in die
+    // Lage des Huts bringen: drin, wenn er unter der Außenseite liegt (Profil HUT_AUSSEN, 5 mm Spiel)
+    const zuHut = h.matrixWorld.clone().multiply(HUT_LAGE()).invert(), mitte = V(0, 0.1, 0).applyMatrix4(HUT_LAGE()).applyMatrix4(h.matrixWorld);
+    const drin = (q) => { const y = q.y; if (y < 0 || y > 0.214) return false; return Math.hypot(q.x, q.z / 1.13) < hutRadius(y) - 0.005; };
+    let frei = true;
+    const c = V(), ax = [V(), V(), V()], hx = [0, 0, 0], gr = V();
+    geraete.traverse((m) => {
+      if (!frei || !m.isMesh || !m.visible || !m.geometry) return;
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      const b = m.geometry.boundingBox; if (b.isEmpty()) return;
+      const me = m.matrixWorld.elements; b.getSize(gr);
+      for (let i = 0; i < 3; i++) { ax[i].set(me[4 * i], me[4 * i + 1], me[4 * i + 2]); hx[i] = gr.getComponent(i) / 2 * ax[i].length(); ax[i].normalize(); }
+      b.getCenter(c).applyMatrix4(m.matrixWorld);
+      if (c.distanceTo(mitte) > Math.hypot(...hx) + 0.18) return;
+      const n = hx.map((x) => Math.min(12, Math.max(1, Math.ceil(2 * x / 0.02))));
+      for (let i = 0; i < n[0] && frei; i++) for (let j = 0; j < n[1] && frei; j++) for (let k = 0; k < n[2] && frei; k++) {
+        p.copy(c).addScaledVector(ax[0], hx[0] * ((2 * i + 1) / n[0] - 1)).addScaledVector(ax[1], hx[1] * ((2 * j + 1) / n[1] - 1)).addScaledVector(ax[2], hx[2] * ((2 * k + 1) / n[2] - 1));
+        if (drin(p.applyMatrix4(zuHut))) frei = false;
+      }
+    });
+    return frei;
+  }
+  markiere(muskeln) { this.muskeln = muskeln || []; this.hervor = null; this.leuchten(); }
+  hebeHervor(namen, farbe) {
+    this.hervor = namen && namen.length ? new Set(namen) : null;
+    if (farbe != null) { this.matHinweis.color.set(farbe); this.matHinweis.emissive.set(farbe); }
+    this.leuchten();
+  }
+  leuchten() {
+    const an = new Set();
+    for (const m of this.muskeln) for (const t of MUSKEL_TEILE[m] || []) an.add(t);
+    for (const [kleid, teil] of Object.entries(LEUCHTET_MIT)) if (an.has(teil)) an.add(kleid);
+    const h = this.hervor, namen = this.k.teile;
+    const muskel = namen.map((t) => (an.has(t) ? 1 : 0)), hin = namen.map((t) => (h && (h.has(t) || h.has(LEUCHTET_MIT[t])) ? 1 : 0));
+    for (const mesh of this.meshes) {
+      const a = mesh.geometry.attributes.leucht, teil = mesh.userData.teil;
+      for (let i = 0; i < teil.length; i++) { a.array[i * 2] = muskel[teil[i]]; a.array[i * 2 + 1] = hin[teil[i]]; }
+      a.needsUpdate = true;
+    }
+  }
+  glut(staerke) { this.u.uGlut.value = this.hervor ? 0.15 : 0.25 + 0.9 * staerke; }
+
+  // Knochen aus den Gelenkpunkten (g = gelenke(pose)) legen
+  stelle(g) {
+    const r = this.ruhe, P = r.P, I = this.k.index, A = this.A, R = g.R;
+    const X = V(1, 0, 0), Y = V(0, 1, 0), Z = V(0, 0, 1);
+    const gesetzt = new Set();
+    const setze = (name, m) => { if (I[name] === undefined) return; A[I[name]].copy(m); gesetzt.add(I[name]); };
+    // Rumpf: starr wie in gelenke() (Becken bis Hals), Ruhe-Rumpfachse → R.oben, Schultern auf MASS-Höhe
+    const hueft = g.huefte.l.clone().add(g.huefte.r).multiplyScalar(0.5);
+    const sy = g.schulter.l.clone().add(g.schulter.r).multiplyScalar(0.5).sub(hueft).dot(R.oben) / r.rumpfHoehe;
+    const rumpf = {};
+    for (const n of ['Root', 'Hips', 'Spine', 'Spine1', 'Spine2', 'LeftShoulder', 'RightShoulder', 'Neck']) {
+      const sx = BAU.breite[n] || r.schulterSkala;
+      rumpf[n] = abbilden(new THREE.Matrix4(), r.hueftMitte, X, r.rumpfOben, hueft, R.links, R.oben, sx, sy, BAU.tiefe[n] || 1);
+      // Shrugs: Schulterknochen (Schlüsselbein, Trapez-Ansatz) gehen mit dem Schulterhub nach oben
+      if (g.schulterHub && /Shoulder$/.test(n)) rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(R.oben.x * g.schulterHub, R.oben.y * g.schulterHub, R.oben.z * g.schulterHub));
+      setze(n, rumpf[n]);
+    }
+    // Kopf: sitzt auf dem Hals, dreht mit kopfQ
+    const kx = X.clone().applyQuaternion(g.kopfQ), ky = Y.clone().applyQuaternion(g.kopfQ);
+    setze('Head', abbilden(new THREE.Matrix4(), P('Head'), X, Y, P('Head').clone().applyMatrix4(rumpf.Neck), kx, ky));
+    for (const s of ['l', 'r']) {
+      const S = s === 'l' ? 'Left' : 'Right', sg = s === 'l' ? 1 : -1, ru = r[S];
+      // Oberarm: Ellbogenbeuge in Ruhe vorn (+Z). Jetzt zeigt sie weg von der Ellbogenspitze (IK-Pol)
+      const dO = richt(g.schulter[s], g.ellbogen[s]);
+      const wrist = g.handgelenk[s];
+      const linie = richt(g.schulter[s], wrist);
+      const spitze = g.ellbogen[s].clone().sub(g.schulter[s]); spitze.sub(linie.clone().multiplyScalar(spitze.dot(linie)));
+      const beuge = senkrecht(spitze.negate(), dO, R.vor.clone().sub(R.links.clone().multiplyScalar(0.4 * sg)));
+      setze(S + 'Arm', abbilden(new THREE.Matrix4(), P(S + 'Arm'), ru.oberarm, senkrecht(Z, ru.oberarm), g.schulter[s], dO, beuge,
+        g.schulter[s].distanceTo(g.ellbogen[s]) / P(S + 'Arm').distanceTo(P(S + 'ForeArm')), BAU.arm, BAU.arm));
+      // Unterarm: Handrücken dreht mit der Hand
+      const dU = richt(g.ellbogen[s], wrist);
+      const ruecken = senkrecht(g.handRuecken[s], dU, beuge);
+      setze(S + 'ForeArm', abbilden(new THREE.Matrix4(), P(S + 'ForeArm'), ru.unterarm, senkrecht(ru.ruecken, ru.unterarm), g.ellbogen[s], dU, ruecken,
+        g.ellbogen[s].distanceTo(wrist) / P(S + 'ForeArm').distanceTo(P(S + 'Hand')), BAU.arm, BAU.arm));
+      // Hand: Finger-Richtung (mit Knick) und Handrücken; der Rücken knickt um dieselbe Achse wie in gelenke()
+      let fing = g.handFinger[s].clone().normalize();
+      const knickAchse = g.handAchse[s].clone().cross(g.handRuecken[s]).normalize();
+      let handRuecken = g.handRuecken[s].clone().applyAxisAngle(knickAchse, g.handKnick[s] || 0);
+      // Stütz (Liegestütz, Vierfüßler, Hand auf Bank oder Wand): Hand liegt flach auf, Rücken zeigt von der Fläche weg, Finger in der
+      // Fläche — in Richtung der Finger, sonst Richtung Kopf, sonst Richtung Bauch (gelenke() kennt nur eine kleine Hand ohne Finger)
+      const flach = g.flach && g.flach[s], haelt = !flach && g.haelt && g.haelt[s];
+      if (flach) {
+        const n = flach.clone().normalize(), inFlaeche = (v) => v.clone().sub(n.clone().multiplyScalar(v.dot(n)));
+        fing = [inFlaeche(fing), inFlaeche(R.oben), inFlaeche(R.vor)].find((v) => v.length() > 0.3) || senkrecht(Z, n);
+        fing.normalize(); handRuecken = n;
+      }
+      const hand = abbilden(new THREE.Matrix4(), P(S + 'Hand'), ru.finger, senkrecht(ru.ruecken, ru.finger), wrist, fing, senkrecht(handRuecken, fing, ruecken));
+      setze(S + 'Hand', hand);
+      // Finger zur Handfläche gekrümmt: um Stange/Hantel (haelt) zur Faust, sonst locker. Flach: gestreckt, Daumen seitlich neben die
+      // Hand geklappt (beim Modell zeigt er schräg nach unten). Locker am Boden notfalls stärker krümmen, damit die Fingerspitzen darüber bleiben
+      const zuHand = ru.finger.clone().cross(ru.ruecken.clone().negate()).normalize();
+      const daumenAchse = ru.daumen.clone().cross(ru.ruecken.clone().negate()).normalize();
+      const kette = (f, achse, winkel, c, start = hand) => {
+        const glied = start.clone(), out = [];
+        for (let j = 1; j <= 4; j++) { const n = S + 'Hand' + f + j; if (j <= 3) glied.multiply(umPunkt(P(n), achse, winkel[j - 1] * RAD * c)); out.push([n, glied.clone()]); }
+        return out;
+      };
+      // Hält die Hand etwas: Finger und Daumen um den Griff (Radius aus haltErkennen); sonst locker bzw. flach
+      const griff = haelt ? griffLoesen(P, ru, S, typeof g.haelt[s] === 'number' ? g.haelt[s] : GRIFF_R) : null;
+      const winkel = KRUEMMUNG;
+      let krumm = flach ? 0 : haelt ? 1 : Math.max(0, Math.min(1, (wrist.y - 0.07) / 0.13));
+      if (!flach && !haelt) for (const c of [krumm, 0.6, 1]) { krumm = c; if (P(S + 'HandMiddle4').clone().applyMatrix4(kette('Middle', zuHand, winkel, c)[3][1]).y > 0.01) break; }
+      for (const f of FINGER) for (const [n, m] of kette(f, zuHand, griff ? griff.finger[f] : winkel, griff ? 1 : krumm)) setze(n, m);
+      const daumenStart = flach ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, ru.daumenFlach))
+        : griff ? hand.clone().multiply(umPunkt(P(S + 'HandThumb1'), ru.ruecken.clone().negate(), griff.daumen.abd * RAD)).multiply(umPunkt(P(S + 'HandThumb1'), ru.finger, griff.daumen.dreh * RAD)) : hand;
+      for (const [n, m] of kette('Thumb', daumenAchse, griff ? DAUMEN_GRIFF : DAUMEN, griff ? griff.daumen.curl : krumm, daumenStart)) setze(n, m);
+      // Bein: Kniescheibe zeigt dorthin, wohin das Knie aus der Linie Hüfte–Knöchel herausragt
+      const dB = richt(g.huefte[s], g.knie[s]);
+      const bl = richt(g.huefte[s], g.knoechel[s]);
+      const kn = g.knie[s].clone().sub(g.huefte[s]); kn.sub(bl.clone().multiplyScalar(kn.dot(bl)));
+      const fussVor = richt(g.ferse[s], g.zehe[s]);
+      const ruheO = richt(P(S + 'UpLeg'), P(S + 'Leg'));
+      setze(S + 'UpLeg', abbilden(new THREE.Matrix4(), P(S + 'UpLeg'), ruheO, senkrecht(Z, ruheO), g.huefte[s], dB, senkrecht(kn, dB, fussVor),
+        g.huefte[s].distanceTo(g.knie[s]) / P(S + 'UpLeg').distanceTo(P(S + 'Leg')), BAU.bein, BAU.bein));
+      const dS = richt(g.knie[s], g.knoechel[s]);
+      const ruheS = richt(P(S + 'Leg'), P(S + 'Foot'));
+      setze(S + 'Leg', abbilden(new THREE.Matrix4(), P(S + 'Leg'), ruheS, senkrecht(Z, ruheS), g.knie[s], dS, senkrecht(kn, dS, fussVor),
+        g.knie[s].distanceTo(g.knoechel[s]) / P(S + 'Leg').distanceTo(P(S + 'Foot')), BAU.bein, BAU.bein));
+      // Fuß: Sohle wie die Linie Ferse → Zehe, Fußrücken zeigt von der Fläche weg, auf der er steht (g.sohleN: Boden, schräge Platte …),
+      // so rollt er auf einer Platte nicht seitlich weg; Zehen bleiben flach auf der Fläche, wenn die Ferse hochgeht
+      const auf = (g.sohleN && g.sohleN[s]) || Y;
+      const fuss = abbilden(new THREE.Matrix4(), P(S + 'Foot'), Y, Z, g.knoechel[s], senkrecht(auf, fussVor, dS.clone().negate()), fussVor, FUSS_HOEHE);
+      setze(S + 'Foot', fuss);
+      const hub = Math.asin(Math.max(0, Math.min(1, -fussVor.dot(auf))));
+      const zehen = fuss.clone().multiply(umPunkt(P(S + 'ToeBase'), X, -hub));
+      setze(S + 'ToeBase', zehen); setze(S + 'Toe_End', zehen);
+    }
+    // Übrige Knochen (Enden, Wurzel) gehen mit ihrem Elternknochen mit
+    this.k.knochen.forEach((kn, i) => { if (!gesetzt.has(i)) A[i].copy(kn.eltern >= 0 ? A[kn.eltern] : rumpf.Hips); });
+    this.hut.matrix.copy(A[I.Head]); this.hut.matrixWorldNeedsUpdate = true;
+    // Brust: Oberarm vor den Körper geführt (Drücken, Butterfly zu) = angespannt, hinter den Körper (Bank unten, Rudern) = gedehnt
+    const pec = (s, sg) => {
+      const v = richt(g.schulter[s], g.ellbogen[s]), x = v.dot(R.links) * sg, z = v.dot(R.vor);
+      return Math.max(-1, Math.min(1, (Math.atan2(z, x) / RAD - 25) / 55)) * Math.min(1, Math.hypot(x, z) * 1.4) * BAU.brust;
+    };
+    this.u.uPec.value.set(pec('l', 1), pec('r', -1));
+    this.skelett.update();
+    // Grenzen für die Kamera (Ansicht.zeige misst die Figur): aus den Gelenkpunkten, mit Rand für Körper und Kopf
+    const box = new THREE.Box3();
+    for (const p of [g.becken, g.brust, g.kopf]) box.expandByPoint(p);
+    for (const s of ['l', 'r']) for (const p of [g.schulter[s], g.ellbogen[s], g.hand[s], g.handgelenk[s], g.knie[s], g.zehe[s], g.ferse[s]]) box.expandByPoint(p);
+    box.expandByScalar(0.12);
+    for (const m of this.meshes) m.boundingBox.copy(box);
+  }
+}

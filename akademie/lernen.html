@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DK Akademie</title>
+<meta name="theme-color" content="#0b0b0b">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DK Akademie">
+<!-- Schutzschild: nur eigene Dateien laden, nichts nach außen schicken (YouTube-Links sind normale Links in einem neuen Tab) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script type="importmap">{ "imports": { "three": "./3d/vendor/three.module.min.js" } }</script>
+<link rel="stylesheet" href="schriften/schriften.css">
+<link rel="stylesheet" href="akademie.css">
+<style>
+/* Rahmen wie auf claude.ai (dort setzt die Plattform diese Grundwerte) */
+:root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+html, body { margin: 0; padding: 0; }
+img { max-width: 100%; }
+[hidden]:not([hidden=until-found i]) { display: none !important; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="ak-verlauf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#FF3D81"/></linearGradient></defs></svg>
+<div class="app" lang="de">
+  <header class="kopf"><div class="kopf-innen"><span class="marke">DK AKADEMIE<small>B-Lizenz &amp; Coaching</small></span><span class="rechts" id="kopf-rechts"></span></div></header>
+  <main><div class="inhalt" id="inhalt"><p class="leise">Akademie lädt …</p></div></main>
+  <nav class="leiste" aria-label="Bereiche"><div id="leiste"></div></nav>
+</div>
+<script src="antippen.js"></script>
+<script src="uebungen.js"></script>
+<script src="akademie.js"></script>
+<script src="schloss.js"></script>
+</body>
+</html>
