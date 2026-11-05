@@ -37,6 +37,21 @@ export function rumpfRahmen(r) {
   return { oben: V(0, 1, 0).applyQuaternion(q), vor: V(0, 0, 1).applyQuaternion(q), links: V(1, 0, 0).applyQuaternion(q), q };
 }
 
+/* ---------- Wirbelsäule ---------- */
+// pose.wirbel = { beuge, seit, dreh } in Grad: Brustkorb gegen Becken (beuge + = einrollen, - = überstrecken; seit + = zur linken Seite; dreh + = nach links). pose.rumpf ist dann der Rahmen des Beckens,
+// g.R der des Brustkorbs (Schultern, Kopf), g.RB der des Beckens (Hüftgelenke). Ohne pose.wirbel bleibt der Rumpf starr wie bisher: richtig bei allem mit geradem Rücken. Die Biegung verteilt sich gleichmäßig über die Länge
+export const wirbelDrehung = (w, anteil = 1) => new THREE.Quaternion().setFromEuler(new THREE.Euler((w.beuge || 0) * anteil * RAD, (w.dreh || 0) * anteil * RAD, -(w.seit || 0) * anteil * RAD, 'YXZ'));
+export function wirbelRahmen(RB, w, anteil = 1) {
+  const q = RB.q.clone().multiply(wirbelDrehung(w, anteil));
+  return { oben: V(0, 1, 0).applyQuaternion(q), vor: V(0, 0, 1).applyQuaternion(q), links: V(1, 0, 0).applyQuaternion(q), q };
+}
+// Weg vom Becken s Meter die gebogene Achse hinauf
+export function wirbelBogen(RB, w, s) {
+  const p = V(), n = Math.max(1, Math.ceil(8 * Math.abs(s) / MASS.rumpf)), ds = s / n;
+  for (let i = 0; i < n; i++) p.addScaledVector(wirbelRahmen(RB, w, Math.max(0, (i + 0.5) * ds / MASS.rumpf)).oben, ds);
+  return p;
+}
+
 /* ---------- Zwei-Knochen-IK ---------- */
 // Wurzel A, Ziel Z, Längen a/b, Richtung, in die das Mittelgelenk zeigen soll (pol).
 export function ik(A, Z, a, b, pol) {
@@ -96,7 +111,7 @@ const brustFrei = (g) => {
 //         flach: {l: V, r: V} (Hand liegt flach auf einer Fläche, V = Richtung von der Fläche weg; hand = Handgelenk),
 //         greift: {l, r} (Ziel tiefer als HAND_BODEN, trotzdem greifen statt flach aufstützen, z. B. Hantel vom Boden),
 //         unterarm: {l, r} (Drehung des Unterarms in Bogenmaß statt handflaeche; nur im Ablauf davor),
-//         fuss: {l: V, r: V}, kniePol: {l, r}, fussRicht: {l, r} (Vektor), zehen: {l, r} (Grad, Fersenhub) }
+//         fuss: {l: V, r: V}, kniePol: {l, r}, fussRicht: {l, r} (Vektor), zehen: {l, r} (Grad, Fersenhub), beinGerade (Beine bleiben gestreckt), kopfBleibt (schulterHub hebt den Kopf nicht mit), schulterVor (m, Schulterblatt gleitet um den Brustkorb) }
 // g.hand = Faustmitte (Geräte hängen dort), g.handgelenk = Handgelenk (dort beginnt die Hand des Körpers)
 // Griffe einer Kurzhantel in beiden Händen (Devin, 3.11.: „schwebt einfach nur zwischen den Händen … dass die sich aufeinander treffen und die Hantel wirklich perfekt halten“, dann: „Hände aufeinander“).
 // C = Mitte der Hantel, U = Achse zum oberen Kopf, vor = vom Körper weg, li = links der Figur. Ergebnis: Ziele der Hände und Lage der Hände (kelch) für gelenke(); kelch.lage: die Lage der Hantel dazu
@@ -151,9 +166,9 @@ export function griffBei(k, C, U, vor, li = null, innen = false, schwer = innen 
 
 export function gelenke(pose) {
   const m = MASS;
-  const R = rumpfRahmen(pose.rumpf || {});
+  const RB = rumpfRahmen(pose.rumpf || {}), wb = pose.wirbel || null, R = wb ? wirbelRahmen(RB, wb) : RB;
   const becken = pose.becken.clone();
-  const brust = becken.clone().add(R.oben.clone().multiplyScalar(m.rumpf));
+  const brust = wb ? becken.clone().add(wirbelBogen(RB, wb, m.rumpf)) : becken.clone().add(R.oben.clone().multiplyScalar(m.rumpf));
   const nacken = brust.clone().add(R.oben.clone().multiplyScalar(m.hals));
   const kq = new THREE.Quaternion().setFromAxisAngle(R.links, ((pose.kopf && pose.kopf.neigung) || 0) * RAD);
   if (pose.kopf && pose.kopf.dreh) kq.premultiply(new THREE.Quaternion().setFromAxisAngle(R.oben, pose.kopf.dreh * RAD));
@@ -166,9 +181,13 @@ export function gelenke(pose) {
     r: brust.clone().add(R.links.clone().multiplyScalar(-m.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03 - hubS))
   };
   const schulterBasis = { l: schulter.l.clone(), r: schulter.r.clone() };   // vor dem Mitdrehen des Schultergürtels (Maß für die Rumpfhöhe)
+  // schulterVor (m): Das Schulterblatt gleitet um den Brustkorb, die Schultergelenke wandern entlang R.vor: + vor (auseinander), − zurück (zusammen). Nur für Übungen, die allein daraus bestehen (Schulterblatt-Liegestütz). Ohne Angabe ändert sich nichts
+  const vorS = pose.schulterVor || 0;
+  if (vorS) { schulter.l.addScaledVector(R.vor, vorS); schulter.r.addScaledVector(R.vor, vorS); }
+  if (pose.kopfBleibt) { schulterBasis.l.addScaledVector(R.oben, -hubS); schulterBasis.r.addScaledVector(R.oben, -hubS); }   // Shrugs: der Hub hebt nur den Schultergürtel, sonst streckt er den ganzen Rumpf und der Kopf geht mit
   const huefte = {
-    l: becken.clone().add(R.links.clone().multiplyScalar(m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02)),
-    r: becken.clone().add(R.links.clone().multiplyScalar(-m.hueftBreite)).sub(R.oben.clone().multiplyScalar(0.02))
+    l: becken.clone().add(RB.links.clone().multiplyScalar(m.hueftBreite)).sub(RB.oben.clone().multiplyScalar(0.02)),
+    r: becken.clone().add(RB.links.clone().multiplyScalar(-m.hueftBreite)).sub(RB.oben.clone().multiplyScalar(0.02))
   };
   // Schultergürtel geht mit (Devin, 2.11.: „dass die Schultern nicht ausgekugelt werden, wenn sie in der höheren Position gehen … Lat-Pull-Down, generell Übungen, wo die gestreckt
   // sind“): zeigt der Oberarm über die Waagerechte, hebt sich das Schlüsselbein um sein Ende am Brustbein (Oberarm ganz oben 28°, das Schultergelenk steigt um 8 cm, wie beim Menschen).
@@ -196,7 +215,7 @@ export function gelenke(pose) {
     for (const p of [becken, brust, nacken, kopf, schulter.l, schulter.r, huefte.l, huefte.r, schulterBasis.l, schulterBasis.r]) p.sub(sink);
     for (const d of Object.values(schulterDreh)) d.punkt.sub(sink);
   }
-  const out = { atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterBasis, schulterDreh, R, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
+  const out = { atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -427,6 +446,8 @@ export function gelenke(pose) {
         }
       }
     }
+    // Beine, die gestreckt bleiben sollen (Liegestütz, Stütz): Kippt der Fuß auf die Zehen, steigt der Knöchel, das Bein würde kürzer und das Knie knickte durch. pose.beinGerade hält es gestreckt, der Knöchel rückt dafür ein Stück weiter weg
+    if (pose.beinGerade) { const d = fz.clone().sub(huefte[s]), L = (m.oberschenkel + m.unterschenkel) * 0.998; if (d.length() < L) fz = huefte[s].clone().add(d.setLength(L)); }
     out.fussZiel[s] = fz;
     const bein = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol);
     const fehlt = pose.fussFlaeche && pose.fussFlaeche[s] || fz.y < FUSS_LUFT ? bein.ende.distanceTo(fz) : 1;

@@ -5,7 +5,7 @@
 // koerper.bin und koerper-*.jpg baut kunden-app/modelle/umwandeln.js. Die Punkte liegen dort in der Ruhelage
 // (T-Pose, Blick nach +Z, linke Seite +X, Meter), darum ist jede Knochen-Matrix direkt die Abbildung Ruhelage → jetzt.
 import * as THREE from 'three';
-import { FARBEN, LEUCHTET_MIT, MASS, GRIFF_R, UNTERARM_MAX } from './figur.js';
+import { FARBEN, LEUCHTET_MIT, MASS, GRIFF_R, UNTERARM_MAX, wirbelRahmen, wirbelBogen } from './figur.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const RAD = Math.PI / 180;
@@ -1438,7 +1438,7 @@ export class FigurModell {
     const hart = (name, grund) => grund + (1 - grund) * (arbeit[name] || 0.12) * last;
     ['l', 'r'].forEach((s, i) => {
       const o = richt(g.schulter[s], g.ellbogen[s]), u = richt(g.ellbogen[s], g.handgelenk[s]), beuge = wink(o, u), y = o.dot(R.oben);
-      const th = richt(g.huefte[s], g.knie[s]), sc = richt(g.knie[s], g.knoechel[s]), knie = wink(th, sc), huefte = wink(th, R.oben.clone().negate());
+      const th = richt(g.huefte[s], g.knie[s]), sc = richt(g.knie[s], g.knoechel[s]), knie = wink(th, sc), huefte = wink(th, (g.RB || R).oben.clone().negate());
       const voll = (v) => { v = Math.max(0, Math.min(1, v)); return v * v * (3 - 2 * v); };
       const lat = voll((0.7 - y) / 1.4) * hart('lat', 0.22) - 0.3 * voll((y - 0.7) / 0.25);
       const pu = this.pump && this.pump[s], mit = (n, w) => (pu && pu[n] > w ? pu[n] : w);
@@ -1459,15 +1459,22 @@ export class FigurModell {
     const X = V(1, 0, 0), Y = V(0, 1, 0), Z = V(0, 0, 1);
     const gesetzt = new Set();
     const setze = (name, m) => { if (I[name] === undefined) return; A[I[name]].copy(m); gesetzt.add(I[name]); };
-    // Rumpf: starr wie in gelenke() (Becken bis Hals), Ruhe-Rumpfachse → R.oben, Schultern auf MASS-Höhe
+    // Rumpf: starr wie in gelenke() (Becken bis Hals), Ruhe-Rumpfachse → R.oben, Schultern auf MASS-Höhe. Mit Wirbelsäule (g.wirbel) folgt jeder Knochen ihrem Bogen: Becken wie g.RB, Brustkorb wie g.R, dazwischen anteilig
     const hueft = g.huefte.l.clone().add(g.huefte.r).multiplyScalar(0.5);
     const sb = g.schulterBasis || g.schulter, sy = sb.l.clone().add(sb.r).multiplyScalar(0.5).sub(hueft).dot(R.oben) / r.rumpfHoehe;
     const rumpf = {};
     for (const n of ['Root', 'Hips', 'Spine', 'Spine1', 'Spine2', 'LeftShoulder', 'RightShoulder', 'Neck']) {
       const sx = (BAU.breite[n] || r.schulterSkala) * rumpfB;
+      if (g.wirbel) {
+        const syW = (MASS.rumpf - 0.01 + (g.schulterHub || 0)) / r.rumpfHoehe, h = n === 'Spine' || n === 'Spine1' || n === 'Spine2' ? P(n).clone().sub(r.hueftMitte).dot(r.rumpfOben) : n === 'Root' || n === 'Hips' ? 0 : r.rumpfHoehe;
+        const s = h * syW - 0.02, oberst = h === r.rumpfHoehe, F = h === 0 ? g.RB : oberst ? R : wirbelRahmen(g.RB, g.wirbel, Math.max(0, s / MASS.rumpf));
+        const welt = h === 0 ? hueft : oberst ? sb.l.clone().add(sb.r).multiplyScalar(0.5) : g.becken.clone().add(wirbelBogen(g.RB, g.wirbel, Math.max(0, s)));
+        rumpf[n] = abbilden(new THREE.Matrix4(), r.hueftMitte.clone().addScaledVector(r.rumpfOben, h), X, r.rumpfOben, welt, F.links, F.oben, sx, syW, (BAU.tiefe[n] || 1) * rumpfB);
+      } else
       rumpf[n] = abbilden(new THREE.Matrix4(), r.hueftMitte, X, r.rumpfOben, hueft, R.links, R.oben, sx, sy, (BAU.tiefe[n] || 1) * rumpfB);
       // Shrugs: Schulterknochen (Schlüsselbein, Trapez-Ansatz) gehen mit dem Schulterhub nach oben
       if (g.schulterHub && /Shoulder$/.test(n)) rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(R.oben.x * g.schulterHub, R.oben.y * g.schulterHub, R.oben.z * g.schulterHub));
+      if (g.schulterVor && /Shoulder$/.test(n)) rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(R.vor.x * g.schulterVor, R.vor.y * g.schulterVor, R.vor.z * g.schulterVor));   // Schulterblatt gleitet um den Brustkorb
       // Schlüsselbein dreht mit dem gehobenen Arm (gelenke: schulterDreh)
       const sd = /Shoulder$/.test(n) && g.schulterDreh && g.schulterDreh[n === 'LeftShoulder' ? 'l' : 'r'];
       if (sd) rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(sd.punkt.x, sd.punkt.y, sd.punkt.z).multiply(_T.makeRotationFromQuaternion(sd.q)).multiply(new THREE.Matrix4().makeTranslation(-sd.punkt.x, -sd.punkt.y, -sd.punkt.z)));

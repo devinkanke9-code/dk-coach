@@ -7,7 +7,7 @@
 // rechnet der Ablauf andere Einstiege durch (seitlich hinsetzen und eindrehen, erst hinten absetzen und unter dem Polster durchrutschen,
 // vorn vorbeugen und rückwärts unter das Polster steigen) und nimmt den, bei dem der Körper am wenigsten in Teile eintaucht.
 import * as THREE from 'three';
-import { gelenke, rumpfRahmen, MASS, haltErkennen, hakenGriff, griffBei, KELCH_MASS } from './figur.js';
+import { gelenke, rumpfRahmen, wirbelRahmen, wirbelBogen, MASS, haltErkennen, hakenGriff, griffBei, KELCH_MASS } from './figur.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const RAD = Math.PI / 180, Y = V(0, 1, 0), FY = 0.08;
@@ -27,7 +27,7 @@ const DAUER = { gehen: 1.1, drehen: 0.35, aufheben: 0.7, setzen: 0.9, legen: 1.0
 const kelchVersetzt = (k, d) => (k && k.lage ? Object.assign({}, k, { lage: Object.assign({}, k.lage, { C: k.lage.C.clone().add(d) }) }) : k);
 // Vollständige Pose aus einer Vorlagen-Pose: alle Ziele so, wie gelenke() sie gelöst hat (Faust, Knöchel, Pole, Fußrichtung)
 function vollstaendig(pose) {
-  const g = gelenke(pose), p = { becken: g.becken.clone(), rumpf: { basis: g.R.q.clone() }, kopf: { neigung: (pose.kopf && pose.kopf.neigung) || 0 }, fest: GENAU() };
+  const g = gelenke(pose), p = { becken: g.becken.clone(), rumpf: { basis: g.RB.q.clone() }, wirbel: pose.wirbel || null, kopf: { neigung: (pose.kopf && pose.kopf.neigung) || 0 }, fest: GENAU() };
   const mitte = (a, b) => a.clone().add(b).multiplyScalar(0.5);
   p.hand = seiten((s) => g.hand[s].clone());
   p.fuss = seiten((s) => g.knoechel[s].clone());
@@ -41,6 +41,8 @@ function vollstaendig(pose) {
   // Fläche unter dem Fuß (Box, schräge Platte) mitnehmen, sonst steht der Fuß im letzten Bild des Ablaufs anders als in der Übung
   // (bis 31.10. zeigten beim Pike auf der Box die Zehen 4–6 cm in die Box)
   p.fussFlaeche = seiten((s) => (pose.fussFlaeche && pose.fussFlaeche[s] ? pose.fussFlaeche[s].clone() : null));
+  if (pose.schulterHub) p.schulterHub = pose.schulterHub;
+  if (pose.schulterVor) p.schulterVor = pose.schulterVor;
   p.handKnick = Object.assign({}, pose.handKnick || {});
   p.kelchW = Object.assign({}, g.kelchW);
   // Hantel dort, wo gelenke() die Hände hingelegt hat (Arme über dem Kopf: die Schulter hebt sie mit)
@@ -53,9 +55,9 @@ function vollstaendig(pose) {
 }
 // Schulter- und Hüftgelenk einer Pose mit Rumpf nur aus basis (wie gelenke() sie setzt)
 function wurzeln(p) {
-  const R = rumpfRahmen(p.rumpf), brust = p.becken.clone().addScaledVector(R.oben, MASS.rumpf);
+  const RB = rumpfRahmen(p.rumpf), R = p.wirbel ? wirbelRahmen(RB, p.wirbel) : RB, brust = p.wirbel ? p.becken.clone().add(wirbelBogen(RB, p.wirbel, MASS.rumpf)) : p.becken.clone().addScaledVector(R.oben, MASS.rumpf);
   return { R, schulter: seiten((s, sg) => brust.clone().addScaledVector(R.links, sg * MASS.schulterBreite).addScaledVector(R.oben, -0.03)),
-    huefte: seiten((s, sg) => p.becken.clone().addScaledVector(R.links, sg * MASS.hueftBreite).addScaledVector(R.oben, -0.02)) };
+    huefte: seiten((s, sg) => p.becken.clone().addScaledVector(RB.links, sg * MASS.hueftBreite).addScaledVector(RB.oben, -0.02)) };
 }
 // Ziel (Hand bzw. Fuß) zwischen zwei Posen im Bogen um sein Gelenk: Richtung im Rahmen des Rumpfs auf der Kugel, Abstand linear. Auf
 // gerader Linie ginge die Hand oft an der Schulter vorbei oder durch sie hindurch (Arm klappt ganz zusammen, Ellbogen schlägt um, z. B.
@@ -139,6 +141,9 @@ function mische(A, B, u, hand = u, vorne = 0) {
     becken: lv(A.becken, B.becken, u), rumpf: { basis: A.rumpf.basis.clone().slerp(B.rumpf.basis, u) },
     kopf: { neigung: mix(A.kopf.neigung, B.kopf.neigung, u) }, fest: GENAU()
   };
+  if (A.schulterHub || B.schulterHub) p.schulterHub = mix(A.schulterHub || 0, B.schulterHub || 0, u);   // Schultergürtel läuft mit, sonst springt er am Ende des Ablaufs in die Startpose
+  if (A.schulterVor || B.schulterVor) p.schulterVor = mix(A.schulterVor || 0, B.schulterVor || 0, u);
+  if (A.wirbel || B.wirbel) { const wa = A.wirbel || {}, wb = B.wirbel || {}; p.wirbel = { beuge: mix(wa.beuge || 0, wb.beuge || 0, u), seit: mix(wa.seit || 0, wb.seit || 0, u), dreh: mix(wa.dreh || 0, wb.dreh || 0, u) }; }
   const wA = wurzeln(A), wB = wurzeln(B), wM = wurzeln(p);
   p.hand = seiten((s) => imBogen(A.hand[s], B.hand[s], wA, wB, { n: 'schulter', m: wM }, hand, s));
   p.fuss = seiten((s) => imBogen(A.fuss[s], B.fuss[s], wA, wB, { n: 'huefte', m: wM }, u, s));
@@ -278,6 +283,7 @@ function uebergang(von, s) {
       p.becken.y = mix(A.becken.y, s.ziel.becken.y, glatt((u - 0.3) / 0.6));
     }
     if (s.bogen) p.becken.y += s.bogen * Math.sin(Math.PI * g);
+    if (s.handHoch) p.hand = seiten((k) => p.hand[k].clone().add(V(0, s.handHoch * Math.sin(Math.PI * h), 0)));   // Vorlage: die Hand geht im Bogen über eine Kante
     if (s.aussen) { const R = rumpfRahmen(p.rumpf), w = s.aussen * Math.sin(Math.PI * h); p.hand = seiten((k, sg) => p.hand[k].clone().addScaledVector(R.links, sg * w)); }
     if (s.heben) { const hb = s.heben * Math.sin(Math.PI * Math.min(1, g / (s.hebenBis || 1))); for (const k of ['l', 'r']) p.fuss[k].y += hb; }
     return s.dreh ? drehePose(p, s.dreh.m, -s.dreh.w * (1 - g)) : p;
@@ -522,7 +528,7 @@ function anlauf(P, wEnde, W, R, Q, erlaubt) {
 // Klassisch je nach Art der Startpose: hinsetzen (vor dem Sitz stehen), hinlegen (am Ende der Bank sitzen, zurücklegen),
 // am Boden erst knien, hängen (unter der Stange greifen), sonst einfach in die Pose
 // hantel: mit Hanteln in den Händen (true; 'beide' = eine Hantel für beide Hände)
-function klassisch(art, G, Gp, gg, hantel = false, frei = false) {
+function klassisch(art, G, Gp, gg, hantel = false, frei = false, sitzVersatz = 0) {
   const fussMitte = gg.knoechel.l.clone().add(gg.knoechel.r).multiplyScalar(0.5);
   if (art === 'sitzen') {
     const blick = waag(gg.R.vor);
@@ -534,10 +540,10 @@ function klassisch(art, G, Gp, gg, hantel = false, frei = false) {
     const blick = waag(gg.R.oben).negate();   // Richtung Füße
     const q = drehY(winkelVon(blick));
     const sitz = stehen(gg.becken, winkelVon(blick));
-    sitz.becken = gg.becken.clone();
+    sitz.becken = gg.becken.clone().addScaledVector(blick, sitzVersatz);   // sitzVersatz (Vorlage): weiter vorn oder hinten hinsetzen, wenn dort eine Stange im Weg ist
     const R = rumpfRahmen(sitz.rumpf);
     const aufBoden = Math.max(gg.knoechel.l.y, gg.knoechel.r.y) < 0.18;
-    sitz.fuss = seiten((s, sg) => aufBoden ? gg.knoechel[s].clone() : gg.becken.clone().add(blick.clone().multiplyScalar(0.42)).add(R.links.clone().multiplyScalar(sg * 0.14)).setY(FY));
+    sitz.fuss = seiten((s, sg) => aufBoden ? gg.knoechel[s].clone() : sitz.becken.clone().add(blick.clone().multiplyScalar(0.42)).add(R.links.clone().multiplyScalar(sg * 0.14)).setY(FY));
     sitz.kniePol = seiten((s, sg) => V(sg * 0.2, 1, 0.6).applyQuaternion(q));
     // Am Boden und nichts zu greifen (Devin, 2.11. zum Dead Bug: „Arme … locker mit dem Körper … erstmal auf dem Boden liegt mit dem Rücken und dann gehen die Hände hoch
     // langsam und dann fängt er an“): hinsetzen, zurücklegen mit den Armen neben dem Körper und den Füßen am Boden, dann die Beine, zuletzt ruhig die Hände
@@ -551,7 +557,7 @@ function klassisch(art, G, Gp, gg, hantel = false, frei = false) {
       schritte.push({ ziel: Gp, d: Math.max(0.5, Math.min(1.8, weg / 0.45)) });
       return { name: art, blick, stand: gg.becken.clone().add(blick.clone().multiplyScalar(0.22)), schritte };
     }
-    return { name: art, blick, stand: gg.becken.clone().add(blick.clone().multiplyScalar(0.22)),
+    return { name: art, blick, stand: sitz.becken.clone().add(blick.clone().multiplyScalar(0.22)),
       // mit Hanteln: sie liegen beim Sitzen auf den Oberschenkeln und gehen beim Zurücklegen nah am Körper zur Brust (nicht neben die Bank)
       schritte: hantel ? [{ ziel: hantelnAufBeinen(sitz, hantel === 'beide', Gp.kelch), d: DAUER.setzen, aussen: 0.1 }, { ziel: Gp, d: DAUER.legen + DAUER.greifen, aussen: 0.06 }]
         : [{ ziel: haendeAufBeinen(sitz), d: DAUER.setzen }, { ziel: haendeNeben(Gp), d: DAUER.legen }, { ziel: Gp, d: DAUER.greifen, verzug: 0.35 }] };
@@ -583,7 +589,7 @@ function plattformUnter(gg, Q) {
   let best = null;
   for (const q of Q) for (const s of ['l', 'r']) {
     const z = gg.zehe[s], d = z.y - q.top;
-    if (q.top < 0.05 || d < 0.01 || d > 0.07 || abstand2(z.x, z.z, q.grund) > 0.02) continue;
+    if (q.top < 0.05 || d < 0.01 || d > 0.09 || abstand2(z.x, z.z, q.grund) > 0.02) continue;
     if (!best || q.top > best.top) best = { q, top: q.top };
   }
   return best;
@@ -603,10 +609,10 @@ function aufsteigen(art, Gp, gg, P, d, hantel) {
     return { name: 'aufsteigen1', blick, stand, schritte: [{ ziel: Gp, d: 0.9 + 0.8 * h, steigen: { erst: oben[0], bogen: 0.06 } }], vorwaerts: true };
   }
   const kante = Math.max(0, ...P.q.grund.map(([x, z]) => (x - S0.x) * d.x + (z - S0.z) * d.z));   // so weit reicht die Plattform in Richtung d
-  const stand = S0.clone().addScaledVector(d, kante + 0.17), wf = winkelVon(d.clone().negate()), dw = kurz(wB - wf);
+  const stand = S0.clone().addScaledVector(d, kante + 0.22), wf = winkelVon(d.clone().negate()), dw = kurz(wB - wf);
   // Unter einer Stange (Klimmzug) oben nicht höher als in der Startpose: in den Knien, sonst stößt der Kopf an
   const tief = art === 'haengen' ? Math.max(0, gelenke(stehen(S0, wB, { hoch: h })).kopf.y - gg.kopf.y) : 0, o = { hoch: h, tief };
-  const schritte = [{ ziel: stehen(S0, wf, o), d: 0.75 + 1.2 * h, steigen: { bogen: 0.06 } }];
+  const schritte = [{ ziel: stehen(S0, wf, o), d: 0.75 + 1.2 * h, steigen: { bogen: 0.09 } }];
   if (Math.abs(dw) > 0.15) schritte.push({ ziel: stehen(S0, wB, o), d: 0.35 + 0.25 * Math.abs(dw), dreh: { m: S0, w: dw } });
   if (art === 'haengen') {
     const greifen = stehen(S0, wB, { ...o, hand: seiten((s) => gg.hand[s].clone()) });
@@ -792,6 +798,10 @@ export function baueEinleitung(anim, ger, z, kamera) {
   } else if (k0 === 'bauchlage' && k1 === 'bauchlage') G = L1.g.becken.y > L0.g.becken.y + 0.02 ? L1 : L0;   // Liegestütz: oben anfangen (bleibt das Becken, wie beim Vierfüßler: vorn, Bein noch unten)
   else if (stehend && k0 !== 'stehen') G = L1;   // ohne Last aus der Hocke (Kniebeuge): aufrecht anfangen
   if (anim.ablaufT === 1) G = L1;   // Vorlage will oben anfangen (Hantel über dem Kopf: erst hoch, dann die erste Wiederholung; von unten ginge sie durch den Körper)
+  if (anim.ablaufUnten) G = L0;   // Vorlage will unten anfangen (Hip Thrust: die Stange kommt vom Boden oder aus dem Haken zur Hüfte, die Übung beginnt dort)
+  // ablaufVor (Vorlage): Pose, in die der Ablauf führt; aus ihr geht es zum Schluss in die Startpose (Klimmzug oben halten: erst auf die Box und an die Stange, dann hoch)
+  let dannStart = null;
+  if (anim.ablaufVor) { dannStart = G.pose; G = { t: G.t, erg: G.erg, ...vollstaendig(anim.ablaufVor()) }; }
   props(G);   // alle Geräte in ihre Startlage
   const art = kategorie(G.g), gg = G.g, Gp = G.pose;
   // Welche Hand hält in der Startpose etwas, und wie liegt der Griff (für das Hingreifen)
@@ -827,7 +837,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
   }
 
   // Ständer für eine Langhantel, die nicht am Boden liegt: zwei Pfosten mit Haken unter den Stangenenden (nicht für die Latzugstange am Seil)
-  if (z.lh && !z.seil && z.lh.position.y >= 0.3 && (art === 'stehen' || art === 'rueckenlage' || art === 'sitzen')) {
+  if (z.lh && !z.seil && !anim.ablaufEigen && z.lh.position.y >= 0.3 && (art === 'stehen' || art === 'rueckenlage' || art === 'sitzen')) {
     const c = z.lh.position.clone(), a = V(1, 0, 0).applyQuaternion(z.lh.quaternion).normalize();
     const weg = art === 'rueckenlage' ? waag(gg.R.oben).multiplyScalar(0.12) : waag(gg.R.vor).multiplyScalar(0.24);
     for (const sx of [-1, 1]) {
@@ -899,6 +909,11 @@ export function baueEinleitung(anim, ger, z, kamera) {
     }
   }
 
+  // ablaufEigen (Vorlage): eigener Einstieg { name, blick, stand, von, schritte, griffNach, ruhe }. ruhe = Pose beim Greifen: die Geräte liegen bis dahin so, wie die Hände sie dann
+  // halten (Stange oder Band am Boden, Stange oben im Haken), statt in Übungslage im Weg zu stehen. Ab dem Greifen führen die props der Vorlage sie aus der Pose
+  const eigen = anim.ablaufEigen ? anim.ablaufEigen({ Gp, gg, stehen, haendeAufBeinen }) : null;
+  if (eigen && eigen.ruhe && G.erg.props) { G.erg.props(gelenke(eigen.ruhe), z); for (const o of obj) o.updateMatrixWorld(true); }
+
   // Geräte als Hindernisse; erlaubt ist, was die Startpose selbst berührt (Sitz, Polster, Griffe)
   const Q = quader(ger, new Set(hanteln.map((n) => z[n])));
   QAKT = Q;   // für haendeAufBeinen (Ellbogen nicht ins Gerät)
@@ -917,7 +932,9 @@ export function baueEinleitung(anim, ger, z, kamera) {
     halter[n] = dl < 0.2 && dr < 0.2 ? 'beide' : dl <= dr ? 'l' : 'r';
   }
   const hantelArt = hanteln.length ? (Object.values(halter).includes('beide') ? 'beide' : true) : false;
-  const plaene = [kabel || latzug || klassisch(art, G, Gp, gg, hantelArt, !griffEnde.l && !griffEnde.r)];
+  const plaene = [eigen || kabel || latzug || klassisch(art, G, Gp, gg, hantelArt, !griffEnde.l && !griffEnde.r, anim.sitzVersatz || 0)];
+  // Vorlage kann den Stehplatz verschieben (Wand, Rahmen oder Rollen genau dort, wo das Becken der Startpose ist) und dem letzten Schritt einen Bogen geben (Fuß hinauf auf die Bank)
+  if (!kabel && !latzug && anim.schrittExtra) Object.assign(plaene[0].schritte[plaene[0].schritte.length - 1], anim.schrittExtra);
   // Erhöhter Stand (Klimmzug-Box, Stufe beim Wadenheben): statt in der Box zu stehen vor die Kante laufen und hinaufsteigen; von der
   // Seite, wo der Körper am wenigsten in Teile eintaucht (vorwärts hinauf bevorzugt). Tritt gegen den klassischen Einstieg an (unten),
   // der bleibt, wo das Hinaufsteigen mehr streift (Wadenmaschine: Kopf an den Griffen)
@@ -938,8 +955,10 @@ export function baueEinleitung(anim, ger, z, kamera) {
     if (art === 'sitzen' && auflage(Q, gg.becken) > 0.2) for (const sg of [1, -1])   // seitlich nur auf einen Sitz
       for (const zurueck of [0.03, 0.1]) for (const heben of [0.1, 0.03]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, heben));
     if (art === 'rueckenlage') for (const d of [0.35, 0.5, 0.62]) plaene.push(langsitz(Gp, gg, Q, d));
-    if ((art === 'bauchlage' || art === 'seitlage') && gg.becken.y >= 0.5 && Math.min(gg.knoechel.l.y, gg.knoechel.r.y) < 0.4) for (const d of [0.32, 0.45]) plaene.push(vorgebeugt(Gp, gg, d));
+    if (((art === 'bauchlage' || art === 'seitlage') && gg.becken.y >= 0.5 && Math.min(gg.knoechel.l.y, gg.knoechel.r.y) < 0.4) || anim.einstiegVorgebeugt) for (const d of [0.32, 0.45, ...(anim.einstiegVorgebeugt ? [0.6] : [])]) plaene.push(vorgebeugt(Gp, gg, d));
   }
+  if (eigen) plaene.length = 1;
+  if (anim.standVersatz && !kabel && !latzug) for (const p of plaene) p.stand = p.stand.clone().add(anim.standVersatz);
   const abgerueckt = new Map();   // gleiche Lage und gleiches Hinsetzen (Varianten, die sich erst beim Eindrehen unterscheiden): nur einmal rechnen
   for (const p of plaene) {
     // Vor dem Sitz: so weit abrücken (bis 20 cm), wie es das Eintauchen beim Stehen, Umdrehen und Hinsetzen verringert (sonst streift
@@ -964,14 +983,14 @@ export function baueEinleitung(anim, ger, z, kamera) {
   const startVon = (stand, sg) => { const s = stand.clone().setY(0).add(kh.clone().multiplyScalar(-0.25)).add(seitlich.clone().multiplyScalar(1.4 * sg)); if (V(s.x, 0, s.z).length() > 1.9) s.setLength(1.9); return s; };
   let R = null, QW = Q; const W = {};   // QW: Hindernisse beim Laufen (mit den Hanteln am Boden)
   const weg = (plan) => {
-    const wEnde = winkelVon(plan.blick), P = plan.stand.clone().setY(0), start = startVon(P, 1);
+    const wEnde = winkelVon(plan.blick), P = plan.stand.clone().setY(0), start = plan.von || startVon(P, 1);   // von (ablaufEigen): Anlauf von dort (Pull-Through: quer zum Seil, nicht an ihm entlang)
     const erlaubt = tiefen(gelenke(stehen(P, wEnde)), QW).map((t) => t + 0.015);   // beim Laufen zählt nur, was die Figur am Standpunkt berührt
     const gerade = [], meter = start.distanceTo(P), richt = winkelVon(P.clone().sub(start));
     for (let s = 0, i = 0; s <= meter; s += 0.08, i++) gerade.push(gehend(start.clone().lerp(P, s / meter), richt, i, meter - s));
     for (const u of [0.5, 1]) gerade.push(stehen(P, richt + kurz(wEnde - richt) * u));
     let stossGerade = QW.length ? stoss(gerade, QW, erlaubt) : 0;
     if (stossGerade >= 0.015) { if (!R) R = raster(QW); stossGerade = Math.max(stossGerade, quer(P, start, meter, R)); }
-    if (stossGerade < 0.015) return { punkte: [start, P], stoss: stossGerade, laenge: meter };
+    if (stossGerade < 0.015 || plan.von) return { punkte: [start, P], stoss: stossGerade, laenge: meter };
     if (!R) R = raster(QW);
     let best = null;
     for (const sg of [1, -1]) {
@@ -1001,6 +1020,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
     const w0 = winkelVon(klass.blick), quer = V(klass.blick.z, 0, -klass.blick.x);
     for (const [d, r] of [[0, 0], [0.15, 0], [-0.15, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3], [0.45, 0], [-0.45, 0], [-0.3, 0.3], [-0.3, -0.3], [0, 0.5], [0, -0.5], [-0.6, 0]]) {
       const A = klass.stand.clone().addScaledVector(klass.blick, d).addScaledVector(quer, r), a = aufhebePlan(A, w0, z, halter, Q);
+      if (anim.aufhebeFrei) a.wahl.verstoss = Math.max(a.wahl.verstoss, stoss([stehen(A, w0), stehen(A.clone().lerp(klass.stand, 0.5), w0), stehen(klass.stand, w0)], Q, erlaubtEnde));   // Vorlage: auch aufrecht und auf dem Weg zum Stehplatz muss Platz sein (Negativbank: in der Hocke frei, aufrecht in der Rolle)
       if (!auf || a.wahl.verstoss < auf.wahl.verstoss - 0.005) auf = Object.assign(a, { A, d: Math.hypot(d, r) });
       if (auf.wahl.verstoss < 0.005) break;
     }
@@ -1082,6 +1102,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
   const knieQuer = auf && art === 'sitzen' && griffEnde.l && Math.abs(griffEnde.l.dot(gg.R.links)) > 0.9 && Math.abs(gg.hand.l.y - gg.huefte.l.y - 0.07) < 0.13;
   if (knieQuer) for (const s of schritte) if (s.ziel !== Gp) s.ziel = Object.assign({}, s.ziel, { ellbogenPol: seiten((k, sg) => gg.R.links.clone().multiplyScalar(sg * 0.35).addScaledVector(gg.R.oben, -1).addScaledVector(gg.R.vor, -0.3)) });
   for (const s of schritte) { teile.push({ d: s.d, bild: uebergang(vorher, s) }); vorher = s.ziel; }
+  if (dannStart) { const st = { ziel: dannStart, d: 0.9 }; teile.push({ d: st.d, bild: uebergang(vorher, st) }); vorher = dannStart; }
   // Kommt die Hand erst mit dem letzten Schritt an, bleibt kurz Zeit zum Zugreifen, bevor die Übung beginnt
   const tEnde = teile.reduce((a, x) => a + x.d, 0);
   if (Object.values(griffPlan).some((p) => p.an > tEnde - 0.2)) { const ziel = vorher; teile.push({ d: 0.3, bild: () => ziel }); }
@@ -1098,6 +1119,9 @@ export function baueEinleitung(anim, ger, z, kamera) {
     return { griffZu: zu, handAuf: offen, griffVor: vor };
   };
   const dauer = teile.reduce((a, x) => a + x.d, 0);
+  // Handtuch (Rolle am Ellbogen, Tuch zwischen den Händen): hängt nicht in der Luft, bis die Figur es in der Hand hat
+  const tuch = z.tuch && z.tuch.isObject3D ? z.tuch : null;
+  if (tuch) tuch.visible = false;
   return {
     dauer, tStart: G.t, griffPlan,
     // Pose zur Zeit sek (setzt bis zum Aufstehen auch die Hanteln); gehtMit: ab wann die Geräte mit den Händen mitgehen (Hanteln nach
@@ -1107,6 +1131,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
       for (const teil of teile) { if (x <= teil.d) { p = teil.bild(teil.d > 0 ? x / teil.d : 1); break; } x -= teil.d; }
       if (!p) p = teile[teile.length - 1].bild(1);
       if (auf && sek < tMit) halten(sek, p);
+      if (tuch) tuch.visible = sek >= Math.min(tMit, tGriff);
       return Object.assign({}, p, griffStand(sek));
     },
     gehtMit: (sek) => sek >= Math.min(tMit, tGriff),
