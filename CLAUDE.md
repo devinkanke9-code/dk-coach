@@ -17,3 +17,15 @@ Alle Pläne, der aktuelle Stand und das Übergabe-Protokoll stehen im privaten D
   die Änderung beim nächsten Build am PC.
 - Das Repo ist **öffentlich**. Keine Pläne, Zahlen, Namen, Verträge oder anderen privaten
   Informationen hier ablegen. Die gehören ins Plan-Dokument.
+
+## akademie/ (DK Akademie als Web-App)
+
+- Kommt **nicht** vom Build am PC. Beim Bauen und Committen der Kunden-App den Ordner
+  `akademie/` nicht löschen.
+- Einstieg ist `akademie/lernen.html`, nicht `akademie/`. Der Offline-Speicher der Kunden-App
+  (`sw.js`) liefert für Seiten auf `/` und `index.html` sonst die Kunden-App aus.
+- Die Lektionen liegen verschlüsselt in `inhalt.dkx`. Der Code steht nur im Plan-Dokument und
+  darf nie ins Repo.
+- Bauen: `DK_AKADEMIE_CODE=… node akademie/bauen.mjs --ak <ak.js> [--artifact <seite.html>]`
+  erzeugt `inhalt.dkx`, `sw.js` und die claude.ai-Fassung. `--auspacken <ak.js>` entschlüsselt
+  die Lektionen wieder. Die Logik steht in `akademie.js` und gilt für beide Fassungen.
