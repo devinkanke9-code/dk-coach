@@ -136,6 +136,19 @@ function koerperKapseln(g) {
   for (const s of ['l', 'r']) k.push([g.huefte[s], g.knie[s], 0.11], [g.knie[s], g.knoechel[s], 0.065], [g.schulter[s], g.ellbogen[s], 0.078], [g.ellbogen[s], g.handgelenk[s], 0.05]);
   return k;
 }
+// Strang des Bands zwischen den Händen (Schlinge, hinter dem Nacken): Er hängt nie in der Luft und erscheint nie aus dem Nichts, sondern ist von Anfang an das obere Ende der Schlinge. Am Boden liegt er flach
+// zwischen den Händen, dann zieht er sich gerade; geht er durch den Körper, läuft er außen herum (hinter dem Kopf: nach hinten, sonst vor dem Körper). Das Ende liegt erst in der Hand, dann 5,5 cm in der Faust
+function bandSchlingeOben(z, g) {
+  const A = g.hand.l, B = g.hand.r, mitte = (A.y + B.y) / 2, e = 0.055 * Math.min(1, Math.max(0, (mitte - 0.15) / 0.3)) / Math.max(0.1, A.distanceTo(B));
+  const hinten = Math.min(A.y, B.y) > g.brust.y - 0.1, nach = hinten ? g.R.vor.clone().negate() : g.R.vor.clone();
+  const pkt = umDenKoerper(g, A.clone().lerp(B, e), B.clone().lerp(A, e), 0.012, nach);
+  const sack = (mitte - 0.012) * (1 - Math.min(1, Math.max(0, (mitte - 0.05) / 0.3)));   // unten liegt das Band auf dem Boden, nur an den Händen hebt es sich
+  if (sack > 0.001) {
+    if (pkt.length === 2) pkt.splice(1, 0, pkt[0].clone().lerp(pkt[1], 0.12), pkt[0].clone().lerp(pkt[1], 0.88));
+    for (let i = 1; i < pkt.length - 1; i++) pkt[i].y = Math.max(0.012, pkt[i].y - sack);
+  }
+  bandKette(z, 'band_n', pkt);
+}
 // Band unter dem Fuß: kommt an der Außenkante des Mittelfußes am Boden heraus, nicht mitten durch den Fuß (bis 31.10. 2,6–3,1 cm darin)
 function bandAmFuss(g, s, aussen) {
   const mitte = g.ferse[s].clone().lerp(g.ballen[s], 0.5);
@@ -311,7 +324,7 @@ function stuhlBauen(ger, x0, zLehne) {
 // Kniebeuge. last: hinten | vorne | goblet | keine | kurzhanteln | multipresse | kettlebell | haengend (eine Hantel hängt zwischen den Beinen) | band ; box, fersen (Fersen erhöht): true ; breite: Faktor
 // stuhl: true (vom Stuhl aufstehen, Arme gekreuzt: eigene Bewegung, 5.11.) ; ablagen: true (Sicherungsablagen seitlich, knapp unter der Stange am tiefsten Punkt)
 // dauer: [hoch, oben, runter, unten] in s (z. B. Pause unten; wirkt bei jeder Vorlage über animation())
-// Ablauf davor (wirkt über animation()): standVersatz, ablaufBand
+// Ablauf davor (wirkt über animation()): standVersatz, ablaufBand (schlinge: Band als geschlossene Schlinge am Boden, die Figur steigt darauf, nimmt sie auf und legt sie hinter den Nacken)
 export function kniebeuge(o = {}) {
   const last = o.last || 'hinten', tiefe = o.tiefe != null ? o.tiefe : 1, stuhl = !!o.stuhl, sumo = (o.breite || 1) > 1.5;
   // Fersen schulterbreit, etwa 1,05× (bis 5.11. 0,15: 0,65×); Aufstehen vom Stuhl hüftbreit, wie der Text es sagt
@@ -331,7 +344,7 @@ export function kniebeuge(o = {}) {
       if (last === 'hinten' || last === 'vorne' || last === 'multipresse') z.lh = ger.langhantel();
       if (last === 'goblet') z.kh_l = kopfRund(ger.kurzhantel(KELCH_MASS.schwer));
       if (last === 'haengend') z.kh_l = ger.kurzhantel();
-      if (last === 'band') for (const n of ['band_l', 'band_r', 'band_n']) z[n] = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand);
+      if (last === 'band') for (const n of ['band_l', 'band_r', 'band_n', 'band_unter']) z[n] = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand);
       if (o.fersen) ger.box(0.5, 0.035, 0.12, V(0, 0.0175, -0.05), ger.mRahmen);
       if (last === 'kettlebell') z.kb = ger.kettlebell();
       if (last === 'kurzhanteln') khAufbauen(ger, z);
@@ -415,9 +428,8 @@ export function kniebeuge(o = {}) {
           if (z.kh_l && last === 'haengend') kelchAn(z.kh_l, g, V(0, 1, 0));
           if (z.band_l) {
             for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, g.hand[s].y < 0.72 ? [g.hand[s], bandAmFuss(g, s, sg)] : umDenKoerper(g, bandAmFuss(g, s, sg), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)).reverse());   // von der Hand aus: das erste Stück bleibt in der Hand, wie lang die Kette auch ist; beim Aufheben liegt das Band außen, gerade
-            // Der Strang hinter dem Nacken erst, wenn die Hände oben sind (Ablauf davor: beim Aufheben ginge er sonst quer durch den Körper)
-            if (Math.min(g.hand.l.y, g.hand.r.y) > g.brust.y - 0.1) { const e = 0.055 / g.hand.l.distanceTo(g.hand.r); bandKette(z, 'band_n', umDenKoerper(g, g.hand.l.clone().lerp(g.hand.r, e), g.hand.r.clone().lerp(g.hand.l, e), 0.012, g.R.vor.clone().negate())); }   // die Enden kommen aus den Fäusten
-            else for (const m of z.band_n_kette || [z.band_n]) m.visible = false;
+            seil(z.band_unter, bandAmFuss(g, 'l', 1), bandAmFuss(g, 'r', -1));   // unter beiden Füßen durch: ein Band, nicht zwei Stücke (bis 5.11.)
+            bandSchlingeOben(z, g);
           }
           if (z.kb) kbBeide(z.kb, g);
           if (last === 'kurzhanteln') kurzhantelnAn(z, g, 'hammer');
@@ -780,8 +792,11 @@ function fussLocker(h, z, pol, grad) {
 const HT_P = V(0, 0.32, 1.06);   // Hip-Thrust-Maschine: Drehpunkt der Hebel vorn
 // Band am Boden, Ablauf davor (bis 5.11. hing es beim Hinlaufen in Übungslage in der Luft, die Figur ging hinein): Das Band liegt flach da, wo die Füße hinkommen, und seine Enden daneben.
 // Die Figur stellt sich darauf, geht in die Hocke, greift die Enden und steht auf. art: 'zwischen' (Griff zwischen den Füßen, das Seil kommt von hinten: Pull-Through), 'stange' (Griffstange liegt vor den Füßen, das Kabel kommt zwischen ihnen durch)
+// schlinge (Kniebeuge mit Band) und enden (Schulterdrücken mit Band, 5.11.): Das Band liegt als ein durchgehendes Stück am Boden (schlinge: geschlossen, die Enden greift die Figur und legt sie über den Kopf
+// hinter den Nacken; enden: ein Streifen unter beiden Füßen, die Enden zeigen nach vorn). Die Figur kommt von hinten, steigt mit beiden Füßen darauf, geht in die Hocke, greift und steht mit dem Band auf (bis 5.11.
+// zwei getrennte Stücke am Boden, der Strang im Nacken erschien beim Aufstehen aus dem Nichts)
 function bandVomBoden({ Gp, gg, stehen }, art = '') {
-  const zwischen = art === 'zwischen', stange = art === 'stange';
+  const zwischen = art === 'zwischen', stange = art === 'stange', schlinge = art === 'schlinge', enden = art === 'enden';
   const blick = V(gg.R.vor.x, 0, gg.R.vor.z).normalize(), w = Math.atan2(blick.x, blick.z), q = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), w);
   const fm = gg.knoechel.l.clone().add(gg.knoechel.r).multiplyScalar(0.5).setY(0), welt = (x, y, zz) => V(x, y, zz).applyQuaternion(q).add(fm);
   const stand = fm.clone().addScaledVector(blick, -0.03);
@@ -792,6 +807,22 @@ function bandVomBoden({ Gp, gg, stehen }, art = '') {
   hocke.hand = seiten((s, sg) => (zwischen ? welt(sg * 0.05, 0.04, 0.03) : stange ? welt(sg * Math.abs(Gp.hand[s].x), 0.05, 0.5) : welt(sg * 0.3, 0.05, 0.22)));
   hocke.handflaeche = seiten((s, sg) => V(-sg, 0, 0).applyQuaternion(q));
   hocke.ellbogenPol = seiten((s, sg) => V(sg, 0, zwischen ? 0.2 : -0.5).applyQuaternion(q));
+  if (schlinge || enden) {
+    const hoehe = beckenGestreckt(FY, Math.abs(Gp.fuss.l.x) - MASS.hueftBreite, 0.03), kPol = seiten((s, sg) => V(sg * 0.35, 0, 1).applyQuaternion(q));
+    const auf = stehen(stand, w); auf.becken = welt(0, hoehe, 0); auf.fuss = hocke.fuss; auf.fussRicht = hocke.fussRicht;   // aufrecht, die Füße schon auf dem Band
+    const schritte = [{ ziel: auf, d: 0.75, steigen: { bogen: 0.06, erst: 'l' } }, { ziel: hocke, d: 0.85, verzug: 0.2 }];
+    if (schlinge) {
+      // Aufstehen, die Hände vor dem Bauch am Band; dann hoch über den Kopf nach hinten und mit dem Band auf den Nacken; zuletzt hinunter in die Tiefe der Übung
+      const hoch = stehen(stand, w, { neigung: 4 });
+      Object.assign(hoch, { becken: welt(0, hoehe, 0), fuss: hocke.fuss, fussRicht: hocke.fussRicht, kniePol: kPol });
+      const sch = gelenke(hoch).schulter;
+      hoch.hand = seiten((s, sg) => sch[s].clone().add(V(sg * 0.09, -0.55, 0.28).applyQuaternion(q)));
+      hoch.ellbogenPol = seiten((s, sg) => V(sg, -0.3, -0.7).applyQuaternion(q));
+      const kopf = Object.assign({}, hoch, { hand: seiten((s, sg) => sch[s].clone().add(V(sg * 0.25, 0.56, -0.12).applyQuaternion(q))), ellbogenPol: seiten((s, sg) => V(sg, 0, -0.3).applyQuaternion(q)) });
+      schritte.push({ ziel: hoch, d: 0.75, aussen: 0.08 }, { ziel: kopf, d: 0.85 }, { ziel: Gp, d: 0.95 });   // aussen: die Stränge laufen beim Aufstehen außen an Oberschenkel und Knie vorbei
+    } else schritte.push({ ziel: Gp, d: 1.4, verzug: 0.1 });   // Hände mit dem Band zu den Schultern: nicht in 0,6 s, sondern in einem ruhigen Zug
+    return { name: schlinge ? 'bandschlinge' : 'bandenden', blick, stand: stand.clone().addScaledVector(blick, -0.25), griffNach: 2, ruhe: hocke, schritte };
+  }
   if (zwischen) {   // über das Seil stellen: davor anhalten und umdrehen, dann rückwärts darüber (beim Drehen auf der Stelle streiften die Schienbeine das Seil)
     const breit = stehen(stand, w); breit.fuss = hocke.fuss; breit.fussRicht = hocke.fussRicht;
     return { name: 'bandboden', blick, stand: stand.clone().addScaledVector(blick, 0.36), griffNach: 2, ruhe: hocke, schritte: [{ ziel: breit, d: 0.8, steigen: { bogen: 0.05, erst: 'l' } }, { ziel: hocke, d: 0.9, verzug: 0.2 }, { ziel: Gp, d: 1 }] };
@@ -828,7 +859,7 @@ function hipThrustAblauf({ Gp, stehen, haendeAufBeinen }, smith) {
     const vornAuf = haendeAufBeinen(Object.assign(sitzt(0.58, -0.4, 2, 0.08), { kniePol: seiten((s, sg) => V(sg * 0.2, 1, 0.6)) }));
     const kante = haendeAufBeinen(sitzt(0.56, -0.2, 8, 0.36));
     const rutscht = haendeAufBeinen(sitzt(0.14, 0.1, -32, 0.62, 0.2));
-    const greift = anStange(sitzt(0.15, 0.12, -34, 0.62, 0.2), Gp.hand.l.y + 0.33, Gp.hand.l.z, [0.5, -1, 0]);
+    const greift = anStange(sitzt(0.15, 0.12, -34, 0.62, 0.2), Gp.hand.l.y + 0.18, Gp.hand.l.z, [0.5, -1, 0]);   // Haken 18 cm über der Startlage der Stange (bis 5.11. 33 cm: Stange knapp 0,6 m hoch, im Studio hängt sie in den untersten Haken)
     return { name: 'hipthrust_smith', blick: V(0, 0, -1), stand: V(0, 0, -0.75), von: V(-1.5, 0, -0.75), griffNach: 7, ruhe: greift,
       schritte: [{ ziel: aufBank, d: 0.9 }, { ziel: angezogen, d: 0.45 }, { ziel: vornOben, d: 0.8, dreh: { m: B, w: -Math.PI } }, { ziel: vornAuf, d: 0.45 }, { ziel: kante, d: 0.5 }, { ziel: rutscht, d: 0.7 }, { ziel: greift, d: 0.8, verzug: 0.2 }, { ziel: Gp, d: 1 }] };
   }
@@ -2419,7 +2450,7 @@ const spUnten = (sg) => spSchulter(sg).add(V(sg * 0.13, 0.12, 0.3)), spOben = (s
 const SP_C = bogenMitte(spUnten(1), spOben(1), { z: -0.7 });
 // Schulterdrücken. last: langhantel | kurzhanteln | maschine | kettlebell | band ; sitzend: bool ; art: druecken | arnold | landmine
 // Neu: art pushpress (Langhantel, kurzer Kniestoß) ; last multipresse ; einarmig (links drückt, rechts an der Hüfte) ; boden (Z-Press, am Boden sitzend)
-// Ablauf davor (wirkt über animation()): ablaufBand
+// Ablauf davor (wirkt über animation()): ablaufBand (enden: ein Band unter beiden Füßen, je ein Ende in der Hand; die Figur steigt darauf und nimmt die Enden vom Boden auf)
 export function schulterdruecken(o = {}) {
   const last = o.last || 'kurzhanteln', art = o.art || 'druecken', sitzend = o.sitzend !== false && last !== 'langhantel' ? !!o.sitzend : false;
   const stange = last === 'langhantel' || last === 'multipresse', boden = !!o.boden;
@@ -2435,7 +2466,7 @@ export function schulterdruecken(o = {}) {
       if (last === 'kettlebell' && o.einarmig) z.kb = ger.kettlebell();
       else if (last === 'kurzhanteln' || last === 'kettlebell') khAufbauen(ger, z, !o.einarmig);
       if (last === 'maschine') drueckmaschineBauen(ger, z, SP_BECKEN, SP_RUMPF, SP_C, 'laengs');
-      if (last === 'band') { z.band_l = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); }
+      if (last === 'band') { z.band_l = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_unter = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); }
       return z;
     },
     pose(t) {
@@ -2491,7 +2522,10 @@ export function schulterdruecken(o = {}) {
           if (z.kb) kettlebellAn(z.kb, g, 'l');
           if (z.kh_l && art === 'arnold') for (const s of ['l', 'r']) hantelAn(z['kh_' + s], g.hand[s], faustAchse(g, s));
           else if (z.kh_l) kurzhantelnAn(z, g, 'quer');
-          if (z.band_l) for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, bandAmFuss(g, s, sg), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)));
+          if (z.band_l) {
+            for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'band_' + s, umDenKoerper(g, bandAmFuss(g, s, sg), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)));
+            seil(z.band_unter, bandAmFuss(g, 'l', 1), bandAmFuss(g, 'r', -1));   // unter beiden Füßen durch: ein Band (bis 5.11. nur zwei Stücke)
+          }
         }
       };
     },
@@ -4423,7 +4457,12 @@ function spanishAblauf(h) {
   halb.hand = seiten((s, sg) => V(sg * 0.23, 0.46, 0.02));
   for (const k of ['fuss', 'fussRicht', 'kniePol', 'handflaeche', 'ellbogenPol']) halb[k] = hocke[k];
   const los = Object.assign({}, halb, { hand: seiten((s, sg) => V(sg * 0.25, 0.68, 0.02)), becken: V(0, 0.8, -0.14), rumpf: h.stehen(plan.stand, 0, { neigung: 40 }).rumpf });   // die Hand bleibt hinter dem Knie, bis das Band dort liegt
-  plan.schritte = [plan.schritte[0], { ziel: halb, d: 0.7 }, { ziel: los, d: 0.35 }, { ziel: h.Gp, d: 0.8 }];
+  // Die Figur kommt von hinten und steigt mit beiden Füßen in das U des Bands (5.11.: bis dahin stand sie schon mitten darin)
+  const auf = h.stehen(plan.stand, Math.atan2(plan.blick.x, plan.blick.z));
+  auf.fuss = hocke.fuss; auf.fussRicht = hocke.fussRicht;
+  auf.becken = V(plan.stand.x, beckenGestreckt(FY, Math.abs(hocke.fuss.l.x) - MASS.hueftBreite, 0.03), plan.stand.z);
+  plan.stand = plan.stand.clone().addScaledVector(plan.blick, -0.25); plan.griffNach = 2;
+  plan.schritte = [{ ziel: auf, d: 0.7, steigen: { bogen: 0.06, erst: 'l' } }, plan.schritte[0], { ziel: halb, d: 0.7 }, { ziel: los, d: 0.35 }, { ziel: h.Gp, d: 0.8 }];
   return plan;
 }
 // Kniebeuge-Sonderformen: art: wandsitzen | spanish | sissy | belt
@@ -4463,13 +4502,18 @@ export function sonderkniebeuge(o = {}) {
         const becken = V(0, kn.y + 0.02 + 0.45 * Math.cos(b), kn.z - 0.45 * Math.sin(b)), k = rumpf(becken, r);
         return { pose: { becken, rumpf: r, hand: seiten((s, sg) => k.schulter[s].clone().add(V(0, -0.05, ARM * 0.985))), handAuf: seiten(() => 1), ellbogenPol: seiten((s, sg) => V(sg, -1, 0)), fuss: seiten((s, sg) => V(sg * 0.15, FY, 0.1)), kniePol: seiten((s, sg) => V(sg * 0.2, 0, 1)) },
           props(g, z) {
+            // Ein Band von Pfosten zu Pfosten, hinter den Knien durch (bis 5.11. zwei Stücke, die am Knie endeten). Am Boden liegt es als U um die Füße: die Arme außen neben den Füßen, der Bogen hinter den Fersen;
+            // die Figur steigt hinein, nimmt die Arme in die Hände und zieht das Band samt Bogen hoch, bis es hinter den Knien liegt
+            const kehle = seiten((s) => g.knie[s].clone().add(V(0, -0.05, -0.09))), hinterFerse = Math.min(g.ferse.l.z, g.ferse.r.z) - 0.1;
+            const bogen = seiten((s, sg) => V(sg * 0.3, 0.012, hinterFerse).lerp(kehle[s], glatt((g.hand[s].y - 0.08) / 0.35)));
+            const mitte = bogen.l.clone().lerp(bogen.r, 0.5);
             for (const [s, sg] of [['l', 1], ['r', -1]]) {
-              const P = g.knie[s].clone().add(V(0, -0.05, -0.09)), A = V(sg * 0.47, 0.5, 0.95), h = g.hand[s];
+              const P = kehle[s], A = V(sg * 0.47, 0.5, 0.95), h = g.hand[s];
               // Ablauf davor: Solange die Hand unter dem Knie ist, hält sie das Band, am Boden liegt es flach bis zum Pfosten; sonst liegt es hinter dem Knie
               const w = 1 - glatt((h.y - P.y - 0.02) / 0.12);
-              if (w <= 0) { bandKette(z, 'band_' + s, umDenKoerper(g, P, A, 0.025, g.R.links.clone().multiplyScalar(sg))); continue; }
-              const Q = P.lerp(h.clone().setY(Math.max(0.012, h.y - 0.05)), w), boden = 1 - glatt((h.y - 0.08) / 0.25);   // das Band kommt unten aus der Faust
-              bandKette(z, 'band_' + s, boden > 0 ? [Q, Q.clone().lerp(A, 0.5).lerp(V(A.x, 0.012, A.z - 0.1), boden), A] : umDenKoerper(g, Q, A, 0.025, g.R.links.clone().multiplyScalar(sg)));
+              if (w <= 0) { bandKette(z, 'band_' + s, [mitte, ...umDenKoerper(g, P, A, 0.025, g.R.links.clone().multiplyScalar(sg))]); continue; }
+              const Q = P.clone().lerp(h.clone().setY(Math.max(0.012, h.y - 0.05)), w), boden = 1 - glatt((h.y - 0.08) / 0.25);   // das Band kommt unten aus der Faust
+              bandKette(z, 'band_' + s, [mitte, bogen[s], ...(boden > 0 ? [Q, Q.clone().lerp(A, 0.5).lerp(V(A.x, 0.012, A.z - 0.1), boden), A] : umDenKoerper(g, Q, A, 0.025, g.R.links.clone().multiplyScalar(sg)))]);
             }
           } };
       }
@@ -4519,6 +4563,7 @@ export function bandgang() {
 }
 
 // Beinbeuger ohne Maschine bzw. im Stehen: art: gleiten | gleiten_einbeinig | band | stehend
+// Ablauf davor (wirkt über animation()): standVersatz
 export function beincurl(o = {}) {
   const art = o.art || 'gleiten';
   return {

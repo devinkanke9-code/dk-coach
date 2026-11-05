@@ -275,13 +275,17 @@ function uebergang(von, s) {
     if (s.steigen) {
       const erst = s.steigen.erst || 'l';
       for (const [k, a, b] of [[erst, 0, 0.55], [erst === 'l' ? 'r' : 'l', 0.45, 1]]) {
+        if (s.steigen.nur && s.steigen.nur !== k) continue;   // nur: der andere Fuß bleibt stehen bzw. liegen (Knie schon auf dem Polster)
         const v = Math.max(0, Math.min(1, (u - a) / (b - a))), P0 = A.fuss[k], P1 = s.ziel.fuss[k], oben = Math.max(P0.y, P1.y) + s.steigen.bogen;
         const f = P0.clone().lerp(P1, glatt((v - 0.15) / 0.75));
         f.y = v < 0.55 ? mix(P0.y, oben, glatt(v / 0.55)) : mix(oben, P1.y, glatt((v - 0.55) / 0.45));
         p.fuss[k] = f;
       }
-      p.becken.y = mix(A.becken.y, s.ziel.becken.y, glatt((u - 0.3) / 0.6));
+      if (!s.steigen.mitBecken) p.becken.y = mix(A.becken.y, s.ziel.becken.y, glatt((u - 0.3) / 0.6));   // mitBecken: das Becken hebt sich gleichmäßig (ein Knie liegt schon oben und muss erreichbar bleiben)
     }
+    // halten = { K, K2, L, L2 }: ein Knie liegt auf dem Polster (bei K, wandert nach K2), das Becken bleibt mindestens L (→ L2) davon weg; auf
+    // gerader Linie käme es unterwegs näher, und das Knie drückte ins Polster
+    if (s.halten) { const H = s.halten, Kp = H.K.clone().lerp(H.K2 || H.K, g), L = mix(H.L, H.L2 == null ? H.L : H.L2, g), d = p.becken.clone().sub(Kp); if (d.length() < L) p.becken = Kp.add(d.setLength(L)); }
     if (s.bogen) p.becken.y += s.bogen * Math.sin(Math.PI * g);
     if (s.handHoch) p.hand = seiten((k) => p.hand[k].clone().add(V(0, s.handHoch * Math.sin(Math.PI * h), 0)));   // Vorlage: die Hand geht im Bogen über eine Kante
     if (s.aussen) { const R = rumpfRahmen(p.rumpf), w = s.aussen * Math.sin(Math.PI * h); p.hand = seiten((k, sg) => p.hand[k].clone().addScaledVector(R.links, sg * w)); }
@@ -623,13 +627,34 @@ function aufsteigen(art, Gp, gg, P, d, hantel) {
 }
 // Seitlich einsteigen (Sitz mit Polster, Hebel oder Rolle davor): neben dem Sitz stehen, Rücken zum Sitz, seitlich hinsetzen,
 // dann auf dem Sitz eindrehen und die Beine unter Polster und Hebel bringen (Füße angehoben über Rahmen), zuletzt greifen
-function seitlichSetzen(Gp, gg, sg, zurueck, heben) {
-  const vor = waag(gg.R.vor), aussen = V(vor.z, 0, -vor.x).multiplyScalar(sg), wA = winkelVon(aussen), B = gg.becken.clone();
+function seitlichSetzen(Gp, gg, sg, zurueck, heben, vorRicht = null) {
+  const vor = vorRicht || waag(gg.R.vor), aussen = V(vor.z, 0, -vor.x).multiplyScalar(sg), wA = winkelVon(aussen), B = gg.becken.clone();
   const m = B.clone().add(aussen.clone().multiplyScalar(0.06)).sub(vor.clone().multiplyScalar(zurueck));
   const sitz = haendeAufBeinen(sitzen(m, wA, 0.42));
   return { name: 'seitlich' + (sg > 0 ? 'L' : 'R') + zurueck + '/' + heben, blick: aussen, abruecken: true, stand: m.clone().setY(0).add(aussen.clone().multiplyScalar(0.2)),
     schritte: [{ ziel: sitz, d: DAUER.setzen }, { ziel: haendeAufBeinen(Gp), d: DAUER.eindrehen, dreh: { m: B, w: kurz(winkelVon(vor) - wA) }, heben, hebenBis: 0.65 },
       { ziel: Gp, d: DAUER.greifen, verzug: 0.35 }] };
+}
+// Über den Sitz steigen (wie im Studio an Maschinen mit Polster, Rolle oder Stange vor den Oberschenkeln, die beim Stehen vor dem Sitz
+// in den Beinen stünden): hinter dem Sitz stehen, über den Sitz steigen (Füße links und rechts davon), aufrecht hinsetzen, die Beine
+// unter Polster oder Rolle in ihre Lage bringen. Gibt die Posen; der Latzug nutzt sie auch (dort mit eigenem Greifen)
+function ueberSitzPosen(Gp, gg, fussBreit = 0.2, fussVor = 0.02, stehBreit = 0.27) {
+  const blick = waag(gg.R.vor), w = winkelVon(blick), quer = V(blick.z, 0, -blick.x), q = drehY(w), B = gg.becken;
+  const stand = B.clone().setY(0).addScaledVector(blick, -0.53), ueber = B.clone().setY(0).addScaledVector(blick, -0.1);
+  const breit = (p, d, v = 0) => { p.fuss = seiten((s, sg) => ueber.clone().addScaledVector(blick, v).addScaledVector(quer, sg * d).setY(FY)); return p; };
+  const steht = breit(stehen(ueber, w, { tief: 0.04 }), stehBreit);   // über dem Sitz, die Füße daneben
+  steht.kniePol = seiten((s, sg) => V(sg * 0.35, 0, 1).applyQuaternion(q));
+  const aufrecht = { basis: q.clone() }, sitzt = (fuss, pol) => Object.assign({}, Gp, { rumpf: aufrecht, kopf: { neigung: 0 }, fuss, fussRicht: seiten((s, sg) => V(sg * 0.1, 0, 1).applyQuaternion(q)), kniePol: pol, zehen: {}, fussFlaeche: seiten(() => null) });
+  const unten = haendeAufBeinen(sitzt(seiten((s, sg) => B.clone().addScaledVector(blick, fussVor).addScaledVector(quer, sg * fussBreit).setY(FY)), seiten((s, sg) => V(sg * 0.25, 0.4, 1).applyQuaternion(q))));
+  const fuesse = haendeAufBeinen(sitzt(seiten((s) => Gp.fuss[s].clone()), seiten((s) => Gp.kniePol[s].clone())));
+  return { blick, w, q, quer, stand, steht, unten, fuesse };
+}
+function ueberSitz(Gp, gg, fussBreit, fussVor) {
+  const { blick, w, quer, stand, steht, unten, fuesse } = ueberSitzPosen(Gp, gg, fussBreit, fussVor, 0.32);
+  // hinter dem Sitz erst breit hinstellen, dann gerade vor: die Beine gehen außen am Sitz vorbei, nicht schräg durch seine Ecken
+  const hinten = stehen(stand, w); hinten.fuss = seiten((s, sg) => stand.clone().addScaledVector(quer, sg * 0.32).setY(FY));
+  return { name: 'ueberSitz' + fussBreit + '/' + fussVor, blick, stand, schritte: [{ ziel: hinten, d: 0.6, steigen: { bogen: 0.06, erst: 'l' } }, { ziel: steht, d: 1.0, steigen: { bogen: 0.1, erst: 'l' } }, { ziel: unten, d: DAUER.setzen + 0.1 }, { ziel: fuesse, d: 0.7, steigen: { bogen: 0.03, erst: 'r' } },
+    { ziel: Gp, d: DAUER.greifen + 0.3, verzug: 0.35 }] };
 }
 // Rückenlage mit Polster oder Hebel über dem Becken (Hip-Thrust-Maschine): weiter hinten absetzen (auf der Bank, sonst am Boden),
 // Beine lang nach vorn unter dem Polster durchschieben, bis zur Kante der Bank vorrutschen, mit langen Beinen unter das Polster
@@ -670,6 +695,109 @@ function vorgebeugt(Gp, gg, d) {
   const vorn = mische(stehen(stand, winkelVon(kopf)), versetzt, 0.65, 1);
   return { name: 'vorgebeugt' + d, blick: kopf, stand,
     schritte: [{ ziel: vorn, d: DAUER.greifen + 0.3, verzug: 0.35 }, { ziel: Gp, d: DAUER.setzen, heben: tief > 0.03 ? 0.08 : 0 }] };
+}
+// Höchste Auflage unter einem Bodenpunkt bis zur Höhe unter (auch hohe Polster wie am Glute-Ham-Raise)
+function auflageBauch(Q, m, unter) {
+  let h = 0;
+  for (const q of Q) if (q.top < unter && q.top > h && abstand2(m.x, m.z, q.grund) < -0.03) h = q.top;
+  return h;
+}
+// Bauchlage auf einem hohen Gerät (Beinbeuger liegend, Glute-Ham-Raise, 45°-Rückenstrecker; Befund 5.11.: die Figur lief bis zum Becken der
+// Startpose ins Polster und kippte von dort in die Pose). Wie im Studio: Liegen die Oberschenkel waagerecht, neben dem Gerät stehen, auf das
+// Polster steigen und aufrecht knien, dann nach vorn ablegen. Stehen die Beine schräg auf einer Fußplatte, von hinten auf die Platte steigen,
+// Becken ans Polster, der Körper gestreckt in einer Linie mit den Beinen (oberer Umkehrpunkt), dann abbeugen. sg: Seite (1 = links des Geräts)
+function aufBauchlage(Gp, gg, Q, sg) {
+  const kopf = waag(gg.R.oben), w = winkelVon(kopf), links = V(kopf.z, 0, -kopf.x), mitte = (a, b) => a.clone().add(b).multiplyScalar(0.5);
+  const km = mitte(gg.knie.l, gg.knie.r), hm = mitte(gg.huefte.l, gg.huefte.r), fm = mitte(gg.knoechel.l, gg.knoechel.r), T = km.clone().sub(hm);
+  if (Math.abs(T.y) < 0.5 * T.length()) {
+    // Kniepunkt auf dem Polster (beim Beinbeuger liegen die Knie in der Startpose über der Kante: so weit zum Becken hin, bis Polster darunter ist)
+    let K = null;
+    for (let i = 0; i <= 12 && !K; i++) { const p = km.clone().lerp(hm, i / 12), h = auflageBauch(Q, p, km.y + 0.02); if (h > 0.3 && km.y - h < 0.16) K = p.setY(h + 0.075); }
+    if (!K) return null;
+    const gleich = K.distanceTo(km) < 0.03, B = K.clone().addScaledVector(kopf, -0.03).setY(K.y + MASS.oberschenkel * 0.98);
+    const kniet = stehen(B, w, { hoch: B.y - 0.975 });
+    kniet.becken = B.clone();
+    kniet.kniePol = seiten(() => kopf.clone().add(V(0, -1, 0)));   // aufrecht kniend: das Knie ist die Ecke zwischen Oberschenkel und Schienbein
+    if (gleich) { kniet.fuss = seiten((s) => Gp.fuss[s].clone()); kniet.fussRicht = seiten((s) => Gp.fussRicht[s].clone()); kniet.zehen = Object.assign({}, Gp.zehen); }
+    else {   // Schienbeine liegen auf dem Polster, die Füße zeigen nach hinten
+      kniet.fuss = seiten((s, s2) => K.clone().addScaledVector(kopf, -MASS.unterschenkel * 0.97).addScaledVector(links, s2 * 0.1).setY(K.y + 0.01));
+      kniet.fussRicht = seiten(() => kopf.clone().negate().add(V(0, -1.2, 0)));
+      kniet.zehen = seiten(() => -40);
+    }
+    // Stehplatz neben dem Polster, so weit draußen, dass kein höheres Teil näher als 22 cm ist
+    const stand = K.clone().setY(0);
+    for (let i = 0; i < 40 && Q.some((q) => q.top > 0.2 && abstand2(stand.x, stand.z, q.grund) < 0.22); i++) stand.addScaledVector(links, sg * 0.03);
+    // Zuerst das innere Knie hinauf an seinen Platz: der Oberschenkel geht schräg hinab zum Knie, das Becken steht daneben so hoch, dass
+    // der äußere Fuß fast gestreckt am Boden bleibt, und so nah, dass der Oberschenkel das Knie erreicht (sonst drückt es ins Polster)
+    const innen = sg > 0 ? 'r' : 'l', aussen = sg > 0 ? 'l' : 'r', Ki = K.clone().addScaledVector(links, -sg * 0.1);
+    const Mb = K.clone().addScaledVector(links, sg * 0.36).setY(K.y + 0.27);
+    const halb = stehen(Mb, w, { hoch: Mb.y - 0.975, neigung: 10 });
+    halb.becken = Mb.clone();
+    const hi = Mb.clone().addScaledVector(links, -sg * MASS.hueftBreite).add(V(0, -0.02, 0));
+    halb.fuss = seiten((s) => (s === innen ? kniet.fuss[s].clone() : Mb.clone().addScaledVector(links, sg * 0.06).setY(FY)));
+    halb.kniePol = seiten((s) => (s === innen ? Ki.clone().sub(hi.clone().add(kniet.fuss[s]).multiplyScalar(0.5)).normalize() : halb.kniePol[s]));
+    halb.fussRicht = seiten((s) => (s === innen ? kniet.fussRicht[s].clone() : halb.fussRicht[s]));
+    halb.zehen = seiten((s) => (s === innen ? (kniet.zehen[s] || 0) : 0));
+    // dann das äußere Knie hoch über das Polster (der Fuß hängt darunter), zuletzt aufsetzen
+    // (das Becken bleibt so weit vom Knie, dass der Oberschenkel es erreicht: gemessen von der Hüfte, die um die halbe Beckenbreite innen liegt)
+    const Kh = Ki.clone().addScaledVector(links, sg * MASS.hueftBreite).add(V(0, 0.02, 0)), Lh = MASS.oberschenkel * 0.97;
+    const Hb = Mb.clone().lerp(B, 0.5);
+    { const d = Hb.clone().sub(Kh); if (d.length() < Lh) Hb.copy(Kh).add(d.setLength(Lh)); }
+    const hoch = Object.assign({}, mische(halb, kniet, 0.5), { becken: Hb });
+    hoch.fuss = seiten((s) => (s === innen ? kniet.fuss[s].clone() : kniet.fuss[s].clone().lerp(halb.fuss[s], 0.3).add(V(0, 0.3, 0))));
+    const hiH = Hb.clone().addScaledVector(links, -sg * MASS.hueftBreite).add(V(0, -0.02, 0));   // Pol zeigt vom Weg Hüfte–Fuß zum Kniepunkt (das Knie bleibt, wo es liegt)
+    hoch.kniePol = seiten((s) => (s === innen ? Ki.clone().sub(hiH.add(kniet.fuss[s]).multiplyScalar(0.5)).normalize() : kopf.clone().add(V(0, 0.4, 0))));
+    hoch.fussRicht = seiten((s) => kniet.fussRicht[s].clone());
+    return { name: 'aufknien' + (sg > 0 ? 'L' : 'R'), blick: kopf, stand,
+      schritte: [{ ziel: halb, d: 1.2, steigen: { erst: aussen, bogen: 0.1 } },
+        { ziel: hoch, d: 0.6, halten: { K: Kh, L: Lh } },
+        { ziel: kniet, d: 0.6, halten: { K: Kh, L: Lh } },
+        { ziel: Gp, d: 1.5, verzug: 0.2, halten: { K, K2: km, L: B.distanceTo(K), L2: Gp.becken.distanceTo(km) } }] };
+  }
+  if (sg < 0) return null;   // von hinten gibt es nur eine Seite
+  // nur mit einer Fußplatte unter den Zehen (hängen die Beine frei, wie beim Reverse Hyperextension, passt das nicht)
+  const zm = mitte(gg.zehe.l, gg.zehe.r);
+  if (!Q.some((q) => q.top > 0.15 && q.top > zm.y - 0.12 && q.top < zm.y + 0.25 && abstand2(zm.x, zm.z, q.grund) < 0.03)) return null;
+  const linie = hm.clone().sub(fm).normalize();
+  const gestreckt = haendeNeben(Object.assign({}, Gp, { rumpf: { basis: drehY(w).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.acos(Math.max(-1, Math.min(1, linie.y))))) }, wirbel: null, kopf: { neigung: 0 } }));
+  return { name: 'aufPlatte', blick: kopf, stand: fm.clone().setY(0).addScaledVector(kopf, -0.5),
+    schritte: [{ ziel: gestreckt, d: 1.4, steigen: { erst: 'l', bogen: 0.08 } }, { ziel: Gp, d: 1.2, verzug: 0.2 }] };
+}
+// Kniepolster (Klimmzug- und Dip-Maschine mit Unterstützung; Befund 5.11.: die Figur stand beim Ankommen im Polster). Wie im Studio: vor
+// dem Polster stehen, Rücken zur Maschine, rückwärts auf die beiden Trittstufen neben dem Polster steigen, Stange bzw. Griffe fassen, dann ein
+// Knie nach dem anderen auf das Polster setzen. Unter einer Stange bleibt der Kopf darunter (in den Knien)
+function aufKniepolster(Gp, gg, Q, art) {
+  const blick = waag(gg.R.vor), w = winkelVon(blick), links = V(blick.z, 0, -blick.x), mitte = (a, b) => a.clone().add(b).multiplyScalar(0.5);
+  const km = mitte(gg.knie.l, gg.knie.r), h = auflageBauch(Q, km, km.y + 0.02);
+  if (h < 0.3 || km.y - h > 0.16 || Math.min(gg.knoechel.l.y, gg.knoechel.r.y) < 0.4 || gg.R.oben.y < 0.8) return null;
+  // Trittstufe je Seite: Teil niedriger als das Polster, neben ihm (mehr als 25 cm zur Seite, höchstens 30 cm vor oder hinter den Knien)
+  const stufe = {};
+  for (const q of Q) {
+    if (q.top < 0.3 || q.top > h - 0.04) continue;
+    const c = q.grund.reduce((a, [x, z]) => a.add(V(x, 0, z)), V()).multiplyScalar(1 / q.grund.length), d = c.clone().sub(km.clone().setY(0));
+    const seit = d.dot(links), laengs = d.dot(blick), s = seit > 0 ? 'l' : 'r';
+    if (Math.abs(seit) < 0.25 || Math.abs(laengs) > 0.3 || abstand2(c.x, c.z, q.grund) > -0.04) continue;
+    if (!stufe[s] || q.top > stufe[s].top) stufe[s] = { c, top: q.top };
+  }
+  if (!stufe.l || !stufe.r) return null;
+  const hoch = Math.min(stufe.l.top, stufe.r.top), S = mitte(stufe.l.c, stufe.r.c);
+  // Füße auf den Stufen, so weit innen, wie die Stufe reicht (breiter Stand)
+  const fuss = seiten((s) => stufe[s].c.clone().addScaledVector(links, (s === 'l' ? -1 : 1) * 0.03).setY(stufe[s].top + FY));
+  // unter der Stange nur so tief in die Knie, dass der Kopf 20 cm unter ihr bleibt (Stange auf Höhe der Hände)
+  const tief = art === 'haengen' ? Math.max(0, gelenke(stehen(S, w, { hoch })).kopf.y - (Math.min(gg.hand.l.y, gg.hand.r.y) - 0.2)) : 0;
+  const oben = stehen(S, w, { hoch, tief });
+  oben.fuss = fuss; oben.kniePol = seiten((s, sg) => V(sg * 0.15, 0, 1).applyQuaternion(drehY(w)));   // Knie nach vorn, nicht unter die Griffe
+  const greifen = Object.assign({}, oben, { hand: seiten((s) => Gp.hand[s].clone()), handflaeche: Gp.handflaeche, ellbogenPol: Gp.ellbogenPol, flach: Gp.flach, greift: Gp.greift, kelch: Gp.kelch, kelchW: Gp.kelchW, handKnick: Gp.handKnick });
+  // erst das linke Knie aufs Polster, der rechte Fuß bleibt auf der Stufe
+  const einKnie = Object.assign({}, mische(greifen, Gp, 0.5, 1), { hand: seiten((s) => Gp.hand[s].clone()) });
+  einKnie.fuss = { l: Gp.fuss.l.clone(), r: fuss.r.clone() };
+  einKnie.kniePol = { l: Gp.kniePol.l.clone(), r: oben.kniePol.r.clone() };
+  einKnie.fussRicht = { l: Gp.fussRicht.l.clone(), r: oben.fussRicht.r.clone() };
+  const kb = art === 'haengen' ? 0.14 : 0.04;   // Fuß über das Polster heben; an der Dip-Maschine das erste nur knapp (das Knie stieße sonst an den Griff)
+  return { name: 'kniepolster', blick, stand: S.clone().setY(0).addScaledVector(blick, 0.6),
+    // Griffe neben dem Körper (Dips) fasst die Hand schon beim Hinaufsteigen (sonst streift der hängende Arm sie), die Stange oben erst danach
+    schritte: [...(art === 'haengen' ? [{ ziel: oben, d: 1.4, steigen: { erst: 'l', bogen: 0.08 } }, { ziel: greifen, d: DAUER.greifen, verzug: 0.2 }] : [{ ziel: greifen, d: 1.6, steigen: { erst: 'l', bogen: 0.08 }, aussen: 0.12 }]),
+      { ziel: einKnie, d: 0.9, steigen: { erst: 'l', nur: 'l', bogen: kb, mitBecken: true } }, { ziel: Gp, d: 0.9, steigen: { erst: 'r', nur: 'r', bogen: 0.14, mitBecken: true } }] };
 }
 
 /* ---------- Hanteln aufheben ---------- */
@@ -820,14 +948,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // zugreifen, zurücklehnen. Die Stange hängt so hoch, wie das Seil in der Startpose lang ist; der Hut bleibt beim Hinsetzen hinter ihr
   let latzug = null;
   if (z.lh && z.seil && art === 'sitzen' && z.lh.position.y > gg.kopf.y) {
-    const blick = waag(gg.R.vor), w = winkelVon(blick), quer = V(blick.z, 0, -blick.x), q = drehY(w), B = gg.becken;
-    const stand = B.clone().setY(0).addScaledVector(blick, -0.53), ueber = B.clone().setY(0).addScaledVector(blick, -0.1);
-    const breit = (p, d, v = 0) => { p.fuss = seiten((s, sg) => ueber.clone().addScaledVector(blick, v).addScaledVector(quer, sg * d).setY(FY)); return p; };
-    const steht = breit(stehen(ueber, w, { tief: 0.04 }), 0.27);   // über dem Sitz, die Füße daneben
-    steht.kniePol = seiten((s, sg) => V(sg * 0.35, 0, 1).applyQuaternion(q));
-    const aufrecht = { basis: q.clone() }, sitzt = (fuss, pol) => Object.assign({}, Gp, { rumpf: aufrecht, kopf: { neigung: 0 }, fuss, fussRicht: seiten((s, sg) => V(sg * 0.1, 0, 1).applyQuaternion(q)), kniePol: pol, zehen: {}, fussFlaeche: seiten(() => null) });
-    const unten = haendeAufBeinen(sitzt(seiten((s, sg) => B.clone().addScaledVector(blick, 0.02).addScaledVector(quer, sg * 0.2).setY(FY)), seiten((s, sg) => V(sg * 0.25, 0.4, 1).applyQuaternion(q))));
-    const fuesse = haendeAufBeinen(sitzt(seiten((s) => Gp.fuss[s].clone()), seiten((s) => Gp.kniePol[s].clone())));
+    const { blick, stand, steht, unten, fuesse } = ueberSitzPosen(Gp, gg);
     const seilE = [V(0, 0.5, 0), V(0, -0.5, 0)].map((p) => p.applyMatrix4(z.seil.matrixWorld)), rolle = seilE[0].y > seilE[1].y ? seilE[0] : seilE[1];
     const greif = Object.assign({}, fuesse, { hand: seiten((s) => gg.hand[s].clone().add(V(0, 0, rolle.z - z.lh.position.z))), handflaeche: seiten((s) => Gp.handflaeche[s].clone()), ellbogenPol: seiten((s) => Gp.ellbogenPol[s].clone()), kopf: { neigung: -12 }, flach: { l: null, r: null }, greift: GENAU() });
     const erg = anim.pose(G.t, z); if (erg.props) erg.props(gelenke(greif), z);   // Stange und Seil hängen in Ruhe dort
@@ -951,10 +1072,29 @@ export function baueEinleitung(anim, ger, z, kamera) {
     }
     if (best) plaene.push(best.p);
   }
+  // Stange quer über dem Stehplatz in Brusthöhe (Smith-Maschine, Ausfallschritt; Befund 5.11.: die Figur lief aufrecht durch die Stange):
+  // vor bzw. hinter der Stange ankommen, geduckt darunter durch, unter ihr aufrichten und in die Startpose
+  // (nur im Ausfallschritt: Kniebeugen aus dem Ständer bleiben, wie sie sind)
+  if (art === 'stehen' && z.lh && !z.seil && !kabel && !hanteln.length && z.lh.position.y > 1.0 && z.lh.position.y < 1.6 && Math.abs(gg.knoechel.l.clone().sub(gg.knoechel.r).dot(waag(gg.R.vor))) > 0.3) {
+    const k = plaene[0], w = winkelVon(k.blick), yS = z.lh.position.y, SL = V(z.lh.position.x, 0, z.lh.position.z);
+    if (Math.abs(SL.clone().sub(k.stand.clone().setY(0)).dot(k.blick)) < 0.3) for (const sgD of [1, -1]) for (const tief of [0.25, 0.35]) {
+      const d = k.blick.clone().multiplyScalar(sgD), unter = SL.clone().addScaledVector(d, -0.05);
+      const duck = stehen(unter, w, { tief, neigung: 25 });
+      plaene.push({ name: 'ducken' + (sgD > 0 ? 'V' : 'H') + tief, blick: k.blick, stand: SL.clone().addScaledVector(d, -0.42),
+        schritte: [{ ziel: duck, d: 0.9 }, { ziel: Gp, d: DAUER.greifen + 0.4, verzug: 0.35 }] });
+    }
+  }
   if (Q.length && !hanteln.length && !z.lh) {
     if (art === 'sitzen' && auflage(Q, gg.becken) > 0.2) for (const sg of [1, -1])   // seitlich nur auf einen Sitz
       for (const zurueck of [0.03, 0.1]) for (const heben of [0.1, 0.03]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, heben));
+    if (art === 'sitzen' && auflage(Q, gg.becken) > 0.2 && auflage(Q, gg.becken) < 0.6) for (const b of [0.2, 0.27, 0.34]) for (const v of [0.02, 0.12, 0.22]) plaene.push(ueberSitz(Gp, gg, b, v));   // niedriger Sitz: von hinten darübersteigen (Füße beim Hinsetzen neben dem Sitz)
     if (art === 'rueckenlage') for (const d of [0.35, 0.5, 0.62]) plaene.push(langsitz(Gp, gg, Q, d));
+    if (art === 'bauchlage' && gg.becken.y >= 0.5) for (const sg of [1, -1]) { const p = aufBauchlage(Gp, gg, Q, sg); if (p) plaene.push(p); }
+    if (art === 'haengen' || art === 'sonst') { const p = aufKniepolster(Gp, gg, Q, art); if (p) plaene.push(p); }
+    // Hoher Sitz unter dem Becken, Beine nach vorn hinauf oder lang (Beinpresse, Beinbeuger sitzend): seitlich hinsetzen, dann die Beine hinauf und eindrehen.
+    // Davor stehen Rahmen, Rolle oder Plattform; weiter vorn absetzen, wo hinten eine schräge Lehne steht
+    if ((art === 'rueckenlage' || art === 'sonst') && gg.becken.y > 0.45 && auflage(Q, gg.becken) > 0.3)
+      for (const sg of [1, -1]) for (const zurueck of [0.03, -0.06, -0.12]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, 0.1, art === 'rueckenlage' ? waag(gg.R.oben).negate() : null));
     if (((art === 'bauchlage' || art === 'seitlage') && gg.becken.y >= 0.5 && Math.min(gg.knoechel.l.y, gg.knoechel.r.y) < 0.4) || anim.einstiegVorgebeugt) for (const d of [0.32, 0.45, ...(anim.einstiegVorgebeugt ? [0.6] : [])]) plaene.push(vorgebeugt(Gp, gg, d));
   }
   if (eigen) plaene.length = 1;
