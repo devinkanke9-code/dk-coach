@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-DGtZdDN/Pdd1oOw61g9VyJmFZUHdzFmH5aEcl+fuVv8=' 'sha256-gNp0d/14Dl4w1fhfH1f5+uOelWqL4v2YvleZgKvdjC0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-gNp0d/14Dl4w1fhfH1f5+uOelWqL4v2YvleZgKvdjC0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Analyse für dich · DK Coach</title>
-<meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#060608'}}catch(e){}</script>
+<meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../icon-180.png">
 <!-- DK Coach — Analyse für dich (31.10.2026, Devin: „eine eigene Seite … ein Link, den du einfach draufklickst, da steht Analyse für dich …
@@ -27,7 +27,7 @@ html, body { margin: 0; padding: 0; }
 .fortschritt i { height: 5px; border-radius: 999px; background: var(--anthrazit); }
 .fortschritt i.an { background: var(--akzent-verlauf); }
 .nr { font-size: 14px; font-weight: 600; color: var(--akzent-hell); }
-.frage-titel { font-family: var(--f-display); font-weight: 800; font-size: clamp(27px, 7.4vw, 33px); line-height: 1.1; letter-spacing: -.022em; color: var(--text); }
+.frage-titel { font-family: var(--f-display); font-weight: 600; font-size: clamp(28px, 7.4vw, 32px); line-height: 1.13; letter-spacing: .004em; color: var(--text); }
 .eigene textarea { min-height: 72px; }
 .feld.gross textarea { min-height: 150px; font-size: 17px; }   /* Fragen zum Schreiben: das Feld ist die Antwort */
 .eigene > label { color: var(--akzent-hell); }
@@ -40,7 +40,7 @@ html, body { margin: 0; padding: 0; }
 </head>
 <body>
 <div class="app">
-  <header class="kopf"><div class="kopf-innen"><span class="marke">DK COACH</span><button class="zu" id="zu" type="button" aria-label="Analyse verlassen" hidden>✕</button></div></header>
+  <header class="kopf"><div class="kopf-innen"><span class="marke">DK Coach</span><button class="zu" id="zu" type="button" aria-label="Analyse verlassen" hidden>✕</button></div></header>
   <main><div class="inhalt" id="inhalt"></div></main>
 </div>
 <script>

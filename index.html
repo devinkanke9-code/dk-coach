@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-DGtZdDN/Pdd1oOw61g9VyJmFZUHdzFmH5aEcl+fuVv8=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>DK Coach</title>
-<meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#060608'}}catch(e){}</script>
+<meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,7 +24,7 @@ img { max-width: 100%; }
 [hidden] { display: none !important; }
 .kopf .rechts { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .willkommen { justify-items: center; text-align: center; padding: 28px 18px; }
-.willkommen .logo { width: 84px; height: 84px; border-radius: 20px; }
+.willkommen .logo { width: 72px; height: 72px; border-radius: 18px; }
 /* Code-Eingabe und Analyse (seit 29.10.2026) */
 .code-feld { width: 100%; max-width: 280px; font-size: 30px; text-align: center; letter-spacing: .14em; font-variant-numeric: tabular-nums; }
 .willkommen .einfuegen, .willkommen .einfuegen textarea { width: 100%; }
@@ -37,7 +37,7 @@ img { max-width: 100%; }
 <body>
 <div class="app">
   <header class="kopf"><div class="kopf-innen">
-    <div class="marke">DK COACH<small>Dein Training</small></div>
+    <div class="marke">DK Coach</div>
     <div class="rechts" id="wer"></div>
   </div></header>
   <main><div class="inhalt" id="ansicht"><p class="leise">Lädt …</p></div></main>

@@ -200,3 +200,86 @@ html:has(.raum)::before, html:has(.raum)::after, html:has(.raum) body::after { a
 .raum .tm-werte b { font-size: 15px; white-space: nowrap; }
 .raum .tm-werte small { font-size: 12px; }
 .raum .tm-werte:has(~ .tm-ring) { display: none; }
+
+/* ---------- System nach apple.com auch auf Bühne und im Gym (04.11.2026), Abschnitt „System nach apple.com“ in stil.css ---------- */
+.erklaer-knopf { font-weight: 400; font-size: 14px; background: var(--knopf-voll); color: var(--auf-voll); box-shadow: 0 8px 22px -10px rgba(0, 0, 0, .45); }
+.ek-welle { background: var(--auf-voll); }
+.ek-welle::before { border-left-color: var(--knopf-voll); }
+:root[data-look="gold"] .ek-welle::before { border-left-color: var(--verlauf-b); }
+.eb-art { font-weight: 600; text-shadow: none; }
+.eb-text { font-weight: 400; }
+.rund { font-weight: 400; }
+.rund, .raum-weiter, .raum-zurueck { transition-timing-function: var(--feder); }
+:root[data-look="klar"] .erklaer-blase { background: rgba(29, 29, 31, .94); }
+:root[data-look="klar"] .buehne { color-scheme: light; }
+.raum-kopftext b { font-weight: 600; }
+.raum-nr { font-size: 14px; }
+.raum-karte h2 { font-size: 24px; font-weight: 600; letter-spacing: .009em; line-height: 1.17; }
+.raum-weiter { background: var(--knopf-voll); color: var(--auf-voll); box-shadow: none; border-radius: 22px; }
+.raum-weiter small { font-size: 14px; font-weight: 400; opacity: .85; }
+.raum-weiter b { font-weight: 600; }
+.raum-weiter:active { transform: scale(1.02); }
+.raum-stick i { background: var(--knopf-voll); box-shadow: none; }
+.raum-punkte i.an { background: var(--knopf-voll); }
+.raum-knoepfe .knopf { min-height: 50px; border-radius: var(--r-knopf); }
+.raum-pop { font-weight: 600; letter-spacing: 0; }
+.raum-pop small { font-weight: 400; }
+:root:not([data-look="gold"]) .raum-pop { color: var(--text); text-shadow: 0 0 22px rgba(255, 255, 255, .95), 0 0 4px rgba(255, 255, 255, .95); }
+.raum-ende h1 { font-size: clamp(40px, 12vw, 56px); letter-spacing: -.005em; line-height: 1.07; }
+.raum-ende .knopf { min-height: 50px; font-size: 17px; }
+.raum .tm-gross { min-height: 50px; }
+.gym-knopf, .charakter-knopf { min-height: 50px; font-weight: 400; }
+
+/* ---------- Startseite (app.js startseite): für alle ohne Plan. Jeder Block: kurze Überschrift, eine Zeile, Knöpfe, ein großes Bild. Volle Breite mit 12 px Luft, ab 735 px zwei Spalten. ---------- */
+:root[data-look="klar"]:has(body.start) { --seite: #FFFFFF; }
+body.start main { padding: 0 0 calc(12px + env(safe-area-inset-bottom, 0px)); }
+body.start .inhalt { max-width: none; gap: 12px; }
+body.start .inhalt > * { animation: none; }
+body.start .kopf-innen { max-width: 1024px; }
+#wer .st-nav { min-height: 30px; padding: 5px 14px; font-size: 14px; letter-spacing: -.016em; vertical-align: middle; }
+.st-block { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-content: start; gap: 28px; min-width: 0; overflow: hidden; text-align: center; padding-block: 48px 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--kachel); color: var(--kachel-text); --zeile: var(--kachel-text2); --zw-text: var(--zweit-text); --zw-rand: var(--zweit-rand); }
+.st-block.st-frei { background: var(--kachel-frei); color: var(--kachel-frei-text); --zeile: var(--kachel-frei-text2); --zw-text: var(--zweit-frei-text); --zw-rand: var(--zweit-frei-rand); }
+.st-block.st-held { background: var(--held-grund); color: var(--held-text); --zeile: var(--held-text2); padding: 40px 0 0; gap: 0; }
+.st-held .st-text { padding-inline: 16px; }
+.st-block > * { transition: opacity .7s var(--feder), transform .7s var(--feder); }
+.st-block:not(.da) > * { opacity: 0; transform: translateY(24px); }
+.st-block:not(.da) > :nth-child(2) { transition-delay: .08s; }
+@media (prefers-reduced-motion: reduce) { .st-block > * { transition: none; } .st-block:not(.da) > * { opacity: 1; transform: none; } }
+.st-text { display: grid; justify-items: center; gap: 8px; max-width: 620px; }
+.st-block h1 { color: inherit; font-size: clamp(40px, 11.5vw, 56px); line-height: 1.07; letter-spacing: -.005em; }
+.st-block h2 { color: inherit; font-size: clamp(32px, 8.6vw, 40px); line-height: 1.1; letter-spacing: 0; }
+.st-zeile { margin: 0; color: var(--zeile); font-size: clamp(19px, 5.2vw, 21px); line-height: 1.32; letter-spacing: .011em; text-wrap: balance; }
+.st-knoepfe { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 14px; }
+.knopf.zweit, .knopf.zweit:hover { background: transparent; border: 1px solid var(--zw-rand, var(--zweit-rand)); color: var(--zw-text, var(--zweit-text)); }
+.st-bild { position: relative; width: 100%; max-width: 760px; margin: 0; }
+.st-bild img { display: block; width: 100%; height: auto; border-radius: 18px 18px 0 0; }
+.st-buehne { position: relative; width: 100%; max-width: 980px; height: clamp(360px, 62vh, 640px); margin-top: 8px; -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent 100%); mask-image: linear-gradient(180deg, #000 80%, transparent 100%); }
+.st-buehne .buehne { height: 100%; background: none; box-shadow: none; border-radius: 0; }
+.st-buehne .steuer, .st-buehne .erklaer-knopf, .st-buehne .tipp, .st-buehne .devin-foto { display: none; }
+.st-buehne canvas { pointer-events: none; }   /* Finger auf der Figur scrollt die Seite */
+.st-blase { position: absolute; left: 12px; right: 12px; bottom: 12px; display: grid; gap: 4px; padding: 12px 16px; border-radius: 18px; text-align: left; color: #fff; background: rgba(29, 29, 31, .92); }
+.st-blase b { font-size: 14px; font-weight: 600; color: #6CD4E0; }
+.st-blase p { margin: 0; font-size: 17px; line-height: 1.3; }
+.st-mock { width: 100%; max-width: 420px; margin-bottom: -28px; text-align: left; pointer-events: none; }
+.st-mock .block.heute { background: var(--flaeche); border-color: var(--rand-weich); box-shadow: 0 8px 28px -12px rgba(0, 0, 0, .25); }
+.st-mock .ueb-name { background: none; border: 0; padding: 0; text-align: left; font-weight: 600; }
+.st-fragen { width: 100%; max-width: 420px; display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; padding-bottom: 48px; }
+.st-fragen i { height: 8px; border-radius: 999px; background: var(--anthrazit); transition: background .3s var(--sanft); transition-delay: calc(.35s + var(--i) * 70ms); }
+.st-block.da .st-fragen i { background: var(--knopf-voll); }
+.st-block.st-eigen { padding-bottom: 48px; }
+.st-eigen .einfuegen { width: 100%; max-width: 420px; justify-items: stretch; }
+.st-install { width: 100%; max-width: 560px; text-align: left; }
+.st-install summary { cursor: pointer; text-align: center; color: var(--akzent-hell); list-style: none; padding: 10px; }
+.st-install summary::-webkit-details-marker { display: none; }
+.st-install .block { margin-top: 8px; background: var(--flaeche); }
+.st-fuss { padding: 28px 16px 40px; text-align: center; font-size: 12px; color: var(--auf-grund2); }
+.st-beispiel { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 16px; border-radius: 999px; background: var(--karte); color: var(--text); box-shadow: var(--schatten); font-size: 14px; letter-spacing: -.016em; }
+@media (min-width: 735px) {
+  body.start .inhalt { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 12px; }
+  .st-block { padding-block-start: 56px; }
+  .st-held, .st-breit { grid-column: 1 / -1; }
+  .st-block.st-held { padding-top: 56px; }
+  .st-buehne { height: clamp(460px, 66vh, 760px); }
+  .st-fuss { grid-column: 1 / -1; }
+}

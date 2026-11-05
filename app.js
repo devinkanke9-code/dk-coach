@@ -4,6 +4,7 @@
 // Aussehen und Abläufe wie die Kunden-Ansicht der Trainer-Seite (stil.css, gleiche Bausteine), dazu die 3D-Figur (buehne.js).
 import { UEBUNGEN, STAND, ANALYSE } from './daten.js';
 import { buehne, standbilder } from './buehne.js';
+import { erklaerPunkte, ART_NAME } from './coach.js';
 const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
 
 /* ---------- Hilfen ---------- */
@@ -262,11 +263,13 @@ function zustand() {
 function zeichne() {
   const z = zustand();
   S.konto = aktivesKonto();
+  document.body.classList.toggle('start', z === 'willkommen' && !installiert());
+  if (z !== 'willkommen') startWeg();
   S.plan = z === 'plan' ? aktiverPlan() : null;
   $('#wer').textContent = S.plan ? (navigator.onLine === false ? 'Offline · alles da' : vorname(S.plan.n)) : '';
   leiste();
   const ziel = $('#ansicht'); ziel.textContent = '';
-  const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen }[z]
+  const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
     || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, info: ansichtInfo }[S.ansicht] || ansichtHeute;
   try { ziel.append(...ansicht().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
@@ -289,6 +292,71 @@ function willkommen() {
     einfuegenBlock(),
     h('button', { class: 'knopf text', type: 'button', onclick: beispiel, text: 'Beispielplan ansehen' })),
     installKarte(true)];
+}
+
+/* ---------- Startseite (04.11.2026, Devin: „die Webseite so wie Apple“): für alle ohne Plan. Aufbau wie dort: jeder Block eine kurze Überschrift, eine Zeile, Knöpfe, ein großes Bild. Oben trainiert die echte Figur live. In der App vom Home-Bildschirm bleibt es beim knappen Willkommen, dort will man nur noch den Link einfügen. ---------- */
+const START_FIGUR = 'kniebeuge', START_UEBUNG = 'beinpresse';
+let START3D = null, STARTSEHEN = null, STARTBUEHNE = null;
+function startWeg() {
+  if (START3D) { START3D.weg(); START3D = null; }
+  if (STARTSEHEN) { STARTSEHEN.disconnect(); STARTSEHEN = null; }
+  if (STARTBUEHNE) { STARTBUEHNE.disconnect(); STARTBUEHNE = null; }
+}
+const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + ({ klar: '-klar', gold: '-gold' }[document.documentElement.dataset.look] || '') + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
+// Blöcke erscheinen beim Hinscrollen, die Figur rechnet nur, solange sie zu sehen ist
+function startBeobachten() {
+  const bloecke = [...document.querySelectorAll('.st-block:not(.da)')];
+  if (STARTSEHEN) STARTSEHEN.disconnect();
+  if (!window.IntersectionObserver) { bloecke.forEach((b) => b.classList.add('da')); return; }
+  STARTSEHEN = new IntersectionObserver((liste) => liste.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('da'); STARTSEHEN.unobserve(e.target); } }), { threshold: 0.12 });
+  bloecke.forEach((b) => STARTSEHEN.observe(b));
+  if (START3D && !STARTBUEHNE) { STARTBUEHNE = new IntersectionObserver((liste) => { if (START3D) START3D.ruhe(!liste[liste.length - 1].isIntersecting); }); STARTBUEHNE.observe(START3D.el); }
+}
+function gymZeigen() { beispiel(); raumStarten(aktiverPlan(), 0); window.scrollTo(0, 0); }
+function uebungZeigen() { beispiel(); const p = aktiverPlan(); oeffneUebung(uebung(p.t[0].u.find((u) => u.i === START_UEBUNG) || p.t[0].u[0]), 0); }
+function beispielEnde() {
+  const plaene = speicher.lies('dk_plaene', {}); delete plaene.beispiel; speicher.schreib('dk_plaene', plaene);
+  if (speicher.lies('dk_aktiv', null) === 'beispiel') speicher.schreib('dk_aktiv', null);
+  if (LAUF && LAUF.plan === 'beispiel') { LAUF = null; laufSichern(); }
+  S.tagWahl = null; S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
+}
+function startseite() {
+  if (installiert()) return willkommen();
+  $('#wer').append(h('a', { class: 'knopf haupt st-nav', href: 'analyse/', text: 'Analyse' }));
+  const analyseKnopf = () => h('a', { class: 'knopf haupt', href: 'analyse/', text: 'Analyse starten' });
+  const zweit = (text, fn) => h('button', { class: 'knopf zweit', type: 'button', onclick: fn, text });
+  const text = (titel, zeile, knoepfe, h1) => h('div', { class: 'st-text' }, h(h1 ? 'h1' : 'h2', { text: titel }), h('p', { class: 'st-zeile', text: zeile }), knoepfe ? h('div', { class: 'st-knoepfe' }, knoepfe) : null);
+  const d = UEBUNGEN[START_FIGUR], dU = UEBUNGEN[START_UEBUNG];
+  if (!START3D && d && d.a) { START3D = buehne({ lade3d, fotoGross }); setTimeout(() => { if (START3D) START3D.zeige(d, { direkt: true }).catch(() => {}); }, 350); }   // erst die Schrift, dann die schwere 3D-Figur
+  const punkt = dU ? erklaerPunkte(dU)[0] : null;
+  const zeigeZeile = (n, s, w, p, id) => h('div', { class: 'ueb-karte mit3d ohne-haken' }, h('span', { class: 'ueb-name', text: UEBUNGEN[id] ? UEBUNGEN[id].n : n }),
+    h('div', { class: 'ueb-dosis' }, h('b', { text: s + ' × ' + w + ' Wdh' }), h('small', { text: 'Pause ' + p + ' s' })), h('div', { class: 'mini3d', 'data-vorschau': UEBUNGEN[id] && UEBUNGEN[id].a ? id : '' }));
+  setTimeout(startBeobachten, 0);
+  return [
+    h('section', { class: 'st-block st-held da' },
+      text('DK Coach', 'Dein Plan. Von Devin.', [analyseKnopf(), zweit('Beispiel ansehen', beispiel)], true),
+      START3D ? h('div', { class: 'st-buehne' }, START3D.el) : null),
+    h('section', { class: 'st-block st-frei st-breit' },
+      text('Dein Gym. In 3D.', 'Von Gerät zu Gerät. Am Ende wartet die Tür.', [zweit('Gym betreten', gymZeigen)]),
+      h('figure', { class: 'st-bild' }, startBild('gym', 'Das Gym von oben: Geräte, Weg und Figur', 1000, 845))),
+    h('section', { class: 'st-block' },
+      text('Jede Übung. Zum Drehen.', 'Coach DK zeigt, worauf es ankommt.', [zweit('Übung ansehen', uebungZeigen)]),
+      h('figure', { class: 'st-bild' }, startBild('uebung', 'Die Figur trainiert an der Beinpresse', 1000, 1250),
+        punkt ? h('figcaption', { class: 'st-blase' }, h('b', { text: 'Coach DK · ' + ART_NAME[punkt.art] }), h('p', { text: punkt.text })) : null)),
+    h('section', { class: 'st-block' },
+      text('Alles an einem Ort.', 'Sätze, Wiederholungen, Pausen. Auch ohne Internet.', [zweit('Plan ansehen', beispiel)]),
+      h('div', { class: 'st-mock', 'aria-hidden': 'true' }, h('div', { class: 'block heute' },
+        h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training 1' }), h('h3', { text: 'Ganzkörper A' })),
+        h('div', { class: 'ueb-liste' }, zeigeZeile('Beinpresse', 3, '10–12', '90–120', 'beinpresse'), zeigeZeile('Latzug', 3, '10–12', '90–120', 'latzug_breit'), zeigeZeile('Brustpresse', 3, '10–12', '90–120', 'brustpresse_maschine'))))),
+    h('section', { class: 'st-block st-breit' },
+      text('10 Fragen.', 'Danach baut Devin deinen Plan.', [analyseKnopf()]),
+      h('div', { class: 'st-fragen', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, i) => h('i', { style: '--i:' + i })))),
+    h('section', { class: 'st-block st-eigen st-breit' },
+      text('Du hast schon einen Plan?', 'Öffne den Link aus Devins Nachricht oder füg sie hier ein.'),
+      einfuegenBlock(),
+      h('details', { class: 'st-install' }, h('summary', { text: 'Als App aufs Handy' }), installKarte(true))),
+    h('footer', { class: 'st-fuss', text: 'DK Coach' })
+  ];
 }
 
 /* ---------- Code, Sperre, Warten ---------- */
@@ -506,8 +574,8 @@ function beispiel() {
   const ids = Object.keys(UEBUNGEN);
   const nimm = (...k) => k.find((x) => UEBUNGEN[x]) || ids[0];
   const p = { v: 1, id: 'beispiel', n: 'Beispiel', z: 'muskelaufbau', l: 2, s: 'Ganzkörper 2×', d: isoHeute(), importiert: isoHeute(), w: ['e', 'a', 'a', 'a', 'a', 'd'], ft: [0, 3],
-    t: [t('Ganzkörper A', 45, [[nimm('goblet_squat'), 3, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_bankdruecken', 'liegestuetz'), 3, [8, 12], [2, 3], [90, 120]], [nimm('brustgestuetztes_kurzhantelrudern', 'einarmiges_kurzhantelrudern'), 3, [8, 12], [2, 3], [90, 120]], [nimm('dead_bug'), 2, [8, 12], [2, 3], [60, 90]]]),
-      t('Ganzkörper B', 45, [[nimm('rumaenisches_kreuzheben_kurzhanteln', 'rumaenisches_kreuzheben_kh'), 3, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_schulterdruecken_sitzend'), 3, [8, 12], [2, 3], [90, 120]], [nimm('split_squat'), 2, [8, 12], [2, 3], [90, 120]], [nimm('seitheben_kurzhanteln'), 2, [12, 15], [2, 3], [60, 90]]])],
+    t: [t('Ganzkörper A', 50, [[nimm('beinpresse'), 3, [10, 12], [2, 3], [90, 120]], [nimm('latzug_breit'), 3, [10, 12], [2, 3], [90, 120]], [nimm('brustpresse_maschine'), 3, [10, 12], [2, 3], [90, 120]], [nimm('kabelrudern_sitzend'), 3, [10, 12], [2, 3], [90, 120]], [nimm('butterfly_maschine'), 2, [12, 15], [2, 3], [60, 90]], [nimm('trizepsdruecken_kabel'), 2, [12, 15], [2, 3], [60, 90]], [nimm('bauchmaschine_crunch'), 2, [12, 15], [2, 3], [60, 90]]]),
+      t('Ganzkörper B', 45, [[nimm('kh_rumaenisches_kreuzheben'), 3, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_schulterdruecken_sitzend'), 3, [8, 12], [2, 3], [90, 120]], [nimm('split_squat'), 2, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_seitheben'), 2, [12, 15], [2, 3], [60, 90]]])],
     pr: 'Schaffst du in allen Sätzen die obere Wiederholungszahl mit 2 Wiederholungen Reserve, nimm beim nächsten Mal etwas mehr Gewicht.', h: ['Beispiel mit erfundenen Daten.'], ab: [] };
   const plaene = speicher.lies('dk_plaene', {}); plaene[p.id] = p; speicher.schreib('dk_plaene', plaene); speicher.schreib('dk_aktiv', p.id);
   S.tagWahl = null; zeichne();
@@ -527,6 +595,7 @@ const charakterLink = () => h('a', { class: 'knopf charakter-knopf', href: 'char
 function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
+  if (p.id === 'beispiel') teile.push(h('div', { class: 'st-beispiel' }, h('span', { text: 'Das ist ein Beispiel.' }), h('button', { class: 'knopf klein', type: 'button', onclick: beispielEnde, text: 'Zur Startseite' })));
   const ko = aktivesKonto();
   if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
   if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
@@ -1203,7 +1272,7 @@ function timerFertig() {
     try { navigator.clipboard.writeText(text).then(fertig, () => { feld.select(); knopf.textContent = 'Text markiert, jetzt kopieren'; }); } catch (x) { feld.select(); }
   }, text: 'Text kopieren' });
   return [
-    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: 'DK COACH' }), h('div', { class: 'tm-gesamt', text: datumZeit(r.s) })),
+    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: 'DK Coach' }), h('div', { class: 'tm-gesamt', text: datumZeit(r.s) })),
     h('div', { class: 'tm-feier tm-schluss' }, h('div', { class: 'tm-haken gross', html: HAKEN }),
       h('h1', { class: 'tm-name', text: r.st === 'abgebrochen' ? 'Für heute Schluss' : 'Geschafft' }),
       h('p', { class: 'tm-spruch', text: LAUF.endSpruch }),

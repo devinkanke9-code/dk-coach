@@ -13,22 +13,31 @@ const BREITE = 12, WAND = 3.2, FACH = 5.2, SEITE_X = 3.2, STATION_R = 2.1, TUER_
 const TEMPO = 2.8, SCHRITT = 0.36;   // Laufen in m/s, Schrittlänge
 
 const FARBEN_LAGUNE = {
-  himmel: 0x86cbee, nebel: 0x92d2f0, see: true,
+  himmel: 0x86cbee, nebel: 0x92d2f0, see: true, tuer: 0x14c7b6, schatten: '8,50,80',
   bodenA: '#C4E6F6', bodenB: '#AEDBF0', fuge: 'rgba(8,70,110,.2)', bodenLicht: 'rgba(255,255,255,.62)', bodenLicht0: 'rgba(255,255,255,0)',
   seiten: [0xdcedf6, 0xcfe5f1, 0xffffff, 0xc4dcea, 0xf2f9fc, 0xd6e9f3], led: 0x7ff5e6, halo: 0x48e8d6, haloStark: 0.6,
   ring: 0x14c7b6, ringAus: 0x5db6e0, ringFertig: 0x0fa899, teller: 0xffffff, tellerSicht: 0.6, tellerFertig: 0.85,
   rahmen: 0xe3edf2, polster: 0x123a55, gummi: 0x1b3446, metall: null, glas: 0xbfe9f7,
   schild: { grund: 'rgba(255,255,255,.96)', text: '#0B2434', text2: '#3A5668', a: '#4FB8F5', b: '#25D3C2', kreis: '#06293B' },
-  wegA: [0.05, 0.62, 0.72], wegB: [0.06, 0.74, 0.62], wegDunkel: 0.36, deck: 0xf3fafd
+  wegA: [0.05, 0.62, 0.72], wegB: [0.06, 0.74, 0.62], wegDunkel: 0.36, deck: 0xf3fafd, strich: [0.03, 0.43, 0.72]
+};
+const FARBEN_KLAR = {
+  himmel: 0xf5f5f7, nebel: 0xf5f5f7, see: false, tuer: 0x0071e3, schatten: '0,0,0', aussen: '#ECECEF', aussenLinie: 'rgba(0,0,0,.05)',
+  bodenA: '#FFFFFF', bodenB: '#F1F1F4', fuge: 'rgba(0,0,0,.08)', bodenLicht: 'rgba(0,113,227,.07)', bodenLicht0: 'rgba(0,113,227,0)',
+  seiten: [0xe8e8ed, 0xdcdce1, 0xffffff, 0xcdcdd2, 0xf5f5f7, 0xe3e3e8], led: 0xbcdcfb, halo: 0x0071e3, haloStark: 0.14,
+  ring: 0x0071e3, ringAus: 0x9cc7f2, ringFertig: 0x1b7f35, teller: 0xffffff, tellerSicht: 0.75, tellerFertig: 0.92,
+  rahmen: 0xe3e3e8, polster: 0x1d1d1f, gummi: 0x2a2a2d, metall: null, glas: 0xcfe3f8,
+  schild: { grund: 'rgba(255,255,255,.97)', text: '#1D1D1F', text2: '#6E6E73', a: '#0071E3', b: '#0071E3', kreis: '#FFFFFF' },
+  wegA: [0, 0.44, 0.89], wegB: [0, 0.44, 0.89], wegDunkel: 0.3, deck: 0xfbfbfd, strich: [0, 0.44, 0.89]
 };
 const FARBEN_GOLD = {
-  himmel: 0x050507, nebel: 0x07070a, see: false,
+  himmel: 0x050507, nebel: 0x07070a, see: false, tuer: 0xf0cd74, schatten: '0,0,0', aussen: '#08080B', aussenLinie: 'rgba(139,92,246,.26)',
   bodenA: '#131318', bodenB: '#0B0B0E', fuge: 'rgba(236,200,110,.13)', bodenLicht: 'rgba(139,92,246,.36)', bodenLicht0: 'rgba(139,92,246,0)',
   seiten: [0x1a1a20, 0x141418, 0xe0b95b, 0x0e0e11, 0x1d1d23, 0x121216], led: 0xb794ff, halo: 0x8b5cf6, haloStark: 1,
   ring: 0xf0cd74, ringAus: 0x7a6a3c, ringFertig: 0xcc9a33, teller: 0x1c1c22, tellerSicht: 0.82, tellerFertig: 0.95,
   rahmen: 0x1b1b20, polster: 0x0f0f13, gummi: 0x0a0a0c, metall: 0xe8c468, glas: 0x6b4fb0,
   schild: { grund: 'rgba(16,16,21,.96)', text: '#F5F1E7', text2: '#BDB7A8', a: '#F7DE93', b: '#CC9A33', kreis: '#1B1304' },
-  wegA: [0.97, 0.87, 0.58], wegB: [0.8, 0.6, 0.2], wegDunkel: 0.24, deck: 0x17171c
+  wegA: [0.97, 0.87, 0.58], wegB: [0.8, 0.6, 0.2], wegDunkel: 0.24, deck: 0x17171c, strich: [0.98, 0.86, 0.52]
 };
 
 function zeichne(breite, hoehe, malen) {
@@ -41,7 +50,7 @@ const SCHRIFT = '-apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-se
 
 // spieler (optional): der eigene Charakter statt der Standardfigur. { name, bauen(ansicht, M) vor dem Aufbau der Stationen, haltung(pose, winkel) im Gehen und Stehen }. Dann: Kamera näher dran, Einstieg durch die Tür, Name über dem Kopf, „Hier trainieren“ am Gerät
 export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler }) {
-  const GOLD = document.documentElement.dataset.look === 'gold', P = GOLD ? FARBEN_GOLD : FARBEN_LAGUNE;
+  const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold', P = GOLD ? FARBEN_GOLD : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;
   // Oberfläche
   const wurzel = el('div', 'raum'); wurzel.setAttribute('role', 'dialog'); wurzel.setAttribute('aria-modal', 'true'); wurzel.setAttribute('aria-label', 'Trainingsraum');
   const bild = el('canvas', 'raum-bild'); bild.setAttribute('aria-label', 'Begehbares Gym mit den Geräten des Tages, von oben');
@@ -125,8 +134,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       x.fillStyle = '#25B9CC'; x.fillRect(0, 0, b, h);
       x.fillStyle = 'rgba(255,255,255,.28)'; for (let i = 0; i < 70; i++) x.fillRect((i * 173) % b, (i * 97) % h, 18 + (i * 7) % 44, 3);
     } else {
-      x.fillStyle = '#08080B'; x.fillRect(0, 0, b, h);
-      x.strokeStyle = 'rgba(139,92,246,.26)'; x.lineWidth = 2; x.strokeRect(0, 0, b, h);
+      x.fillStyle = P.aussen; x.fillRect(0, 0, b, h);
+      x.strokeStyle = P.aussenLinie; x.lineWidth = 2; x.strokeRect(0, 0, b, h);
     }
   }), true);
   aussenT.repeat.set(P.see ? 26 : 90, P.see ? 26 : 90);
@@ -170,7 +179,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   for (let z = zAnfang - FACH / 2; z > zEnde; z -= FACH) leiste(false, 5.2, 0, 4.5, z);
 
   /* ---------- Türen ---------- */
-  const rahmenM = grund(GOLD ? 0xf0cd74 : 0x14c7b6, { transparent: true, opacity: 0.6, fog: false }), rahmenA = grund(GOLD ? 0xf0cd74 : 0x14c7b6, { fog: false });
+  const rahmenM = grund(P.tuer, { transparent: true, opacity: 0.6, fog: false }), rahmenA = grund(P.tuer, { fog: false });
   const rahmen = (z, m) => { for (const [b, h, x, y] of [[0.14, TUER_H + 0.14, -TUER_B / 2, TUER_H / 2], [0.14, TUER_H + 0.14, TUER_B / 2, TUER_H / 2], [TUER_B + 0.14, 0.14, 0, TUER_H]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(b, h, 0.14), m); r.position.set(x, y, z); raum.add(r); (z === zAnfang ? wandVorn : wandHinten).push(r); } };
   rahmen(zAnfang, rahmenA); rahmen(zEnde, rahmenM);
   const tuerGlas = grund(P.glas, { transparent: true, opacity: 0.42, depthWrite: false });
@@ -181,7 +190,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function schildMalen(fertig) {
     const x = tuerSchild.getContext('2d'); x.clearRect(0, 0, 640, 128);
     x.fillStyle = P.schild.grund; runde(x, 6, 8, 628, 112, 56); x.fill();
-    x.fillStyle = P.schild.text; x.font = '800 54px ' + SCHRIFT; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = P.schild.text; x.font = '600 54px ' + SCHRIFT; x.textAlign = 'center'; x.textBaseline = 'middle';
     x.fillText(fertig ? 'Raus, geschafft!' : 'Ziel', 320, 66, 590);
     tuerTex.needsUpdate = true;
   }
@@ -213,8 +222,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         float welle = 0.5 + 0.5 * sin((m - zeit * 3.0) * 1.3);
         float punkt = smoothstep(r, r - 0.04, d), schein = smoothstep(r + 0.14, r, d) * 0.3;
         float jetzt = vU.x >= von && vU.x < bis ? 1.0 : 0.0, war = vU.x < von ? 1.0 : 0.0;
-        float staerke = war * 0.9 + jetzt * (0.55 + 0.45 * welle) + (1.0 - war - jetzt) * dunkel;
-        gl_FragColor = vec4(mix(farbe, vec3(1.0), jetzt * welle * 0.35), max(punkt, schein * (war + jetzt)) * staerke);
+        float staerke = war * 0.5 + (1.0 - war - jetzt) * dunkel;
+        gl_FragColor = vec4(farbe, max(punkt, schein * war) * staerke);
       }` });
   const weg = new THREE.Mesh(wegGeo, wegMat); weg.renderOrder = 2; raum.add(weg);
   const wegIndex = (p) => { let beste = 0, d = 1e9; wegFein.forEach((q, i) => { const e = Math.hypot(q.x - p.x, q.z - p.z); if (e < d) { d = e; beste = i; } }); return beste; };
@@ -226,7 +235,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }
 
   /* ---------- Stationen: Gerät steht schon da (Stand des Ablaufs davor), Schild, Ring ---------- */
-  const schattenT = tex(zeichne(256, 256, (x, b) => { const g = x.createRadialGradient(b / 2, b / 2, 10, b / 2, b / 2, b / 2); const f = GOLD ? '0,0,0' : '8,50,80'; g.addColorStop(0, 'rgba(' + f + ',.46)'); g.addColorStop(0.7, 'rgba(' + f + ',.16)'); g.addColorStop(1, 'rgba(' + f + ',0)'); x.fillStyle = g; x.fillRect(0, 0, b, b); }));
+  const schattenT = tex(zeichne(256, 256, (x, b) => { const g = x.createRadialGradient(b / 2, b / 2, 10, b / 2, b / 2, b / 2); const f = P.schatten; g.addColorStop(0, 'rgba(' + f + ',.46)'); g.addColorStop(0.7, 'rgba(' + f + ',.16)'); g.addColorStop(1, 'rgba(' + f + ',0)'); x.fillStyle = g; x.fillRect(0, 0, b, b); }));
   const platte = new THREE.CircleGeometry(STATION_R, 64), ringGeo = new THREE.RingGeometry(STATION_R - 0.08, STATION_R, 96);
   function namensSchild(s) {
     const c = zeichne(720, 180, () => {}), t = tex(c);
@@ -235,9 +244,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       const x = c.getContext('2d'), F2 = P.schild; x.clearRect(0, 0, 720, 180);
       x.fillStyle = F2.grund; runde(x, 6, 14, 708, 152, 76); x.fill();
       const g = x.createLinearGradient(26, 34, 146, 154); g.addColorStop(0, F2.a); g.addColorStop(1, F2.b); x.fillStyle = g; x.beginPath(); x.arc(90, 90, 60, 0, 7); x.fill();
-      x.fillStyle = F2.kreis; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '800 68px ' + SCHRIFT;
+      x.fillStyle = F2.kreis; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '600 68px ' + SCHRIFT;
       x.fillText(s.fertig ? '✓' : String(s.i + 1), 90, 95);
-      x.textAlign = 'left'; x.font = '700 50px ' + SCHRIFT; x.fillStyle = s.fertig ? F2.text2 : F2.text;
+      x.textAlign = 'left'; x.font = '600 50px ' + SCHRIFT; x.fillStyle = s.fertig ? F2.text2 : F2.text;
       const zeilen = []; let z = '';
       for (const w of s.u.name.split(' ')) { const neu = z ? z + ' ' + w : w; if (x.measureText(neu).width > 510 && z) { zeilen.push(z); z = w; } else z = neu; } zeilen.push(z);
       const zwei = zeilen.slice(0, 2); if (zeilen.length > 2) zwei[1] += ' …';
@@ -509,6 +518,56 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (x || y) { gang = null; tipp.classList.add('weg'); }
   };
   if (spieler) { window.addEventListener('keydown', tasteNeu); window.addEventListener('keyup', tasteNeu); aufraeumen = () => { window.removeEventListener('keydown', tasteNeu); window.removeEventListener('keyup', tasteNeu); }; }
+  /* ---------- Führung (04.11.2026, Devin: Striche, die „die ganze Zeit den Charakter verfolgen und ihn immer zu der nächsten Übung führen“): Vom Charakter laufen Striche über den Boden zur nächsten Station, danach zur Tür, und ziehen beim Laufen mit. Sie nehmen den Gang in der Mitte, sonst gingen sie durch fremde Geräte. ---------- */
+  const STRICH_N = 240, STRICH_B = 0.2, STRICH_Y = 0.021;
+  const strichPos = new Float32Array((STRICH_N + 1) * 6), strichWo = new Float32Array((STRICH_N + 1) * 4), strichIdx = [];
+  for (let i = 0; i < STRICH_N; i++) { const k = i * 2; strichIdx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+  const strichGeo = new THREE.BufferGeometry();
+  strichGeo.setAttribute('position', new THREE.BufferAttribute(strichPos, 3).setUsage(THREE.DynamicDrawUsage));
+  strichGeo.setAttribute('wo', new THREE.BufferAttribute(strichWo, 2).setUsage(THREE.DynamicDrawUsage));
+  strichGeo.setIndex(strichIdx);
+  const strichU = { zeit: { value: 0 }, laenge: { value: 1 }, sicht: { value: 0 }, farbe: { value: new THREE.Vector3(...P.strich) } };
+  const strichMat = new THREE.ShaderMaterial({ uniforms: strichU, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    vertexShader: 'attribute vec2 wo; varying vec2 vW; void main(){ vW = wo; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    // Der Abstand zählt vom Ziel aus: So bleiben die Striche auf dem Boden liegen, wenn die Linie beim Laufen kürzer wird, und wandern trotzdem zum Ziel
+    fragmentShader: `varying vec2 vW; uniform float zeit, laenge, sicht; uniform vec3 farbe;
+      void main(){
+        float rest = laenge - vW.x, abstand = 0.74;
+        float x = (fract((rest + zeit * 1.5) / abstand) - 0.5) * abstand;
+        float d = length(vec2(max(abs(x) - 0.17, 0.0), vW.y)) - 0.075;
+        float strich = smoothstep(0.018, -0.018, d), schein = smoothstep(0.12, 0.0, d) * 0.24;
+        float rand = smoothstep(0.6, 1.05, vW.x) * smoothstep(0.0, 0.55, rest);
+        gl_FragColor = vec4(farbe, max(strich, schein) * rand * sicht);
+      }` });
+  const strich = new THREE.Mesh(strichGeo, strichMat); strich.renderOrder = 4; strich.frustumCulled = false; strich.visible = false; raum.add(strich);
+  let strichStand = '';
+  function strichLegen(dt) {
+    strichU.zeit.value = STILL ? 0 : zeit;
+    const n = naechste(), ziel = n == null ? V(0, 0, zEnde + 0.2) : stationen[n].start;
+    const an = aktiv == null && modus !== 'station' && Math.hypot(ziel.x - F.x, ziel.z - F.z) > 1.15 && F.z > zEnde + 1.2 ? 1 : 0;
+    strichU.sicht.value += (an - strichU.sicht.value) * Math.min(1, dt * (an ? 4 : 9));
+    strich.visible = strichU.sicht.value > 0.01;
+    if (!strich.visible || !an) return;   // beim Ausblenden bleibt die Linie, wie sie war
+    const stand2 = n + ':' + F.x.toFixed(2) + ':' + F.z.toFixed(2);
+    if (stand2 === strichStand) return;   // steht er, bleibt die Linie, wie sie ist
+    strichStand = stand2;
+    const r = ziel.z < F.z ? -1 : 1, punkte2 = [V(F.x, STRICH_Y, F.z)];
+    if (Math.abs(ziel.z - F.z) > 3.4) punkte2.push(V(klemme(F.x, -0.6, 0.6), STRICH_Y, F.z + r * 1.3), V(klemme(ziel.x, -0.6, 0.6), STRICH_Y, ziel.z - r * 1.3));
+    punkte2.push(V(ziel.x, STRICH_Y, ziel.z));
+    const kurve = new THREE.CatmullRomCurve3(punkte2), L = kurve.getLength(), stuecke = Math.min(STRICH_N, Math.ceil(L / 0.2));
+    kurve.arcLengthDivisions = stuecke * 2; kurve.updateArcLengths();
+    const p = kurve.getSpacedPoints(stuecke);
+    for (let i = 0; i <= stuecke; i++) {
+      const q = p[Math.min(i + 1, stuecke)], o = p[Math.max(i - 1, 0)], tx = q.x - o.x, tz = q.z - o.z, l = Math.hypot(tx, tz) || 1, nx = -tz / l * STRICH_B, nz = tx / l * STRICH_B, m = L * i / stuecke, k = i * 6, w = i * 4;
+      strichPos[k] = p[i].x + nx; strichPos[k + 1] = STRICH_Y; strichPos[k + 2] = p[i].z + nz;
+      strichPos[k + 3] = p[i].x - nx; strichPos[k + 4] = STRICH_Y; strichPos[k + 5] = p[i].z - nz;
+      strichWo[w] = m; strichWo[w + 1] = STRICH_B; strichWo[w + 2] = m; strichWo[w + 3] = -STRICH_B;
+    }
+    strichGeo.attributes.position.needsUpdate = true; strichGeo.attributes.wo.needsUpdate = true;
+    strichGeo.setDrawRange(0, stuecke * 6);
+    strichU.laenge.value = L;
+  }
+
   /* ---------- Jedes Bild (die Ansicht ruft das direkt vor dem Zeichnen) ---------- */
   a.kameraFolgt = (dt) => {
     zeit += dt;
@@ -587,6 +646,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     }
     // Licht und Bewegung im Raum
     wegU.zeit.value = zeit;
+    strichLegen(dt);
     wegU.bis.value += (bisZiel - wegU.bis.value) * Math.min(1, dt * 1.5);   // der Weg zur nächsten Station leuchtet nach und nach auf
     if (P.see) { aussenT.offset.x = zeit * 0.006; aussenT.offset.y = zeit * 0.0025; }
     const n = naechste(), puls = 0.5 + 0.5 * Math.sin(zeit * 3);

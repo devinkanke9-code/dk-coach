@@ -78,21 +78,36 @@
   }, true);   // vor dem eigenen Handler: der zeichnet neu, danach wäre der Haken schon weg
 })();
 
-/* Farbwelt wählen: Lagune oder Schwarz-Gold, auf diesem Gerät gemerkt (Knopf oben rechts im Kopf) */
+/* Farbwelt wählen: Lagune, Klar oder Schwarz-Gold, auf diesem Gerät gemerkt (kleines Menü oben rechts im Kopf).
+ * Die Wahl steht immer ausdrücklich in dk_look. Ohne Eintrag gilt: neue Besucher der Kunden-App bekommen Schwarz-Gold (frühes Skript in index.html und analyse.html, Devin 05.11.2026), wer dort schon Daten hat und die Trainer-Seite bleiben bei Lagune. */
 (function () {
   var SCHLUESSEL = 'dk_look';
+  var WELTEN = [['lagune', 'Lagune'], ['klar', 'Klar'], ['gold', 'Schwarz-Gold']];
   function lies() { try { return localStorage.getItem(SCHLUESSEL) || ''; } catch (e) { return ''; } }
+  function waehle(wert) {
+    try { localStorage.setItem(SCHLUESSEL, wert); } catch (e) {}
+    location.reload();   // 3D-Bühne und Vorschaubilder entstehen dann in den neuen Farben
+  }
   function knopf() {
     var kopf = document.querySelector('.kopf-innen');
     if (!kopf || kopf.querySelector('.look-wahl')) return;
-    var jetzt = lies(), b = document.createElement('button');
-    b.type = 'button'; b.className = 'look-wahl'; b.title = jetzt === 'gold' ? 'Zu Lagune wechseln' : 'Zu Schwarz-Gold wechseln'; b.setAttribute('aria-label', b.title);
-    b.addEventListener('click', function () {
-      try { if (jetzt === 'gold') localStorage.removeItem(SCHLUESSEL); else localStorage.setItem(SCHLUESSEL, 'gold'); } catch (e) {}
-      document.documentElement.dataset.look = jetzt === 'gold' ? '' : 'gold';
-      location.reload();   // 3D-Bühne und Vorschaubilder entstehen dann in den neuen Farben
+    var jetzt = document.documentElement.dataset.look || 'lagune', rahmen = document.createElement('div'), b = document.createElement('button'), menue = document.createElement('div');
+    rahmen.className = 'look-rahmen';
+    b.type = 'button'; b.className = 'look-wahl'; b.title = 'Farbwelt wählen'; b.setAttribute('aria-label', 'Farbwelt wählen'); b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
+    menue.className = 'look-menue'; menue.setAttribute('role', 'menu'); menue.hidden = true;
+    function zeigen(an) { menue.hidden = !an; b.setAttribute('aria-expanded', String(an)); }
+    WELTEN.forEach(function (w) {
+      var e = document.createElement('button'), probe = document.createElement('i');
+      e.type = 'button'; e.className = 'look-eintrag'; e.setAttribute('role', 'menuitemradio'); e.setAttribute('aria-checked', String(jetzt === w[0]));
+      probe.className = 'look-probe ' + w[0]; e.appendChild(probe); e.appendChild(document.createTextNode(w[1]));
+      e.addEventListener('click', function () { zeigen(false); if (w[0] !== jetzt) waehle(w[0]); });
+      menue.appendChild(e);
     });
-    kopf.appendChild(b);
+    b.addEventListener('click', function (e) { e.stopPropagation(); zeigen(menue.hidden); });
+    document.addEventListener('click', function (e) { if (!menue.hidden && !rahmen.contains(e.target)) zeigen(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !menue.hidden) { zeigen(false); b.focus(); } });
+    rahmen.appendChild(b); rahmen.appendChild(menue);
+    kopf.appendChild(rahmen);
   }
   if (lies()) document.documentElement.dataset.look = lies();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', knopf); else knopf();

@@ -17,11 +17,17 @@ function h(tag, attrs, ...kinder) {
   return el;
 }
 
+// Farbwelt „Klar“: Boden der Bühne neutral statt bläulich (die Hell-Farbe in figur.js gehört zur Lagune)
+function klarerBoden(a) {
+  if (document.documentElement.dataset.look !== 'klar') return;
+  for (const o of a.szene.children) if (o.isMesh && o.geometry.type === 'CircleGeometry') { o.material.color.set(0xffffff); o.material.emissive.set(0xe8e8ed); }
+}
+
 // Bühne: dreht per Finger oder Knopf, die Übung läuft dabei weiter. fotoGross(src) zeigt das Foto groß (optional).
 export function buehne({ lade3d, fotoGross }) {
   const canvas = h('canvas', { 'aria-label': '3D-Figur, mit dem Finger drehen' });
   const knopf = (text, label, fn, extra) => h('button', Object.assign({ class: 'rund', type: 'button', 'aria-label': label, onclick: fn, text }, extra || {}));
-  let ansicht = null;
+  let ansicht = null, ruht = false;
   const auto = knopf('360°', 'Automatisch drehen', () => { if (!ansicht) return; const an = !ansicht.steuerung.autoRotate; ansicht.autoDrehen(an); auto.setAttribute('aria-pressed', String(an)); }, { 'aria-pressed': 'true' });
   const pause = knopf('❚❚', 'Pause', () => { if (!ansicht) return; ansicht.laeuft = !ansicht.laeuft; pause.setAttribute('aria-pressed', String(!ansicht.laeuft)); pause.textContent = ansicht.laeuft ? '❚❚' : '▶'; }, { 'aria-pressed': 'false' });
   const langsam = knopf('½×', 'Langsam', () => { if (!ansicht) return; ansicht.tempo = ansicht.tempo === 1 ? 0.4 : 1; langsam.setAttribute('aria-pressed', String(ansicht.tempo !== 1)); }, { 'aria-pressed': 'false' });
@@ -45,7 +51,7 @@ export function buehne({ lade3d, fotoGross }) {
   const beobachter = window.ResizeObserver ? new ResizeObserver(passe) : null;
   return {
     el,
-    async zeige(d) {
+    async zeige(d, o) {
       if (erk) erk.ende();
       gezeigt = d;
       foto.hidden = !d.b;
@@ -62,6 +68,7 @@ export function buehne({ lade3d, fotoGross }) {
         // Licht und Ringe der Bühne in den Farben der Seite (Farbwelt in stil.css)
         const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || undefined;
         ansicht = new M.Ansicht(canvas, { effekte: true, hell: document.documentElement.dataset.look !== 'gold', farbeA: css('--verlauf-a'), farbeB: css('--verlauf-b') });
+        klarerBoden(ansicht);
         ansicht.beiDrehStopp = () => auto.setAttribute('aria-pressed', 'false');
         ansicht.start();
         if (beobachter) beobachter.observe(canvas); else window.addEventListener('resize', passe);
@@ -69,10 +76,11 @@ export function buehne({ lade3d, fotoGross }) {
       el.classList.remove('wechsel'); void el.offsetWidth; el.classList.add('wechsel');
       ansicht.groesse();
       // Ablauf davor (hinlaufen, greifen) nur, wenn eine andere Übung kommt, nicht bei jedem Satz derselben Übung im Training
-      ansicht.einleitung = zuletzt !== d.n; zuletzt = d.n;
+      ansicht.einleitung = !(o && o.direkt) && zuletzt !== d.n; zuletzt = d.n;
       ansicht.zeige(M.animation(d.a), d.m);
       ansicht.autoDrehen(auto.getAttribute('aria-pressed') === 'true');
     },
+    ruhe(an) { if (ansicht && an !== ruht) { ruht = an; if (an) ansicht.stopp(); else ansicht.start(); } },
     weg() { if (erk) erk.ende(); if (ansicht) ansicht.entsorgen(); ansicht = null; if (beobachter) beobachter.disconnect(); window.removeEventListener('resize', passe); }
   };
 }
@@ -178,7 +186,8 @@ export async function standbilder(lade3d, ziele, datenZu) {
   if (!standAnsicht) {
     const c = document.createElement('canvas'); c.width = 192; c.height = 192; c.style.cssText = 'position:fixed;left:-500px;top:0;width:192px;height:192px';
     document.body.append(c);
-    standAnsicht = new M.Ansicht(c, { standbild: true, hell: document.documentElement.dataset.look !== 'gold', hintergrund: document.documentElement.dataset.look === 'gold' ? 0x17171c : 0xd6ecf8, farbeA: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-a').trim(), farbeB: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-b').trim() });
+    standAnsicht = new M.Ansicht(c, { standbild: true, hell: document.documentElement.dataset.look !== 'gold', hintergrund: document.documentElement.dataset.look === 'gold' ? 0x17171c : document.documentElement.dataset.look === 'klar' ? 0xf5f5f7 : 0xd6ecf8, farbeA: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-a').trim(), farbeB: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-b').trim() });
+    klarerBoden(standAnsicht);
   }
   for (const el of ziele) {
     const id = el.dataset.vorschau, d = datenZu(id);
