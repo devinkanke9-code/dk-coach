@@ -459,7 +459,7 @@ export function kreuzheben(o = {}) {
   const steif = art === 'rumaenisch' || art === 'goodmorning' || art === 'huefte_wand';
   if (art === 'einbeinig' || art === 'pull_through') return hueftbeuge(art, o);
   return {
-    ablaufT: art === 'rumaenisch' ? 1 : 0,   // fängt oben an: Die Stange liegt in Hüfthöhe im Ständer, von dort geht es hinunter (bis 5.11. stand sie im Ablauf am Schienbein)
+    ablaufT: art === 'rumaenisch' || art === 'goodmorning' ? 1 : 0,   // fängt oben an: Die Stange liegt in Hüfthöhe im Ständer, von dort geht es hinunter (bis 5.11. stand sie im Ablauf am Schienbein); Good Morning: aufrecht unter der Stange auf dem Rücken, nicht schon vorgebeugt (6.11.: der Rumpf lief beim Vorbeugen 5 cm in sie)
     aufbau(ger) {
       const z = {};
       if (kh) khAufbauen(ger, z);
@@ -598,13 +598,13 @@ function hueftbeuge(art, o) {
     },
     pose(t) {
       if (art === 'einbeinig') {
-        const becken = mv(V(0.03, 0.9, -0.08), V(0.03, 0.975, 0), t);
-        const r = { neigung: mix(78, 3, t) };
+        const becken = mv(V(0.03, 0.94, -0.08), V(0.03, 0.975, 0), t);   // unten Standbein-Knie 21° statt 41° (6.11.: Becken 4 cm höher, dafür Rumpf unten 84° statt 78° geneigt, die Hüfte beugt weiter wie zuvor)
+        const r = { neigung: mix(84, 3, t) };
         const k = rumpf(becken, r);
         const huefteR = becken.clone().add(k.R.links.clone().multiplyScalar(-MASS.hueftBreite)).sub(k.R.oben.clone().multiplyScalar(0.02));
         // freies Bein bleibt in Linie mit dem Oberkörper
         // oben pendelt das Bein einige Grad hinter die Senkrechte: der Fuß schwebt über dem Boden bei fast gestrecktem Knie (bis 5.11. kürzeres Bein mit angehobenem Fuß: Knie bis 57°, Zehe rutschte)
-        const frei = (mix(78, 3, t) + 9 * t) * RAD, fussR = huefteR.clone().add(V(0, -Math.cos(frei), -Math.sin(frei)).multiplyScalar(BEIN * 0.995));
+        const frei = (mix(84, 3, t) + 9 * t) * RAD, fussR = huefteR.clone().add(V(0, -Math.cos(frei), -Math.sin(frei)).multiplyScalar(BEIN * 0.995));
         const hand = seiten((s, sg) => k.schulter[s].clone().add(V(sg * 0.075, -ARM * 0.9995, 0.02)));   // Hanteln etwas außen neben den Beinen
         return { pose: { becken, rumpf: r, kopf: { neigung: -15 }, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.3, 0, -1)),
             fuss: { l: V(0.12, FY, 0.02), r: fussR }, fussRicht: { l: V(0.1, 0, 1), r: k.R.vor.clone().add(V(0, -0.2 + 0.5 * t, 0)) }, kniePol: { l: V(0.1, 0, 1), r: k.R.vor.clone() } },
@@ -633,7 +633,7 @@ const zehenHoehe = (grad) => Math.max(FY, MASS.fussHoehe * 0.6 + 0.02 + Math.sin
 const STUFE_SEITLICH = 0.2, BANK_VORN = -0.455;   // Seitliches Step-up: niedrige Stufe (bis 5.11. 42 cm: Knie 125°, Sprunggelenk 58°) ; Bulgarisch: Vorderkante der Bank
 // Ausfallschritt & Co. art: split | rueckwaerts | gehend | bulgarisch | stepup | seitlich ; last: keine | kurzhanteln | langhantel | multipresse ; kosaken: true (bei seitlich)
 // Neu: stepup_seitlich, curtsy ; defizit (bei rueckwaerts): Start auf einer Stufe ; durchgehen: true (bei gehend: die Figur geht wirklich von Schritt zu Schritt, im Ort auf einem mitlaufenden Streifenboden; eigene Bewegung, 5.11.)
-// Ablauf davor (wirkt über animation()): schrittExtra
+// Ablauf davor (wirkt über animation()): schrittExtra (steigen: erst, bogen, fussDreh = der Fuß dreht beim Hinaufsteigen in der Luft nach außen, Bulgarian)
 export function ausfallschritt(o = {}) {
   const art = o.art || 'split', last = o.last || 'keine', gehen = art === 'gehend' && !!o.durchgehen;
   return {
@@ -756,7 +756,7 @@ export function ausfallschritt(o = {}) {
         fuss = { l: V(0.12, FY, 0.38), r: hinten };   // Bulgarisch: Stand 2,0× statt 2,36× (hintere Hüfte unten bis 5.11. -29°)
         zehen = { l: 0, r: art === 'bulgarisch' ? 0 : 45 };
         if (art === 'bulgarisch') fussRicht = { l: undefined, r: V(0, -0.22, -1) };
-        neigung = mix(art === 'bulgarisch' ? 14 : 6, 3, s);
+        neigung = mix(art === 'bulgarisch' ? 19 : 6, 3, s);   // Bulgarisch unten 19° statt 14°: die hintere Hüfte ist unten höchstens 25° gestreckt (bis 6.11. -29°); sonst Rumpf wie zuvor
       }
       const r = { neigung };
       const k = rumpf(becken, r);
@@ -3254,6 +3254,7 @@ export function curl(o = {}) {
     return c;
   }
   return {
+    ueberSitz: art === 'scott',   // Ablauf: bei Hanteln oder Stange von hinten über den Sitz steigen (das Pult steht vor den Oberschenkeln, von vorn liefen sie hinein)
     aufbau(ger) {
       const z = {};
       if (art === 'scott') scottBankBauen(ger, z, V(0, 0.56, -0.08));
