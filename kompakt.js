@@ -163,15 +163,29 @@
   /* ---------- Analyse vom Kunden (29.10.2026) ----------
    * Der Kunde füllt in der App die Anamnese (ohne Trainer-Felder) und den Gesundheits-Check aus und schickt beides verschlüsselt an Devin.
    * Übernehmen: nur bekannte Felder mit passenden Werten. Gesundheit nur strenger: ein Ja oder „Weiß nicht“ bleibt,
-   * Beschwerden und Zielgruppen kommen nur dazu. Level, ärztliche Freigabe und Eltern-Einwilligung setzt nur Devin. */
+   * Beschwerden und Zielgruppen kommen nur dazu. Level, ärztliche Freigabe und Eltern-Einwilligung setzt nur Devin.
+   * Seit 06.11.2026 auch die Seite „Analyse für dich“ in Fassung 11 (Grunddaten, bis zu 5 Ziele, Gesundheits-Check, Einwilligung):
+   * Name, Alter und Geschlecht nur, solange Devin noch nichts eingetragen hat (grunddaten_offen), und gesundheit_offen sperrt den Plan,
+   * bis jede Frage beantwortet ist, die für diesen Kunden gilt. */
   var NUR_TRAINER = ['level', 'notizen_coach', 'schwerpunkt', 'saetze_max'];   // schwerpunkt seit 01.11.2026: setzt Devin, nie der Kunde
   var ZG_NUR_TRAINER = ['einsteiger_erwachsene', 'frauen'];   // ergeben sich aus Erfahrung und Geschlecht, hakt Devin an
+  var GRUND = ['name', 'alter', 'geschlecht'];   // davon hängen Eltern-Einwilligung und die Fragen nur für Frauen ab
   function nurTrainer(f) { return NUR_TRAINER.indexOf(f.id) >= 0 || /nur für Devin|trägt Devin/.test(f.label || ''); }
   function analyseAbschnitte(abschnitte) {
     return (abschnitte || []).map(function (a) { return { id: a.id, titel: a.titel, felder: (a.felder || []).filter(function (f) { return !nurTrainer(f); }) }; })
       .filter(function (a) { return a.felder.length; });
   }
   function istJa(v) { return v === true || v === 'weiss_nicht'; }
+  // Wie frageAktiv in engine.js: Folgefragen nur nach Ja oder „Weiß nicht“, Fragen nur für Frauen nur bei weiblich
+  function frageAktiv(k, f) {
+    var n = f.nur_wenn;
+    if (!n) return true;
+    if (n.frage_ja && !istJa((k.screening || {})[n.frage_ja])) return false;
+    if (n.geschlecht && !(n.geschlecht === 'w' ? k.geschlecht === 'weiblich' : k.geschlecht === 'maennlich')) return false;
+    return true;
+  }
+  function checkOffen(k, screening) { return (screening || []).filter(function (f) { return frageAktiv(k, f) && (k.screening || {})[f.id] === undefined; }).length; }
+  function zeitOk(t) { t = +t; return t > 1e12 && t < 1e14 ? t : Date.now(); }   // 2001 bis 5138: alles andere ist kein echter Zeitpunkt (und toISOString stürzte ab)
   function feldWert(f, v) {   // undefined = nicht übernehmen
     if (v == null || v === '') return undefined;
     if (f.typ === 'text' || f.typ === 'lang') { var s = String(v).trim().slice(0, f.typ === 'lang' ? 2000 : 300); return s || undefined; }
@@ -191,10 +205,12 @@
   function analyseUebernehmen(k, antwort, wissen) {
     var r = { felder: 0, gesundheit: 0, strenger: 0 };
     var a = (antwort && antwort.a) || {}, s = (antwort && antwort.s) || {}, hat = Object.prototype.hasOwnProperty;
+    var v11 = !!antwort && antwort.v === 11, grundFrei = v11 && !!k.grunddaten_offen, zeit = zeitOk(antwort && antwort.t);
     analyseAbschnitte(wissen.abschnitte).forEach(function (ab) {
       ab.felder.forEach(function (f) {
-        // Name, Alter und Geschlecht, die Devin schon eingetragen hat, ändert keine Kundennachricht: Davon hängen Eltern-Einwilligung und Gesundheitsfragen ab
-        if (!hat.call(a, f.id) || (['name', 'alter', 'geschlecht'].indexOf(f.id) >= 0 && k[f.id] != null && k[f.id] !== '')) return;
+        // Name, Alter und Geschlecht, die Devin schon eingetragen hat, ändert keine Kundennachricht: Davon hängen Eltern-Einwilligung und Gesundheitsfragen ab.
+        // Ausnahme Fassung 11: Der Kunde kommt frisch aus dem Eingang (grunddaten_offen), Devin hat noch nichts eingetragen, die Analyse bringt die Grunddaten selbst mit.
+        if (!hat.call(a, f.id) || (GRUND.indexOf(f.id) >= 0 && !grundFrei && k[f.id] != null && k[f.id] !== '')) return;
         var v = feldWert(f, a[f.id]);
         if (v === undefined) return;
         if (f.id === 'beschwerden') {
@@ -218,22 +234,48 @@
     [].concat((antwort && antwort.zg) || []).forEach(function (id) {
       if (bekannt.indexOf(id) >= 0 && [].concat(k.zielgruppen || []).indexOf(id) < 0) k.zielgruppen = [].concat(k.zielgruppen || [], [id]);
     });
+    r.offen = checkOffen(k, wissen.screening);
+    if (v11) {
+      // Grunddaten vollständig: ab jetzt ändert sie keine Nachricht mehr (wie bei allem, was Devin selbst einträgt)
+      if (grundFrei && GRUND.every(function (id) { return k[id] != null && k[id] !== ''; })) delete k.grunddaten_offen;
+      // Offener Check sperrt den Plan. Gelöscht wird die Marke nie: Bei vollständigem Check sperrt sie nichts, eine spätere Folgefrage bleibt so aber Pflicht.
+      if (r.offen) k.gesundheit_offen = true;
+      // Einwilligung nur festhalten. eltern_einwilligung (schriftlich, für die Engine) setzt weiter nur Devin.
+      var e = (antwort && antwort.e) || {};
+      if (e.einwilligung === true) k.einwilligung = e.eltern === true ? { am: new Date(zeit).toISOString(), eltern: true } : { am: new Date(zeit).toISOString() };
+    }
     var vorher = k.analyse || {};   // kommt danach nur der Gesundheits-Check (App-Link a: 3), bleibt die Zahl der Angaben stehen
-    k.analyse = { am: new Date(+antwort.t || Date.now()).toISOString(), felder: r.felder || vorher.felder || 0, gesundheit: r.gesundheit || vorher.gesundheit || 0 };
+    k.analyse = { am: new Date(zeit).toISOString(), felder: r.felder || vorher.felder || 0, gesundheit: r.gesundheit || vorher.gesundheit || 0 };
     return r;
   }
 
-  /* ---------- Analyse von der Seite „Analyse für dich“ (31.10.2026) ----------
-   * Die Seite (kunden-app/analyse.html → /analyse/) schickt die 10 Antworten per WhatsApp als lesbaren Text plus Zeile
-   * DK-Analyse10:…:Ende (JSON, base64url, nicht verschlüsselt: kein Code, kein Name; WhatsApp ist Ende-zu-Ende verschlüsselt).
-   * Hier nur lesen; übernommen wird wie jede Analyse mit analyseUebernehmen (nur bekannte Felder, gültige Werte). */
+  /* ---------- Analyse von der Seite „Analyse für dich“ (31.10.2026, Fassung 11 seit 06.11.2026) ----------
+   * Fassung 10: die 10 Antworten per WhatsApp als lesbarer Text plus Zeile DK-Analyse10:…:Ende (JSON, base64url, nicht verschlüsselt: kein Code, kein Name).
+   * Fassung 11: erst „Über dich“ (g), dann bis zu 5 Ziele (a.ziele) und die Fragen (a), der Gesundheits-Check (s: ja, nein, unsicher) und die Einwilligung (e),
+   *   per E-Mail an Devin (WhatsApp als zweiter Weg), Zeile DK-Analyse11:…:Ende. Kommt so heraus, wie analyseUebernehmen es nimmt: { v: 11, t, a, s, e },
+   *   aus den Zielen wird ziel (das erste, für den Generator) und ziele_weitere. Ohne Einwilligung: null (dann keine Gesundheitsdaten übernehmen).
+   * Hier nur lesen; übernommen wird wie jede Analyse mit analyseUebernehmen (nur bekannte Felder, gültige Werte).
+   * Umbrüche und Leerzeichen im Code stören nicht: Mail-Programme und WhatsApp brechen lange Zeilen um. */
+  var S_WERT = { ja: true, nein: false, unsicher: 'weiss_nicht' };
+  var G_FELDER = ['name', 'alter', 'geschlecht', 'groesse_cm', 'gewicht_kg', 'beruf'];
+  var NICHT_AUS_A = G_FELDER.concat(['ziel', 'ziele', 'ziele_weitere', '__proto__', 'constructor', 'prototype']);   // Grunddaten nur aus g, Ziele nur aus der Liste
+  function objekt(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
   function analyseSeiteLesen(text) {
-    var m = /DK-Analyse10:([A-Za-z0-9_-]+):Ende/.exec(String(text || ''));
-    if (!m) return null;
-    try {
-      var d = JSON.parse(new TextDecoder().decode(vonBase64url(m[1])));
-      return d && d.v === 10 && d.a && typeof d.a === 'object' && !Array.isArray(d.a) ? { v: 10, t: +d.t || Date.now(), a: d.a } : null;
-    } catch (e) { return null; }
+    var m = /DK-Analyse(10|11):([A-Za-z0-9_-]+):Ende/.exec(String(text || '').replace(/\s+/g, ''));
+    if (!m || m[2].length > 200000) return null;   // eine echte Analyse hat ein paar KB
+    var d;
+    try { d = JSON.parse(new TextDecoder().decode(vonBase64url(m[2]))); } catch (e) { return null; }
+    if (!objekt(d) || !objekt(d.a) || d.v !== +m[1]) return null;
+    if (d.v === 10) return { v: 10, t: zeitOk(d.t), a: d.a };
+    if (!objekt(d.g) || !objekt(d.e) || d.e.einwilligung !== true) return null;
+    var a = {}, s = {}, ziele = [], hat = Object.prototype.hasOwnProperty;
+    Object.keys(d.a).forEach(function (id) { if (NICHT_AUS_A.indexOf(id) < 0) a[id] = d.a[id]; });
+    G_FELDER.forEach(function (id) { if (hat.call(d.g, id)) a[id] = d.g[id]; });
+    (Array.isArray(d.a.ziele) ? d.a.ziele : []).forEach(function (z) { if (typeof z === 'string' && z && ziele.indexOf(z) < 0 && ziele.length < 5) ziele.push(z); });
+    if (ziele.length) a.ziel = ziele[0];
+    if (ziele.length > 1) a.ziele_weitere = ziele.slice(1);
+    if (objekt(d.s)) Object.keys(d.s).forEach(function (id) { if (/^[a-z0-9_]{1,60}$/.test(id) && id !== '__proto__' && typeof d.s[id] === 'string' && hat.call(S_WERT, d.s[id])) s[id] = S_WERT[d.s[id]]; });
+    return { v: 11, t: zeitOk(d.t), a: a, s: s, e: d.e.eltern === true ? { einwilligung: true, eltern: true } : { einwilligung: true } };
   }
 
   var API = { planKompakt: planKompakt, planCode: planCode, base64url: base64url, kundenId: kundenId,

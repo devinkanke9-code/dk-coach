@@ -2,7 +2,7 @@
 // Der Plan kommt im Link vom Trainer, wird auf dem Handy gespeichert und nie an einen Server geschickt.
 // Seit 29.10.2026: Link + Code (#z=…, verschlüsselt, mit Laufzeit), ohne Plan zuerst die Analyse. Alte Links (#p=…) gehen weiter.
 // Aussehen und Abläufe wie die Kunden-Ansicht der Trainer-Seite (stil.css, gleiche Bausteine), dazu die 3D-Figur (buehne.js).
-import { UEBUNGEN, STAND, ANALYSE } from './daten.js';
+import { UEBUNGEN, STAND, ANALYSE, KONTAKT } from './daten.js';
 import { buehne, standbilder } from './buehne.js';
 import { erklaerPunkte, ART_NAME } from './coach.js';
 const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
@@ -74,6 +74,8 @@ function dauerhaft() { try { navigator.storage && navigator.storage.persist && n
 
 async function linkEinlesen() {
   const z = /[#&]z=([A-Za-z0-9_-]+)/.exec(location.hash), m = /[#&]p=([A-Za-z0-9_-]+)/.exec(location.hash);
+  const u = /[#&]umzug=([A-Za-z0-9_-]+)/.exec(location.hash);   // Umzug von der alten Adresse (06.11.2026)
+  if (u) { linkAusAdresse(); return schonGesehen(u[1]) ? false : umzugEinlesen(u[1]); }
   if (!z && !m) return false;
   linkAusAdresse();
   const teil = z ? z[1] : m[1];
@@ -271,7 +273,7 @@ function zeichne() {
   const ziel = $('#ansicht'); ziel.textContent = '';
   const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
     || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, info: ansichtInfo }[S.ansicht] || ansichtHeute;
-  try { ziel.append(...ansicht().filter(Boolean)); }
+  try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
     ziel.append(h('section', { class: 'block willkommen' }, logo(), h('h1', { text: 'Hier stimmt etwas nicht' }),
@@ -334,7 +336,7 @@ function startseite() {
   setTimeout(startBeobachten, 0);
   return [
     h('section', { class: 'st-block st-held da' },
-      text('DK Coach', 'Dein Plan. Von Devin.', [analyseKnopf(), zweit('Beispiel ansehen', beispiel)], true),
+      text(KONTAKT.marke, 'Dein Plan. Von Devin.', [analyseKnopf(), zweit('Beispiel ansehen', beispiel)], true),
       START3D ? h('div', { class: 'st-buehne' }, START3D.el) : null),
     h('section', { class: 'st-block st-frei st-breit' },
       text('Dein Gym. In 3D.', 'Von Gerät zu Gerät. Am Ende wartet die Tür.', [zweit('Gym betreten', gymZeigen)]),
@@ -351,11 +353,14 @@ function startseite() {
     h('section', { class: 'st-block st-breit' },
       text('10 Fragen.', 'Danach baut Devin deinen Plan.', [analyseKnopf()]),
       h('div', { class: 'st-fragen', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, i) => h('i', { style: '--i:' + i })))),
+    KONTAKT.ueber_mich ? h('section', { class: 'st-block st-breit st-ueber' },
+      text('Über mich.', KONTAKT.ueber_mich.zeile),
+      h('div', { class: 'st-ueber-text' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('p', { text: KONTAKT.ueber_mich.text }))) : null,
     h('section', { class: 'st-block st-eigen st-breit' },
       text('Du hast schon einen Plan?', 'Öffne den Link aus Devins Nachricht oder füg sie hier ein.'),
       einfuegenBlock(),
       h('details', { class: 'st-install' }, h('summary', { text: 'Als App aufs Handy' }), installKarte(true))),
-    h('footer', { class: 'st-fuss', text: 'DK Coach' })
+    h('footer', { class: 'st-fuss' }, h('span', { text: KONTAKT.marke }), rechtlichesLinks())
   ];
 }
 
@@ -491,7 +496,7 @@ function sendeTextVorbereiten(ko) {
   ANALYSE.screening.forEach((f) => { if (e.s[f.id] !== undefined && frageAktiv(f, e)) s[f.id] = e.s[f.id]; });
   const vn = vorname(a.name || ko.n);
   SENDE = { key, text: '', p: K.verpacken(ko.code, { v: 1, k: ko.id, t: Date.now(), a, s, zg: e.zg || [] }).then((z) => {
-    SENDE.text = 'Hi Devin, hier ist ' + (ko.form === 'gesundheit' ? 'mein Gesundheits-Check' : 'meine Analyse') + ' für DK Coach' + (vn ? ' (' + vn + ')' : '') + '.\n\nCode für DK Coach (nicht ändern):\nDK-Analyse:' + z + ':Ende';
+    SENDE.text = 'Hi Devin, hier ist ' + (ko.form === 'gesundheit' ? 'mein Gesundheits-Check' : 'meine Analyse') + ' für ' + KONTAKT.marke + (vn ? ' (' + vn + ')' : '') + '.\n\nCode für ' + KONTAKT.marke + ' (nicht ändern):\nDK-Analyse:' + z + ':Ende';
     document.querySelectorAll('[data-senden]').forEach((b) => { b.disabled = false; b.textContent = b.dataset.senden; });
   }) };
 }
@@ -769,8 +774,8 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); inst
 function installKarte(immer) {
   if (installiert() || (!immer && speicher.lies('dk_install_weg', false))) return null;
   const ua = navigator.userAgent || '', ios = /iPhone|iPad|iPod/.test(ua), android = /Android/.test(ua);
-  const iphone = ['Öffne den Link in Safari, nicht in WhatsApp.', 'Tippe unten auf Teilen (Viereck mit Pfeil nach oben).', 'Wähle „Zum Home-Bildschirm“ und nenne es „DK Coach“.',
-    'Öffne DK Coach vom Home-Bildschirm und gib deinen Code dort noch einmal ein (das iPhone trennt App und Safari).'];
+  const iphone = ['Öffne den Link in Safari, nicht in WhatsApp.', 'Tippe unten auf Teilen (Viereck mit Pfeil nach oben).', 'Wähle „Zum Home-Bildschirm“ und nenne es „Devin Kanke“.',
+    'Öffne die App vom Home-Bildschirm und gib deinen Code dort noch einmal ein (das iPhone trennt App und Safari).'];
   const andro = ['Öffne den Link in Chrome, nicht in WhatsApp.', 'Tippe oben rechts auf ⋮.', 'Wähle „App installieren“ oder „Zum Startbildschirm hinzufügen“.'];
   const liste = (titel, schritte) => h('div', null, titel ? h('b', { class: 'klein', text: titel }) : null, h('ol', { class: 'klein' }, schritte.map((s) => h('li', { text: s }))));
   return h('section', { class: 'block' }, h('h2', { text: 'Als App aufs Handy' }),
@@ -799,7 +804,8 @@ function ansichtInfo() {
         speicher.schreib('dk_aktiv', x.id); if (konten()[x.id]) speicher.schreib('dk_konto', x.id); S.tagWahl = null; zeichne();
       }, text: (x.id === p.id ? '✓ ' : '') + (x.n || 'Plan') + (x.s ? ' · ' + x.s : '') }))) : null,
       !mitZugang ? einfuegenBlock('Neuen Link einfügen') : null,
-      !mitZugang ? h('button', { class: 'knopf klein', type: 'button', onclick: planLoeschen, text: 'Diesen Plan vom Handy löschen' }) : null)];
+      !mitZugang ? h('button', { class: 'knopf klein', type: 'button', onclick: planLoeschen, text: 'Diesen Plan vom Handy löschen' }) : null),
+    infoUeber()];
 }
 // Abmelden: Zugang, Plan und Analyse-Entwurf gehen vom Handy (Devin kann jederzeit einen neuen Link schicken)
 function abmelden(e) {
@@ -1093,7 +1099,7 @@ function laufAlsText(r) {
     u.z.forEach((s, i) => z.push('  ' + (i + 1) + '. ' + (s[0] != null ? s[0] + ' kg' : '–') + ' × ' + (s[1] != null ? s[1] + (u.sek ? ' s' : '') : '–') +
       ' · Satz ' + mmss(s[2]) + (s[3] != null ? ' · Pause ' + mmss(s[3]) : '')));
   });
-  z.push('', 'Code für DK Coach (nicht ändern):', 'DK-Lauf:' + zuB64(new TextEncoder().encode(JSON.stringify(r))) + ':Ende');
+  z.push('', 'Code für ' + KONTAKT.marke + ' (nicht ändern):', 'DK-Lauf:' + zuB64(new TextEncoder().encode(JSON.stringify(r))) + ':Ende');
   return z.join('\n');
 }
 function laufTabelle(r) {
@@ -1120,10 +1126,17 @@ function verlaufBlock() {
       h('b', { text: 'Training ' + r.t + ' · ' + r.tn }), h('span', { class: 'zahl', text: mmss(laufDauer(r)) }),
       h('span', { class: 'leise klein', text: datumZeit(r.s) + ' · ' + saetzeGesamt(r) + ' Sätze' + (r.st === 'abgebrochen' ? ' · vorzeitig beendet' : '') })))));
 }
+// Training per E-Mail an Devin (06.11.2026): Die Mail-App öffnet sich fertig ausgefüllt, der Kunde tippt nur noch auf Senden.
+// Devins Trainer-Seite findet die Zeile DK-Lauf in seinem Postfach und trägt das Training beim passenden Kunden ein. WhatsApp bleibt als zweiter Weg.
+function laufMailLink(r) {
+  const betreff = 'Training für ' + KONTAKT.marke + ': ' + (r.k || 'Kunde') + ', ' + new Date(r.s).toLocaleDateString('de-DE');
+  return 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(betreff) + '&body=' + encodeURIComponent(laufAlsText(r).replace(/\n/g, '\r\n'));
+}
+const laufMailKnopf = (r, klasse) => h('a', { class: klasse, href: laufMailLink(r), text: 'Per E-Mail an Devin' });
 function laufBlatt(r) {
-  const knopf = h('button', { class: 'knopf', type: 'button', onclick: () => kopieren(laufAlsText(r), knopf), text: 'Text für Devin kopieren' });
+  const knopf = h('button', { class: 'knopf', type: 'button', onclick: () => kopieren(laufAlsText(r), knopf), text: 'Text für WhatsApp kopieren' });
   oeffneBlatt('Training ' + r.t + ' · ' + r.tn, datumZeit(r.s), [h('div', { class: 'blatt-werte' }, h('span', { class: 'chip', text: 'Dauer ' + mmss(laufDauer(r)) }),
-    h('span', { class: 'chip', text: saetzeGesamt(r) + ' Sätze' }), r.st === 'abgebrochen' ? h('span', { class: 'chip', text: 'vorzeitig beendet' }) : null), laufTabelle(r), knopf]);
+    h('span', { class: 'chip', text: saetzeGesamt(r) + ' Sätze' }), r.st === 'abgebrochen' ? h('span', { class: 'chip', text: 'vorzeitig beendet' }) : null), laufTabelle(r), laufMailKnopf(r, 'knopf haupt'), knopf]);
 }
 // Letztes Mal: aus den gespeicherten Trainings, sonst aus der alten Satz-Liste (App bis 28.10.)
 function letztesMal(u, satz) {
@@ -1267,12 +1280,12 @@ function timerFertig() {
   const r = LAUF.ergebnis, text = laufAlsText(r);
   if (!LAUF.endSpruch) { LAUF.endSpruch = r.st === 'abgebrochen' ? SPRUCH_KURZ : spruch(SPRUECHE_ENDE); laufSichern(); }
   const feld = h('textarea', { class: 'eingabe', readonly: true, 'aria-label': 'Text für Devin', style: 'min-height:110px;font-family:var(--f-zahl);font-size:12px', text });
-  const knopf = h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: () => {
+  const knopf = h('button', { class: 'knopf tm-gross', type: 'button', onclick: () => {
     const fertig = () => { knopf.textContent = 'Kopiert'; };
     try { navigator.clipboard.writeText(text).then(fertig, () => { feld.select(); knopf.textContent = 'Text markiert, jetzt kopieren'; }); } catch (x) { feld.select(); }
-  }, text: 'Text kopieren' });
+  }, text: 'Text für WhatsApp kopieren' });
   return [
-    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: 'DK Coach' }), h('div', { class: 'tm-gesamt', text: datumZeit(r.s) })),
+    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: KONTAKT.marke }), h('div', { class: 'tm-gesamt', text: datumZeit(r.s) })),
     h('div', { class: 'tm-feier tm-schluss' }, h('div', { class: 'tm-haken gross', html: HAKEN }),
       h('h1', { class: 'tm-name', text: r.st === 'abgebrochen' ? 'Für heute Schluss' : 'Geschafft' }),
       h('p', { class: 'tm-spruch', text: LAUF.endSpruch }),
@@ -1282,8 +1295,8 @@ function timerFertig() {
       h('div', null, h('small', { text: 'Übungen' }), h('b', { text: String(r.u.length) }))),
     h('section', { class: 'block' }, h('h2', { text: 'Training ' + r.t + ' · ' + r.tn }), laufTabelle(r)),
     h('section', { class: 'block' }, h('h2', { text: 'An Devin schicken' }),
-      h('p', { class: 'leise klein', text: 'Kopier den Text und schick ihn Devin, zum Beispiel per WhatsApp. Er sieht dann deine Zeiten, Gewichte und Wiederholungen.' }),
-      knopf, feld),
+      h('p', { class: 'leise klein', text: 'Per E-Mail geht es mit einem Tipp, deine Mail-App ist schon ausgefüllt. Oder kopier den Text für WhatsApp. Devin sieht dann deine Zeiten, Gewichte und Wiederholungen.' }),
+      laufMailKnopf(r, 'knopf haupt tm-gross'), knopf, feld),
     h('button', { class: 'knopf tm-gross', type: 'button', onclick: laufSchliessen, text: 'Fertig' })
   ];
 }
@@ -1304,6 +1317,117 @@ function timerTick() {
   }
 }
 setInterval(timerTick, 250);
+
+/* ---------- Über mich und Rechtliches (06.11.2026): Text und Angaben aus kontakt.json, die Links nur, wenn es die Seiten gibt ---------- */
+const rechtlichesLinks = () => KONTAKT.rechtliches ? [' · ', h('a', { href: 'impressum/', text: 'Impressum' }), ' · ', h('a', { href: 'datenschutz/', text: 'Datenschutz' })] : null;
+function infoUeber() {
+  const u = KONTAKT.ueber_mich;   // null, solange Devins eigener Text fehlt: dann nur der Kontakt
+  return h('section', { class: 'block' }, h('h2', { text: u ? 'Über mich' : 'Kontakt' }),
+    u ? h('p', { class: 'klein', text: u.zeile + ' ' + u.text }) : null,
+    h('p', { class: 'klein leise' }, 'Fragen? Schreib mir: ', h('span', { text: KONTAKT.mail })),
+    KONTAKT.rechtliches ? h('p', { class: 'klein' }, h('a', { href: 'impressum/', text: 'Impressum' }), ' · ', h('a', { href: 'datenschutz/', text: 'Datenschutz' })) : null);
+}
+
+/* ---------- Umzug auf die eigene Adresse (06.11.2026) ----------
+ * Der Speicher eines Handys gehört immer zu einer Adresse. Zieht die App um (kontakt.json → adresse), nimmt ein Knopf in der alten App alles im #-Teil mit:
+ * Konto mit Code, Plan, Trainings, Trainingstage, Analyse-Entwurf, Farbwelt. Der #-Teil geht nie an einen Server.
+ * Die neue App führt zusammen, statt zu überschreiben: Der neuere Stand gewinnt, Trainings werden vereint, danach prüft sie alles wie beim Start.
+ * iPhone: Der #-Teil bleibt in Safari in der Adresszeile, „Zum Home-Bildschirm“ nimmt ihn mit, die neue App übernimmt beim ersten Start alles, ohne Code.
+ * Fällig ist der Umzug, sobald die alte Adresse umleitet: Die Probe (manifest.webmanifest?umzug=…) geht am Offline-Speicher vorbei (sw.js), und fetch folgt der Umleitung nicht. */
+const NEUE_ADRESSE = KONTAKT.adresse;
+const ALTE_ADRESSE = /\.github\.io$/.test(location.hostname) && location.origin !== new URL(NEUE_ADRESSE).origin;
+const LOOKS = ['lagune', 'klar', 'gold'];
+const UMZUG_JE = /^dk_(tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}$/;
+async function umzugPruefen() {
+  if (!ALTE_ADRESSE || S.umzug || navigator.onLine === false) return;
+  try {
+    const r = await fetch('manifest.webmanifest?umzug=' + Date.now(), { redirect: 'manual', cache: 'no-store' });
+    if (r.type === 'opaqueredirect') { S.umzug = true; zeichne(); }
+  } catch (e) {}
+}
+function umzugDaten() {
+  const d = {};
+  for (const k of ['dk_konten', 'dk_konto', 'dk_plaene', 'dk_aktiv', 'dk_wartet', VERLAUF_KEY]) { const v = speicher.lies(k, null); if (v != null) d[k] = v; }
+  try {
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (UMZUG_JE.test(k)) { const v = speicher.lies(k, null); if (v != null) d[k] = v; } }
+    const l = localStorage.getItem('dk_look'); if (LOOKS.includes(l)) d.look = l;
+  } catch (e) {}
+  return d;
+}
+function umzugKarte() {
+  if (!S.umzug) return null;
+  const d = umzugDaten(), ort = new URL(NEUE_ADRESSE).host;
+  const etwas = Object.keys(d.dk_konten || {}).length > 0 || Object.keys(d.dk_plaene || {}).some((id) => id !== 'beispiel') || (d[VERLAUF_KEY] || []).length > 0;
+  const knopf = h('a', { class: 'knopf haupt', href: NEUE_ADRESSE, target: '_blank', rel: 'noopener', text: etwas ? 'Wird vorbereitet …' : 'Zur neuen Adresse' });
+  if (etwas) {
+    knopf.addEventListener('click', (e) => { if (!knopf.dataset.bereit) e.preventDefault(); });
+    K.planCode({ v: 1, t: Date.now(), d }).then((code) => { knopf.href = NEUE_ADRESSE + '#umzug=' + code; knopf.textContent = 'Alles mitnehmen'; knopf.dataset.bereit = '1'; },
+      () => { knopf.textContent = 'Zur neuen Adresse'; knopf.dataset.bereit = '1'; });
+  }
+  return h('section', { class: 'block umzug' }, h('h2', { text: 'Neue Adresse: ' + ort }),
+    h('p', { class: 'klein', text: etwas ? 'Die App ist umgezogen. Tipp auf den Knopf: Plan, Code und Trainings kommen mit, du musst nichts neu eingeben.' : 'Die App ist umgezogen. Ab jetzt findest du sie unter ' + ort + '.' }),
+    knopf,
+    h('p', { class: 'leise klein', text: istIos ? 'Leg die neue Seite danach wie beim ersten Mal auf den Home-Bildschirm (in Safari: Teilen → „Zum Home-Bildschirm“). Die neue App übernimmt alles beim ersten Öffnen. Diese alte App kannst du dann löschen.'
+      : 'Installier die neue Seite danach wieder als App. Diese alte App kannst du dann löschen.' }));
+}
+function umzugFertigKarte() {
+  if (!S.umzugNeu || installiert()) return null;
+  return h('section', { class: 'block umzug' }, h('h2', { text: 'Fast fertig' }),
+    h('p', { class: 'klein', text: 'Dein Plan, dein Code und deine Trainings sind da. Leg die App jetzt neu auf den Home-Bildschirm' + (istIos ? ' (unten Teilen → „Zum Home-Bildschirm“). Die neue App übernimmt alles beim ersten Öffnen, ohne Code.' : ', deine Daten kommen mit.') + ' Die alte App kannst du danach löschen.' }),
+    !istIos && installEreignis ? h('button', { class: 'knopf haupt', type: 'button', onclick: async () => { installEreignis.prompt(); await installEreignis.userChoice; installEreignis = null; zeichne(); }, text: 'App installieren' }) : null);
+}
+async function umzugEinlesen(teil) {
+  let u = null;
+  try { u = await entpacke(teil); } catch (e) {}
+  const ist = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+  if (!ist(u) || u.v !== 1 || typeof u.t !== 'number' || u.t > Date.now() + 1728e5 || !ist(u.d)) { gesehen(teil); toast('Der Umzug-Link ist unvollständig. Tipp in der alten App nochmal auf den Knopf.'); return false; }
+  const d = u.d, kHier = konten(), pHier = speicher.lies('dk_plaene', {});
+  const leer = !Object.keys(kHier).length && !Object.keys(pHier).some((id) => id !== 'beispiel');
+  if (!leer && !confirm('Daten von der alten Adresse übernehmen? Dein Stand hier bleibt, das Neuere gewinnt.')) { toast('Nicht übernommen.'); return false; }
+  gesehen(teil);
+  let neu = 0;
+  // Konten: nur mit gültigem Code, der neuere Stand (t) gewinnt
+  if (ist(d.dk_konten)) for (const [id, ko] of Object.entries(d.dk_konten)) {
+    if (!K.idOk(id) || !ist(ko) || typeof ko.t !== 'number' || ko.t > Date.now() + 1728e5 || typeof ko.code !== 'string' || !K.appCodeGueltig(ko.code)) continue;
+    if (!kHier[id] || !(kHier[id].t >= ko.t)) { kHier[id] = Object.assign({}, ko, { id, code: K.appCodeAnzeige(ko.code) }); neu++; }
+  }
+  // Pläne: geprüft wie beim Start, ein neuerer Plan (Erstelldatum d) gewinnt, der Beispielplan bleibt zurück
+  if (ist(d.dk_plaene)) for (const [id, p] of Object.entries(d.dk_plaene)) {
+    const sauber = id !== 'beispiel' && K.idOk(id) && K.planSauber(p);
+    if (sauber && (!pHier[id] || (sauber.d || '') > (pHier[id].d || ''))) { pHier[id] = Object.assign(sauber, { id }); neu++; }
+  }
+  // Kommt ein echter Plan mit, hat der Beispielplan ausgedient: Wer ihn hier vorher angesehen hat, sieht danach seinen eigenen Plan
+  if (pHier.beispiel && Object.keys(pHier).some((id) => id !== 'beispiel')) { delete pHier.beispiel; if (LAUF && LAUF.plan === 'beispiel') { LAUF = null; laufSichern(); } }
+  speicher.schreib('dk_konten', kHier); speicher.schreib('dk_plaene', pHier);
+  for (const k of ['dk_konto', 'dk_aktiv']) {
+    const jetzt = speicher.lies(k, null) || '';
+    if ((!K.idOk(jetzt) || !(kHier[jetzt] || pHier[jetzt])) && K.idOk(d[k] || '') && (kHier[d[k]] || pHier[d[k]])) speicher.schreib(k, d[k]);
+  }
+  if (!speicher.lies('dk_wartet', null) && typeof d.dk_wartet === 'string' && /^[A-Za-z0-9_-]{8,20000}$/.test(d.dk_wartet)) speicher.schreib('dk_wartet', d.dk_wartet);
+  // Trainings: vereint (gleicher Start = dasselbe Training), neueste zuerst, höchstens 40 wie in der App
+  const lauf = (r) => ist(r) && typeof r.s === 'number' && typeof r.e === 'number' && Array.isArray(r.u) && r.u.length <= 60 && JSON.stringify(r).length < 20000 &&
+    r.u.every((x) => ist(x) && typeof x.n === 'string' && Array.isArray(x.z) && x.z.length <= 40 && x.z.every((s) => Array.isArray(s) && s.length <= 4 && s.every((w) => w === null || typeof w === 'number')));
+  if (Array.isArray(d[VERLAUF_KEY])) {
+    const vorher = verlaufListe(), schon = new Set();
+    const v = vorher.concat(d[VERLAUF_KEY].filter(lauf)).filter((r) => !schon.has(r.s) && schon.add(r.s)).sort((a, b) => b.s - a.s).slice(0, 40);
+    if (v.length !== vorher.length) neu++;
+    speicher.schreib(VERLAUF_KEY, v);
+  }
+  // Trainingstage und Analyse-Entwurf: nur, wo hier noch nichts steht
+  for (const [k, w] of Object.entries(d)) {
+    if (!UMZUG_JE.test(k) || speicher.lies(k, null) != null) continue;
+    if (k.startsWith('dk_tage_') ? Array.isArray(w) && w.length <= 7 && w.every((i) => Number.isInteger(i) && i >= 0 && i < 7) : ist(w) && JSON.stringify(w).length < 50000) speicher.schreib(k, w);
+  }
+  if (leer && LOOKS.includes(d.look)) {   // Farbwelt nur auf einem leeren Handy übernehmen
+    try { localStorage.setItem('dk_look', d.look); } catch (e) {}
+    document.documentElement.dataset.look = d.look;
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = d.look === 'klar' ? '#F5F5F7' : d.look === 'gold' ? '#060608' : '#86CBEE';
+  }
+  gespeichertesPruefen();
+  S.umzugNeu = true; S.tagWahl = null; S.ansicht = 'heute'; dauerhaft();
+  toast(neu ? 'Umzug geschafft: Plan, Code und Trainings sind da.' : 'Alles war schon da.');
+  return true;
+}
 
 /* ---------- Start ---------- */
 // Schon Gespeichertes einmal beim Start prüfen: So wird auch ein Handy wieder gesund, das vor der Sicherheitsprüfung (4.11.2026) einen gefälschten Link geöffnet hat
@@ -1326,7 +1450,8 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
   zeichne();
   fotosVorladen();
   gymAusLink();
+  umzugPruefen();
 })();
 window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { zeichne(); window.scrollTo(0, 0); fotosVorladen(); } });
-window.addEventListener('online', zeichne);
+window.addEventListener('online', () => { zeichne(); umzugPruefen(); });
 window.addEventListener('offline', zeichne);

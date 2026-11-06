@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>DK Coach</title>
+<title>Devin Kanke Coach</title>
 <meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="DK Coach">
+<meta name="apple-mobile-web-app-title" content="Devin Kanke">
 <!-- manifest setzt app.js (nicht auf dem iPhone: dort soll „Zum Home-Bildschirm“ den Link mit dem Plan behalten) -->
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -32,18 +32,26 @@ img { max-width: 100%; }
 .analyse .janein span { min-width: 84px; padding: 10px 0; }
 .analyse .frage-gross { font-size: 24px; line-height: 1.2; margin-bottom: 4px; }
 .analyse .versteckt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Über mich, Rechtliches und Umzug (06.11.2026) */
+.st-block.st-ueber { padding-bottom: 48px; }
+.st-ueber-text { display: grid; justify-items: center; gap: 16px; max-width: 560px; }
+.st-ueber-text .logo { width: 64px; height: 64px; border-radius: 16px; }
+.st-ueber-text p { margin: 0; font-size: 17px; line-height: 1.47; color: var(--zeile); text-wrap: pretty; }
+.st-fuss a { display: inline-block; padding: 8px 2px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.umzug .knopf { justify-self: start; }
+body.start .umzug { grid-column: 1 / -1; margin: 12px 12px 0; }
 </style>
 </head>
 <body>
 <div class="app">
   <header class="kopf"><div class="kopf-innen">
-    <div class="marke">DK Coach</div>
+    <div class="marke">Devin Kanke Coach</div>
     <div class="rechts" id="wer"></div>
   </div></header>
   <main><div class="inhalt" id="ansicht"><p class="leise">Lädt …</p></div></main>
   <nav class="leiste" aria-label="Bereiche" hidden><div id="leiste"></div></nav>
 </div>
-<noscript><p style="padding:16px">DK Coach braucht JavaScript.</p></noscript>
+<noscript><p style="padding:16px">Devin Kanke Coach braucht JavaScript.</p></noscript>
 <script src="kompakt.js" defer></script>
 <script src="antippen.js" defer></script>
 <script type="module" src="app.js"></script>

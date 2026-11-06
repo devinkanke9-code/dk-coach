@@ -1,5 +1,5 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = 'b2a25a63fe';
+const VERSION = 'a0e5688537';
 const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'raum.js', 'stil.css',
   'schriften/schriften.css', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
   'koerper.bin', 'koerper-haut.jpg', 'koerper-haut-n.jpg', 'koerper-haar.jpg', 'koerper-augen.jpg'];
@@ -18,8 +18,8 @@ self.addEventListener('activate', (e) => {
     .then(() => self.clients.matchAll({ type: 'window' })).then((fenster) => fenster.forEach((c) => {
       if (!c.navigate) return;
       const u = new URL(c.url);
-      // Seite „Analyse für dich“: Eine Fassung vor dem 01.11.2026 hat dort die App gezeigt. Einmal echt laden, die Antworten liegen im Speicher.
-      if (u.pathname.indexOf('/analyse/') >= 0) { c.navigate(u.href).catch(() => {}); return; }
+      // Eigene Seiten: Analyse (eine Fassung vor dem 01.11.2026 hat dort die App gezeigt), Impressum und Datenschutz (seit 06.11.2026). Einmal echt laden.
+      if (/\/(analyse|impressum|datenschutz)\//.test(u.pathname)) { c.navigate(u.href).catch(() => {}); return; }
       if (!/[#&]z=/.test(c.url)) return;
       u.searchParams.set('neu', VERSION); c.navigate(u.href).catch(() => {});
     })));
@@ -29,7 +29,8 @@ self.addEventListener('fetch', (e) => {
   if (VERSION === 'dev') return;   // am PC (ungebaut) immer frisch vom Server
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
-  if (url.pathname.indexOf('/analyse/') >= 0) return;   // eigene Seite „Analyse für dich“ (seit 31.10.2026): nie die App ausliefern
+  if (/\/(analyse|impressum|datenschutz)\//.test(url.pathname)) return;   // eigene Seiten (Analyse seit 31.10.2026, Impressum und Datenschutz seit 06.11.2026): nie die App ausliefern
+  if (url.searchParams.has('umzug')) return;   // Umzug-Probe (06.11.2026, app.js): immer beim Server fragen, nie aus dem Speicher, eine Umleitung bleibt sichtbar
   // Seitenaufruf der App: immer die gespeicherte App (der Plan steckt im #-Teil, der geht nie ans Netz)
   if (req.mode === 'navigate' && /(\/|index\.html)$/.test(url.pathname)) {
     e.respondWith(caches.open(NAME).then((c) => c.match('index.html')).then((r) => r || fetch(req)));
