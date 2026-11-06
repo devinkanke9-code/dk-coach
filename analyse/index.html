@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-E/iwi5wP6eyE8NOpWKhUAwMeOnt5WUJB5BpB1vHUjd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-iMxskUO/ut6PoWD9jvYfx/sUCAFUr9PfEW/HdVNFGt0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Analyse für dich · Devin Kanke Coach</title>
 <meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
@@ -505,6 +505,9 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
       h('p', { class: 'leise', text: 'Hat sich deine Mail-App geöffnet? Dann tipp dort noch auf Senden. Devin schaut sich deine Antworten an und schickt dir deinen Link und deinen Code.' }),
       mailKnopf('Mail nochmal öffnen', 'knopf haupt'),
       h('button', { class: 'knopf', type: 'button', onclick: whatsapp, text: 'Lieber per WhatsApp schicken' }),
+      // Hängt die Mail im Ausgang (Mail-App ohne funktionierendes Konto, 06.11.2026 bei Devins eigenem Test), hilft WhatsApp oder Kopieren in eine andere Mail-App
+      h('p', { class: 'leise klein', text: 'Bleibt die Mail im Ausgang hängen, liegt es an der Mail-App. Schick die Antworten dann per WhatsApp, oder kopier sie und schick sie aus einer anderen Mail-App an ' + EMPFAENGER + '.' }),
+      h('button', { class: 'knopf text', type: 'button', onclick: kopieren, text: 'Antworten kopieren' }),
       h('button', { class: 'knopf text', type: 'button', onclick: function () { S.gesendet = false; geh(schritte().length); }, text: 'Antworten ansehen oder ändern' }),
       loeschen);
   }
