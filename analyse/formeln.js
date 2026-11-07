@@ -1,0 +1,27 @@
+// Erzeugt von app/build.js: Rechner-Formeln aus rechner.json, dieselben wie in der Trainer-Seite
+var DK_FORMELN = {};
+DK_FORMELN["mifflin_st_jeor"] = function (gewicht_kg, groesse_cm, alter, geschlecht) { return (geschlecht==='maennlich' ? 10*gewicht_kg+6.25*groesse_cm-5*alter+5 : 10*gewicht_kg+6.25*groesse_cm-5*alter-161); };
+DK_FORMELN["harris_benedict_revidiert"] = function (gewicht_kg, groesse_cm, alter, geschlecht) { return (geschlecht==='maennlich' ? 88.362+13.397*gewicht_kg+4.799*groesse_cm-5.677*alter : 447.593+9.247*gewicht_kg+3.098*groesse_cm-4.330*alter); };
+DK_FORMELN["dge_mueller"] = function (gewicht_kg, alter, geschlecht) { return ((0.047*gewicht_kg+(geschlecht==='maennlich'?1.009:0)-0.01452*alter+3.21)*239); };
+DK_FORMELN["katch_mcardle"] = function (gewicht_kg, koerperfett_prozent) { return (370+21.6*gewicht_kg*(1-koerperfett_prozent/100)); };
+DK_FORMELN["cunningham"] = function (gewicht_kg, koerperfett_prozent) { return (500+22*gewicht_kg*(1-koerperfett_prozent/100)); };
+DK_FORMELN["schofield_10_17"] = function (gewicht_kg, geschlecht) { return (geschlecht==='maennlich' ? 17.686*gewicht_kg+658.2 : 13.384*gewicht_kg+692.6); };
+DK_FORMELN["fettfreie_masse"] = function (gewicht_kg, koerperfett_prozent) { return (gewicht_kg*(1-koerperfett_prozent/100)); };
+DK_FORMELN["gesamtumsatz"] = function (grundumsatz, pal) { return (grundumsatz*pal); };
+DK_FORMELN["kalorien_fettabbau"] = function (grundumsatz, pal, alter, geschlecht) { return (alter<18 ? grundumsatz*pal : Math.min(grundumsatz*pal, Math.max(grundumsatz, geschlecht==='maennlich'?1500:1200, grundumsatz*pal*0.85, grundumsatz*pal-750))); };
+DK_FORMELN["kalorien_muskelaufbau"] = function (grundumsatz, pal, alter) { return (alter<18 ? grundumsatz*pal : grundumsatz*pal*1.1); };
+DK_FORMELN["abnahme_kg_woche_min"] = function (gewicht_kg) { return (gewicht_kg*0.005); };
+DK_FORMELN["abnahme_kg_woche_max"] = function (gewicht_kg) { return (gewicht_kg*0.01); };
+DK_FORMELN["zunahme_kg_woche_max"] = function (gewicht_kg) { return (gewicht_kg*0.005); };
+DK_FORMELN["wasser_gesamt"] = function (gewicht_kg, alter) { return (gewicht_kg*(alter<19 ? 40 : (alter<51 ? 35 : 30))); };
+DK_FORMELN["ballaststoffe"] = function (grundumsatz, pal) { return (Math.max(30, 14.6*grundumsatz*pal/1000)); };
+DK_FORMELN["bmi"] = function (gewicht_kg, groesse_cm) { return (gewicht_kg/Math.pow(groesse_cm/100,2)); };
+DK_FORMELN["taille_groesse_verhaeltnis"] = function (taille_cm, groesse_cm) { return (taille_cm/groesse_cm); };
+DK_FORMELN["koerperfett_navy"] = function (geschlecht, taille_cm, hals_cm, huefte_cm, groesse_cm) { return (geschlecht==='maennlich' ? 495/(1.0324-0.19077*Math.log10(taille_cm-hals_cm)+0.15456*Math.log10(groesse_cm))-450 : 495/(1.29579-0.35004*Math.log10(taille_cm+huefte_cm-hals_cm)+0.22100*Math.log10(groesse_cm))-450); };
+DK_FORMELN["einrm_epley"] = function (gewicht, wdh) { return (wdh===1 ? gewicht : gewicht*(1+wdh/30)); };
+DK_FORMELN["einrm_brzycki"] = function (gewicht, wdh) { return (gewicht*36/(37-wdh)); };
+DK_FORMELN["einrm_lombardi"] = function (gewicht, wdh) { return (gewicht*Math.pow(wdh,0.10)); };
+DK_FORMELN["hfmax_tanaka"] = function (alter) { return (208-0.7*alter); };
+DK_FORMELN["hfmax_fox"] = function (alter) { return (220-alter); };
+DK_FORMELN["hfmax_gellish"] = function (alter) { return (207-0.7*alter); };
+DK_FORMELN["karvonen"] = function (hf_ruhe, hf_max, intensitaet) { return (hf_ruhe+(hf_max-hf_ruhe)*intensitaet); };
