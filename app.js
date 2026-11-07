@@ -284,8 +284,59 @@ function zeichne() {
 }
 
 /* ---------- Willkommen ---------- */
+/* ---------- Code-Leiste (07.11.2026, Devin: „eine Leiste, wo du auf der Webseite deinen Code direkt eingeben kannst … als Erstes gezeigt“) ----------
+   Der Kunde tippt nur den Code aus Devins Nachricht. Die Seite fragt den Code-Briefkasten (Google-Skript in Devins Konto) mit einer Prüfsumme
+   des Codes, nie mit dem Code selbst, und bekommt den verschlüsselten Zugang zurück, genau den Teil, der sonst im Link nach #z= steht.
+   Danach läuft alles wie beim Link: Code schließt auf, anmelden(). Der Briefkasten kennt nur Zugänge, die Devin per Gmail geschickt hat. */
+async function codeHolen(code) {
+  const ziffern = K.appCodeNormal(code);
+  const roh = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('dk-zugang|' + ziffern));
+  const pruefsumme = Array.from(new Uint8Array(roh), (b) => b.toString(16).padStart(2, '0')).join('');
+  const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 15000);
+  let teil = '';
+  try {
+    const r = await fetch(KONTAKT.briefkasten + '?k=' + pruefsumme, { cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
+    if (!r.ok) return 'netz';
+    teil = (await r.text()).trim();
+  } catch (e) { return 'netz'; } finally { clearTimeout(uhr); }
+  if (!teil || teil === 'leer' || !/^[A-Za-z0-9_-]{20,}$/.test(teil)) return 'unbekannt';
+  let d = null;
+  try { d = await K.entpacken(ziffern, teil); } catch (e) {}
+  if (!linkDatenOk(d)) return 'passt-nicht';
+  anmelden(d, ziffern, teil);
+  return 'ok';
+}
+function codeLeiste() {
+  if (!KONTAKT.briefkasten) return null;
+  const status = h('p', { class: 'klein', role: 'status' });
+  let laeuft = false;
+  const feld = h('input', { class: 'eingabe code-feld', id: 'code-start', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '9', placeholder: '0000-0000',
+    'aria-describedby': 'code-start-hilfe',
+    oninput: (e) => { const n = K.appCodeNormal(e.target.value).slice(0, 8); e.target.value = n.length > 4 ? n.slice(0, 4) + '-' + n.slice(4) : n; if (n.length === 8) los(); },
+    onkeydown: (e) => { if (e.key === 'Enter') los(); } });
+  const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: 'Einloggen' });
+  const TEXTE = {
+    netz: 'Keine Verbindung. Bitte mit Internet nochmal versuchen.',
+    unbekannt: 'Diesen Code kennt die Seite noch nicht. Hat Devin ihn gerade erst geschickt? Dann versuch es in 5 Minuten nochmal, oder öffne den Link aus seiner Nachricht.',
+    'passt-nicht': 'Der Code passt nicht. Schau nochmal in Devins Nachricht.'
+  };
+  async function los() {
+    if (laeuft) return;
+    if (!K.appCodeGueltig(feld.value)) { status.textContent = 'Der Code hat 8 Ziffern, zum Beispiel 4821-7730.'; return; }
+    laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; status.textContent = '';
+    const aus = await codeHolen(feld.value);
+    if (aus === 'ok') { zeichne(); window.scrollTo(0, 0); fotosVorladen(); return; }
+    laeuft = false; knopf.disabled = false; knopf.textContent = 'Einloggen';
+    status.textContent = TEXTE[aus] || TEXTE.netz;
+    feld.select();
+  }
+  return h('section', { class: 'block code-leiste' },
+    h('label', { class: 'lbl', for: 'code-start', text: 'Code von Devin?' }),
+    h('p', { class: 'leise klein', id: 'code-start-hilfe', text: 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
+    h('div', { class: 'code-reihe' }, feld, knopf), status);
+}
 function willkommen() {
-  return [h('section', { class: 'block willkommen' },
+  return [codeLeiste(), h('section', { class: 'block willkommen' },
     h('img', { class: 'logo', src: 'icon.svg', alt: '' }),
     h('h1', { text: 'Dein Trainingsplan' }),
     h('p', { class: 'leise', text: installiert()
@@ -335,6 +386,7 @@ function startseite() {
     h('div', { class: 'ueb-dosis' }, h('b', { text: s + ' × ' + w + ' Wdh' }), h('small', { text: 'Pause ' + p + ' s' })), h('div', { class: 'mini3d', 'data-vorschau': UEBUNGEN[id] && UEBUNGEN[id].a ? id : '' }));
   setTimeout(startBeobachten, 0);
   return [
+    codeLeiste(),
     h('section', { class: 'st-block st-held da' },
       text(KONTAKT.marke, 'Dein Plan. Von Devin.', [analyseKnopf(), zweit('Beispiel ansehen', beispiel)], true),
       START3D ? h('div', { class: 'st-buehne' }, START3D.el) : null),

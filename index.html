@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="dk-kein-zoom" content="1">
 <title>Devin Kanke Coach</title>
@@ -47,6 +47,15 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
 input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 /* Größere Trefferfläche: In der Kunden-App stehen Knöpfe mindestens 12 px auseinander, darum 6 px Rand statt 4 (auf der Trainer-Seite nur 8 px Lücke) */
 html :where(button, a[href], [role=button], label, summary):where(.knopf, .eb-knopf)::before { inset: -6px; }
+/* Code-Leiste oben auf der Startseite (07.11.2026, Devin: „eine Leiste, wo du deinen Code direkt eingeben kannst … als Erstes gezeigt“) */
+.code-leiste { display: grid; gap: 6px; }
+body.start .code-leiste { grid-column: 1 / -1; margin: 12px 12px 0; }   /* wie die Karte „Neue Adresse“: Abstand zum Rand, auf dem PC über beide Spalten */
+.code-leiste .lbl { font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
+.code-leiste .leise { margin: 0; }
+.code-reihe { display: flex; gap: 12px; align-items: stretch; margin-top: 4px; }
+.code-reihe .code-feld { flex: 1 1 auto; min-width: 0; font-size: 20px; letter-spacing: .08em; text-align: center; font-variant-numeric: tabular-nums; }
+.code-reihe .knopf { flex: none; }
+.code-leiste [role="status"]:empty { display: none; }
 </style>
 </head>
 <body>
