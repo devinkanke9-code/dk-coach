@@ -185,6 +185,27 @@ html:has(.raum)::before, html:has(.raum)::after, html:has(.raum) body::after { a
 .raum-karte-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .raum-zurueck { border: 0; background: var(--knopf-grund); color: var(--knopf-text); font-size: 14px; font-weight: 600; min-height: 34px; padding: 4px 14px; border-radius: 999px; cursor: pointer; }
 .raum-inhalt { display: grid; gap: 4px; margin-top: 6px; }
+/* Karte runter- und hochwischen (07.11.2026, Devin: „runtersliden … damit du nur die Übung siehst … wieder hochsliden“): Griff oben, unten bleibt nur die
+   Kopfzeile mit dem Namen. Griff und Kopfzeile bleiben stehen, nur der Inhalt scrollt (sonst wäre der Griff nach dem Scrollen weg). */
+.raum-karte { display: flex; flex-direction: column; overflow: hidden; padding-top: 2px; }
+.raum-griff, .raum-karte-kopf { flex: none; }
+.raum-inhalt { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.raum-griff { display: grid; place-items: center; height: 22px; margin: 0 -16px -2px; padding: 0; border: 0; background: none; cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent; }
+.raum-griff i { width: 40px; height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--text) 38%, transparent); transition: width .25s var(--sanft), background .2s var(--sanft); }
+.raum-griff:active i, .raum-karte.zieht .raum-griff i { width: 54px; background: color-mix(in srgb, var(--text) 55%, transparent); }
+.raum-griff > .dk-rahmen { display: none; }   /* keine Lichtwelle am Griff: das Ziehen selbst ist die Rückmeldung */
+.raum-griff:focus-visible { outline: none; }
+.raum-griff:focus-visible i { outline: 2px solid var(--akzent); outline-offset: 3px; }
+.raum-karte-kopf { touch-action: none; }
+.raum-kopf-links { display: grid; min-width: 0; }
+.raum-kname { display: none; font-size: 17px; font-weight: 600; letter-spacing: -.01em; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.raum-karte.unten .raum-kname { display: block; }
+.raum-karte.offen.unten { transform: translate3d(0, calc(100% - var(--raum-blick, 64px)), 0); }
+.raum-karte.unten { touch-action: none; }
+.raum-karte.unten .raum-griff { cursor: pointer; }
+.raum-inhalt { transition: opacity .25s var(--sanft); }
+.raum-karte.unten:not(.zieht) .raum-inhalt { opacity: 0; pointer-events: none; }   /* unten: nur Griff und Kopfzeile, kein halb angeschnittener Text */
+.raum-karte.zieht { transition: none; }
 /* Der normale Satz-Ablauf der App, hier als Karte über der Halle */
 .raum .tm { position: static; inset: auto; z-index: auto; background: none; padding: 0; overflow: visible; }
 .raum .tm-in { gap: 10px; max-width: none; }

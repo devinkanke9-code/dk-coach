@@ -63,7 +63,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const weiter = el('button', 'raum-weiter'); weiter.type = 'button';
   const unten = el('div', 'raum-unten'); unten.append(stick, weiter);
   const karte = el('section', 'raum-karte'), kKopf = el('div', 'raum-karte-kopf'), kNr = el('span', 'raum-nr'), kZurueck = el('button', 'raum-zurueck', 'Zurück'), kInhalt = el('div', 'raum-inhalt'); kZurueck.type = 'button';
-  kKopf.append(kNr, kZurueck); karte.append(kKopf, kInhalt);
+  // Griff zum Runterwischen (07.11.2026, Devin: „damit du es einfach runtersliden kannst, damit du nur die Übung siehst … wieder hochsliden, wenn du fertig bist“)
+  const kGriff = el('button', 'raum-griff'), kTitel = el('div', 'raum-kopf-links'), kName = el('b', 'raum-kname'); kGriff.type = 'button'; kGriff.append(el('i'));
+  kGriff.setAttribute('aria-label', 'Karte nach unten schieben'); kGriff.setAttribute('aria-expanded', 'true');
+  kTitel.append(kNr, kName); kKopf.append(kTitel, kZurueck); karte.append(kGriff, kKopf, kInhalt);
   const meldung = el('div', 'raum-meldung'); meldung.setAttribute('role', 'status');
   const popEl = el('div', 'raum-pop'), blitz = el('div', 'raum-blitz');
   const laden = el('div', 'raum-laden'), ladenT = el('p', null, 'Dein Gym wird aufgebaut …'); laden.append(el('i', 'raum-kreis'), ladenT);
@@ -391,12 +394,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     s.schild.visible = false; lichtSaeule.visible = false;
     const nah = spieler && spieler.karteKlein;   // Probetag mit kleiner Karte: Figur groß. Die Karte der App mit den Sätzen ist höher, dort bleibt es beim normalen Abstand
     const blick = ausLokal(s, s.zielLokal), sicht = ausLokal(s, s.sichtLokal.clone().sub(s.zielLokal).multiplyScalar(nah ? (hochkant() ? 1.08 : 0.98) : hochkant() ? 1.4 : 1.14).add(s.zielLokal));
-    blick.y -= hochkant() ? (nah ? 0.72 : spieler ? 1.65 : 0.95) : 0.42;   // Figur steht oben im Bild, unten liegt die Karte (eigener Charakter: ganz über der Karte)
+    const senken = hochkant() ? (nah ? 0.72 : spieler ? 1.65 : 0.95) : 0.42;
+    blick.y -= senken;   // Figur steht oben im Bild, unten liegt die Karte (eigener Charakter: ganz über der Karte). Karte unten: der Blick hebt sich wieder (orbit.versatz)
     sicht.y = klemme(sicht.y, 1, 3);
     kameraZu({ pos: sicht, blick, fov: sichtStation() }, 1.5, () => {
       const off = K.pos.clone().sub(blick);
-      orbit = { mitte: blick, r: Math.hypot(off.x, off.z), w: Math.atan2(off.x, off.z), y: K.pos.y };
-      kNr.textContent = 'Station ' + (i + 1) + ' von ' + N; kNr.dataset.station = i; kInhalt.textContent = '';
+      orbit = { mitte: blick, r: Math.hypot(off.x, off.z), w: Math.atan2(off.x, off.z), y: K.pos.y, versatz: senken, heben: 0, hebenZiel: 0 };
+      kNr.textContent = 'Station ' + (i + 1) + ' von ' + N; kNr.dataset.station = i; kInhalt.textContent = ''; kName.textContent = s.u.name; karteUnten(false, true);
       if (s.fertig || !beiStation) kInhalt.append(el('h2', null, s.u.name), el('p', 'raum-dosis', s.u.dosis || ''), el('p', 'raum-klein', s.fertig ? 'Diese Station hast du schon geschafft.' : (s.u.pause || '')));
       else beiStation(i, kInhalt);
       karte.classList.add('offen'); modusSetzen('station');
@@ -433,6 +437,48 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     zurueckZurKarte(true);
   }
   kZurueck.addEventListener('click', () => zurueckZurKarte(false));
+
+  /* Karte runter- und hochwischen (07.11.2026): am Griff oder an der Kopfzeile ziehen. Unten bleibt nur die Kopfzeile mit dem Namen der Übung,
+     die Kamera holt die Figur in die Mitte, drehen geht weiter. Hochwischen oder die Leiste antippen holt die Karte zurück. */
+  function karteUnten(unten, sofort) {
+    karte.classList.toggle('unten', !!unten);
+    karte.style.setProperty('--raum-blick', Math.round(kKopf.offsetTop + kKopf.offsetHeight + 4) + 'px');
+    if (sofort) { karte.classList.add('zieht'); void karte.offsetWidth; karte.classList.remove('zieht'); }
+    kGriff.setAttribute('aria-expanded', unten ? 'false' : 'true');
+    kGriff.setAttribute('aria-label', unten ? 'Karte hochholen' : 'Karte nach unten schieben');
+    if (orbit) { orbit.hebenZiel = unten ? orbit.versatz * 0.85 : 0; if (sofort) orbit.heben = orbit.hebenZiel; }
+  }
+  const zug = { id: null, y0: 0, start: 0, hub: 0, bewegt: false, griff: false, v: 0, ly: 0, lt: 0 };
+  karte.addEventListener('pointerdown', (e) => {
+    if (zug.id != null || !karte.classList.contains('offen') || (e.pointerType === 'mouse' && e.button > 0)) return;
+    const unten = karte.classList.contains('unten');
+    if (e.target.closest('.raum-zurueck') || (!unten && !e.target.closest('.raum-griff, .raum-karte-kopf'))) return;   // offen: nur am Griff und an der Kopfzeile
+    const blickH = unten ? parseFloat(karte.style.getPropertyValue('--raum-blick')) || 64 : kKopf.offsetTop + kKopf.offsetHeight + 4;
+    zug.id = e.pointerId; zug.y0 = zug.ly = e.clientY; zug.lt = e.timeStamp; zug.hub = Math.max(0, karte.offsetHeight - blickH);   // Zeit des Fingers selbst: stimmt auch, wenn das Gym gerade viel rechnet
+    zug.start = unten ? zug.hub : 0; zug.bewegt = false; zug.griff = !!e.target.closest('.raum-griff'); zug.v = 0;
+    try { karte.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  karte.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== zug.id) return;
+    const dy = e.clientY - zug.y0, t = e.timeStamp;
+    if (!zug.bewegt) { if (Math.abs(dy) < 6) return; zug.bewegt = true; karte.classList.add('zieht'); }
+    let y = zug.start + dy;
+    if (y < 0) y = -Math.min(22, Math.sqrt(-y) * 3); else if (y > zug.hub) y = zug.hub + Math.min(22, Math.sqrt(y - zug.hub) * 3);   // an den Enden federt sie nur ein bisschen
+    karte.style.transform = 'translate3d(0, ' + y.toFixed(1) + 'px, 0)';
+    zug.v = (e.clientY - zug.ly) / Math.max(1, t - zug.lt); zug.ly = e.clientY; zug.lt = t;
+    if (orbit) orbit.hebenZiel = orbit.versatz * 0.85 * klemme(y / Math.max(1, zug.hub), 0, 1);   // die Kamera geht beim Ziehen mit
+  });
+  const zugEnde = (e) => {
+    if (e.pointerId !== zug.id) return;
+    zug.id = null;
+    const warUnten = karte.classList.contains('unten'), dy = e.clientY - zug.y0;
+    karte.style.transform = ''; karte.classList.remove('zieht');
+    if (!zug.bewegt) { if (e.type === 'pointerup' && (warUnten || zug.griff)) karteUnten(!warUnten); else if (orbit) orbit.hebenZiel = warUnten ? orbit.versatz * 0.85 : 0; return; }
+    const weit = Math.abs(dy) > zug.hub * 0.25, schnell = Math.abs(zug.v) > 0.4;
+    karteUnten(warUnten ? !(dy < 0 && (weit || (schnell && zug.v < 0))) : (dy > 0 && (weit || (schnell && zug.v > 0))));
+  };
+  karte.addEventListener('pointerup', zugEnde); karte.addEventListener('pointercancel', zugEnde);
+  kGriff.addEventListener('click', (e) => { if (e.detail === 0) karteUnten(!karte.classList.contains('unten')); });   // Tastatur (Enter, Leertaste); Finger und Maus laufen über pointerup
 
   function rausgehen() {
     if (offeneZahl()) { sag('Noch offen: ' + stationen.filter((s) => !s.fertig).map((s) => s.u.name).join(', ')); return; }
@@ -632,7 +678,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       K.pos.lerpVectors(kamFlug.vonPos, z.pos, u); K.blick.lerpVectors(kamFlug.vonBlick, z.blick, u); K.fov = kamFlug.vonFov + (z.fov - kamFlug.vonFov) * u;
       if (kamFlug.u >= 1) { const dann = kamFlug.dann; kamFlug = null; if (dann) dann(); }
     } else if (modus === 'station' && orbit) {
-      K.pos.set(orbit.mitte.x + Math.sin(orbit.w) * orbit.r, orbit.y, orbit.mitte.z + Math.cos(orbit.w) * orbit.r); K.blick.copy(orbit.mitte);
+      orbit.heben += (orbit.hebenZiel - orbit.heben) * (STILL ? 1 : 1 - Math.exp(-dt * 7));   // Karte unten: der Blick hebt sich zur Figur, die Kamera geht ein Stück mit
+      K.pos.set(orbit.mitte.x + Math.sin(orbit.w) * orbit.r, orbit.y + orbit.heben * 0.35, orbit.mitte.z + Math.cos(orbit.w) * orbit.r); K.blick.copy(orbit.mitte); K.blick.y += orbit.heben;
     } else if (modus !== 'draussen' || gang) {
       const z = verfolgen(), k = 1 - Math.exp(-dt * 5.5);
       K.pos.lerp(z.pos, k); K.blick.lerp(z.blick, k); K.fov += (z.fov - K.fov) * k;
