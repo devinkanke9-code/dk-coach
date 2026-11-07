@@ -184,10 +184,10 @@ html:has(.raum)::before, html:has(.raum)::after, html:has(.raum) body::after { a
 .charakter-knopf { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; box-sizing: border-box; font-weight: 700; text-decoration: none; }
 .raum-karte-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .raum-zurueck { border: 0; background: var(--knopf-grund); color: var(--knopf-text); font-size: 14px; font-weight: 600; min-height: 34px; padding: 4px 14px; border-radius: 999px; cursor: pointer; }
-.raum-inhalt { display: grid; gap: 4px; margin-top: 6px; }
+.raum-inhalt { display: grid; gap: 4px; margin-top: 0; }
 /* Karte runter- und hochwischen (07.11.2026, Devin: „runtersliden … damit du nur die Übung siehst … wieder hochsliden“): Griff oben, unten bleibt nur die
    Kopfzeile mit dem Namen. Griff und Kopfzeile bleiben stehen, nur der Inhalt scrollt (sonst wäre der Griff nach dem Scrollen weg). */
-.raum-karte { display: flex; flex-direction: column; overflow: hidden; padding-top: 2px; }
+.raum-karte { display: flex; flex-direction: column; overflow: hidden; padding-top: 2px; padding-bottom: 10px; }
 .raum-griff, .raum-karte-kopf { flex: none; }
 .raum-inhalt { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .raum-griff { display: grid; place-items: center; height: 22px; margin: 0 -16px -2px; padding: 0; border: 0; background: none; cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent; }
@@ -206,21 +206,34 @@ html:has(.raum)::before, html:has(.raum)::after, html:has(.raum) body::after { a
 .raum-inhalt { transition: opacity .25s var(--sanft); }
 .raum-karte.unten:not(.zieht) .raum-inhalt { opacity: 0; pointer-events: none; }   /* unten: nur Griff und Kopfzeile, kein halb angeschnittener Text */
 .raum-karte.zieht { transition: none; }
+/* Paket G8 (07.11.2026, Devin: „glitscht rum, zeigt solche Balken, soll gar nicht passieren“): Die Karte soll nichts zeigen und nichts verschieben. Ursachen (gemessen bei 375 × 812):
+   1) Die unsichtbare Trefferfläche der Knöpfe (stil.css, ::before mit inset -4 bis -6 px) stand seitlich 5 px und beim letzten Knopf unten 6 px über den Inhalt hinaus: er war seitlich und senkrecht scrollbar.
+   2) Der Satz-Inhalt war 24 px höher als sein Fenster (360 × 800: 31 px, Pause-Ansicht 375 × 812: 87 px). Darum jetzt engere Abstände (Block „Satz-Ablauf“ unten): bei den üblichen Handys scrollt nichts mehr.
+   3) Auf kleineren Handys scrollt er weiter, aber nur senkrecht, ohne Leisten und ohne Gummiband. Die Höhe der Karte (max-height) bleibt, die Kamera rechnet damit. */
+.raum-inhalt { overflow-x: hidden; touch-action: pan-y; overscroll-behavior: none; scrollbar-width: none; }
+.raum-inhalt::-webkit-scrollbar { display: none; }
 /* Der normale Satz-Ablauf der App, hier als Karte über der Halle */
 .raum .tm { position: static; inset: auto; z-index: auto; background: none; padding: 0; overflow: visible; }
-.raum .tm-in { gap: 10px; max-width: none; }
+.raum .tm-in { gap: 8px; max-width: none; }
 .raum .tm-kopf, .raum .tm-fort, .raum .tm-titel > .leise, .raum .tm-naechste, .raum .tm-tipp.tm-mitte { display: none; }
-.raum .tm-name { font-size: 24px; }
-.raum .tm-werte div, .raum .tm-karte { padding: 8px 12px; }
-.raum .tm-ring { width: 112px; }
-.raum .tm-ring .tm-zeit { font-size: 30px; }
+.raum .tm-name { font-size: 24px; line-height: 1.05; }
+.raum .tm-werte div, .raum .tm-karte { padding: 6px 12px; }
+.raum .tm-ring { width: 80px; }
+.raum .tm-ring .tm-zeit { font-size: 24px; }
 .raum .tm-feier { padding: 10px 12px 12px; gap: 4px; }
 .raum .tm-feier .tm-spruch { font-size: 18px; }
 .raum .tm-gross { min-height: 52px; }
-.raum .tm-ende { min-height: 34px; font-size: 14px; color: var(--text2); }
+.raum .tm-ende { min-height: 0; padding-block: 4px; font-size: 14px; color: var(--text2); }
 .raum .tm-werte b { font-size: 15px; white-space: nowrap; }
 .raum .tm-werte small { font-size: 12px; }
 .raum .tm-werte:has(~ .tm-ring) { display: none; }
+/* Paket G8: Trefferfläche der Knöpfe nur nach oben und unten (links und rechts ragte sie 5 px aus dem Inhalt), beim letzten Knopf nicht nach unten; Punkte, Titel und Zeit-Knöpfe enger */
+.raum-inhalt .knopf::before { inset: -6px 0; }
+.raum-inhalt .tm-in > :last-child::before { bottom: 0; }
+.raum .tm-punkte { margin-top: 0; }
+.raum .tm-titel { gap: 2px; }
+.raum .tm-zwei .knopf { min-height: 40px; padding-block: 6px; }
+.raum .tm-eingabe .eingabe { min-height: 46px; padding-block: 9px; }
 
 /* ---------- System nach apple.com auch auf Bühne und im Gym (04.11.2026), Abschnitt „System nach apple.com“ in stil.css ---------- */
 .erklaer-knopf { font-weight: 400; font-size: 14px; background: var(--knopf-voll); color: var(--auf-voll); box-shadow: 0 8px 22px -10px rgba(0, 0, 0, .45); }
@@ -248,7 +261,7 @@ html:has(.raum)::before, html:has(.raum)::after, html:has(.raum) body::after { a
 :root:not([data-look="gold"]) .raum-pop { color: var(--text); text-shadow: 0 0 22px rgba(255, 255, 255, .95), 0 0 4px rgba(255, 255, 255, .95); }
 .raum-ende h1 { font-size: clamp(40px, 12vw, 56px); letter-spacing: -.005em; line-height: 1.07; }
 .raum-ende .knopf { min-height: 50px; font-size: 17px; }
-.raum .tm-gross { min-height: 50px; }
+.raum .tm-gross { min-height: 48px; }
 .gym-knopf, .charakter-knopf { min-height: 50px; font-weight: 400; }
 
 /* ---------- Startseite (app.js startseite): für alle ohne Plan. Jeder Block: kurze Überschrift, eine Zeile, Knöpfe, ein großes Bild. Volle Breite mit 12 px Luft, ab 735 px zwei Spalten. ---------- */
