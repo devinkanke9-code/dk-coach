@@ -7,9 +7,65 @@ const el = (tag, klasse, text) => { const e = document.createElement(tag); if (k
 const glatt = (u) => u * u * (3 - 2 * u);
 const klemme = (x, a, b) => Math.min(b, Math.max(a, x));
 const winkelDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
-const STILL = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const STILL = typeof window !== 'undefined' && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const BREITE = 12, WAND = 3.2, FACH = 5.2, SEITE_X = 3.2, STATION_R = 2.1, TUER_B = 3.2, TUER_H = 3.1;
+// Halle und Kamera als reine Rechnung (ohne Browser): raumOeffnen baut die Halle damit, und messe-kamera.mjs prüft sie für jede Station und jeden Winkel.
+// Maße seit 07.11.2026 (Paket G1, Devin: „der Raum soll größer sein“, die Kamera ging beim Drehen durch die Wand): Breite 20 statt 12 m, Stationen 3,6 statt 3,2 m neben dem Gang,
+// Fach 6,2 statt 5,2 m, Wände 4,6 statt 3,2 m hoch und mit Decke. Die Kamera kreist an der Station mit Radius 3,7 bis 9,1 m (Handy hochkant, Median 6,4 m): Station bis Wand sind jetzt 6,25 statt 2,65 m.
+const BREITE = 20, WAND = 4.6, FACH = 6.2, SEITE_X = 3.6, STATION_R = 2.1, TUER_B = 4, TUER_H = 3.6;
+const WAND_D = 0.3, RAND = 0.4, ENDE_ABSTAND = 9, ORBIT_Y_MIN = 0.6, ORBIT_Y_MAX = Math.min(3.4, WAND - 0.2), FOV_MAX = 80;   // Wanddicke, Abstand der Kamera zu jeder Wand, Höhen beim Wischen, weiteste Sicht beim Heranrücken
+const FIGUR_RAND = 1.5;   // so nah an die Wand (Mitte der Wand) darf die Figur beim Laufen: Zwischen Figur und Kamera hinter ihr bleibt noch mindestens 0,95 m, die Kamera sitzt nie in der Figur
+const SCHIENEN_X = [SEITE_X - 0.6, BREITE / 2 - 3];   // LED-Schienen unter der Decke (über den Stationsreihen und weiter außen), im Boden gespiegelt
+const frei = (rich, ab, von, bis) => (rich > 1e-9 ? (bis - ab) / rich : rich < -1e-9 ? (von - ab) / rich : Infinity);   // wie viele Schritte in Richtung rich man von ab aus kommt, bis die Grenze von oder bis erreicht ist
+
+// Maße der Halle für n Stationen. innen = Innenseiten der Wände, kasten = wo die Kamera sein darf (RAND Abstand zu jeder Wand, 0,2 m unter der Decke)
+export function hallenMass(n) {
+  const zStart = 3.6, zAnfang = zStart + 3.4, zStation = (i) => -2 - i * FACH, zEnde = zStation(Math.max(1, n) - 1) - ENDE_ABSTAND;
+  const innen = { xMin: -BREITE / 2 + WAND_D / 2, xMax: BREITE / 2 - WAND_D / 2, zMin: zEnde + WAND_D / 2, zMax: zAnfang - WAND_D / 2 };
+  return { n, breite: BREITE, wand: WAND, fach: FACH, seiteX: SEITE_X, stationR: STATION_R, rand: RAND, orbitY: [ORBIT_Y_MIN, ORBIT_Y_MAX], tuerB: TUER_B, tuerH: TUER_H, figurRand: FIGUR_RAND,
+    zStart, zAnfang, zEnde, zStation, laenge: zAnfang - zEnde, zMitte: (zAnfang + zEnde) / 2,
+    stationX: (i) => (i % 2 === 0 ? -SEITE_X : SEITE_X), stationWinkel: (i) => (i % 2 === 0 ? Math.PI / 2 - 0.38 : -Math.PI / 2 + 0.38),
+    innen, kasten: { xMin: innen.xMin + RAND, xMax: innen.xMax - RAND, zMin: innen.zMin + RAND, zMax: innen.zMax - RAND, yMin: 0.3, yMax: WAND - 0.2 } };
+}
+// Kamera in der Halle halten: Der Arm von von (Figur oder Mitte der Station) zur gewünschten Kamera zu wird kürzer, wo er an eine Wand stößt (gleiche Richtung), und die Höhe bleibt unter der Decke.
+// Steht von selbst draußen (Figur vor der Tür), wird die Kamera in den Kasten geschoben. So geht sie nie durch eine Wand und nie nach draußen.
+export function kameraImRaum(h, von, zu) {
+  const k = h.kasten, ax = zu.x - von.x, az = zu.z - von.z;
+  const drin = von.x >= k.xMin && von.x <= k.xMax && von.z >= k.zMin && von.z <= k.zMax;
+  const s = drin ? Math.max(0, Math.min(1, frei(ax, von.x, k.xMin, k.xMax), frei(az, von.z, k.zMin, k.zMax))) : 1;
+  return { x: klemme(von.x + ax * s, k.xMin, k.xMax), y: klemme(zu.y, k.yMin, k.yMax), z: klemme(von.z + az * s, k.zMin, k.zMax), s };
+}
+// Kreis der Kamera um die Station (Mitte, Radius r, Winkel w, Höhe y, Sicht fov in Grad). Stößt der Kreis an eine Wand, rückt die Kamera näher an die Figur heran; die Sicht wird dann weiter,
+// damit die Figur gleich groß im Bild bleibt (höchstens FOV_MAX). Der gemerkte Radius r bleibt, sobald man von der Wand wegdreht, ist der Abstand wieder da.
+export function umlaufKamera(h, o) {
+  const p = kameraImRaum(h, o.mitte, { x: o.mitte.x + Math.sin(o.w) * o.r, y: o.y, z: o.mitte.z + Math.cos(o.w) * o.r });
+  const r = Math.hypot(p.x - o.mitte.x, p.z - o.mitte.z), d0 = Math.hypot(o.r, o.y - o.mitte.y), d1 = Math.max(0.5, Math.hypot(r, p.y - o.mitte.y));
+  const q = d0 / d1, reserve = 1 + 0.05 * klemme((q - 1) / 0.05, 0, 1);   // 5 % mehr Sicht, sobald die Kamera gekürzt ist (gemessen: der Umriss flacher Übungen wie Bauchlage ragt sonst knapp aus dem Bild)
+  const fov = o.fov ? Math.min(FOV_MAX, Math.max(o.fov, 2 * Math.atan(Math.tan(o.fov * Math.PI / 360) * q * reserve) * 180 / Math.PI)) : 0;
+  return { x: p.x, y: p.y, z: p.z, r, fov };
+}
+// Kamera beim Gehen: hinter und über der Figur (kamW = Winkel um sie herum, kamZ = Zoom), in der Halle gehalten. Wird der Arm an der Wand kürzer, geht der Blick weniger weit voraus (s), so bleibt die Figur im Bild.
+// Entwurf nach Messung (Figur ganz im Bild bei jedem Zoom von 0,55 bis 2,3 und jedem Winkel, hochkant und quer): Arm 6 m × kamZ hinter der Figur, Höhe 4,4 m × kamZ (an der Decke gekappt), Blick 0,5 m voraus.
+export function folgeKamera(h, F, kamW, kamZ, spieler) {
+  const dx = Math.sin(kamW), dz = Math.cos(kamW);
+  const arm = spieler ? { h: 4.5 * kamZ, y: 0.9 + 3.5 * kamZ, voraus: 0.9, ziel: 0.95 } : { h: 6 * kamZ, y: 4.4 * kamZ, voraus: 0.5, ziel: 0.8 };   // eigener Charakter: groß im Bild
+  const p = kameraImRaum(h, F, { x: F.x + dx * arm.h, y: arm.y, z: F.z + dz * arm.h });
+  // Kürzt die Wand den Arm, steigt die Kamera dafür höher (gleiche Armlänge, soweit die Decke es zulässt): So bleibt die Figur gleich groß und ganz im Bild (gemessen: zu nah und zu tief schneidet sie sonst seitlich ab)
+  if (p.s < 1) { const l = Math.hypot(p.x - F.x, p.z - F.z), d0 = Math.hypot(arm.h, arm.y - arm.ziel); p.y = Math.min(h.kasten.yMax, Math.max(p.y, arm.ziel + Math.sqrt(Math.max(0, d0 * d0 - l * l)))); }
+  return { pos: p, blick: { x: F.x - dx * arm.voraus * p.s, y: arm.ziel, z: F.z - dz * arm.voraus * p.s }, s: p.s };
+}
+// Wo die Kamera an der Station beginnt (aus der Voreinstellung der Ansicht: sichtLokal = Kamera, zielLokal = Mitte, beide in Koordinaten der Station), umgerechnet in Hallen-Koordinaten.
+// opt: hochkant (Handy), nah (Probetag mit kleiner Karte), spieler (eigener Charakter). Steht hier, damit Node dieselbe Rechnung messen kann.
+export function stationsSicht(s, opt) {
+  const c = Math.cos(s.winkel), n = Math.sin(s.winkel), z = s.zielLokal, l = s.sichtLokal;
+  const aus = (v) => ({ x: v.x * c + v.z * n + s.pos.x, y: v.y, z: -v.x * n + v.z * c + s.pos.z });
+  const f = opt.nah ? (opt.hochkant ? 1.08 : 0.98) : opt.hochkant ? 1.4 : 1.14;
+  const blick = aus(z), sicht = aus({ x: z.x + (l.x - z.x) * f, y: z.y + (l.y - z.y) * f, z: z.z + (l.z - z.z) * f });
+  const senken = opt.hochkant ? (opt.nah ? 0.72 : opt.spieler ? 1.65 : 0.95) : 0.42;   // Figur steht oben im Bild, unten liegt die Karte (eigener Charakter: ganz über der Karte)
+  blick.y -= senken;
+  sicht.y = klemme(sicht.y, 1, 3);
+  return { sicht, blick, senken };
+}
 const TEMPO = 2.8, SCHRITT = 0.36;   // Laufen in m/s, Schrittlänge
 
 const FARBEN_LAGUNE = {
@@ -19,7 +75,7 @@ const FARBEN_LAGUNE = {
   ring: 0x14c7b6, ringAus: 0x5db6e0, ringFertig: 0x0fa899, teller: 0xffffff, tellerSicht: 0.6, tellerFertig: 0.85,
   rahmen: 0xe3edf2, polster: 0x123a55, gummi: 0x1b3446, metall: null, glas: 0xbfe9f7,
   schild: { grund: 'rgba(255,255,255,.96)', text: '#0B2434', text2: '#3A5668', a: '#4FB8F5', b: '#25D3C2', kreis: '#06293B' },
-  wegA: [0.05, 0.62, 0.72], wegB: [0.06, 0.74, 0.62], wegDunkel: 0.36, deck: 0xf3fafd, strich: [0.03, 0.43, 0.72]
+  wegA: [0.05, 0.62, 0.72], wegB: [0.06, 0.74, 0.62], wegDunkel: 0.36, deck: 0xf3fafd, decke: '#EAF5FB', strich: [0.03, 0.43, 0.72]
 };
 const FARBEN_KLAR = {
   himmel: 0xf5f5f7, nebel: 0xf5f5f7, see: false, tuer: 0x0071e3, schatten: '0,0,0', aussen: '#ECECEF', aussenLinie: 'rgba(0,0,0,.05)',
@@ -28,7 +84,7 @@ const FARBEN_KLAR = {
   ring: 0x0071e3, ringAus: 0x9cc7f2, ringFertig: 0x1b7f35, teller: 0xffffff, tellerSicht: 0.75, tellerFertig: 0.92,
   rahmen: 0xe3e3e8, polster: 0x1d1d1f, gummi: 0x2a2a2d, metall: null, glas: 0xcfe3f8,
   schild: { grund: 'rgba(255,255,255,.97)', text: '#1D1D1F', text2: '#6E6E73', a: '#0071E3', b: '#0071E3', kreis: '#FFFFFF' },
-  wegA: [0, 0.44, 0.89], wegB: [0, 0.44, 0.89], wegDunkel: 0.3, deck: 0xfbfbfd, strich: [0, 0.44, 0.89]
+  wegA: [0, 0.44, 0.89], wegB: [0, 0.44, 0.89], wegDunkel: 0.3, deck: 0xfbfbfd, decke: '#F4F4F7', strich: [0, 0.44, 0.89]
 };
 const FARBEN_GOLD = {
   himmel: 0x050507, nebel: 0x07070a, see: false, tuer: 0xf0cd74, schatten: '0,0,0', aussen: '#08080B', aussenLinie: 'rgba(139,92,246,.26)',
@@ -37,7 +93,7 @@ const FARBEN_GOLD = {
   ring: 0xf0cd74, ringAus: 0x7a6a3c, ringFertig: 0xcc9a33, teller: 0x1c1c22, tellerSicht: 0.82, tellerFertig: 0.95,
   rahmen: 0x1b1b20, polster: 0x0f0f13, gummi: 0x0a0a0c, metall: 0xe8c468, glas: 0x6b4fb0,
   schild: { grund: 'rgba(16,16,21,.96)', text: '#F5F1E7', text2: '#BDB7A8', a: '#F7DE93', b: '#CC9A33', kreis: '#1B1304' },
-  wegA: [0.97, 0.87, 0.58], wegB: [0.8, 0.6, 0.2], wegDunkel: 0.24, deck: 0x17171c, strich: [0.98, 0.86, 0.52]
+  wegA: [0.97, 0.87, 0.58], wegB: [0.8, 0.6, 0.2], wegDunkel: 0.24, deck: 0x17171c, decke: '#0E0E12', strich: [0.98, 0.86, 0.52]
 };
 
 function zeichne(breite, hoehe, malen) {
@@ -105,7 +161,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const lichter = szene.children.filter((o) => o.isDirectionalLight);
   let kameraLicht = null;   // eigener Charakter: warmes Licht aus Richtung der Kamera, so stimmt der Hautton von jeder Seite
   if (spieler) { kameraLicht = new THREE.DirectionalLight(0xfff0e4, GOLD ? 1.1 : 0.6); szene.add(kameraLicht); }
-  szene.fog = new THREE.Fog(P.nebel, 70, 520);
+  const halle = hallenMass(uebungen.length);
+  szene.fog = new THREE.Fog(P.nebel, Math.max(70, halle.laenge + 30), 520 + halle.laenge);
   // Geräte passend zum Raum
   const gm = a.geraete;
   gm.mRahmen.color.set(P.rahmen); gm.mPolster.color.set(P.polster); gm.mGummi.color.set(P.gummi);
@@ -122,12 +179,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
 
   /* ---------- Plan der Halle ---------- */
   const raum = new THREE.Group(); szene.add(raum);
-  const N = uebungen.length, zStart = 3.6;
-  const zStation = (i) => -2 - i * FACH;
-  const zEnde = zStation(N - 1) - 7.5, zAnfang = zStart + 3.4, LAENGE = zAnfang - zEnde, zMitte = (zAnfang + zEnde) / 2;
+  const N = uebungen.length, { zStart, zStation, zEnde, zAnfang, laenge: LAENGE, zMitte } = halle;
   const stationen = uebungen.map((u, i) => {
-    const links = i % 2 === 0, x = links ? -SEITE_X : SEITE_X;
-    return { i, u, links, d: u.d, pos: V(x, 0, zStation(i)), winkel: links ? Math.PI / 2 - 0.38 : -Math.PI / 2 + 0.38, fertig: !!u.fertig, anim: null, statisch: null };
+    const links = i % 2 === 0, x = halle.stationX(i);
+    return { i, u, links, d: u.d, pos: V(x, 0, zStation(i)), winkel: halle.stationWinkel(i), fertig: !!u.fertig, anim: null, statisch: null };
   });
   const ausLokal = (s, v) => v.clone().applyAxisAngle(Y, s.winkel).add(s.pos);
 
@@ -145,13 +200,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   raum.add(flach(new THREE.PlaneGeometry(1600, 1600), grund(0xffffff, { map: aussenT }), 0, -0.5, zMitte));
 
   /* ---------- Boden der Halle: Platten, Spiegelung der LED-Schienen ---------- */
-  const bodenT = tex(zeichne(1024, 512, (x, b, h) => {
+  const bodenT = tex(zeichne(2048, 512, (x, b, h) => {
     const g = x.createLinearGradient(0, 0, b, 0); g.addColorStop(0, P.bodenB); g.addColorStop(0.5, P.bodenA); g.addColorStop(1, P.bodenB); x.fillStyle = g; x.fillRect(0, 0, b, h);
     const streifenX = (mx, br) => { const s = x.createLinearGradient(mx - br, 0, mx + br, 0); s.addColorStop(0, P.bodenLicht0); s.addColorStop(0.5, P.bodenLicht); s.addColorStop(1, P.bodenLicht0); x.fillStyle = s; x.fillRect(mx - br, 0, br * 2, h); };
-    streifenX(b * (0.5 - 2.6 / BREITE), b * 0.07); streifenX(b * (0.5 + 2.6 / BREITE), b * 0.07);
+    for (const sx of SCHIENEN_X) { streifenX(b * (0.5 - sx / BREITE), b * 0.84 / BREITE); streifenX(b * (0.5 + sx / BREITE), b * 0.84 / BREITE); }
     const s = x.createLinearGradient(0, h * 0.34, 0, h * 0.66); s.addColorStop(0, P.bodenLicht0); s.addColorStop(0.5, P.bodenLicht); s.addColorStop(1, P.bodenLicht0); x.fillStyle = s; x.fillRect(0, h * 0.34, b, h * 0.32);
     x.strokeStyle = P.fuge; x.lineWidth = 2;
-    for (let i = 1; i < 6; i++) { x.beginPath(); x.moveTo(b * i / 6, 0); x.lineTo(b * i / 6, h); x.stroke(); }
+    const spalten = Math.round(BREITE / 2); for (let i = 1; i < spalten; i++) { x.beginPath(); x.moveTo(b * i / spalten, 0); x.lineTo(b * i / spalten, h); x.stroke(); }
     x.beginPath(); x.moveTo(0, 1); x.lineTo(b, 1); x.stroke();
   }), true);
   bodenT.repeat.set(1, LAENGE / FACH);
@@ -165,7 +220,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const wand = (b, h, t, x, y, z) => { const m = new THREE.Mesh(kiste(b, h, t), wandM); m.position.set(x, y, z); raum.add(m); return m; };
   const wandL = wand(0.3, WAND, LAENGE, -BREITE / 2, WAND / 2, zMitte), wandR = wand(0.3, WAND, LAENGE, BREITE / 2, WAND / 2, zMitte), wandVorn = [], wandHinten = [];
   const stueck = (BREITE - TUER_B) / 2;
-  for (const z of [zAnfang, zEnde]) (z === zAnfang ? wandVorn : wandHinten).push(wand(stueck, WAND, 0.3, -(TUER_B + stueck) / 2, WAND / 2, z), wand(stueck, WAND, 0.3, (TUER_B + stueck) / 2, WAND / 2, z));
+  for (const z of [zAnfang, zEnde]) (z === zAnfang ? wandVorn : wandHinten).push(wand(stueck, WAND, 0.3, -(TUER_B + stueck) / 2, WAND / 2, z), wand(stueck, WAND, 0.3, (TUER_B + stueck) / 2, WAND / 2, z), wand(TUER_B, WAND - TUER_H, 0.3, 0, (WAND + TUER_H) / 2, z));   // Sturz über der Tür
+  // Decke, nur von unten zu sehen (von oben wird sie nicht gezeichnet): Von innen ist die Halle zu, man sieht nie Himmel oder Leere; von außen oben bleibt der Blick in die Halle frei
+  const deckeT = tex(zeichne(256, 256, (x, b, h) => { x.fillStyle = P.decke; x.fillRect(0, 0, b, h); x.strokeStyle = P.fuge; x.lineWidth = 3; x.strokeRect(0, 0, b, h); }), true);
+  deckeT.repeat.set((BREITE - WAND_D) / 2.5, (LAENGE - WAND_D) / 2.5);
+  const decke = new THREE.Mesh(new THREE.PlaneGeometry(BREITE - WAND_D, LAENGE - WAND_D), grund(0xffffff, { map: deckeT })); decke.rotation.x = Math.PI / 2; decke.position.set(0, WAND - 0.02, zMitte); raum.add(decke);
 
   /* ---------- LED: leuchtende Schienen oben, Lichtschein drumherum ---------- */
   const scheinT = tex(zeichne(32, 128, (x, b, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, b, h); }));
@@ -177,9 +236,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const m = new THREE.Mesh(langs ? new THREE.BoxGeometry(0.07, 0.07, laenge) : new THREE.BoxGeometry(laenge, 0.07, 0.07), ledM); m.position.set(x, y, z); raum.add(m);
     raum.add(flach(new THREE.PlaneGeometry(langs ? 1.1 : laenge, langs ? laenge : 1.1), langs ? scheinML : scheinM, x, y, z));
   };
-  leiste(true, LAENGE, -BREITE / 2, WAND + 0.06, zMitte); leiste(true, LAENGE, BREITE / 2, WAND + 0.06, zMitte);   // auf den Wänden
-  leiste(true, LAENGE - 1, -2.6, 4.5, zMitte); leiste(true, LAENGE - 1, 2.6, 4.5, zMitte);                            // Schienen oben über der Halle
-  for (let z = zAnfang - FACH / 2; z > zEnde; z -= FACH) leiste(false, 5.2, 0, 4.5, z);
+  leiste(true, LAENGE, -BREITE / 2 + 0.35, WAND - 0.1, zMitte); leiste(true, LAENGE, BREITE / 2 - 0.35, WAND - 0.1, zMitte);   // unter der Decke an den Wänden
+  for (const sx of SCHIENEN_X) { leiste(true, LAENGE - 1, -sx, WAND - 0.1, zMitte); leiste(true, LAENGE - 1, sx, WAND - 0.1, zMitte); }                            // Schienen unter der Decke
+  for (let z = zAnfang - FACH / 2; z > zEnde; z -= FACH) leiste(false, SCHIENEN_X[1] * 2, 0, WAND - 0.1, z);
 
   /* ---------- Türen ---------- */
   const rahmenM = grund(P.tuer, { transparent: true, opacity: 0.6, fog: false }), rahmenA = grund(P.tuer, { fog: false });
@@ -188,8 +247,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const tuerGlas = grund(P.glas, { transparent: true, opacity: 0.42, depthWrite: false });
   const fluegelL = new THREE.Mesh(new THREE.BoxGeometry(TUER_B / 2 - 0.04, TUER_H, 0.06), tuerGlas), fluegelR = fluegelL.clone();
   fluegelL.position.set(-TUER_B / 4, TUER_H / 2, zEnde); fluegelR.position.set(TUER_B / 4, TUER_H / 2, zEnde); raum.add(fluegelL, fluegelR);
+  const tuerGlasV = grund(P.glas, { transparent: true, opacity: 0.95, depthWrite: false });
+  const fluegelVL = new THREE.Mesh(new THREE.BoxGeometry(TUER_B / 2 - 0.04, TUER_H, 0.06), tuerGlasV), fluegelVR = fluegelVL.clone();
+  fluegelVL.position.set(-TUER_B / 4, TUER_H / 2, zAnfang); fluegelVR.position.set(TUER_B / 4, TUER_H / 2, zAnfang); raum.add(fluegelVL, fluegelVR); let eingangOffen = 1;
   const tuerSchild = zeichne(640, 128, () => {}), tuerTex = tex(tuerSchild);
-  const schild = new THREE.Sprite(new THREE.SpriteMaterial({ map: tuerTex, transparent: true, depthWrite: false, toneMapped: false, fog: false })); schild.scale.set(4.2, 0.84, 1); schild.position.set(0, TUER_H + 0.9, zEnde); schild.renderOrder = 6; raum.add(schild);
+  const schild = new THREE.Sprite(new THREE.SpriteMaterial({ map: tuerTex, transparent: true, depthWrite: false, toneMapped: false, fog: false })); schild.scale.set(4.2, 0.84, 1); schild.position.set(0, TUER_H + 0.5, zEnde + 0.2); schild.renderOrder = 6; raum.add(schild);
   function schildMalen(fertig) {
     const x = tuerSchild.getContext('2d'); x.clearRect(0, 0, 640, 128);
     x.fillStyle = P.schild.grund; runde(x, 6, 8, 628, 112, 56); x.fill();
@@ -321,9 +383,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (Math.abs(a.kamera.fov - K.fov) > 0.01) { a.kamera.fov = K.fov; a.kamera.updateProjectionMatrix(); }
   };
   const verfolgen = () => {
-    const dx = Math.sin(kamW), dz = Math.cos(kamW);
-    if (spieler) return { pos: V(F.x + dx * 4.5 * kamZ, 0.9 + 3.5 * kamZ, F.z + dz * 4.5 * kamZ), blick: V(F.x - dx * 0.9, 0.95, F.z - dz * 0.9), fov: sichtOben() };   // dein Charakter ist groß im Bild
-    return { pos: V(F.x + dx * 7.4 * kamZ, 8.8 * kamZ, F.z + dz * 7.4 * kamZ), blick: V(F.x - dx * 1.5, 0.8, F.z - dz * 1.5), fov: sichtOben() };
+    const k = folgeKamera(halle, F, kamW, kamZ, !!spieler);   // geht nie durch eine Wand, nie über die Decke; dein Charakter ist groß im Bild
+    return { pos: V(k.pos.x, k.pos.y, k.pos.z), blick: V(k.blick.x, k.blick.y, k.blick.z), fov: sichtOben() };
   };
   function kameraZu(ziel, dauer, dann) {
     kamFlug = { vonPos: K.pos.clone(), vonBlick: K.blick.clone(), vonFov: K.fov, ziel: typeof ziel === 'function' ? ziel : () => ziel, u: 0, dauer: STILL ? 0.01 : dauer, dann };
@@ -393,13 +454,12 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     pop('Station ' + (i + 1), s.u.name);
     s.schild.visible = false; lichtSaeule.visible = false;
     const nah = spieler && spieler.karteKlein;   // Probetag mit kleiner Karte: Figur groß. Die Karte der App mit den Sätzen ist höher, dort bleibt es beim normalen Abstand
-    const blick = ausLokal(s, s.zielLokal), sicht = ausLokal(s, s.sichtLokal.clone().sub(s.zielLokal).multiplyScalar(nah ? (hochkant() ? 1.08 : 0.98) : hochkant() ? 1.4 : 1.14).add(s.zielLokal));
-    const senken = hochkant() ? (nah ? 0.72 : spieler ? 1.65 : 0.95) : 0.42;
-    blick.y -= senken;   // Figur steht oben im Bild, unten liegt die Karte (eigener Charakter: ganz über der Karte). Karte unten: der Blick hebt sich wieder (orbit.versatz)
-    sicht.y = klemme(sicht.y, 1, 3);
-    kameraZu({ pos: sicht, blick, fov: sichtStation() }, 1.5, () => {
-      const off = K.pos.clone().sub(blick);
-      orbit = { mitte: blick, r: Math.hypot(off.x, off.z), w: Math.atan2(off.x, off.z), y: K.pos.y, versatz: senken, heben: 0, hebenZiel: 0 };
+    const sv = stationsSicht(s, { hochkant: hochkant(), nah: !!nah, spieler: !!spieler });   // die Rechnung steht oben (reine Funktion, wird auch gemessen)
+    const blick = V(sv.blick.x, sv.blick.y, sv.blick.z), sicht = V(sv.sicht.x, sv.sicht.y, sv.sicht.z), off = sicht.clone().sub(blick);
+    // Bahn der Kamera um die Figur: gemerkt werden Radius, Winkel und Höhe; an der Wand kürzt umlaufKamera den Radius in jedem Bild, so geht sie nie durch die Wand
+    const bahn = { mitte: blick, r: Math.hypot(off.x, off.z), w: Math.atan2(off.x, off.z), y: sicht.y, fov: sichtStation(), versatz: sv.senken, heben: 0, hebenZiel: 0 }, start = umlaufKamera(halle, bahn);
+    kameraZu({ pos: V(start.x, start.y, start.z), blick, fov: start.fov || sichtStation() }, 1.5, () => {
+      orbit = bahn;
       kNr.textContent = 'Station ' + (i + 1) + ' von ' + N; kNr.dataset.station = i; kInhalt.textContent = ''; kName.textContent = s.u.name; karteUnten(false, true);
       if (s.fertig || !beiStation) kInhalt.append(el('h2', null, s.u.name), el('p', 'raum-dosis', s.u.dosis || ''), el('p', 'raum-klein', s.fertig ? 'Diese Station hast du schon geschafft.' : (s.u.pause || '')));
       else beiStation(i, kInhalt);
@@ -525,7 +585,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const t = -o.y / d.y, x = o.x + d.x * t, z = o.z + d.z * t;
     if (Math.abs(x) < TUER_B && z < zEnde + 3.6) return rausgehen();
     tipp.classList.add('weg');
-    lauf([V(klemme(x, -BREITE / 2 + 0.7, BREITE / 2 - 0.7), 0, klemme(z, zEnde + 0.9, zAnfang - 0.7))], null);
+    lauf([V(klemme(x, -BREITE / 2 + FIGUR_RAND, BREITE / 2 - FIGUR_RAND), 0, klemme(z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND))], null);
   }
   const finger = { id: null, x: 0, y: 0, sx: 0, sy: 0, zeit: 0, weit: false };
   bild.addEventListener('pointerdown', (e) => { if (finger.id != null) return; finger.id = e.pointerId; finger.x = finger.sx = e.clientX; finger.y = finger.sy = e.clientY; finger.zeit = performance.now(); finger.weit = false; try { bild.setPointerCapture(e.pointerId); } catch (x) {} });
@@ -534,7 +594,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const dx = e.clientX - finger.x, dy = e.clientY - finger.y; finger.x = e.clientX; finger.y = e.clientY;
     if (Math.hypot(e.clientX - finger.sx, e.clientY - finger.sy) > 8) finger.weit = true;
     if (!finger.weit) return;
-    if (modus === 'station' && orbit) { orbit.w -= dx * 0.008; orbit.y = klemme(orbit.y - dy * 0.008, 0.6, 3.4); }
+    if (modus === 'station' && orbit) { orbit.w -= dx * 0.008; orbit.y = klemme(orbit.y - dy * 0.008, ORBIT_Y_MIN, ORBIT_Y_MAX); }
     else if (modus === 'gehen' || modus === 'lauf') { kamW -= dx * 0.006; kamZ = klemme(kamZ + dy * 0.004, 0.55, 2.3); tipp.classList.add('weg'); }
   });
   const loslassen = (e) => {
@@ -637,7 +697,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           const sin = Math.sin(kamW), cos = Math.cos(kamW), dx = gehX * cos + gehY * sin, dz = -gehX * sin + gehY * cos, st = Math.hypot(gehX, gehY);
           F.x += dx * TEMPO * dt; F.z += dz * TEMPO * dt; zielH = Math.atan2(dx, dz); bewegt = st;
           for (const s of stationen) { const ex = F.x - s.pos.x, ez = F.z - s.pos.z, l = Math.hypot(ex, ez); if (l < 1.3 && l > 0.001) { F.x = s.pos.x + ex / l * 1.3; F.z = s.pos.z + ez / l * 1.3; } }
-          F.x = klemme(F.x, -BREITE / 2 + 0.5, BREITE / 2 - 0.5); F.z = klemme(F.z, zEnde + 0.7, zAnfang - 0.5);
+          F.x = klemme(F.x, -BREITE / 2 + FIGUR_RAND, BREITE / 2 - FIGUR_RAND); F.z = klemme(F.z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND);
         }
       }
       if (aktiv == null) {
@@ -679,7 +739,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       if (kamFlug.u >= 1) { const dann = kamFlug.dann; kamFlug = null; if (dann) dann(); }
     } else if (modus === 'station' && orbit) {
       orbit.heben += (orbit.hebenZiel - orbit.heben) * (STILL ? 1 : 1 - Math.exp(-dt * 7));   // Karte unten: der Blick hebt sich zur Figur, die Kamera geht ein Stück mit
-      K.pos.set(orbit.mitte.x + Math.sin(orbit.w) * orbit.r, orbit.y + orbit.heben * 0.35, orbit.mitte.z + Math.cos(orbit.w) * orbit.r); K.blick.copy(orbit.mitte); K.blick.y += orbit.heben;
+      const p = umlaufKamera(halle, { mitte: orbit.mitte, r: orbit.r, w: orbit.w, y: orbit.y + orbit.heben * 0.35, fov: orbit.fov }); K.pos.set(p.x, p.y, p.z); K.blick.copy(orbit.mitte); K.blick.y += orbit.heben; if (p.fov) K.fov = p.fov;   // an der Wand rückt die Kamera näher heran, die Sicht weitet sich, die Figur bleibt gleich groß
     } else if (modus !== 'draussen' || gang) {
       const z = verfolgen(), k = 1 - Math.exp(-dt * 5.5);
       K.pos.lerp(z.pos, k); K.blick.lerp(z.blick, k); K.fov += (z.fov - K.fov) * k;
@@ -707,7 +767,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     lichtSaeule.material.opacity = 0.4 + 0.25 * puls;
     spielerRing.material.opacity = 0.5 + 0.4 * puls;
     if (n == null) { tuerOffen = Math.min(1, tuerOffen + dt / 1.6); rahmenM.opacity = 0.6 + 0.4 * puls; }
-    const k = glatt(tuerOffen); fluegelL.position.x = -TUER_B / 4 - k * (TUER_B / 2 + 0.05); fluegelR.position.x = TUER_B / 4 + k * (TUER_B / 2 + 0.05);
+    const k = glatt(tuerOffen); fluegelL.position.x = -TUER_B / 4 - k * (TUER_B / 2 + 0.05); fluegelR.position.x = TUER_B / 4 + k * (TUER_B / 2 + 0.05); tuerGlas.opacity = 0.42 + 0.53 * (1 - k);
+    eingangOffen += ((F.z > zAnfang - 2.2 ? 1 : 0) - eingangOffen) * Math.min(1, dt / 0.35);
+    const kv = glatt(eingangOffen); fluegelVL.position.x = -TUER_B / 4 - kv * (TUER_B / 2 + 0.05); fluegelVR.position.x = TUER_B / 4 + kv * (TUER_B / 2 + 0.05);
   };
 
   /* ---------- Los: erst die ganze Halle von hoch oben, dann läuft die Figur durch die Tür hinein ---------- */
