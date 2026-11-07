@@ -2,7 +2,8 @@
 <html lang="de">
 <head>
 <meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="dk-kein-zoom" content="1">
 <title>Devin Kanke Coach</title>
 <meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -40,6 +41,12 @@ img { max-width: 100%; }
 .st-fuss a { display: inline-block; padding: 8px 2px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .umzug .knopf { justify-self: start; }
 body.start .umzug { grid-column: 1 / -1; margin: 12px 12px 0; }
+/* Wie eine App (07.11.2026, Devin: „dass du nichts markieren kannst“, „dass man nicht reinzoomen kann“): kein Markieren außer in Feldern, kein Doppeltipp-Zoom */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+/* Größere Trefferfläche: In der Kunden-App stehen Knöpfe mindestens 12 px auseinander, darum 6 px Rand statt 4 (auf der Trainer-Seite nur 8 px Lücke) */
+html :where(button, a[href], [role=button], label, summary):where(.knopf, .eb-knopf)::before { inset: -6px; }
 </style>
 </head>
 <body>

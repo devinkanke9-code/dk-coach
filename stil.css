@@ -943,3 +943,72 @@ nav.leiste button.dk-druck { transform: scale(1.04); }
 .look-probe.klar { background: linear-gradient(135deg, #FFFFFF 0 48%, #0071E3 52% 100%); }
 .look-probe.gold { background: linear-gradient(135deg, #0A0A0D 0 48%, #E3BE63 52% 100%); }
 :root:not([data-look="gold"]):not([data-look="klar"]) { --auf-grund2: #0A2536; }
+
+/* ---------- Knöpfe zum Anfassen (06.11.2026; Devin: Knöpfe „so richtig pixelig“, „schön smooth mit Effekten“, beim Drüberfahren „groß … angepoppt“,
+   „ein bisschen verfolgt“, länger halten und „so 3 Millimeter … verwischen nach überall hin“, „schöne Buchstaben“) ----------
+   Im Ruhezustand ohne transform und ohne filter, so bleiben Schrift und Rand scharf. Pixelig wurde es durch das Vergrößern beim Drücken (Safari vergrößert
+   dafür das fertige Bild) und durch den Helligkeits-Filter, der auf dem iPhone nach dem Tippen als „hover“ hängen bleibt. Bewegt wird in antippen.js („Knopf-Gefühl“). */
+:root { --kg-zurueck: cubic-bezier(.2, .9, .25, 1.18); --kg-feder: cubic-bezier(.34, 1.56, .64, 1); }
+.knopf, nav.leiste button, .chip, .wt, .rund, .eb-knopf, .blatt-zu, .zu-rund, .st-beispiel {
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+  transition: transform .55s var(--kg-zurueck), box-shadow .25s var(--sanft), background .2s var(--sanft), border-color .2s var(--sanft), color .2s var(--sanft); }
+.knopf { font-weight: 500; letter-spacing: -.012em; }
+.knopf.haupt, .blatt .knopf.haupt { font-weight: 600; }
+/* Alte Vergrößerung beim Drücken und den Helligkeits-Filter abschalten */
+.knopf.dk-druck, .chip.dk-druck, .rund.dk-druck, .eb-knopf.dk-druck, .blatt-zu.dk-druck, .zu-rund.dk-druck, .wt.dk-druck, .mini3d.dk-druck, .haken.dk-druck,
+.ueb-name.dk-druck, .tm-zwei .knopf.dk-druck, .knopf.tm-gross.dk-druck, nav.leiste button.dk-druck, .optionen label.dk-druck span, .janein label.dk-druck span,
+.knopf:active, .chip:active, .ueb-name:active, nav.leiste button:active, .optionen label:active span, .janein label:active span { transform: none; }
+.dk-los { animation: none; }
+.knopf.haupt:hover, .knopf.haupt.dk-druck { filter: none; }
+/* Bewegung: antippen.js setzt die Klassen und --kx, --ky, --sx, --sy, --mx, --my */
+.kg-drueckt { transform: scale(.94) !important; transition: transform .1s var(--sanft) !important; }
+.kg-zieht { transform: translate3d(var(--kx, 0px), var(--ky, 0px), 0) scale(var(--sx, 1), var(--sy, 1)) !important; transition: transform .06s linear, box-shadow .2s var(--sanft) !important; }
+.kg-schwebt { transform: translate3d(var(--kx, 0px), var(--ky, 0px), 0) scale(1.05) !important; transition: transform .35s var(--kg-feder), box-shadow .25s var(--sanft) !important; }
+/* Plopp beim Loslassen (Devin 07.11.: „Mehr Plopp“): springt sichtbar auf und wackelt federnd aus; kommt er vom Ziehen, fliegt er dabei an seinen Platz zurück (--kx0, --ky0) */
+.kg-plopp { animation: kg-plopp .7s cubic-bezier(.22, .8, .3, 1) both !important; }
+@keyframes kg-plopp {
+  0% { transform: translate3d(var(--kx0, 0px), var(--ky0, 0px), 0) scale(.94); }
+  30% { transform: translate3d(0, 0, 0) scale(1.09); }
+  52% { transform: scale(.97); }
+  72% { transform: scale(1.025); }
+  88% { transform: scale(.995); }
+  100% { transform: none; } }
+.knopf.kg-schwebt, .knopf.kg-zieht, .chip.kg-zieht, .wt.kg-zieht { box-shadow: 0 16px 34px -12px rgba(0, 0, 0, .55); }
+.knopf.haupt.kg-schwebt, .knopf.haupt.kg-zieht { box-shadow: 0 18px 38px -12px color-mix(in srgb, var(--akzent) 75%, transparent); }
+.knopf.haupt.kg-drueckt { box-shadow: 0 6px 22px -6px color-mix(in srgb, var(--akzent) 85%, transparent); }
+/* Glanz (Devin 07.11.: „Mehr Glanz“): kräftiger Lichtpunkt unter Finger oder Maus, bei jedem Drücken läuft ein Lichtstreifen quer über den Knopf */
+.kg-licht { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .2s var(--sanft);
+  background: radial-gradient(180px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .46), rgba(255, 255, 255, 0) 60%); }
+.kg-drueckt > .kg-licht, .kg-schwebt > .kg-licht, .kg-zieht > .kg-licht, .kg-glanz > .kg-licht { opacity: 1; }
+:root[data-look="klar"] .kg-licht { background: radial-gradient(180px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 60%); }
+.kg-licht::after { content: ""; position: absolute; top: -60%; bottom: -60%; left: 0; width: 42%; opacity: 0; transform: translateX(-140%) skewX(-20deg);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .62), rgba(255, 255, 255, 0)); }
+.kg-glanz > .kg-licht::after { animation: kg-schimmer .8s cubic-bezier(.3, .6, .3, 1) both; }
+@keyframes kg-schimmer { 0% { transform: translateX(-140%) skewX(-20deg); opacity: 0; } 12% { opacity: 1; } 100% { transform: translateX(360%) skewX(-20deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .kg-drueckt, .kg-zieht, .kg-schwebt { transform: none !important; } .kg-plopp { animation: none !important; } .kg-licht { display: none; } }
+/* Größere Trefferfläche (07.11.2026, Devin: „eine größere Art Hitbox … wenn du ein bisschen daneben bist, dass du trotzdem das anklickst“):
+   Ein unsichtbarer Rand um jeden Knopf zählt mit. Nur echte Knöpfe und Links bekommen ihn, Chips und Kästen, die nur etwas anzeigen, nicht.
+   Der Rand reicht nie über die Mitte der Lücke zum Nachbarn, sonst bekäme der spätere Knopf auch Tipps, die näher am früheren liegen
+   (Prüfung „eng“ in arbeit-knoepfe/treffer-pruefen.js). Eingabefelder liegen darüber, damit der Rand nie ein Feld verdeckt.
+   Lichtwelle und Licht bleiben trotzdem im Knopf: Sie liegen in einem eigenen Rahmen (.dk-rahmen, .kg-licht), der Knopf selbst schneidet nichts mehr ab. */
+:where(button, a[href], [role=button], label, summary):where(.knopf, .chip, .wt, .rund, .eb-knopf, .blatt-zu, .zu-rund, .look-wahl, .ueb-name), .schritte button, nav.leiste button { position: relative; }
+:where(button, a[href], [role=button], label, summary):where(.knopf, .chip, .wt, .rund, .eb-knopf, .blatt-zu, .zu-rund, .look-wahl, .ueb-name)::before, .schritte button::before {
+  content: ""; position: absolute; inset: -4px; border-radius: inherit; }
+/* Grundrand 4 px, weil Knöpfe auf der Trainer-Seite oft nur 8 px auseinander stehen; kleine Ziele bekommen mehr, wo Platz ist.
+   Die Werte unten setzen nur inset, ohne content bleibt der Rand bei reinen Anzeigen weg. */
+.knopf.klein::before { inset: -6px -4px; }
+.chip::before { inset: -6px -3px; }   /* Chips stehen mit 6 px Lücke */
+.wt::before { inset: -8px -3px; }   /* Wochentage, 6 px Lücke */
+.rund::before { inset: -6px -4px; }   /* Knöpfe unter der 3D-Figur, 8 px Lücke */
+.blatt-zu::before, .zu-rund::before { inset: -10px -8px; }
+.look-wahl::before { inset: -8px -6px; border-radius: 50%; }   /* Farbwelt oben rechts, 28 px mit 1 px Rand: zählt bis 7 px darüber und darunter, 5 px seitlich */
+.ueb-name::before { inset: -9px -4px; }   /* Übungsnamen im Plan, 25 px hoch */
+/* Trainer-Seite: Die Schritt-Punkte über dem Kunden-Formular sind nur 6 px hoch. Der Rand macht sie rund 34 px hoch, seitlich bis zur Mitte der Lücke, außen etwas mehr. */
+.schritte button::before { inset: -14px -3px; }
+.schritte button:first-child::before { left: -10px; }
+.schritte button:last-child::before { right: -10px; }
+:where(input, textarea, select) { position: relative; z-index: 1; }
+.dk-wellen { overflow: visible; }
+.dk-rahmen { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; }
+/* Check-up 07.11.2026: Hinweis „Wischen zum Drehen“ auf der 3D-Bühne war in Klar knapp zu blass (4,46 : 1) */
+:root[data-look="klar"] .buehne .tipp { color: #4e4e54; }
