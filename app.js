@@ -306,7 +306,7 @@ async function codeHolen(code) {
   anmelden(d, ziffern, teil);
   return 'ok';
 }
-function codeLeiste() {
+function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann heißt die Leiste „Neuen Plan holen“
   if (!KONTAKT.briefkasten) return null;
   const status = h('p', { class: 'klein', role: 'status' });
   let laeuft = false;
@@ -325,14 +325,14 @@ function codeLeiste() {
     if (!K.appCodeGueltig(feld.value)) { status.textContent = 'Der Code hat 8 Ziffern, zum Beispiel 4821-7730.'; return; }
     laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; status.textContent = '';
     const aus = await codeHolen(feld.value);
-    if (aus === 'ok') { zeichne(); window.scrollTo(0, 0); fotosVorladen(); return; }
+    if (aus === 'ok') { zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast(art === 'zugang' ? 'Fertig, dein Plan ist auf dem neuesten Stand.' : 'Fertig, du bist eingeloggt.'); return; }
     laeuft = false; knopf.disabled = false; knopf.textContent = 'Einloggen';
     status.textContent = TEXTE[aus] || TEXTE.netz;
     feld.select();
   }
   return h('section', { class: 'block code-leiste' },
-    h('label', { class: 'lbl', for: 'code-start', text: 'Code von Devin?' }),
-    h('p', { class: 'leise klein', id: 'code-start-hilfe', text: 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
+    h('label', { class: 'lbl', for: 'code-start', text: art === 'zugang' ? 'Neuen Plan holen' : 'Code von Devin?' }),
+    h('p', { class: 'leise klein', id: 'code-start-hilfe', text: art === 'zugang' ? 'Hat Devin dir einen neuen Plan geschickt? Gib deinen Code ein, dann holt die Seite den neuesten Stand.' : 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
     h('div', { class: 'code-reihe' }, feld, knopf), status);
 }
 function willkommen() {
@@ -653,6 +653,7 @@ function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
   if (p.id === 'beispiel') teile.push(h('div', { class: 'st-beispiel' }, h('span', { text: 'Das ist ein Beispiel.' }), h('button', { class: 'knopf klein', type: 'button', onclick: beispielEnde, text: 'Zur Startseite' })));
+  if (p.id === 'beispiel') { const leiste = codeLeiste(); if (leiste) teile.push(leiste); }   // wer erst das Beispiel ansieht und dann Devins Code bekommt, findet die Leiste auch hier (07.11.2026)
   const ko = aktivesKonto();
   if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
   if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
@@ -840,6 +841,7 @@ function ansichtInfo() {
   const p = S.plan, ko = aktivesKonto(), mitZugang = ko && ko.id === p.id;
   const plaene = Object.values(speicher.lies('dk_plaene', {}));
   return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Infos' })),
+    codeLeiste(mitZugang ? 'zugang' : ''),   // Code-Leiste auch unter Infos (07.11.2026): neuer Code oder neuester Plan
     mitZugang ? h('section', { class: 'block' }, h('h2', { text: 'Dein Zugang' }),
       h('p', { class: 'klein', text: 'Eingeloggt als ' + (ko.n || 'Kunde') + (ko.bis ? ' · bis ' + datumDe(ko.bis) + (tageBis(ko) >= 0 ? ' (noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag)' : ' Tage)') : '') : ' · ohne Ablauf') }),
       h('p', { class: 'leise klein', text: 'Neuer Link von Devin? Einfach öffnen, der Code ist gespeichert. In der App vom Home-Bildschirm: Nachricht kopieren und hier einfügen.' }),
