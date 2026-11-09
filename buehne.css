@@ -317,3 +317,15 @@ body.start .kopf-innen { max-width: 1024px; }
   .st-buehne { height: clamp(460px, 66vh, 760px); }
   .st-fuss { grid-column: 1 / -1; }
 }
+
+/* Waage im Eingang: Statuskarte (09.11.2026). Level groß, Balken bis zum nächsten Level, drei Zahlen; Farben wie der Rest der Karte */
+.raum-status-kopf { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.raum-status-kopf b { font-size: 28px; font-weight: 800; letter-spacing: -.022em; line-height: 1.1; }
+.raum-status-kopf span { font-size: 18px; font-weight: 700; color: var(--akzent-hell); }
+.raum-status-balken { height: 12px; border-radius: 999px; overflow: hidden; margin-top: 4px; background: var(--knopf-grund2, rgba(120, 140, 160, .25)); }
+.raum-status-balken i { display: block; height: 100%; min-width: 12px; border-radius: 999px; background: var(--akzent-verlauf); transition: width .9s var(--sanft, ease); }
+.raum-status-werte { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.raum-status-werte div { display: grid; gap: 1px; justify-items: center; text-align: center; padding: 8px 4px; border-radius: 16px; background: var(--knopf-grund); }
+.raum-status-werte b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.raum-status-werte small { font-size: 12px; color: var(--text2); line-height: 1.2; }
+@media (prefers-reduced-motion: reduce) { .raum-status-balken i { transition: none; } }

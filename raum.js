@@ -15,14 +15,15 @@ const STILL = typeof window !== 'undefined' && window.matchMedia && matchMedia('
 const BREITE = 20, WAND = 4.6, FACH = 6.2, SEITE_X = 3.6, STATION_R = 2.1, TUER_B = 4, TUER_H = 3.6;
 const WAND_D = 0.3, RAND = 0.4, ENDE_ABSTAND = 9, ORBIT_Y_MIN = 0.6, ORBIT_Y_MAX = Math.min(3.4, WAND - 0.2), FOV_MAX = 80;   // Wanddicke, Abstand der Kamera zu jeder Wand, Höhen beim Wischen, weiteste Sicht beim Heranrücken
 const FIGUR_RAND = 1.5;   // so nah an die Wand (Mitte der Wand) darf die Figur beim Laufen: Zwischen Figur und Kamera hinter ihr bleibt noch mindestens 0,95 m, die Kamera sitzt nie in der Figur
-const SCHIENEN_X = [SEITE_X - 0.6, BREITE / 2 - 3];   // LED-Schienen unter der Decke (über den Stationsreihen und weiter außen), im Boden gespiegelt
+const SCHIENEN_X = [SEITE_X - 0.6, BREITE / 2 - 3];
+const TERRASSE = 6, WAAGE_X = 3.4, WAAGE_Z = 3.0, WAAGE_R = 1.1, WAAGE_W = -Math.PI / 2 + 0.3;   // Breite der Holzterrasse rund um die Halle; die Waage im Eingang (Mitte und Halbmesser der Trefferfläche)   // LED-Schienen unter der Decke (über den Stationsreihen und weiter außen), im Boden gespiegelt
 const frei = (rich, ab, von, bis) => (rich > 1e-9 ? (bis - ab) / rich : rich < -1e-9 ? (von - ab) / rich : Infinity);   // wie viele Schritte in Richtung rich man von ab aus kommt, bis die Grenze von oder bis erreicht ist
 
 // Maße der Halle für n Stationen. innen = Innenseiten der Wände, kasten = wo die Kamera sein darf (RAND Abstand zu jeder Wand, 0,2 m unter der Decke)
 export function hallenMass(n) {
   const zStart = 3.6, zAnfang = zStart + 3.4, zStation = (i) => -2 - i * FACH, zEnde = zStation(Math.max(1, n) - 1) - ENDE_ABSTAND;
   const innen = { xMin: -BREITE / 2 + WAND_D / 2, xMax: BREITE / 2 - WAND_D / 2, zMin: zEnde + WAND_D / 2, zMax: zAnfang - WAND_D / 2 };
-  return { n, breite: BREITE, wand: WAND, fach: FACH, seiteX: SEITE_X, stationR: STATION_R, rand: RAND, orbitY: [ORBIT_Y_MIN, ORBIT_Y_MAX], tuerB: TUER_B, tuerH: TUER_H, figurRand: FIGUR_RAND,
+  return { n, breite: BREITE, wand: WAND, fach: FACH, seiteX: SEITE_X, stationR: STATION_R, rand: RAND, orbitY: [ORBIT_Y_MIN, ORBIT_Y_MAX], tuerB: TUER_B, tuerH: TUER_H, figurRand: FIGUR_RAND, terrasse: TERRASSE, waage: { x: WAAGE_X, z: WAAGE_Z, r: WAAGE_R },
     zStart, zAnfang, zEnde, zStation, laenge: zAnfang - zEnde, zMitte: (zAnfang + zEnde) / 2,
     stationX: (i) => (i % 2 === 0 ? -SEITE_X : SEITE_X), stationWinkel: (i) => (i % 2 === 0 ? Math.PI / 2 - 0.38 : -Math.PI / 2 + 0.38),
     innen, kasten: { xMin: innen.xMin + RAND, xMax: innen.xMax - RAND, zMin: innen.zMin + RAND, zMax: innen.zMax - RAND, yMin: 0.3, yMax: WAND - 0.2 } };
@@ -54,6 +55,11 @@ export function folgeKamera(h, F, kamW, kamZ, spieler) {
   if (p.s < 1) { const l = Math.hypot(p.x - F.x, p.z - F.z), d0 = Math.hypot(arm.h, arm.y - arm.ziel); p.y = Math.min(h.kasten.yMax, Math.max(p.y, arm.ziel + Math.sqrt(Math.max(0, d0 * d0 - l * l)))); }
   return { pos: p, blick: { x: F.x - dx * arm.voraus * p.s, y: arm.ziel, z: F.z - dz * arm.voraus * p.s }, s: p.s };
 }
+// Wo die Kamera an der Waage beginnt: von der Gangseite, im Hochformat etwas weiter weg und die Figur höher im Bild, weil unten die Karte liegt. Rückgabe wie bei den Stationen (Bahn für umlaufKamera, senken für orbit.versatz)
+export function waageSicht(h, hochkant) {
+  const senken = hochkant ? 0.85 : 0.4;
+  return { senken, bahn: { mitte: { x: h.waage.x, y: 0.95 - senken, z: h.waage.z }, r: hochkant ? 4.2 : 4.6, w: WAAGE_W, y: 1.9 } };
+}
 // Wo die Kamera an der Station beginnt (aus der Voreinstellung der Ansicht: sichtLokal = Kamera, zielLokal = Mitte, beide in Koordinaten der Station), umgerechnet in Hallen-Koordinaten.
 // opt: hochkant (Handy), nah (Probetag mit kleiner Karte), spieler (eigener Charakter). Steht hier, damit Node dieselbe Rechnung messen kann.
 export function stationsSicht(s, opt) {
@@ -75,7 +81,10 @@ const FARBEN_LAGUNE = {
   ring: 0x14c7b6, ringAus: 0x5db6e0, ringFertig: 0x0fa899, teller: 0xffffff, tellerSicht: 0.6, tellerFertig: 0.85,
   rahmen: 0xe3edf2, polster: 0x123a55, gummi: 0x1b3446, metall: null, glas: 0xbfe9f7,
   schild: { grund: 'rgba(255,255,255,.96)', text: '#0B2434', text2: '#3A5668', a: '#4FB8F5', b: '#25D3C2', kreis: '#06293B' },
-  wegA: [0.05, 0.62, 0.72], wegB: [0.06, 0.74, 0.62], wegDunkel: 0.36, deck: 0xf3fafd, decke: '#EAF5FB', strich: [0.03, 0.43, 0.72]
+  wegA: [0.05, 0.62, 0.72], wegB: [0.06, 0.74, 0.62], wegDunkel: 0.36, deck: 0xf3fafd, strich: [0.03, 0.43, 0.72],
+  // Meer, Himmel und Glas (09.11.2026): tropische Lagune mit türkisem Wasser
+  himmelOben: '#43B3EE', himmelHorizont: '#D2F2FB', sonne: '#FFF3C8', meerNah: '#46DCD2', meerFern: '#1A97CF', schaum: '#FFFFFF', glitzer: '#FFFFFF',
+  glasTon: '#BFEFFF', glasStark: 0.12, glanzStark: 0.36, sprosse: '#F7FCFF', holz: ['#DFC194', '#CDAA78'], palme: ['#1C8458', '#66D48F'], waage: '#FFB02E'
 };
 const FARBEN_KLAR = {
   himmel: 0xf5f5f7, nebel: 0xf5f5f7, see: false, tuer: 0x0071e3, schatten: '0,0,0', aussen: '#ECECEF', aussenLinie: 'rgba(0,0,0,.05)',
@@ -84,7 +93,10 @@ const FARBEN_KLAR = {
   ring: 0x0071e3, ringAus: 0x9cc7f2, ringFertig: 0x1b7f35, teller: 0xffffff, tellerSicht: 0.75, tellerFertig: 0.92,
   rahmen: 0xe3e3e8, polster: 0x1d1d1f, gummi: 0x2a2a2d, metall: null, glas: 0xcfe3f8,
   schild: { grund: 'rgba(255,255,255,.97)', text: '#1D1D1F', text2: '#6E6E73', a: '#0071E3', b: '#0071E3', kreis: '#FFFFFF' },
-  wegA: [0, 0.44, 0.89], wegB: [0, 0.44, 0.89], wegDunkel: 0.3, deck: 0xfbfbfd, decke: '#F4F4F7', strich: [0, 0.44, 0.89]
+  wegA: [0, 0.44, 0.89], wegB: [0, 0.44, 0.89], wegDunkel: 0.3, deck: 0xfbfbfd, strich: [0, 0.44, 0.89],
+  // Meer, Himmel und Glas: ruhig und hell, Rahmen in Graphit, das Wasser fast weiß-blau
+  himmelOben: '#DCE7F4', himmelHorizont: '#F8F9FC', sonne: '#FFFFFF', meerNah: '#DCE9F6', meerFern: '#C2D5E9', schaum: '#FFFFFF', glitzer: '#FFFFFF',
+  glasTon: '#DDEBFA', glasStark: 0.12, glanzStark: 0.4, sprosse: '#3A3A3E', holz: ['#DCCFBC', '#CDBFA9'], palme: ['#8CA597', '#C6D8CC'], waage: '#FF9F0A'
 };
 const FARBEN_GOLD = {
   himmel: 0x050507, nebel: 0x07070a, see: false, tuer: 0xf0cd74, schatten: '0,0,0', aussen: '#08080B', aussenLinie: 'rgba(139,92,246,.26)',
@@ -93,7 +105,10 @@ const FARBEN_GOLD = {
   ring: 0xf0cd74, ringAus: 0x7a6a3c, ringFertig: 0xcc9a33, teller: 0x1c1c22, tellerSicht: 0.82, tellerFertig: 0.95,
   rahmen: 0x1b1b20, polster: 0x0f0f13, gummi: 0x0a0a0c, metall: 0xe8c468, glas: 0x6b4fb0,
   schild: { grund: 'rgba(16,16,21,.96)', text: '#F5F1E7', text2: '#BDB7A8', a: '#F7DE93', b: '#CC9A33', kreis: '#1B1304' },
-  wegA: [0.97, 0.87, 0.58], wegB: [0.8, 0.6, 0.2], wegDunkel: 0.24, deck: 0x17171c, decke: '#0E0E12', strich: [0.98, 0.86, 0.52]
+  wegA: [0.97, 0.87, 0.58], wegB: [0.8, 0.6, 0.2], wegDunkel: 0.24, deck: 0x17171c, strich: [0.98, 0.86, 0.52],
+  // Meer, Himmel und Glas: Nacht, dunkles Wasser mit Gold und Lila im Glitzer, goldene Rahmen
+  himmelOben: '#04040A', himmelHorizont: '#2A1646', sonne: '#F0CD74', meerNah: '#13133A', meerFern: '#08081A', schaum: '#9B7CF0', glitzer: '#F7DE93',
+  glasTon: '#6B4FB0', glasStark: 0.1, glanzStark: 0.3, sprosse: '#E8C468', holz: ['#2B2119', '#1F1812'], palme: ['#0E1218', '#3A2D5C'], waage: '#F0CD74'
 };
 
 function zeichne(breite, hoehe, malen) {
@@ -105,7 +120,7 @@ function runde(x, l, o, b, h, r) { x.beginPath(); x.moveTo(l + r, o); x.arcTo(l 
 const SCHRIFT = '-apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-serif';
 
 // spieler (optional): der eigene Charakter statt der Standardfigur. { name, bauen(ansicht, M) vor dem Aufbau der Stationen, haltung(pose, winkel) im Gehen und Stehen }. Dann: Kamera näher dran, Einstieg durch die Tür, Name über dem Kopf, „Hier trainieren“ am Gerät
-export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler }) {
+export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status }) {   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
   const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold', P = GOLD ? FARBEN_GOLD : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;
   // Oberfläche
   const wurzel = el('div', 'raum'); wurzel.setAttribute('role', 'dialog'); wurzel.setAttribute('aria-modal', 'true'); wurzel.setAttribute('aria-label', 'Trainingsraum');
@@ -114,7 +129,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const kopf = el('div', 'raum-kopf'), kopfT = el('b', null, titel || 'Dein Gym heute'), kopfS = el('span', 'raum-stand');
   const punkte = el('div', 'raum-punkte'); uebungen.forEach(() => punkte.append(el('i')));
   const kopfText = el('div', 'raum-kopftext'); kopfText.append(kopfT, kopfS); kopf.append(zu, kopfText, punkte);
-  const tipp = el('div', 'raum-tipp', spieler ? 'Knüppel: laufen · Wischen: Kamera' : 'Station antippen · Knüppel: selbst laufen');
+  const tipp = el('div', 'raum-tipp', spieler ? 'Knüppel: laufen · Wischen: Kamera' + (status ? ' · Waage: Status' : '') : 'Station' + (status ? ' oder Waage' : '') + ' antippen · Knüppel: selbst laufen');
   const stick = el('div', 'raum-stick'), stickK = el('i'); stick.append(stickK); stick.setAttribute('aria-hidden', 'true');
   const weiter = el('button', 'raum-weiter'); weiter.type = 'button';
   const unten = el('div', 'raum-unten'); unten.append(stick, weiter);
@@ -162,7 +177,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let kameraLicht = null;   // eigener Charakter: warmes Licht aus Richtung der Kamera, so stimmt der Hautton von jeder Seite
   if (spieler) { kameraLicht = new THREE.DirectionalLight(0xfff0e4, GOLD ? 1.1 : 0.6); szene.add(kameraLicht); }
   const halle = hallenMass(uebungen.length);
-  szene.fog = new THREE.Fog(P.nebel, Math.max(70, halle.laenge + 30), 520 + halle.laenge);
+  szene.fog = new THREE.Fog(P.himmelHorizont,Math.max(70, halle.laenge + 30), 520 + halle.laenge);
   // Geräte passend zum Raum
   const gm = a.geraete;
   gm.mRahmen.color.set(P.rahmen); gm.mPolster.color.set(P.polster); gm.mGummi.color.set(P.gummi);
@@ -186,18 +201,49 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   });
   const ausLokal = (s, v) => v.clone().applyAxisAngle(Y, s.winkel).add(s.pos);
 
-  /* ---------- Umgebung: Lagune oder schwarzer Grund ---------- */
-  const aussenT = tex(zeichne(512, 512, (x, b, h) => {
-    if (P.see) {
-      x.fillStyle = '#25B9CC'; x.fillRect(0, 0, b, h);
-      x.fillStyle = 'rgba(255,255,255,.28)'; for (let i = 0; i < 70; i++) x.fillRect((i * 173) % b, (i * 97) % h, 18 + (i * 7) % 44, 3);
-    } else {
-      x.fillStyle = P.aussen; x.fillRect(0, 0, b, h);
-      x.strokeStyle = P.aussenLinie; x.lineWidth = 2; x.strokeRect(0, 0, b, h);
-    }
-  }), true);
-  aussenT.repeat.set(P.see ? 26 : 90, P.see ? 26 : 90);
-  raum.add(flach(new THREE.PlaneGeometry(1600, 1600), grund(0xffffff, { map: aussenT }), 0, -0.5, zMitte));
+  /* ---------- Umgebung: Himmel mit Sonne und Meer, das auf die Halle zuläuft (09.11.2026, Devin: „freier … du guckst nach draußen, dann siehst du das Meer … moderner, schöner, mit mehr Design“) ---------- */
+  // Farben für Schattierungen kommen als „#RRGGBB“ und gehen ungewandelt in die Schattierer (wie bei wegA und wegB)
+  const rgb = (h) => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
+  // Himmel: eine große Kugel um alles, im Bildraum „Welt“ (nicht in der Halle), dreht aber mit der Halle mit (legeHalle), so bleibt die Sonne am selben Platz
+  const himmelU = { oben: { value: rgb(P.himmelOben) }, horizont: { value: rgb(P.himmelHorizont) }, sonne: { value: rgb(P.sonne) }, sonneRicht: { value: V(0.78, 0.3, 0.55).normalize() } };
+  const himmel = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), new THREE.ShaderMaterial({ uniforms: himmelU, side: THREE.BackSide, depthWrite: false, fog: false,
+    vertexShader: 'varying vec3 vR; void main(){ vR = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `varying vec3 vR; uniform vec3 oben, horizont, sonne, sonneRicht;
+      void main(){
+        vec3 r = normalize(vR); float h = clamp(r.y, 0.0, 1.0);
+        vec3 c = mix(horizont, oben, pow(h, 0.5));
+        float s = max(dot(r, sonneRicht), 0.0);
+        c += sonne * (pow(s, 700.0) * 1.3 + pow(s, 14.0) * 0.2);
+        gl_FragColor = vec4(c, 1.0);
+      }` }));
+  himmel.renderOrder = -10; himmel.frustumCulled = false; szene.add(himmel);
+  // Meer: Farbe von flach (nah an der Halle) zu tief, Schaumbänder wandern auf die Terrassen zu, Glitzer; zum Horizont geht es in die Farbe des Himmels über
+  const meerU = { zeit: { value: 0 }, zOff: { value: zMitte }, nah: { value: rgb(P.meerNah) }, fern: { value: rgb(P.meerFern) }, schaum: { value: rgb(P.schaum) }, glitzer: { value: rgb(P.glitzer) }, nebel: { value: rgb(P.himmelHorizont) },
+    kante: { value: new THREE.Vector3(BREITE / 2 + TERRASSE, zAnfang + 10, zEnde - 8) } };
+  const meerGeo = new THREE.PlaneGeometry(1800, 1800); meerGeo.rotateX(-Math.PI / 2);
+  const meer = new THREE.Mesh(meerGeo, new THREE.ShaderMaterial({ uniforms: meerU, fog: false,
+    // Der Abstand zur Kamera wird erst im Bildpunkt aus der Lage im Blickraum gerechnet (ein Abstand je Ecke der riesigen Fläche wäre über das ganze Meer falsch gemittelt)
+    vertexShader: 'varying vec2 vP; varying vec3 vV; uniform float zOff; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = mv.xyz; vP = position.xz + vec2(0.0, zOff); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: `varying vec2 vP; varying vec3 vV; uniform float zeit; uniform vec3 nah, fern, schaum, glitzer, nebel, kante;
+      void main(){
+        float vD = length(vV);
+        float dx = max(abs(vP.x) - kante.x, 0.0), dz = max(max(vP.y - kante.y, kante.z - vP.y), 0.0);
+        float d = length(vec2(dx, dz));
+        float tief = smoothstep(0.0, 90.0, d);
+        vec3 c = mix(nah, fern, pow(tief, 0.7));
+        float w = sin(d * 0.55 + zeit * 1.1 + sin(vP.y * 0.07 + zeit * 0.2) * 2.0 + sin(vP.x * 0.05) * 1.5);
+        float band = smoothstep(0.8, 1.0, w) * (1.0 - smoothstep(0.0, 60.0, d)) * 0.55;
+        c += (schaum - c) * band;
+        float spiel = 0.5 + 0.5 * sin(vP.x * 0.9 + vP.y * 0.7 + zeit * 1.4) * sin(vP.x * 0.5 - vP.y * 0.8 - zeit * 0.9);
+        c = mix(c, c * 1.08 + 0.02, spiel * 0.35 * (1.0 - tief));
+        // Glitzer: einzelne runde Funken, je Feld ein eigener Takt (ein Muster aus Sinuswellen sah wie ein Gitter aus), weit weg nicht mehr (sonst flimmert es)
+        vec2 zelle = floor(vP * 1.3), innen = fract(vP * 1.3) - 0.5; float hz = fract(sin(dot(zelle, vec2(12.9898, 78.233))) * 43758.5453);
+        float g = pow(max(0.0, sin(zeit * (0.8 + hz) * 2.0 + hz * 40.0)), 20.0) * step(0.6, hz) * pow(smoothstep(0.5, 0.0, length(innen)), 2.0) * (1.0 - smoothstep(8.0, 70.0, vD));
+        c += glitzer * g * 0.9;
+        c = mix(c, nebel, smoothstep(80.0, 560.0, vD));
+        gl_FragColor = vec4(c, 1.0);
+      }` }));
+  meer.position.set(0, -0.45, zMitte); meer.renderOrder = -5; raum.add(meer);
 
   /* ---------- Boden der Halle: Platten, Spiegelung der LED-Schienen ---------- */
   const bodenT = tex(zeichne(2048, 512, (x, b, h) => {
@@ -211,20 +257,81 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }), true);
   bodenT.repeat.set(1, LAENGE / FACH);
   raum.add(flach(new THREE.PlaneGeometry(BREITE, LAENGE), grund(0xffffff, { map: bodenT }), 0, 0, zMitte));
-  // Stege vor den Türen
-  raum.add(flach(new THREE.PlaneGeometry(TUER_B + 1.2, 16), grund(P.deck), 0, -0.02, zAnfang + 8));
-  raum.add(flach(new THREE.PlaneGeometry(TUER_B + 1.2, 40), grund(P.deck), 0, -0.02, zEnde - 20));
+  // Terrassen aus Holz rund um die Halle, dazu je ein Steg ins Meer vor dem Eingang und hinter dem Ziel
+  const holzT = tex(zeichne(256, 256, (x, b, h) => {
+    for (let i = 0; i < 8; i++) { x.fillStyle = P.holz[i % 2]; x.fillRect(i * 32, 0, 32, h); }   // acht Bohlen nebeneinander
+    x.fillStyle = 'rgba(0,0,0,.16)'; for (let i = 0; i < 8; i++) { x.fillRect(i * 32, 0, 2, h); x.fillRect(i * 32, (i * 97) % h, 32, 2); }   // Fugen und versetzte Stöße
+  }), true);
+  const planken = (b, l, x, y, z) => { const t = holzT.clone(); t.needsUpdate = true; t.repeat.set(b / 1.6, l / 1.6); const m = flach(new THREE.PlaneGeometry(b, l), grund(0xffffff, { map: t }), x, y, z); raum.add(m); return m; };
+  for (const s of [-1, 1]) planken(TERRASSE, LAENGE, s * (BREITE / 2 + TERRASSE / 2), -0.02, zMitte);   // Terrassen an den Längsseiten
+  planken(BREITE + 2 * TERRASSE, 10, 0, -0.02, zAnfang + 5);   // Vorplatz am Eingang
+  planken(BREITE + 2 * TERRASSE, 8, 0, -0.02, zEnde - 4);   // Terrasse hinter dem Ziel
+  planken(TUER_B + 1.2, 16, 0, -0.01, zAnfang + 18);   // Steg ins Meer vor dem Eingang
+  planken(TUER_B + 1.2, 30, 0, -0.01, zEnde - 23);   // Steg ins Meer hinter dem Ziel
 
-  /* ---------- Niedrige Wände (Sicht von oben wie in die offene Halle) ---------- */
+  /* ---------- Glashalle (09.11.2026): Sockel, Glas mit Glanz, schmale Sprossen und ein Balken oben; das Dach bleibt offen (Himmel, Sonne), nur Sparren und LED-Schienen ---------- */
   const wandM = grund(0xffffff, { vertexColors: true });
-  const wand = (b, h, t, x, y, z) => { const m = new THREE.Mesh(kiste(b, h, t), wandM); m.position.set(x, y, z); raum.add(m); return m; };
-  const wandL = wand(0.3, WAND, LAENGE, -BREITE / 2, WAND / 2, zMitte), wandR = wand(0.3, WAND, LAENGE, BREITE / 2, WAND / 2, zMitte), wandVorn = [], wandHinten = [];
-  const stueck = (BREITE - TUER_B) / 2;
-  for (const z of [zAnfang, zEnde]) (z === zAnfang ? wandVorn : wandHinten).push(wand(stueck, WAND, 0.3, -(TUER_B + stueck) / 2, WAND / 2, z), wand(stueck, WAND, 0.3, (TUER_B + stueck) / 2, WAND / 2, z), wand(TUER_B, WAND - TUER_H, 0.3, 0, (WAND + TUER_H) / 2, z));   // Sturz über der Tür
-  // Decke, nur von unten zu sehen (von oben wird sie nicht gezeichnet): Von innen ist die Halle zu, man sieht nie Himmel oder Leere; von außen oben bleibt der Blick in die Halle frei
-  const deckeT = tex(zeichne(256, 256, (x, b, h) => { x.fillStyle = P.decke; x.fillRect(0, 0, b, h); x.strokeStyle = P.fuge; x.lineWidth = 3; x.strokeRect(0, 0, b, h); }), true);
-  deckeT.repeat.set((BREITE - WAND_D) / 2.5, (LAENGE - WAND_D) / 2.5);
-  const decke = new THREE.Mesh(new THREE.PlaneGeometry(BREITE - WAND_D, LAENGE - WAND_D), grund(0xffffff, { map: deckeT })); decke.rotation.x = Math.PI / 2; decke.position.set(0, WAND - 0.02, zMitte); raum.add(decke);
+  const glasM = new THREE.MeshBasicMaterial({ color: P.glasTon, transparent: true, opacity: P.glasStark, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  const sprosseM = grund(P.sprosse), sprosseGeo = new THREE.BoxGeometry(1, 1, 1), m4 = new THREE.Matrix4(), qNull = new THREE.Quaternion();
+  const glanzT = tex(zeichne(256, 128, (x, b, h) => {   // drei schräge Lichtbänder wie Spiegelungen im Glas
+    for (const [px, br, al] of [[30, 40, 0.55], [105, 14, 0.35], [160, 52, 0.4]]) {
+      const g = x.createLinearGradient(px, 0, px + br, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,' + al + ')'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g; x.beginPath(); x.moveTo(px, 0); x.lineTo(px + br, 0); x.lineTo(px + br - 46, h); x.lineTo(px - 46, h); x.closePath(); x.fill();
+    }
+  }), true);
+  // Eine Glasfront von (x0, z0) nach (x1, z1) in Hallen-Koordinaten, von der Höhe y0 bis y0 + h. Gibt die Gruppe zurück (zum Ausblenden)
+  function glasFront(x0, z0, x1, z1, y0, h, opt) {
+    const o = Object.assign({ raster: 2.45, dick: 0.1, sockel: 0, balken: false }, opt), dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz), n = Math.max(1, Math.round(L / o.raster));
+    const g = new THREE.Group(); g.position.set((x0 + x1) / 2, y0 + h / 2, (z0 + z1) / 2); g.rotation.y = Math.atan2(-dz, dx); raum.add(g);
+    g.add(new THREE.Mesh(new THREE.PlaneGeometry(L, h), glasM));
+    const t = glanzT.clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, L / 9), 1);
+    const glanz = new THREE.Mesh(new THREE.PlaneGeometry(L, h), new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: P.glanzStark, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false }));
+    glanz.position.z = 0.012; g.add(glanz);
+    const sp = new THREE.InstancedMesh(sprosseGeo, sprosseM, n + 1);
+    for (let i = 0; i <= n; i++) { m4.compose(V(-L / 2 + i * L / n, 0, 0), qNull, V(o.dick, h, o.dick * 1.6)); sp.setMatrixAt(i, m4); }
+    sp.instanceMatrix.needsUpdate = true; sp.frustumCulled = false; g.add(sp);
+    if (o.sockel) { const s = new THREE.Mesh(kiste(L, o.sockel, 0.3), wandM); s.position.y = -h / 2 - o.sockel / 2; g.add(s); }
+    if (o.balken) { const b = new THREE.Mesh(kiste(L, 0.3, 0.34), wandM); b.position.y = h / 2 + 0.15; g.add(b); }
+    return g;
+  }
+  const SOCKEL = 0.5, hGlas = WAND - SOCKEL, wandVorn = [], wandHinten = [];
+  const wandL = glasFront(-BREITE / 2, zAnfang, -BREITE / 2, zEnde, SOCKEL, hGlas, { sockel: SOCKEL, balken: true }), wandR = glasFront(BREITE / 2, zAnfang, BREITE / 2, zEnde, SOCKEL, hGlas, { sockel: SOCKEL, balken: true });
+  for (const z of [zAnfang, zEnde]) {
+    (z === zAnfang ? wandVorn : wandHinten).push(glasFront(-BREITE / 2, z, -TUER_B / 2, z, SOCKEL, hGlas, { sockel: SOCKEL, balken: true }), glasFront(TUER_B / 2, z, BREITE / 2, z, SOCKEL, hGlas, { sockel: SOCKEL, balken: true }),
+      glasFront(-TUER_B / 2, z, TUER_B / 2, z, TUER_H, WAND - TUER_H, { balken: true, raster: TUER_B }));   // Oberlicht über der Tür
+  }
+  // Dach: offen, nur Sparren quer über die Halle
+  const sparrenGeo = kiste(BREITE + 0.8, 0.2, 0.28);
+  for (let z = zAnfang - 1; z > zEnde; z -= FACH * 0.8) { const m = new THREE.Mesh(sparrenGeo, wandM); m.position.set(0, WAND + 0.1, z); raum.add(m); }
+  // Geländer aus Glas am Rand der Längsterrassen
+  for (const s of [-1, 1]) glasFront(s * (BREITE / 2 + TERRASSE), zAnfang, s * (BREITE / 2 + TERRASSE), zEnde, 0, 1.0, { raster: 3, dick: 0.07 });
+  // Palmen: eine Form, viele Plätze (Stamm und Wedel in einem Netz, die Wedel werden zur Spitze heller)
+  function palmenGeo() {
+    const pos = [], farbe = [], idx = [], c0 = new THREE.Color(P.palme[0]), c1 = new THREE.Color(P.palme[1]), stamm = new THREE.Color(P.holz[1]).multiplyScalar(0.6);
+    const punkt = (x, y, z, c) => { pos.push(x, y, z); farbe.push(c.r, c.g, c.b); return pos.length / 3 - 1; };
+    const HS = 4.4, RINGE = 7, SEITEN = 8, biege = (u) => 0.55 * u * u;
+    for (let i = 0; i <= RINGE; i++) { const u = i / RINGE, r = 0.17 - 0.07 * u; for (let j = 0; j < SEITEN; j++) { const w = j / SEITEN * Math.PI * 2; punkt(biege(u) + Math.cos(w) * r, u * HS, Math.sin(w) * r, stamm); } }
+    for (let i = 0; i < RINGE; i++) for (let j = 0; j < SEITEN; j++) { const p = i * SEITEN + j, q = i * SEITEN + (j + 1) % SEITEN; idx.push(p, q, p + SEITEN, q, q + SEITEN, p + SEITEN); }
+    const sx = biege(1), WEDEL = 11, SEG = 5;
+    for (let k = 0; k < WEDEL; k++) {
+      const az = k / WEDEL * Math.PI * 2 + k * 0.4, hub = 0.55 + 0.3 * Math.sin(k * 1.9), L = 2.3 + 0.35 * Math.sin(k * 2.7), cx = Math.cos(az), cz = Math.sin(az);
+      let vorher = -1;
+      for (let s = 0; s <= SEG; s++) {
+        const t = s / SEG, aus = t * L * Math.cos(hub), auf = t * L * Math.sin(hub) - 1.5 * t * t, breit = 0.5 * Math.pow(1 - t, 0.55) * (t < 0.12 ? t / 0.12 : 1), c = c0.clone().lerp(c1, t);
+        const px = sx + cx * aus, py = HS + auf, pz = cz * aus;
+        const l = punkt(px - cz * breit, py, pz + cx * breit, c); punkt(px + cz * breit, py, pz - cx * breit, c);
+        if (vorher >= 0) idx.push(vorher, vorher + 1, l, vorher + 1, l + 1, l);
+        vorher = l;
+      }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(farbe, 3)); g.setIndex(idx); return g;
+  }
+  const palmenOrte = [];
+  for (let z = zAnfang - 2, i = 0; z > zEnde + 4; z -= 11, i++) for (const s of [-1, 1]) palmenOrte.push([s * (BREITE / 2 + 1.8 + ((i * 7 + (s > 0 ? 3 : 0)) % 3) * 0.9), z - (s > 0 ? 4 : 0), 0.9 + ((i * 13 + (s > 0 ? 2 : 0)) % 5) * 0.08]);
+  palmenOrte.push([-(BREITE / 2 + 3.5), zAnfang + 4, 1.1], [BREITE / 2 + 3.5, zAnfang + 3, 1.0], [-(BREITE / 2 + 2.5), zEnde - 3, 1.0], [BREITE / 2 + 2.5, zEnde - 4, 1.15], [-(BREITE / 2 - 1), zAnfang - 1.6, 0.55], [BREITE / 2 - 1, zAnfang - 1.6, 0.55]);
+  const palmen = new THREE.InstancedMesh(palmenGeo(), grund(0xffffff, { vertexColors: true, side: THREE.DoubleSide }), palmenOrte.length);
+  palmenOrte.forEach(([x, z, sk], i) => { m4.compose(V(x, 0, z), new THREE.Quaternion().setFromAxisAngle(Y, i * 2.4), V(sk, sk, sk)); palmen.setMatrixAt(i, m4); });
+  palmen.instanceMatrix.needsUpdate = true; palmen.frustumCulled = false; raum.add(palmen);
 
   /* ---------- LED: leuchtende Schienen oben, Lichtschein drumherum ---------- */
   const scheinT = tex(zeichne(32, 128, (x, b, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, b, h); }));
@@ -236,20 +343,17 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const m = new THREE.Mesh(langs ? new THREE.BoxGeometry(0.07, 0.07, laenge) : new THREE.BoxGeometry(laenge, 0.07, 0.07), ledM); m.position.set(x, y, z); raum.add(m);
     raum.add(flach(new THREE.PlaneGeometry(langs ? 1.1 : laenge, langs ? laenge : 1.1), langs ? scheinML : scheinM, x, y, z));
   };
-  leiste(true, LAENGE, -BREITE / 2 + 0.35, WAND - 0.1, zMitte); leiste(true, LAENGE, BREITE / 2 - 0.35, WAND - 0.1, zMitte);   // unter der Decke an den Wänden
-  for (const sx of SCHIENEN_X) { leiste(true, LAENGE - 1, -sx, WAND - 0.1, zMitte); leiste(true, LAENGE - 1, sx, WAND - 0.1, zMitte); }                            // Schienen unter der Decke
+  leiste(true, LAENGE, -BREITE / 2 + 0.35, WAND - 0.1, zMitte); leiste(true, LAENGE, BREITE / 2 - 0.35, WAND - 0.1, zMitte);   // unter dem Balken an den Glasfronten
+  for (const sx of SCHIENEN_X) { leiste(true, LAENGE - 1, -sx, WAND - 0.1, zMitte); leiste(true, LAENGE - 1, sx, WAND - 0.1, zMitte); }   // Schienen unter den Sparren
   for (let z = zAnfang - FACH / 2; z > zEnde; z -= FACH) leiste(false, SCHIENEN_X[1] * 2, 0, WAND - 0.1, z);
 
-  /* ---------- Türen ---------- */
+  /* ---------- Türen: Eingang offen, Ziel mit Glasflügeln, die am Ende aufgehen ---------- */
   const rahmenM = grund(P.tuer, { transparent: true, opacity: 0.6, fog: false }), rahmenA = grund(P.tuer, { fog: false });
   const rahmen = (z, m) => { for (const [b, h, x, y] of [[0.14, TUER_H + 0.14, -TUER_B / 2, TUER_H / 2], [0.14, TUER_H + 0.14, TUER_B / 2, TUER_H / 2], [TUER_B + 0.14, 0.14, 0, TUER_H]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(b, h, 0.14), m); r.position.set(x, y, z); raum.add(r); (z === zAnfang ? wandVorn : wandHinten).push(r); } };
   rahmen(zAnfang, rahmenA); rahmen(zEnde, rahmenM);
-  const tuerGlas = grund(P.glas, { transparent: true, opacity: 0.42, depthWrite: false });
+  const tuerGlas = grund(P.glas, { transparent: true, opacity: 0.3, depthWrite: false });
   const fluegelL = new THREE.Mesh(new THREE.BoxGeometry(TUER_B / 2 - 0.04, TUER_H, 0.06), tuerGlas), fluegelR = fluegelL.clone();
   fluegelL.position.set(-TUER_B / 4, TUER_H / 2, zEnde); fluegelR.position.set(TUER_B / 4, TUER_H / 2, zEnde); raum.add(fluegelL, fluegelR);
-  const tuerGlasV = grund(P.glas, { transparent: true, opacity: 0.95, depthWrite: false });
-  const fluegelVL = new THREE.Mesh(new THREE.BoxGeometry(TUER_B / 2 - 0.04, TUER_H, 0.06), tuerGlasV), fluegelVR = fluegelVL.clone();
-  fluegelVL.position.set(-TUER_B / 4, TUER_H / 2, zAnfang); fluegelVR.position.set(TUER_B / 4, TUER_H / 2, zAnfang); raum.add(fluegelVL, fluegelVR); let eingangOffen = 1;
   const tuerSchild = zeichne(640, 128, () => {}), tuerTex = tex(tuerSchild);
   const schild = new THREE.Sprite(new THREE.SpriteMaterial({ map: tuerTex, transparent: true, depthWrite: false, toneMapped: false, fog: false })); schild.scale.set(4.2, 0.84, 1); schild.position.set(0, TUER_H + 0.5, zEnde + 0.2); schild.renderOrder = 6; raum.add(schild);
   function schildMalen(fertig) {
@@ -361,6 +465,40 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const lichtSaeule = new THREE.Mesh(new THREE.CylinderGeometry(STATION_R * 0.98, STATION_R * 0.98, 3.2, 48, 1, true), grund(P.ring, { map: saeuleT, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: GOLD ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false, opacity: 0.55 }));
   lichtSaeule.renderOrder = 4; raum.add(lichtSaeule);
 
+  /* ---------- Waage im Eingang (09.11.2026, Devin: „im Eingang eine Waage … wenn du da draufgehst, kommst du in den Statusbereich“): zeigt den Spielstand, nie das Körpergewicht ---------- */
+  const waage = status ? { pos: V(halle.waage.x, 0, halle.waage.z), r: halle.waage.r, istWaage: true, schild: null } : null;
+  let waageSchirmMalen = () => {};
+  if (waage) {
+    const g = new THREE.Group(); g.position.copy(waage.pos); g.rotation.y = WAAGE_W; raum.add(g);
+    const teller = flach(new THREE.CircleGeometry(waage.r, 48), grund(P.teller, { transparent: true, opacity: P.tellerSicht, depthWrite: false }), 0, 0.006, 0);
+    const ring = flach(new THREE.RingGeometry(waage.r - 0.07, waage.r, 64), grund(P.waage, { transparent: true, opacity: 0.95, depthWrite: false }), 0, 0.009, 0);
+    teller.renderOrder = 1; ring.renderOrder = 1;
+    const fuss = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.82, 0.05, 48), grund(P.gummi)); fuss.position.y = 0.04;
+    const platte = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.78, 0.035, 48), grund(P.deck)); platte.position.y = 0.083;
+    const led = flach(new THREE.RingGeometry(0.6, 0.66, 64), grund(P.waage), 0, 0.103, 0);
+    const trittM = grund(P.waage, { transparent: true, opacity: 0.4, depthWrite: false }), tritte = [-0.2, 0.2].map((x) => { const t = flach(new THREE.CircleGeometry(0.17, 24), trittM, x, 0.104, 0.04); t.scale.set(1, 1.9, 1); t.renderOrder = 2; return t; });   // zwei Trittflächen, damit man sie als Waage erkennt
+    const saeule = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.15, 0.1), grund(P.gummi)); saeule.position.set(0, 0.575, -0.95);
+    const schirmC = zeichne(256, 160, () => {}), schirmT = tex(schirmC);
+    const schirm = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.6), grund(0xffffff, { map: schirmT })); schirm.position.set(0, 1.28, -0.92); schirm.rotation.x = -0.22;
+    g.add(teller, ring, fuss, platte, led, ...tritte, saeule, schirm);
+    waageSchirmMalen = (st) => {   // das Display auf der Säule: Level und Titel, ohne Spielstand eine Einladung
+      const x = schirmC.getContext('2d'); x.clearRect(0, 0, 256, 160);
+      x.fillStyle = '#0B1620'; runde(x, 4, 4, 248, 152, 22); x.fill(); x.strokeStyle = P.waage; x.lineWidth = 4; runde(x, 4, 4, 248, 152, 22); x.stroke();
+      x.fillStyle = P.waage; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '800 62px ' + SCHRIFT; x.fillText(st ? 'LV ' + st.level : 'Status', 128, 66, 230);
+      x.fillStyle = '#F4F7FA'; x.font = '600 30px ' + SCHRIFT; x.fillText(st ? st.titel : 'Tipp mich an', 128, 120, 230);
+      schirmT.needsUpdate = true;
+    };
+    const schildC = zeichne(720, 180, () => {}), schildT = tex(schildC);
+    const wsp = new THREE.Sprite(new THREE.SpriteMaterial({ map: schildT, transparent: true, depthWrite: false, toneMapped: false, fog: false })); wsp.scale.set(2.8, 0.7, 1); wsp.position.set(waage.pos.x, 2.85, waage.pos.z); wsp.renderOrder = 5; raum.add(wsp);
+    { const x = schildC.getContext('2d'), F2 = P.schild; x.fillStyle = F2.grund; runde(x, 6, 14, 708, 152, 76); x.fill();
+      const gr = x.createLinearGradient(26, 34, 146, 154); gr.addColorStop(0, P.waage); gr.addColorStop(1, F2.b); x.fillStyle = gr; x.beginPath(); x.arc(90, 90, 60, 0, 7); x.fill();
+      x.fillStyle = F2.kreis; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 60px ' + SCHRIFT; x.fillText('★', 90, 96);
+      x.textAlign = 'left'; x.font = '600 52px ' + SCHRIFT; x.fillStyle = F2.text; x.fillText('Dein Status', 172, 93, 520); schildT.needsUpdate = true; }
+    waage.schild = wsp;
+    let st0 = null; try { st0 = status(); } catch (e) {}
+    waageSchirmMalen(st0);
+  }
+
   let namensTafel = null;
   if (spieler && spieler.name) {
     const t = zeichne(640, 128, (x, b) => { x.font = '800 60px ' + SCHRIFT; const w = Math.min(b - 8, x.measureText(spieler.name).width + 70); x.fillStyle = P.schild.grund; runde(x, (b - w) / 2, 10, w, 108, 54); x.fill(); x.fillStyle = P.schild.text; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(spieler.name, b / 2, 67, b - 50); });
@@ -374,7 +512,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let kamW = 0, kamZ = 1, bisZiel = 0, vonZiel = 0, tuerOffen = 0, auftritt = null, nahe = null;
   const legeHalle = (p, w) => {
     const delta = w - hallenWinkel; hallenWinkel = w;
-    raum.rotation.y = -w; raum.position.set(p.x, 0, p.z).applyAxisAngle(Y, -w).negate(); raum.updateMatrixWorld(true);
+    raum.rotation.y = -w; raum.position.set(p.x, 0, p.z).applyAxisAngle(Y, -w).negate(); raum.updateMatrixWorld(true); himmel.rotation.y = -w;   // die Sonne bleibt am selben Platz der Halle
     if (delta) for (const l of lichter) l.position.applyAxisAngle(Y, -delta);
   };
   const legeKamera = () => {
@@ -488,15 +626,54 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       wurzel.append(f); setTimeout(() => f.remove(), 700);
     }
   }
-  function stationFertig(i) {
+  function stationFertig(i, bonus) {   // bonus (optional, aus dem Spielstand): { plus: Punkte, levelAuf: { level, titel } | null }, nur zum Anzeigen
     const s = stationen[i]; if (!s || !offen) return;
     s.fertig = true; s.schildMalen(); funken();
     if (navigator.vibrate) { try { navigator.vibrate(14); } catch (e) {} }
     stand();
-    pop(N - offeneZahl() + ' von ' + N, offeneZahl() ? 'Station geschafft' : 'Alles geschafft');
+    pop((bonus && bonus.plus > 0 ? '+' + bonus.plus + ' Punkte · ' : '') + (N - offeneZahl()) + ' von ' + N, offeneZahl() ? 'Station geschafft' : 'Alles geschafft');
+    if (bonus && bonus.levelAuf) setTimeout(() => { if (offen) pop('Neues Level: ' + bonus.levelAuf.level, bonus.levelAuf.titel); }, 1600);   // erst die Punkte lesen lassen (auch bei „Bewegung reduzieren“), nur sehen, kein Ton
+    if (waage) { let st = null; try { st = status(); } catch (e) {} waageSchirmMalen(st); }   // das Display an der Waage zeigt gleich den neuen Stand
     zurueckZurKarte(true);
   }
-  kZurueck.addEventListener('click', () => zurueckZurKarte(false));
+  /* Waage: hinlaufen (antippen) oder draufgehen, dann zeigt die Karte den Spielstand. Drehen und Karte runterwischen gehen wie an einer Station. */
+  let waageAktiv = false, waageGesperrt = false, waageZeit = 0;
+  function zurWaage() {
+    if (!waage || modus === 'draussen' || waageAktiv) return;
+    tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
+    stationen.forEach((x) => { x.schild.visible = true; });
+    if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
+    modusSetzen('lauf');
+    lauf(route(F, waage.pos), () => { zielH = WAAGE_W; warte = STILL ? 0 : 0.22; nachWarte = statusZeigen; });
+    kameraZu(verfolgen, 0.7);
+  }
+  function statusKarte() {   // Inhalt der Karte aus dem Spielstand: Level, Balken, Punkte, Serie, Einheiten, nächstes Ziel (alles Text, nichts Fremdes in die Seite)
+    let st = null; try { st = status(); } catch (e) {}
+    waageSchirmMalen(st); kInhalt.textContent = '';
+    if (!st) { kInhalt.append(el('h2', null, 'Dein Status'), el('p', 'raum-klein', 'Dein Spielstand ist gerade nicht da. Später nochmal versuchen.')); return; }
+    const kopf = el('div', 'raum-status-kopf'); kopf.append(el('b', null, 'Level ' + st.level), el('span', null, st.titel));
+    const balken = el('div', 'raum-status-balken'), fuell = el('i'); fuell.style.width = Math.round(klemme(+st.anteil || 0, 0, 1) * 100) + '%'; balken.append(fuell);
+    const bis = el('p', 'raum-klein', st.naechstes ? 'Noch ' + st.naechstes.fehlt + (st.naechstes.fehlt === 1 ? ' Punkt' : ' Punkte') + ' bis Level ' + st.naechstes.nr + ' · ' + st.naechstes.titel : 'Höchstes Level erreicht. Stark!');
+    const werte = el('div', 'raum-status-werte');
+    for (const [zahl, text] of [[st.punkte, 'Punkte'], [st.serieWochen, st.serieWochen === 1 ? 'Woche in Folge' : 'Wochen in Folge'], [st.einheiten, st.einheiten === 1 ? 'Einheit' : 'Einheiten']]) { const d = el('div'); d.append(el('b', null, String(zahl)), el('small', null, text)); werte.append(d); }
+    kInhalt.append(kopf, balken, bis, werte); if (st.ziel) kInhalt.append(el('p', 'raum-klein', st.ziel));
+  }
+  function statusZeigen() {
+    if (!waage || waageAktiv) return;
+    waageAktiv = true; waage.schild.visible = false;
+    F.copy(waage.pos); H = zielH = WAAGE_W;
+    const ws = waageSicht(halle, hochkant()), blick = V(ws.bahn.mitte.x, ws.bahn.mitte.y, ws.bahn.mitte.z);
+    const bahn = { ...ws.bahn, mitte: blick, fov: sichtStation(), versatz: ws.senken, heben: 0, hebenZiel: 0 }, start = umlaufKamera(halle, bahn);
+    kameraZu({ pos: V(start.x, start.y, start.z), blick, fov: start.fov || sichtStation() }, 1.3, () => {
+      orbit = bahn; kNr.textContent = 'Dein Status'; kNr.dataset.station = ''; kName.textContent = 'Waage'; statusKarte();
+      karte.classList.add('offen'); modusSetzen('station'); karteUnten(false, true);
+    });
+  }
+  function statusZu() {
+    karte.classList.remove('offen'); orbit = null; waageAktiv = false; waageGesperrt = true; waage.schild.visible = true;
+    modusSetzen('gehen'); kameraZu(verfolgen, 1.0);
+  }
+  kZurueck.addEventListener('click', () => (waageAktiv ? statusZu() : zurueckZurKarte(false)));
 
   /* Karte runter- und hochwischen (07.11.2026): am Griff oder an der Kopfzeile ziehen. Unten bleibt nur die Kopfzeile mit dem Namen der Übung,
      die Kamera holt die Figur in die Mitte, drehen geht weiter. Hochwischen oder die Leiste antippen holt die Karte zurück. */
@@ -574,13 +751,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const o = raum.worldToLocal(strahl.ray.origin.clone()), d = strahl.ray.direction.clone().applyAxisAngle(Y, hallenWinkel);
     // Boden- oder Gerätetreffer: nächste Station unter dem Finger
     let beste = null, bt = 1e9;
-    for (const s of stationen) {
-      const fx = o.x - s.pos.x, fz = o.z - s.pos.z, A = d.x * d.x + d.z * d.z, B = fx * d.x + fz * d.z, C = fx * fx + fz * fz - STATION_R * STATION_R, D = B * B - A * C;
+    for (const s of waage ? [...stationen, waage] : stationen) {
+      const fx = o.x - s.pos.x, fz = o.z - s.pos.z, A = d.x * d.x + d.z * d.z, B = fx * d.x + fz * d.z, C = fx * fx + fz * fz - (s.r || STATION_R) ** 2, D = B * B - A * C;
       if (D < 0 || !A) continue;
       const t = (-B - Math.sqrt(D)) / A, y = o.y + d.y * Math.max(t, 0);
       if (t > -1 && y < 3.6 && t < bt) { bt = t; beste = s; }
     }
-    if (beste) return zurStation(beste.i);
+    if (beste) return beste.istWaage ? zurWaage() : zurStation(beste.i);
     if (d.y >= -0.01) return;
     const t = -o.y / d.y, x = o.x + d.x * t, z = o.z + d.z * t;
     if (Math.abs(x) < TUER_B && z < zEnde + 3.6) return rausgehen();
@@ -718,6 +895,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             if (b !== nahe) { nahe = b; stand(); }
           } else if (nahe != null) { nahe = null; stand(); }
         }
+        if (waage && modus === 'gehen' && !waageAktiv) {   // draufgehen: kurz auf der Waage stehen bleiben, dann kommt der Status; erst nach dem Weggehen wieder
+          const d = Math.hypot(F.x - waage.pos.x, F.z - waage.pos.z);
+          if (d < 0.7 && !waageGesperrt) { waageZeit += dt; if (waageZeit > 0.45) { waageZeit = 0; zurWaage(); } } else { waageZeit = 0; if (d > 1.7) waageGesperrt = false; }
+        }
         a.figur.stelle(gelenke(pose)); if (a.figur.glut) a.figur.glut(0);
         if (hupf > 0) { hupf = Math.max(0, hupf - dt / 0.62); const u = 1 - hupf; a.figur.gruppe.position.y = Math.sin(u * Math.PI) * 0.62; } else a.figur.gruppe.position.y = 0;
         if (namensTafel) namensTafel.position.y = 2.2 + a.figur.gruppe.position.y;
@@ -755,7 +936,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     wegU.zeit.value = zeit;
     strichLegen(dt);
     wegU.bis.value += (bisZiel - wegU.bis.value) * Math.min(1, dt * 1.5);   // der Weg zur nächsten Station leuchtet nach und nach auf
-    if (P.see) { aussenT.offset.x = zeit * 0.006; aussenT.offset.y = zeit * 0.0025; }
+    meerU.zeit.value = STILL ? 0 : zeit;   // das Meer steht still bei „Bewegung reduzieren“
     const n = naechste(), puls = 0.5 + 0.5 * Math.sin(zeit * 3);
     stationen.forEach((s) => {
       const jetzt = s.i === n;
@@ -764,13 +945,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       s.teller.material.opacity = s.fertig ? P.tellerFertig : P.tellerSicht;
       if (spieler) s.schild.material.opacity = klemme((Math.hypot(K.pos.x - s.pos.x, K.pos.z - s.pos.z) - 4.2) / 2.6, 0, 1);
     });
+    if (waage && !waageAktiv) waage.schild.material.opacity = klemme((Math.hypot(K.pos.x - waage.pos.x, K.pos.z - waage.pos.z) - 4.2) / 2.6, 0, 1);   // das Schild verblasst, wenn die Kamera nah ist (sonst verdeckt es die Figur)
     lichtSaeule.material.opacity = 0.4 + 0.25 * puls;
     spielerRing.material.opacity = 0.5 + 0.4 * puls;
     if (n == null) { tuerOffen = Math.min(1, tuerOffen + dt / 1.6); rahmenM.opacity = 0.6 + 0.4 * puls; }
-    const k = glatt(tuerOffen); fluegelL.position.x = -TUER_B / 4 - k * (TUER_B / 2 + 0.05); fluegelR.position.x = TUER_B / 4 + k * (TUER_B / 2 + 0.05); tuerGlas.opacity = 0.42 + 0.53 * (1 - k);
-    eingangOffen += ((F.z > zAnfang - 2.2 ? 1 : 0) - eingangOffen) * Math.min(1, dt / 0.35);
-    const kv = glatt(eingangOffen); fluegelVL.position.x = -TUER_B / 4 - kv * (TUER_B / 2 + 0.05); fluegelVR.position.x = TUER_B / 4 + kv * (TUER_B / 2 + 0.05);
-  };
+    const k = glatt(tuerOffen); fluegelL.position.x = -TUER_B / 4 - k * (TUER_B / 2 + 0.05); fluegelR.position.x = TUER_B / 4 + k * (TUER_B / 2 + 0.05);  };
 
   /* ---------- Los: erst die ganze Halle von hoch oben, dann läuft die Figur durch die Tür hinein ---------- */
   stand();
@@ -797,5 +976,5 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     kameraZu(verfolgen, STILL ? 0.01 : 3, null);
   }, STILL ? 0 : 1300);
   setTimeout(() => { tipp.classList.add('weg'); }, 12000);
-  return { schliessen, stationFertig, zurKarte: () => zurueckZurKarte(false) };
+  return { schliessen, stationFertig, zurKarte: () => (waageAktiv ? statusZu() : zurueckZurKarte(false)) };
 }

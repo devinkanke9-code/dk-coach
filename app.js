@@ -5,6 +5,7 @@
 import { UEBUNGEN, STAND, ANALYSE, KONTAKT } from './daten.js';
 import { buehne, standbilder } from './buehne.js';
 import { erklaerPunkte, ART_NAME } from './coach.js';
+import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
 
 /* ---------- Hilfen ---------- */
@@ -1017,7 +1018,7 @@ function raumStarten(p, ti) {
   GYM = {};
   if (!(history.state && history.state.training)) history.pushState({ training: 1 }, '');
   const heute = tagFuer(p, heuteIndex()) === ti, haken = heute ? erledigtLaden(p, ti) : [];
-  const wie = { lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu,
+  const wie = { lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu, status: () => Spiel.status(),   // status: Spielstand für die Karte im Raum (wirft nie)
     uebungen: LAUF.uebungen.map((u, i) => ({ id: u.id, name: u.name, dosis: u.saetze + ' × ' + u.dosis, pause: '', d: UEBUNGEN[u.id] || { n: u.name, m: [] }, fertig: u.log.length >= u.saetze || haken.indexOf(i) >= 0 })) };
   const normal = () => import('./raum.js').then((m) => m.raumOeffnen(wie));
   // Eigener Charakter: läuft aus dem Ordner charakter/ mit eigener Kopie der Figur. Klappt das nicht, trainiert die normale Figur, das Training selbst bleibt gleich
@@ -1050,12 +1051,36 @@ function gymStationWeg() {
 function gymStationFertig() {
   const i = LAUF.ue, p = S.plan;
   if (p && p.id === LAUF.plan && tagFuer(p, heuteIndex()) === LAUF.tagNr - 1) erledigtSetzen(p, LAUF.tagNr - 1, i, true);
-  if (GYM && GYM.raum) GYM.raum.stationFertig(i);
+  const bonus = spielStation(p, i);   // { plus, levelAuf } oder nichts; der Raum zeigt es an
+  if (GYM && GYM.raum) GYM.raum.stationFertig(i, bonus);
+}
+/* Spielstand (spiel.js): Jede Zeile fängt Fehler ab, das Training läuft immer weiter. Zählen tut es, wenn der Plan zum laufenden Training gehört;
+   nachholen an einem anderen Wochentag gibt also auch Punkte (nur die Haken oben gelten allein am Plantag). Datum und Trainingstag wie in erledigtKey. */
+const spielPasst = (p) => !!p && !!LAUF && p.id === LAUF.plan;
+const spielTag = () => ({ datum: datumHeute(), tag: LAUF.tagNr - 1 });
+function spielStation(p, i) {
+  try {
+    if (!spielPasst(p)) return undefined;
+    const r = Spiel.stationGeschafft({ plan: p.id, ...spielTag(), station: i, wochenZiel: planTage(p) });
+    return { plus: r.plus, levelAuf: r.levelAuf };
+  } catch (e) { return undefined; }
+}
+function spielEinheit(p) {
+  try {
+    if (!spielPasst(p) || !LAUF.uebungen.some((u) => u.log.length)) return '';   // ohne einen einzigen Satz war es keine Einheit
+    return Spiel.einheitText(Spiel.einheitGeschafft({ plan: p.id, ...spielTag(), alleSaetze: LAUF.uebungen.every((u) => u.log.length >= u.saetze), wochenZiel: planTage(p) }));
+  } catch (e) { return ''; }
+}
+function spielToast(text) {
+  if (!text) return;
+  toast(text);
+  const el = document.querySelector('.toast');
+  if (el) el.style.zIndex = '60';   // die Zusammenfassung (.tm, Ebene 30) deckt sonst den Hinweis zu (.toast liegt auf 9)
 }
 function gymZu(geschafft) {
   GYM = null; gymStationWeg(); document.body.style.overflow = '';
   if (!LAUF) { zeichne(); return; }
-  if (geschafft) { laufBeenden('fertig'); return; }
+  if (geschafft) { const text = spielEinheit(S.plan); laufBeenden('fertig'); spielToast(text); return; }
   wach(false);
   if (!LAUF.uebungen.some((u) => u.log.length)) LAUF = null;   // noch kein Satz gemacht: dann ist auch kein Training offen
   laufSichern();
@@ -1391,7 +1416,7 @@ function infoUeber() {
 const NEUE_ADRESSE = KONTAKT.adresse;
 const ALTE_ADRESSE = /\.github\.io$/.test(location.hostname) && location.origin !== new URL(NEUE_ADRESSE).origin;
 const LOOKS = ['lagune', 'klar', 'gold'];
-const UMZUG_JE = /^dk_(tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}$/;
+const UMZUG_JE = /^dk_(?:(?:tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}|spiel_stand)$/;   // seit 09.11.2026 auch der Spielstand (genau dieser eine Schlüssel, spiel.js), sonst nichts
 async function umzugPruefen() {
   if (!ALTE_ADRESSE || S.umzug || navigator.onLine === false) return;
   try {
