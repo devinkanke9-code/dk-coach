@@ -1,7 +1,7 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = '68dd207d40';
+const VERSION = 'c9e9116c22';
 const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'raum.js', 'stil.css',
-  'schriften/schriften.css', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
+  'schriften/schriften.css', 'schriften/figtree.woff2', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
   'koerper.bin', 'koerper-haut.jpg', 'koerper-haut-n.jpg', 'koerper-haar.jpg', 'koerper-augen.jpg'];
 const NAME = 'dk-coach-' + VERSION;
 
@@ -29,6 +29,7 @@ self.addEventListener('fetch', (e) => {
   if (VERSION === 'dev') return;   // am PC (ungebaut) immer frisch vom Server
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
+  if (/\.mp4$/.test(url.pathname)) return;   // Wellen-Video: immer direkt vom Server, Safari holt es stückweise
   if (/\/(analyse|impressum|datenschutz)\//.test(url.pathname)) return;   // eigene Seiten (Analyse seit 31.10.2026, Impressum und Datenschutz seit 06.11.2026): nie die App ausliefern
   if (url.searchParams.has('umzug')) return;   // Umzug-Probe (06.11.2026, app.js): immer beim Server fragen, nie aus dem Speicher, eine Umleitung bleibt sichtbar
   // Seitenaufruf der App: immer die gespeicherte App (der Plan steckt im #-Teil, der geht nie ans Netz)

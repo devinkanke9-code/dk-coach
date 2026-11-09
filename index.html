@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="dk-kein-zoom" content="1">
+<meta name="dk-wellen-video" content="">
 <title>Devin Kanke Coach</title>
 <meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -79,6 +80,17 @@ body.start .code-leiste { grid-column: 1 / -1; margin: 12px 12px 0; }   /* wie d
   @keyframes st-glanz { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
 }
 @media (min-width: 1024px) and (prefers-reduced-motion: reduce) { .st-held h1 { animation: none; } .st-block:not(.st-held):hover { transform: none; } }
+/* Wellen im Hintergrund und Schrift (09.11.2026, Devin: „Wellen … Strand“, Schrift „nicht so eckig, nicht so pixelig, schön sauber, ein bisschen größer“) */
+.dk-wellen-video { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100lvh; object-fit: cover; z-index: -1; pointer-events: none; }
+.dk-wellen-video::-webkit-media-controls, .dk-wellen-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
+html.dk-wellen-an::before, html.dk-wellen-an::after { content: none; }
+html:root { --f-text: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; --f-display: var(--f-text); --f-zahl: var(--f-text); }
+body { font-size: 18px; letter-spacing: 0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+.klein { font-size: 15px; }
+.knopf { font-size: 17px; letter-spacing: 0; }
+.knopf.klein { font-size: 15px; }
+nav.leiste button { font-size: 13px; letter-spacing: 0; }
+@media (min-width: 1024px) { .st-block h1 { letter-spacing: -.025em; } .st-block h2 { letter-spacing: -.02em; } }
 </style>
 </head>
 <body>

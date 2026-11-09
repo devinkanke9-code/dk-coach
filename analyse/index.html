@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-LeTg/DlZNzVkzBzgix67dw2z1wA8kQHbdLXOJato9TM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-LeTg/DlZNzVkzBzgix67dw2z1wA8kQHbdLXOJato9TM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="dk-kein-zoom" content="1">
+<meta name="dk-wellen-video" content="../">
 <title>Analyse für dich · Devin Kanke Coach</title>
 <meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
@@ -96,6 +97,16 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
 input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 /* Größere Trefferfläche: In der Kunden-App stehen Knöpfe mindestens 12 px auseinander, darum 6 px Rand statt 4 (auf der Trainer-Seite nur 8 px Lücke) */
 html :where(button, a[href], [role=button], label, summary):where(.knopf, .eb-knopf)::before { inset: -6px; }
+/* Wellen im Hintergrund und Schrift (09.11.2026, Devin: „Wellen … Strand“, Schrift „nicht so eckig, nicht so pixelig, schön sauber, ein bisschen größer“) */
+.dk-wellen-video { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100lvh; object-fit: cover; z-index: -1; pointer-events: none; }
+.dk-wellen-video::-webkit-media-controls, .dk-wellen-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
+html.dk-wellen-an::before, html.dk-wellen-an::after { content: none; }
+html:root { --f-text: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; --f-display: var(--f-text); --f-zahl: var(--f-text); }
+body { font-size: 18px; letter-spacing: 0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+.klein { font-size: 15px; }
+.knopf { font-size: 17px; letter-spacing: 0; }
+.knopf.klein { font-size: 15px; }
+nav.leiste button { font-size: 13px; letter-spacing: 0; }
 </style>
 </head>
 <body>

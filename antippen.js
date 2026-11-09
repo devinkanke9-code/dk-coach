@@ -242,3 +242,39 @@
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) { document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false }); });
   document.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length > 1 && e.cancelable) e.preventDefault(); }, { passive: false });
 })();
+
+/* Wellen im Hintergrund (09.11.2026, Devin: „Wellen … so einen Strand … sehr realistisch“, Video von Pexels, frei nutzbar): nur auf Seiten mit <meta name="dk-wellen-video">.
+ * Lagune hell, Schwarz-Gold dieselben Wellen dunkel, Klar ohne. Es lädt nur die Fassung der aktiven Farbwelt. Bei „weniger Bewegung“ oder Datensparen bleibt ein Standbild.
+ * Hält an, solange Gym, Training oder ein Blatt offen sind (schont Akku und 3D). */
+(function () {
+  'use strict';
+  var meta = document.querySelector('meta[name="dk-wellen-video"]');
+  if (!meta) return;
+  var pfad = meta.getAttribute('content') || '', root = document.documentElement, v = null;
+  var still = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) || (navigator.connection && navigator.connection.saveData);
+  function art() { var l = root.dataset.look; return l === 'klar' ? '' : l === 'gold' ? 'dunkel' : 'hell'; }
+  function abspielen() {
+    if (!v || still) return;
+    if (document.hidden || document.querySelector('.raum, .tm, .blatt.offen')) { if (!v.paused) v.pause(); return; }
+    if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }   // Stromsparmodus am iPhone: Standbild bleibt stehen
+  }
+  function setzen() {
+    var a = art();
+    if ((v ? v.dataset.art : '') === a) return;
+    if (v) { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); v = null; }
+    root.classList.toggle('dk-wellen-an', !!a);
+    if (!a) return;
+    v = document.createElement('video');
+    v.className = 'dk-wellen-video'; v.dataset.art = a; v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true; v.tabIndex = -1;
+    ['muted', 'playsinline', 'disablepictureinpicture', 'disableremoteplayback'].forEach(function (x) { v.setAttribute(x, ''); });
+    v.setAttribute('aria-hidden', 'true');
+    v.poster = pfad + 'wellen-' + a + '.jpg';
+    if (!still) { v.preload = 'auto'; v.src = pfad + 'wellen-' + a + '.mp4'; }
+    document.body.insertBefore(v, document.body.firstChild);
+    abspielen();
+  }
+  setzen();
+  new MutationObserver(setzen).observe(root, { attributes: true, attributeFilter: ['data-look'] });
+  document.addEventListener('visibilitychange', abspielen);
+  setInterval(abspielen, 1500);
+})();
