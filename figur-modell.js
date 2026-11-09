@@ -105,6 +105,10 @@ export const SCHULTER_HAUT = { breit: 0.015, vorn: 0.030, klav: 0.6, innen: 1, d
 // bzw. Ellbogen), jede weitere ein Stück mehr, die letzte (der Knochen selbst) ganz. Die Hautgewichte gehen entlang des Arms von einer Stufe zur nächsten (statt in einem Sprung); je Stufe ändert sich die Drehung nur um ein Drittel, darum fällt die Haut
 // nicht mehr zusammen. Nur im Speicher beim Laden (Knochenliste und Hautgewichte), keine neue koerper.bin; stelle() legt die Stufen je Bild
 export const DREH_N = 3;
+// Rolle des Oberarms, die auf die Drehknochen verteilt wird (G13, 9.11.): Läuft sie durch ±180°, springt atan2 von +180° auf −180° und mit ihr die Haut des Oberarms (kabel_seitheben: 120° in einem Bild).
+// Mit dem Schalter g.drehGlatt (setzt die Vorlage, bisher nur kabel_seitheben) fällt sie über 80° linear auf 0 bei 180° (Dreieck, höchstens 0,8 Steigung, damit der Drehknochen am Schulterende nicht schneller dreht als die echte Rolle),
+// darunter und ohne Schalter bleibt alles, wie es war (für alle Übungen ändert das sonst die Hautverdrehung von über 40 Übungen, zum Beispiel Kniebeuge und Schulterdrücken)
+const drehLauf = (w) => { const a = Math.abs(w) * 180 / Math.PI; return a <= 80 ? w : Math.sign(w) * 80 * (180 - Math.min(180, a)) / 100 * Math.PI / 180; };
 export const DREH_STRECKE = { Arm: [0, 0.12], ForeArm: null };   // Strecke ab Schultergelenk bzw. Ellbogen (m), auf der die Drehung von keiner auf die ganze wächst; null = diese Kette bleibt wie vorher (der Unterarm: seine Haut reicht an Polster und Maschinen, die Schutzhülle schlug dort bei sechs Übungen an)
 export const drehName = (S, kette, j) => S + kette + 'D' + j;
 function drehKnochen(k) {
@@ -1751,7 +1755,7 @@ export class FigurModell {
         // Anteil der Drehung, der verteilt wird: nicht beim Liegen (Polster, Band: Schutzhülle) und weniger bei Armen über Kopf (der Deltamuskel steht dort sonst zu weit nach außen)
         const lam = SCHULTER_HAUT.dreh * sh.lage * (1 - SCHULTER_HAUT.hoch * glatt(0.3, 0.7, dO.dot(R.oben)));
         for (let j = 0; j < DREH_N; j++) {
-          setze(drehName(S, 'Arm', j), abbilden(new THREE.Matrix4(), P(S + 'Arm'), ru.oberarm, y0, schultHaut, dO, beuge.clone().applyAxisAngle(dO, -lam * ang * (1 - j / DREH_N)), lenO, armB, armB));
+          setze(drehName(S, 'Arm', j), abbilden(new THREE.Matrix4(), P(S + 'Arm'), ru.oberarm, y0, schultHaut, dO, beuge.clone().applyAxisAngle(dO, -lam * (g.drehGlatt ? drehLauf(ang) : ang) * (1 - j / DREH_N)), lenO, armB, armB));
           setze(drehName(S, 'ForeArm', j), abbilden(new THREE.Matrix4(), P(S + 'ForeArm'), ru.unterarm, senkrecht(ru.ruecken, ru.unterarm), g.ellbogen[s], dU, ruecken.clone().applyAxisAngle(dU, -lam * tau * (1 - j / DREH_N)), lenU, armB, armB));
         }
       }

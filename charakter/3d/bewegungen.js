@@ -748,7 +748,7 @@ export function ausfallschritt(o = {}) {
     aufbau(ger) {
       const z = {};
       if (art === 'bulgarisch') ger.bank(BANK_VORN - 0.25, 0.5, 0.43);   // Der Fußrücken liegt hinter der Vorderkante auf, das Schienbein hängt frei davor
-      if (art === 'stepup') ger.box(0.62, 0.42, 0.42, V(0.03, 0.21, 0.3), ger.mPolster);   // breit genug für beide Füße
+      if (art === 'stepup') ger.box(0.62, 0.3, 0.42, V(0.03, 0.15, 0.3), ger.mPolster);   // breit genug für beide Füße; 30 cm hoch: Knie mit dem Fuß auf der Kiste etwa 90° (form_3d.json 60 bis 95°; bis 9.11. 42 cm = 107°)
       if (art === 'stepup_seitlich') ger.box(0.36, STUFE_SEITLICH, 0.5, V(0.45, STUFE_SEITLICH / 2, 0.0), ger.mPolster);   // schmaler und der Standfuß unten weiter weg: Beim Hinlaufen bleibt der andere Fuß vor der Stufe (bis 5.11. 13 cm darin)
       if (o.defizit) ger.box(0.5, 0.1, 0.42, V(0, 0.05, 0.2), ger.mRahmen);
       if (last === 'kurzhanteln') khAufbauen(ger, z);
@@ -804,7 +804,7 @@ export function ausfallschritt(o = {}) {
       } else if (art === 'stepup') {
         // Linker Fuß steht ganz auf der Kiste. Der rechte stößt kaum ab: Ferse hoch, dann hängt er hinter der Kiste, hebt sich über ihre Kante und setzt neben dem linken auf; oben sind Knie und Hüfte gestreckt.
         // Bis 5.11. blieb das Knie bei 24° und der rechte Fuß schwebte neben der Kiste
-        const s = beinWeg(t, 106, 4), kY = 0.42 + FY;
+        const s = beinWeg(t, 92, 4), kY = 0.3 + FY;
         const hoch = glatt(t / 0.5), vor = glatt((t - 0.62) / 0.3), ab = glatt((t - 0.8) / 0.2), g = mix(glatt(t / 0.25) * 40, 0, glatt((t - 0.6) / 0.38));
         fuss = { l: V(0.14, kY, 0.3), r: V(mix(-0.12, -0.1, vor), Math.max(zehenHoehe(g), mix(FY, kY + 0.1, hoch)) - 0.1 * ab, mix(-0.12, 0.28, vor)) };
         becken = mv(V(0.1, 0.9, -0.05), V(0.02, beckenGestreckt(kY, 0.045, 0.02), 0.285), s);
@@ -2810,8 +2810,8 @@ export function bankdruecken(o = {}) {
   // Schräg-Brustpresse (last maschine): Griffe laufen auf dem Bogen der Hebel (Drehachse hinter der Lehne), unten vor der oberen Brust
   const schraegBahn = () => {
     const becken = V(0, 0.58, 0.28), r = { basis: quer(-90 + neig), neigung: 0 }, k = rumpf(becken, r), dx = 0.33 - MASS.schulterBreite;
-    // Griffe unten eine gute Handbreit vor der oberen Brust (Ellbogen 95°), Druck etwa senkrecht zur Lehne, oben Arm knapp vor der Streckung (bis 5.11. die Bahn der Langhantel: unten 143°, oben senkrecht über dem Kopf)
-    const h0 = (s, sg) => k.schulter[s].clone().addScaledVector(k.R.links, sg * dx).addScaledVector(k.R.oben, -0.12).addScaledVector(k.R.vor, 0.418);
+    // Griffe unten dicht an der oberen Brust (5 cm vor der Brustfront, Ellbogen 124°), Druck etwa senkrecht zur Lehne, oben Arm knapp vor der Streckung (bis 9.11. 12 cm weiter vorn: 18 cm vor der Brustfront, nur etwa der halbe Weg, Devin 9.11.; bis 5.11. die Bahn der Langhantel: unten 143°, oben senkrecht über dem Kopf)
+    const h0 = (s, sg) => k.schulter[s].clone().addScaledVector(k.R.links, sg * dx).addScaledVector(k.R.oben, -0.12).addScaledVector(k.R.vor, 0.29);
     const h1 = (s, sg) => k.schulter[s].clone().addScaledVector(k.R.links, sg * dx).addScaledVector(k.R.oben, -0.02).addScaledVector(k.R.vor, 0.647);
     return { becken, r, h0, h1, C: bogenMitte(h0('l', 1), h1('l', 1), { z: becken.z - 0.95 }) };
   };
@@ -2830,7 +2830,7 @@ export function bankdruecken(o = {}) {
       if (last === 'multipresse') schienenAufbauen(ger, z);
       if (last === 'kurzhanteln' && art === 'ueberzug') z.kh_l = ger.kurzhantel(KELCH_MASS.innen.schwer);   // Überzug: eine schwere Hantel mit beiden Händen
       else if (last === 'kurzhanteln') khAufbauen(ger, z, !o.einarmig);
-      if (last === 'maschine') { const sp = schraegBahn(); drueckmaschineBauen(ger, z, sp.becken, sp.r, sp.C, 'quer', { titel: 'SCHRÄGE BRUSTPRESSE', untertitel: 'BRUST', dir: 1, rN: 0.30, dth: 0.32, stackZ: -0.8 }); }   // Schräg-Brustpresse
+      if (last === 'maschine') { const sp = schraegBahn(); drueckmaschineBauen(ger, z, sp.becken, sp.r, sp.C, 'quer', { titel: 'SCHRÄGE BRUSTPRESSE', untertitel: 'BRUST', dir: 1, rN: 0.30, dth: 0.45, stackZ: -0.8 }); }   // Schräg-Brustpresse (dth 0,45: längerer Hebelweg, bis 9.11. 0,32)
       return z;
     },
     pose(t) {
@@ -3159,7 +3159,7 @@ function kopfueber(art) {
       if (!fuss) fuss = seiten((s, sg) => { const f = becken.clone().sub(o.clone().multiplyScalar(BEIN * 0.98)).add(V(sg * 0.09, 0, 0)); if (stand) f.z = Math.max(f.z, -0.015); return f; });   // an der Wand: Zehen liegen an, nicht darin
       const hand = seiten((s, sg) => V(sg * 0.22, 0.04, handZ));
       return { pose: { becken, rumpf: r, kopf: { neigung: kopf }, beinGerade: true, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.5, 0.3, -1)),
-        fuss, kniePol: seiten(() => stand ? V(0, 0, -1) : V(0, 0.3, 1)), fussRicht: seiten(() => stand ? V(0, 1, -0.65) : art === 'pike_erhoeht' ? V(0, 0, 1) : V(0, -0.4, 1)),
+        fuss, kniePol: seiten(() => stand ? V(0, 0, -1) : art === 'pike_erhoeht' ? V(0, -1, 0.3) : V(0, 0.3, 1)), fussRicht: seiten(() => stand ? V(0, 1, -0.65) : art === 'pike_erhoeht' ? V(0, 0, 1) : V(0, -0.4, 1)),
         fussFlaeche: art === 'pike_erhoeht' ? seiten(() => V(0, 1, 0)) : undefined, zehen: seiten(() => (art === 'pike_erhoeht' ? PIKE_FERSE : pike ? 35 : 0)) },
         props(g) { fingerStellen(g, (s, sg) => V(sg * 0.25, 0, 1)); } };
     },
@@ -3415,6 +3415,7 @@ export function schulterheben(o = {}) {
       }
       const pose = Object.assign({ becken, rumpf: r, hand, ellbogenPol: epol, kniePol: seiten((s, sg) => sitzend ? V(sg * 0.2, 1, 1) : V(sg * 0.2, 0, 1)) }, sitzend ? { fuss: seiten((s, sg) => V(sg * 0.22, FY, 0.42)) } : stehFuesse(0.14, vorgebeugt ? 0.05 : 0));
       if (art === 'frontheben' && !sitzend) vorDenBeinen(pose, last === 'kurzhanteln' ? 0.085 : last === 'scheibe' ? 0.035 : 0.018);   // Hantelkopf liegt an (bis 31.10. 0,075: 2,6 cm im Oberschenkel)
+      if (last === 'kabel' && art === 'seitheben') pose.drehGlatt = true;   // G13: nur diese Übung (kabel_seitheben): die Rolle des Oberarms läuft durch ±180°, die Drehknochen sprangen (figur-modell.js drehLauf)
       if (art === 'aufrecht') { vorDenBeinen(pose, 0.018); vorDemRumpf(pose, 0.018); }
       return {
         pose,
@@ -3942,7 +3943,7 @@ export function curl(o = {}) {
     c.aufbau = (ger) => { const z = {}; armmaschineBauen(ger, z, becken, C, tri, { v0: hebelRichtung(0), v1: hebelRichtung(1) }); return z; };
     c.pose = (t, zst) => {
       const p = pose(tri ? 1 - t : t, zst);
-      if (tri) p.pose.handflaeche = seiten((s, sg) => V(-sg, 0, 0));
+      if (tri) { p.pose.handflaeche = seiten((s, sg) => V(-sg, 0, 0)); p.pose.ellbogenHalt = seiten((s, sg) => V(sg * 0.5, -0.7, -0.5)); }   // G13: im gestreckten Arm bleibt der Ellbogen unten-hinten, etwas nach außen (Pol schwindet dort, figur.js polStabil; rein unten-hinten stieß 3,2 cm in den Hebel der Maschine, erlaubt sind 2,5 cm)
       p.props = (g, z) => armmaschineStellen(z, g, t);
       return p;
     };
@@ -4230,7 +4231,7 @@ export function trizeps(o = {}) {
       const fuesse = band ? { fuss: { l: V(0.13, FY, 0.22), r: V(-0.13, FY, -0.25) }, zehen: { l: 0, r: 15 }, kniePol: seiten((s, sg) => V(sg * 0.1, 0, 1)) } : kabelKopf ? { fuss: { l: V(0.13, FY, 0.16), r: V(-0.13, FY, -0.2) }, zehen: { l: 0, r: 12 }, kniePol: seiten((s, sg) => V(sg * 0.1, 0, 1)) } : stehFuesse(0.14, 0, 0.25);
       // Untergriff: Handflächen nach oben bzw. vorn ; Seil: Handflächen zueinander
       const flaeche = o.griff === 'unter' ? seiten((s) => { const a = hand[s].clone().sub(k.schulter[s]); return V(0, Math.max(0.2, -a.y), 1); }) : o.seil || o.einarmig || (art === 'pushdown' && last === 'band') || kabelKopf ? seiten((s, sg) => V(-sg, 0, 0)) : undefined;
-      const pose = Object.assign({ becken, rumpf: r, hand, ellbogenPol: epol, handflaeche: flaeche, kelch }, fuesse);
+      const pose = Object.assign({ becken, rumpf: r, hand, ellbogenPol: epol, handflaeche: flaeche, kelch }, fuesse, kabelKopf ? { ellbogenHalt: seiten(() => V(0, 0, 1)) } : {});   // G13: Kabel über Kopf: der Ellbogen zeigt im gestreckten Arm nach vorn (Pol schwindet dort, figur.js polStabil)
       if (art === 'pushdown' && !o.einarmig && !o.seil && last !== 'band') vorDenBeinen(pose, 0.003, 0);   // unten: die Stange liegt vor den Oberschenkeln
       return {
         pose,
@@ -5455,8 +5456,9 @@ export function schulterzug(o = {}) {
 // Sitzende Brustmaschinen: Becken, Rumpf 6° zurückgelehnt; Brustpresse: Griffe unten/oben, Drehachse der Hebel darüber (Kreisbogen)
 const BM_BECKEN = V(0, 0.56, -0.14), BM_RUMPF = { neigung: -6 };
 const bmSchulter = (sg) => rumpf(BM_BECKEN, BM_RUMPF).schulter[sg > 0 ? 'l' : 'r'];
-// Griffe unten eine Handbreit vor der Brust, Ellbogen 105°, Oberarm 60° gehoben: leichte Dehnung (bis 5.11. Griffe fast auf der Brust, Ellbogen 138°, der Arm am Rumpf); oben Ellbogen 12°, nicht durchgedrückt
-const bmUnten = (sg) => bmSchulter(sg).add(V(sg * 0.13, -0.12, 0.37)), bmOben = (sg) => bmSchulter(sg).add(V(-sg * 0.06, -0.12, ARM * 0.968));
+// Griffe unten dicht an der Brust (4 cm vor der Brustfront; ACE: Griffe „nicht tiefer als die Vorderseite der Brust“), Ellbogen 118°, Oberarm 62° gehoben und 18° hinter der Körperebene; oben Ellbogen 12°, nicht durchgedrückt
+// (bis 9.11. Griffe 37 cm vor der Schulter = 14 cm vor der Brustfront: die Figur ging nur etwa den halben Weg zur Brust, Devin 9.11.; bis 5.11. Griffe fast auf der Brust, Ellbogen 138°, der Arm am Rumpf)
+const bmUnten = (sg) => bmSchulter(sg).add(V(sg * 0.13, -0.12, 0.28)), bmOben = (sg) => bmSchulter(sg).add(V(-sg * 0.06, -0.12, ARM * 0.968));
 const BM_C = bogenMitte(bmUnten(1), bmOben(1), { y: 1.62 });
 const BAND_PFOSTEN = V(0.9, 1.26, -0.85);   // Band-Brustdrücken: Ansatz des Bands (x je Seite) auf Handhöhe (Text: Brusthöhe), so weit außen und hinten, dass der Weg hinein frei bleibt
 const BS_BECKEN = V(0, 0.912, -0.03), BS_RUMPF = { neigung: 8 };   // Drücken im Stand: Schrittstellung, vorderes Knie 18°, hinteres 8°, Ferse hinten gehoben (bis 5.11. beide Knie 4°)
@@ -5468,7 +5470,7 @@ export function brustmaschine(o = {}) {
   return {
     aufbau(ger) {
       const z = {};
-      if (art === 'presse') drueckmaschineBauen(ger, z, BM_BECKEN, BM_RUMPF, BM_C, 'senkrecht', { titel: 'BRUSTPRESSE', untertitel: 'BRUST', dir: 1, rN: 0.30, dth: 0.4 });
+      if (art === 'presse') drueckmaschineBauen(ger, z, BM_BECKEN, BM_RUMPF, BM_C, 'senkrecht', { titel: 'BRUSTPRESSE', untertitel: 'BRUST', dir: 1, rN: 0.30, dth: 0.55 });   // dth 0,55: der Hebel dreht jetzt 29° (längerer Weg zur Brust, bis 9.11. 21°)
       else if (sitzt) butterflyBauen(ger, z, BM_BECKEN, BM_RUMPF, 1); else if (kabel) { r3_setze(z, r3_turm(ger, V(0.8, BAND_PFOSTEN.y, -0.72), V(0.7, 0, -0.7), V(0.9, 0.35, 0.8), 'KABELZUG', 'BRUST'), r3_turm(ger, V(-0.8, BAND_PFOSTEN.y, -0.72), V(-0.7, 0, -0.7), V(0.9, 0.35, 0.8), 'KABELZUG', 'BRUST')); z.band_l = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.band_r = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff_l = ger.griff(); z.griff_r = ger.griff(); }   // R3: zwei DK-Kabeltürme hinter dem Körper
       // Band: an zwei Pfosten hinter dem Körper (wie zwei Rack-Streben) knapp unter Brusthöhe, so läuft es unter den Armen nach vorn statt
       // durch Oberarm und Schulter (bis 31.10.: ein Pfosten in der Mitte, Band 5 cm im Oberarm)
@@ -5491,13 +5493,13 @@ export function brustmaschine(o = {}) {
       } else if (sitzt) {
         // Brustpresse: Griffe laufen auf dem Bogen der Hebelarme von Brusthöhe neben dem Körper nach vorn (Arme gestreckt, nicht durchgedrückt)
         hand = seiten((s, sg) => bogenHand(bmUnten(sg), bmOben(sg), BM_C, t));
-        // Ellbogen: unten in der Körperebene, Oberarm 60° gehoben, oben vorn 66°. Der Pol kommt aus der Lage des Ellbogens in jedem Bild, so bleibt der Oberarm auf dem ganzen Weg oben (bis 5.11. sackte er in der Mitte auf 46°)
-        const E0 = (sg) => bmSchulter(sg).add(V(sg * 0.25, -0.145, 0.017)), E1 = (sg) => bmSchulter(sg).add(V(sg * 0.03, -0.11, 0.268));
+        // Ellbogen: unten 9 cm hinter der Schulter (Oberarm 62° gehoben, 18° hinter der Körperebene; bis 9.11. in der Körperebene), oben vorn 66°. Der Pol kommt aus der Lage des Ellbogens in jedem Bild, so bleibt der Oberarm auf dem ganzen Weg oben (bis 5.11. sackte er in der Mitte auf 46°)
+        const E0 = (sg) => bmSchulter(sg).add(V(sg * 0.25, -0.145, -0.09)), E1 = (sg) => bmSchulter(sg).add(V(sg * 0.03, -0.11, 0.268));
         epol = seiten((s, sg) => E0(sg).lerp(E1(sg), t).sub(bmSchulter(sg).lerp(hand[s], 0.5))); handflaeche = seiten((s, sg) => V(-sg, 0, 0));
       } else {
-        // Griffe waagerecht auf Brusthöhe. Unten Ellbogen 11 cm unter der Schulter (Oberarm 65° gehoben) und 5° hinter der Körperebene, Ellbogen knapp über 100°, die Brust ist gedehnt (bis 5.11. hing der Ellbogen 23 cm unter
-        // der Schulter, wie am Ende eines Curls). Oben Ellbogen 10°, am Kabel laufen die Griffe vor der Brust zusammen (0,4×, Text), mit Band nach vorn
-        const u0 = (sg) => k.R.oben.clone().multiplyScalar(-Math.cos(65 * RAD)).addScaledVector(k.R.links, sg * Math.sin(65 * RAD) * Math.cos(5 * RAD)).addScaledVector(k.R.vor, -Math.sin(65 * RAD) * Math.sin(5 * RAD));
+        // Griffe waagerecht auf Brusthöhe. Unten Ellbogen 11 cm unter der Schulter (Oberarm 65° gehoben) und 20° hinter der Körperebene, Ellbogen 124°, Griffe 3 cm vor der Brustfront (ACE: Kabelpresse „bis die Griffe die Brust leicht berühren oder nah daran sind“; bis 9.11. 5° hinter der Körperebene,
+        // Griffe 10 cm vor der Brustfront, nur etwa der halbe Weg, Devin 9.11.; bis 5.11. hing der Ellbogen 23 cm unter der Schulter, wie am Ende eines Curls). Oben Ellbogen 10°, am Kabel laufen die Griffe vor der Brust zusammen (0,4×, Text), mit Band nach vorn
+        const u0 = (sg) => k.R.oben.clone().multiplyScalar(-Math.cos(65 * RAD)).addScaledVector(k.R.links, sg * Math.sin(65 * RAD) * Math.cos(20 * RAD)).addScaledVector(k.R.vor, -Math.sin(65 * RAD) * Math.sin(20 * RAD));
         const E0 = (s, sg) => k.schulter[s].clone().addScaledVector(u0(sg), MASS.oberarm);
         const H0 = (s, sg) => { const e = E0(s, sg); return e.addScaledVector(V(-sg * 0.2, 0, 0.98).normalize(), UNTERARM); };
         const H1 = (s, sg) => { const S = k.schulter[s], y = H0(s, sg).y, x = sg * (kabel ? 0.08 : 0.145); return V(x, y, S.z + Math.sqrt((ARM * 0.996) ** 2 - (S.x - x) ** 2 - (S.y - y) ** 2)); };
@@ -5864,12 +5866,27 @@ export function animation(eintrag) {
   if (o.einstiegVorgebeugt) a.einstiegVorgebeugt = true;
   if (o.ablaufBand) a.ablaufEigen = (h) => bandVomBoden(h, o.ablaufBand);
   genauUeberR0(a);
+  fussAmBoden(a);
   a.schluessel = eintrag.vorlage + ':' + JSON.stringify(o);   // Schlüssel für gerechnete Hut-Lagen (figur.js HUT_TABELLE)
   return a;
 }
 // Geht das Ziel einer Hand in der Bewegung über R0 (Oberarm + Unterarm) hinweg, gilt es genau: figur.js streckt Arme mit Zielen knapp
 // unter R0 ganz (Vorlagen ohne Hand), Ziele darüber nimmt sie genau – genau dort sprang die Faust um bis zu 10 cm und der Ellbogen
 // ploppte (Latzug, Bankdrücken, Rudern, Brustpresse …; seit 31.10.). Die Vorlagen rechnen mit ARM bis zur Faust, also stimmt genau
+// Kommt der Knöchel einer Seite in der Bewegung unter 20 cm (figur.js FUSS_LUFT, Fuß am Boden)? (G13, 9.11.) Nur dann dreht figur.js den Fuß beim Abheben weich vom Bodenfuß (Spann nach oben) zur Lage nach dem Schienbein;
+// ein Fuß, der die ganze Zeit schwebt (Skater Squat, hinten), behält seine Lage. pose.fussBoden = { l, r }
+function fussAmBoden(a) {
+  const boden = { l: false, r: false };
+  try {
+    for (let i = 0; i <= 50; i++) {
+      const e = a.pose(i / 50, {}), p = e && e.pose; if (!p) continue;
+      const g = gelenke(p);
+      for (const s of ['l', 'r']) if (g.knoechel[s].y <= 0.2) boden[s] = true;
+    }
+  } catch (err) { return; }
+  const pose0 = a.pose;
+  a.pose = function (t, z) { const e = pose0.call(this, t, z); if (e && e.pose) e.pose.fussBoden = boden; return e; };
+}
 function genauUeberR0(a) {
   const R0 = MASS.oberarm + MASS.unterarm, unter = { l: false, r: false }, ueber = { l: false, r: false };
   try {

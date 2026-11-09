@@ -75,6 +75,27 @@ export function ik(A, Z, a, b, pol) {
 const glaettung = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 const welle = (z, f, p) => 0.65 * Math.sin(z * f + p) + 0.35 * Math.sin(z * f * 1.73 + p * 2.3);
 const grenze = (v, a, b) => Math.max(a, Math.min(b, v));
+// Pol am (fast) gestreckten Arm oder Bein (G13, 9.11.): Liegt Ellbogen oder Knie fast auf der Linie Wurzel–Ziel, schrumpft der Anteil des Pols senkrecht zu dieser Linie gegen null (viele Vorlagen setzen
+// den Pol als „geplanter Ellbogen minus Mitte der Linie Schulter–Hand“), und seine Richtung wird Zufall: Ellbogenachse, Oberarm und Unterarm drehten sich in einem Bild um bis zu 160° (Kickback) oder in
+// wenigen Bildern um 90° (Trizepsstrecker, Trizepsdrücken). Darum geht der Pol dort weich in die Haltrichtung ref über (senkrecht zur Linie): ab 2 cm Anteil senkrecht bleibt er, wie er ist (bit-genau), darunter
+// wird er überblendet, unter 4 mm gilt nur ref. Liegt der Pol auf der Gegenseite von ref (Rückwärtsknicken: die Vorlage will über die Streckung hinaus), zählt er bis 3,5 cm nicht. Liefert einen Pol, dessen Anteil
+// senkrecht zur Linie die neue Richtung hat; u = Richtung Wurzel → Ziel
+const POL_NAH = 0.004, POL_FERN = 0.02, POL_GEGEN = 0.025, POL_UEBER = 0.035;
+export function polStabil(pol, u, ref) {
+  u = u.clone().normalize();   // Richtung Wurzel → Ziel, auch wenn der Aufrufer sie nicht normiert hat
+  const sp = pol.clone().sub(u.clone().multiplyScalar(pol.dot(u))), s = sp.length();
+  if (s >= POL_UEBER) return pol;
+  const r = ref.clone().sub(u.clone().multiplyScalar(ref.dot(u))), rl = r.length(), quer = rl / (ref.length() || 1);
+  if (quer < 0.15) return pol;   // die Haltrichtung liegt selbst fast in der Linie: sie hilft nicht
+  r.divideScalar(rl);
+  const c = s > 1e-9 ? sp.dot(r) / s : 1, gegen = glaettung(-c);
+  const wNah = 1 - glaettung((s - POL_NAH) / (POL_FERN - POL_NAH)), wGegen = 1 - glaettung((s - POL_GEGEN) / (POL_UEBER - POL_GEGEN));
+  const w = (wNah + (wGegen - wNah) * gegen) * glaettung((quer - 0.15) / 0.25);
+  if (w <= 0) return pol;
+  const v = s > 1e-9 ? sp.divideScalar(s).multiplyScalar(1 - w).addScaledVector(r, w) : r.clone();
+  if (v.lengthSq() < 1e-8) v.copy(r);
+  return v.normalize().multiplyScalar(Math.max(s, 0.05));
+}
 // Gelenkgrenzen des Arms (Devin, 2.11.: „nicht … komplett 360 Grad drehen … nur 180 Grad … nicht hinter den Rücken … nur vorne“). Schulter: wie weit der Oberarm hinter die Körperebene darf, je nach seiner
 // Höhe y im Rumpf (-1 hängt, 0 waagerecht, 1 über Kopf): unten 70° (Rudern, Dips), waagerecht 45°, über Kopf 12°. Unterarm: rund 180° insgesamt, also höchstens 100° zu jeder Seite der neutralen Lage
 const hinterGrenze = (y) => (y < 0 ? 70 - 25 * glaettung(1 + y / 0.5) : 45 - 33 * Math.min(1, y / 0.9)) * RAD;
@@ -194,13 +215,15 @@ export function gelenke(pose) {
   // Sonst liegt der ganze Winkel im Schultergelenk und die Haut knickt dort zusammen (FigurModell.stelle dreht den Schlüsselbein-Knochen genauso). Maß ist der Oberarm, nicht die Hand:
   // Hände oben mit Ellbogen unten (Schulterdrücken unten, Polster auf den Schultern) heben nichts. Der Arm bleibt so lang, wie die Vorlage ihn will: eine freie Hand geht mit;
   // hängt oder stützt die Hand fest (Klimmzug, Handstand), sinkt stattdessen der Körper. Im Ablauf davor (fest.ablauf) sind Hände und Körper schon so gerechnet
+  // Haltrichtung des Ellbogens (G13, 9.11.): wohin er zeigt, wenn der Pol der Vorlage am gestreckten Arm nichts mehr sagt (polStabil): pose.ellbogenHalt der Vorlage, sonst die Standardrichtung (hinten, leicht außen)
+  const polHalt = (s, sg) => (pose.ellbogenHalt && pose.ellbogenHalt[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
   const schulterDreh = {}, sink = V(), imAblauf = !!(pose.fest && pose.fest.ablauf);
   let sinkN = 0;
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1, ziel = pose.hand && pose.hand[s];
     if (!ziel) continue;
     const pol = (pose.ellbogenPol && pose.ellbogenPol[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
-    const oa = ik(schulter[s], ziel, m.oberarm, m.unterarm + 0.8 * m.griff, pol).mitte.sub(schulter[s]).normalize();
+    const oa = ik(schulter[s], ziel, m.oberarm, m.unterarm + 0.8 * m.griff, polStabil(pol, ziel.clone().sub(schulter[s]), polHalt(s, sg))).mitte.sub(schulter[s]).normalize();
     const u = Math.max(0, Math.min(1, (oa.dot(R.oben) - 0.2) / 0.75)), winkel = 28 * RAD * u * u * (3 - 2 * u);
     if (winkel < 0.003) continue;
     const seite = R.links.clone().multiplyScalar(sg), q = new THREE.Quaternion().setFromAxisAngle(seite.clone().cross(R.oben).normalize(), winkel);
@@ -215,7 +238,7 @@ export function gelenke(pose) {
     for (const p of [becken, brust, nacken, kopf, schulter.l, schulter.r, huefte.l, huefte.r, schulterBasis.l, schulterBasis.r]) p.sub(sink);
     for (const d of Object.values(schulterDreh)) d.punkt.sub(sink);
   }
-  const out = { atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
+  const out = { drehGlatt: !!pose.drehGlatt, atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -231,6 +254,7 @@ export function gelenke(pose) {
       }
     }
     const epol = (pose.ellbogenPol && pose.ellbogenPol[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
+    const polFuer = (z) => polStabil(epol, z.clone().sub(schulter[s]), polHalt(s, sg));   // Pol für ein Ziel der Hand (G13: am gestreckten Arm stabil, siehe polStabil)
     const knick = ((pose.handKnick && pose.handKnick[s]) || 0) * RAD;
     // Hand-Ausrichtung zu einer Unterarm-Richtung a: Handrücken n (ohne Angabe Obergriff, Fingerknöchel quer zum Körper wie an der
     // Stange), Finger ak und Rücken nk nach dem Handgelenk-Knick (Grad, + = zur Handfläche)
@@ -351,10 +375,10 @@ export function gelenke(pose) {
     // Ellbogen → Faust neu legen, wenn die Faust genau auf ziel bleiben soll, und die Punkte der Hand eintragen
     const armLegen = (ziel) => {
       // Kelchgriff: Die Lage der Hand hängt nicht am Unterarm, das Handgelenk steht damit fest (sonst rutscht die Hand mit dem Arm bis 1 cm an der Hantel)
-      if (kelchHand) { const W = ziel.clone().sub(faust(ausrichtung(ziel.clone().sub(schulter[s]).normalize()))); return ik(schulter[s], W, m.oberarm, m.unterarm, polImGelenk(W, m.unterarm, epol)); }
+      if (kelchHand) { const W = ziel.clone().sub(faust(ausrichtung(ziel.clone().sub(schulter[s]).normalize()))); return ik(schulter[s], W, m.oberarm, m.unterarm, polImGelenk(W, m.unterarm, polFuer(W))); }
       const zuFaust = (a) => a.clone().multiplyScalar(m.unterarm).add(faust(ausrichtung(a)));
       const zuZiel = ziel.clone().sub(schulter[s]).normalize();
-      if (pose.unterarm) knickAchse = ik(schulter[s], ziel, m.oberarm, m.unterarm + m.griff, epol).achse;
+      if (pose.unterarm) knickAchse = ik(schulter[s], ziel, m.oberarm, m.unterarm + m.griff, polFuer(ziel)).achse;
       const b = zuFaust(zuZiel).length();
       const legen = (pol) => {
         const k = ik(schulter[s], ziel, m.oberarm, b, pol);
@@ -363,7 +387,7 @@ export function gelenke(pose) {
         for (let i = 0; i < 6; i++) a.applyQuaternion(q.setFromUnitVectors(zuFaust(a).normalize(), u)).normalize();
         return { mitte: k.mitte, ende: k.mitte.clone().add(a.multiplyScalar(m.unterarm)), achse: k.achse };
       };
-      let pol = polImGelenk(ziel, b, epol), ar = legen(pol);
+      let pol = polImGelenk(ziel, b, polFuer(ziel)), ar = legen(pol);
       // Griff in der Hand und der Arm (fast) gestreckt: der Griff legt die Hand fest, der Ellbogen dreht frei um die Linie Schulter–Hand. Also dreht er so weit mit, dass der Unterarm nicht über
       // seine Grenze verwunden ist (bei gebeugtem Arm würde das den Ellbogen sichtbar versetzen, da bleibt er)
       const fest = griffIst ? griffAnteil : pose.griffAchse && pose.griffAchse[s] ? 1 : 0;
@@ -389,7 +413,7 @@ export function gelenke(pose) {
       out.handKnick[s] = r.k != null ? r.k : knick; out.handFinger[s] = r.ak;
       out.handMitte[s] = arm.ende.clone().sub(a.clone().multiplyScalar(0.035)).add(r.ak.clone().multiplyScalar(0.047));
     };
-    if (flach) { arm = ik(schulter[s], hz, m.oberarm, m.unterarm, polImGelenk(hz, m.unterarm, epol)); out.handZiel[s] = hz; }
+    if (flach) { arm = ik(schulter[s], hz, m.oberarm, m.unterarm, polImGelenk(hz, m.unterarm, polFuer(hz))); out.handZiel[s] = hz; }
     else {
       // Faustmitte aufs Ziel. Die Hand sitzt starr am Unterarm, also hat Ellbogen → Faust eine feste Länge L: Ellbogen per IK mit L,
       // dann den Unterarm um den kleinen Winkel zwischen Unterarm-Achse und Linie zur Faust zurückdrehen
@@ -483,7 +507,20 @@ export function gelenke(pose) {
       if (ky > FUSS_LUFT) {
         const schien = out.knie[s].clone().sub(out.knoechel[s]);
         schien.sub(sohle.clone().multiplyScalar(schien.dot(sohle)));
-        if (schien.lengthSq() > 1e-6) oben = schien.normalize();
+        if (schien.lengthSq() > 1e-6) {
+          // G13 (9.11.): Bei 20 cm Knöchelhöhe schaltete der Fuß in einem Bild vom Bodenfuß (Spann nach oben) auf die Lage nach dem Schienbein um (Bauchlage, Vierfüßler, Beinheben: bis 180°, der Fuß klappte um).
+          // Jetzt dreht er, wenn der Sprung groß wäre (Spann des Bodenfußes und Lage nach dem Schienbein über 15° auseinander, voll ab 40°), auf den nächsten 10 cm Höhe weich dorthin; sonst und darüber bleibt alles wie bisher.
+          // Das gilt nur für einen Fuß, der in der Bewegung den Boden berührt (pose.fussBoden, setzt animation()): ein Fuß, der die ganze Zeit schwebt (Skater Squat, hinten), behält seine Lage.
+          // Liegen beide genau gegenüber (Bauchlage), geht der Weg immer seitlich nach außen herum (sonst entschied der Zufall die Richtung)
+          const luft = schien.normalize(), p = oben.clone().addScaledVector(sohle, -oben.dot(sohle)), pl = p.length();   // p = Bodenspann senkrecht zur Fußrichtung
+          const k = pl > 0.05 && pose.fussBoden && pose.fussBoden[s] ? glaettung((Math.acos(grenze(p.dot(luft) / pl, -1, 1)) - 15 * RAD) / (25 * RAD)) : 0, w = k * glaettung((ky - FUSS_LUFT) / 0.1) + (1 - k);
+          if (w >= 1) oben = luft;
+          else if (w > 0) {
+            const gegen = glaettung((-p.dot(luft) / pl - 0.5) / 0.5), aussen = V(sg, 0, 0).addScaledVector(sohle, -sohle.x * sg), roh = oben.clone().multiplyScalar(1 - w).addScaledVector(luft, w);
+            if (gegen > 0 && aussen.lengthSq() > 0.09) roh.addScaledVector(aussen.normalize(), gegen * Math.sin(Math.PI * w));
+            oben = roh.lengthSq() > 1e-8 ? roh.normalize() : luft;
+          }
+        }
       }
     }
     out.sohleN[s] = oben;
