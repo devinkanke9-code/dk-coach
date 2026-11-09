@@ -13,7 +13,8 @@ export const SCHLUESSEL = 'dk_spiel_stand';   // der einzige Speicherschlüssel;
 
 /* ---------- Die Regeln. Hier drehen, wenn Devin etwas anders will: Das Level wird nie gespeichert, nur aus den Punkten berechnet, alte Stände passen also immer. ---------- */
 export const PUNKTE = Object.freeze({
-  station: 10,      // je geschaffter Station
+  station: 10,      // je geschaffter Übung (im Gym: Station)
+  mindestSekunden: 30,   // Devin (09.11.): eine Übung zählt erst, wenn sie mindestens eine halbe Minute gelaufen ist
   einheit: 50,      // für die ganze Einheit (die Tür); fest, egal wie viele Übungen der Plan hat
   alleSaetze: 25,   // dazu, wenn jeder Satz der Einheit gemacht ist
   wochenZiel: 20,   // einmal je Woche, sobald das Wochenziel erreicht ist
@@ -123,7 +124,7 @@ const aufstieg = (vorher, punkte) => { const n = levelFuer(punkte); return n > v
 function zielText(leer, naechstes) {
   if (leer) return 'Nächstes Ziel: Schaff deine erste Station im Gym.';
   if (!naechstes) return 'Nächstes Ziel: Bleib dabei, du bist schon ganz oben.';
-  return 'Nächstes Ziel: Level ' + naechstes.nr + ' „' + naechstes.titel + '“, noch ' + naechstes.fehlt + (naechstes.fehlt === 1 ? ' Punkt.' : ' Punkte.');
+  return 'Nächstes Ziel: Rang ' + naechstes.nr + ' „' + naechstes.titel + '“, noch ' + naechstes.fehlt + (naechstes.fehlt === 1 ? ' Punkt.' : ' Punkte.');
 }
 
 /* ---------- Status: das, was die Karte im Raum zeigt ---------- */
@@ -175,6 +176,7 @@ export function stationGeschafft(e, jetzt = Date.now(), speicher) {
   try {
     const sp = speicherWahl(speicher), zeit = zeitVon(jetzt), gelesen = lesen(sp), alt = gelesen || leererStand(), key = schluessel(e, zeit, true);
     if (gelesen === undefined || key === null || alt.stationenListe.includes(key)) return antwort(0, null, alt, zeit);
+    if (!(Number.isFinite(e.sekunden) && e.sekunden >= PUNKTE.mindestSekunden)) return antwort(0, null, alt, zeit, { zuKurz: true });   // nicht gemerkt: Wird die Übung richtig zu Ende gemacht, zählt sie noch
     const s = kopie(alt), vorher = levelFuer(s.punkte), ziel = wochenZielVon(e.wochenZiel);
     merke(s.stationenListe, key, GRENZEN.stationenListe);
     if (ziel) s.wochenZiel = ziel;   // so zeigt die Karte schon vor der ersten fertigen Einheit „x von y“ richtig
@@ -216,6 +218,6 @@ export function einheitText(r) {
   const teile = [];
   if (r.plus > 0) teile.push('+' + r.plus + ' Punkte');
   if (r.wocheGeschafft) teile.push('Wochenziel geschafft');
-  if (r.levelAuf && r.levelAuf.titel) teile.push('Neues Level: ' + r.levelAuf.titel);
+  if (r.levelAuf && r.levelAuf.titel) teile.push('Neuer Rang: ' + r.levelAuf.titel);
   return teile.length ? 'Stark gemacht! ' + teile.join(' · ') : '';
 }

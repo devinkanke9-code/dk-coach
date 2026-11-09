@@ -77,6 +77,7 @@ export function buehne({ lade3d, fotoGross }) {
       ansicht.groesse();
       // Ablauf davor (hinlaufen, greifen) nur, wenn eine andere Übung kommt, nicht bei jedem Satz derselben Übung im Training
       ansicht.einleitung = !(o && o.direkt) && zuletzt !== d.n; zuletzt = d.n;
+      ansicht.geraete.scheiben = o && o.scheiben ? o.scheiben : null;   // Bestleistung: echte Scheiben auf der Stange
       ansicht.zeige(M.animation(d.a), d.m);
       ansicht.autoDrehen(auto.getAttribute('aria-pressed') === 'true');
     },

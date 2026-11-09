@@ -5,6 +5,9 @@
 import { UEBUNGEN, STAND, ANALYSE, KONTAKT } from './daten.js';
 import { buehne, standbilder } from './buehne.js';
 import { erklaerPunkte, ART_NAME } from './coach.js';
+import * as Bestleistung from './bestleistung.js';
+import * as Rang from './rang.js';
+import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
 
@@ -240,6 +243,7 @@ const BEREICHE = [
   ['heute', 'Heute', '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><circle cx="12" cy="15" r="1.6"/>'],
   ['plan', 'Plan', '<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12h6M9 15.5h4"/>'],
   ['uebungen', 'Übungen', '<circle cx="12" cy="5" r="2"/><path d="M12 7v6M8 21l4-8 4 8M7 10l5 1 5-1"/>'],
+  ['rang', 'Rang', '<path d="M12 3l7 3v5.5c0 4.4-2.9 7.7-7 9.5-4.1-1.8-7-5.1-7-9.5V6z"/><path d="M12 8l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z"/>'],
   ['info', 'Infos', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>']
 ];
 function leiste() {
@@ -264,6 +268,7 @@ function zustand() {
   return p ? 'plan' : 'willkommen';
 }
 function zeichne() {
+  Rang.aufraeumen();   // die 3D-Figur der Rang-Seite nicht weiterlaufen lassen
   const z = zustand();
   S.konto = aktivesKonto();
   document.body.classList.toggle('start', z === 'willkommen' && !installiert());
@@ -273,7 +278,7 @@ function zeichne() {
   leiste();
   const ziel = $('#ansicht'); ziel.textContent = '';
   const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
-    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, info: ansichtInfo }[S.ansicht] || ansichtHeute;
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, info: ansichtInfo }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
@@ -650,6 +655,8 @@ function kopf(unter) {
 
 const charakterLink = () => h('a', { class: 'knopf charakter-knopf', href: 'charakter/kunde.html', text: 'Mein Charakter' });
 /* ---------- Heute: Wochenleiste, Training des Tages, Übungen abhaken ---------- */
+let OHNE_3D = false;   // Der PR-Raum hat nicht geladen: Die Rang-Seite zeigt dann das Formular
+function ansichtRang() { return Rang.ansicht({ h, kopf, lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
 function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
@@ -657,6 +664,7 @@ function ansichtHeute() {
   if (p.id === 'beispiel') { const leiste = codeLeiste(); if (leiste) teile.push(leiste); }   // wer erst das Beispiel ansieht und dann Devins Code bekommt, findet die Leiste auch hier (07.11.2026)
   const ko = aktivesKonto();
   if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
+  if (p.id !== 'beispiel') teile.push(Rang.kurzKarte({ h, oeffnen: () => geh('rang') }));
   if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
   // Erst wenn jeder Trainingstag einen Wochentag hat, kommt die Woche (vorher blieb nach dem ersten Haken nur ein Tag übrig)
   if (kundenTage(p).length < planTage(p)) {
@@ -951,6 +959,7 @@ window.addEventListener('popstate', () => {
   if (ZURUECK_LEISE) { ZURUECK_LEISE = false; return; }
   if (BLATT) { BLATT.eintrag = false; schliesseBlatt(false, true); return; }
   if (GYM) { if (GYM.raum) GYM.raum.schliessen(false); return; }
+  if (PR) { if (PR.raum) PR.raum.schliessen(false); return; }
   if (TM.el && LAUF && LAUF.phase !== 'fertig') { history.pushState({ training: 1 }, ''); TM.frage = true; timerZeigen(); }
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') schliesseBlatt(); });
@@ -1008,7 +1017,25 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 /* ---------- Gym (raum.js): der Trainingstag als kleines 3D-Spiel. LAUF bleibt die eine Wahrheit: An der Station läuft der normale Satz-Ablauf, nur ohne eigene Bühne (die Figur trainiert in der Halle). ---------- */
 let GYM = null;
-function raumStarten(p, ti) {
+function raumLaden(wie, p) {
+  const normal = () => import('./raum.js').then((m) => m.raumOeffnen(wie));
+  // Eigener Charakter: läuft aus dem Ordner charakter/ mit eigener Kopie der Figur. Klappt das nicht, trainiert die normale Figur, das Training selbst bleibt gleich
+  const ko = aktivesKonto(), c = ko && p && ko.id === p.id ? ko.c : null;
+  if (c) toast('Dein Charakter kommt …');
+  return c ? import('./charakter/gym.js').then((m) => m.oeffnen(c, { ...wie, name: vorname(p.n) })).catch(() => { toast('Dein Charakter lädt gerade nicht. Heute trainiert die normale Figur.'); return normal(); }) : normal();
+}
+/* PR-Raum: aus dem Gym durch die Tür (zurueck bringt die Figur dann wieder vor die Tür) oder von der Rang-Seite */
+let PR = null;
+function prRaumOeffnen(zurueck) {
+  if (PR || GYM) return;
+  PR = {};
+  const fertig = () => { PR = null; if (zurueck) zurueck(); else { document.body.style.overflow = ''; if (history.state && history.state.training) { ZURUECK_LEISE = true; history.back(); } zeichne(); } };
+  if (!zurueck && !(history.state && history.state.training)) history.pushState({ training: 1 }, '');
+  PrRaum.oeffnen({ h, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, ausgang: zurueck ? 'Zurück ins Gym' : 'Zurück', beiZu: fertig,
+    starte: (wie) => raumLaden({ ...wie, lade3d }, S.plan) })
+    .then((r) => { if (PR) PR.raum = r; }, () => { PR = null; OHNE_3D = true; toast('Der PR-Raum lädt gerade nicht. Du kannst hier eintragen.'); if (zurueck) zurueck(); else { if (history.state && history.state.training) { ZURUECK_LEISE = true; history.back(); } zeichne(); } });
+}
+function raumStarten(p, ti, abTuer) {
   if (GYM || !p) return;
   if (LAUF && LAUF.phase !== 'fertig' && (LAUF.plan !== p.id || LAUF.tagNr !== ti + 1)) { toast('Da läuft noch ein anderes Training.'); return; }
   if (!LAUF || LAUF.phase === 'fertig') laufStarten(p, ti, true);
@@ -1018,13 +1045,9 @@ function raumStarten(p, ti) {
   GYM = {};
   if (!(history.state && history.state.training)) history.pushState({ training: 1 }, '');
   const heute = tagFuer(p, heuteIndex()) === ti, haken = heute ? erledigtLaden(p, ti) : [];
-  const wie = { lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu, status: () => Spiel.status(),   // status: Spielstand für die Karte im Raum (wirft nie)
+  const wie = { lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu, status: () => Spiel.status(), abTuer: !!abTuer, prTuer: () => { const zurueckZu = LAUF ? LAUF.tagNr - 1 : ti; GYM = null; gymStationWeg(); prRaumOeffnen(() => raumStarten(p, zurueckZu, true)); },   // status: Spielstand für die Karte im Raum (wirft nie)
     uebungen: LAUF.uebungen.map((u, i) => ({ id: u.id, name: u.name, dosis: u.saetze + ' × ' + u.dosis, pause: '', d: UEBUNGEN[u.id] || { n: u.name, m: [] }, fertig: u.log.length >= u.saetze || haken.indexOf(i) >= 0 })) };
-  const normal = () => import('./raum.js').then((m) => m.raumOeffnen(wie));
-  // Eigener Charakter: läuft aus dem Ordner charakter/ mit eigener Kopie der Figur. Klappt das nicht, trainiert die normale Figur, das Training selbst bleibt gleich
-  const ko = aktivesKonto(), c = ko && ko.id === p.id ? ko.c : null;
-  if (c) toast('Dein Charakter kommt …');
-  (c ? import('./charakter/gym.js').then((m) => m.oeffnen(c, { ...wie, name: vorname(p.n) })).catch(() => { toast('Dein Charakter lädt gerade nicht. Heute trainiert die normale Figur.'); return normal(); }) : normal())
+  raumLaden(wie, p)
     .then((r) => { if (GYM) GYM.raum = r; }, () => { toast('Das Gym lädt gerade nicht.'); gymZu(false); });
 }
 // Von der Seite „Mein Charakter“ (#gym): gleich ins Gym, mit dem laufenden Training, sonst dem von heute oder dem nächsten
@@ -1058,17 +1081,22 @@ function gymStationFertig() {
    nachholen an einem anderen Wochentag gibt also auch Punkte (nur die Haken oben gelten allein am Plantag). Datum und Trainingstag wie in erledigtKey. */
 const spielPasst = (p) => !!p && !!LAUF && p.id === LAUF.plan;
 const spielTag = () => ({ datum: datumHeute(), tag: LAUF.tagNr - 1 });
+// Wie lange die Übung wirklich gelaufen ist: alle Sätze zusammen, von „los“ bis „Satz fertig“
+const uebungSekunden = (u) => (u && u.log ? u.log.reduce((s, x) => s + Math.max(0, (x.e - x.s) / 1000), 0) : 0);
+const uebungZaehlt = (u) => uebungSekunden(u) >= Spiel.PUNKTE.mindestSekunden;
 function spielStation(p, i) {
   try {
     if (!spielPasst(p)) return undefined;
-    const r = Spiel.stationGeschafft({ plan: p.id, ...spielTag(), station: i, wochenZiel: planTage(p) });
-    return { plus: r.plus, levelAuf: r.levelAuf };
+    const r = Spiel.stationGeschafft({ plan: p.id, ...spielTag(), station: i, wochenZiel: planTage(p), sekunden: uebungSekunden(LAUF.uebungen[i]) });
+    return { plus: r.plus, levelAuf: r.levelAuf, zuKurz: !!r.zuKurz };
   } catch (e) { return undefined; }
 }
 function spielEinheit(p) {
   try {
-    if (!spielPasst(p) || !LAUF.uebungen.some((u) => u.log.length)) return '';   // ohne einen einzigen Satz war es keine Einheit
-    return Spiel.einheitText(Spiel.einheitGeschafft({ plan: p.id, ...spielTag(), alleSaetze: LAUF.uebungen.every((u) => u.log.length >= u.saetze), wochenZiel: planTage(p) }));
+    if (!spielPasst(p) || !LAUF.uebungen.some((u) => u.log.length && uebungZaehlt(u))) return '';   // ohne eine Übung, die wirklich gelaufen ist, war es keine Einheit
+    const r = Spiel.einheitGeschafft({ plan: p.id, ...spielTag(), alleSaetze: LAUF.uebungen.every((u) => u.log.length >= u.saetze), wochenZiel: planTage(p) });
+    if (r.levelAuf) setTimeout(() => Rang.aufstiegZeigen(h, r.levelAuf, lade3d), 900);
+    return Spiel.einheitText(r);
   } catch (e) { return ''; }
 }
 function spielToast(text) {
@@ -1109,6 +1137,12 @@ const letzterSatz = () => LAUF.ue === LAUF.uebungen.length - 1 && LAUF.satz === 
 function satzFertig() {
   const u = aktUe(), jetzt = Date.now(), vor = u.log[u.log.length - 1];
   u.log.push({ s: LAUF.seit, e: jetzt, kg: vor ? vor.kg : '', wdh: '' });
+  LAUF.bonus = null;
+  if (!LAUF.gym && u.log.length >= u.saetze) {   // im Gym meldet es die Station, sonst hier: Übung fertig, alle Sätze gemacht
+    LAUF.bonus = spielStation(S.plan, LAUF.ue) || null;
+    const auf = LAUF.bonus && LAUF.bonus.levelAuf;
+    if (auf) setTimeout(() => Rang.aufstiegZeigen(h, auf, lade3d), 500);
+  }
   if (letzterSatz() && !LAUF.gym) LAUF.phase = 'letzter';
   else {
     LAUF.phase = 'pause'; LAUF.pauseZiel = u.pauseMax;
@@ -1144,6 +1178,16 @@ function ergebnis(status) {
   }) }));
   return { v: 1, k: LAUF.kunde, t: LAUF.tagNr, tn: LAUF.tagName, s: LAUF.start, e: ende, st: status, u: ue };
 }
+// Sätze aus dem Training als Bestleistung eintragen (nur Kniebeuge, Bankdrücken, Kreuzheben; Mindest-Wiederholungen aus dem Plan)
+function spielBestleistung() {
+  try {
+    const p = S.plan;
+    if (!spielPasst(p) || p.id === 'beispiel') return [];
+    const zahl = (x) => zahlOderNull(typeof x === 'string' ? x.replace(',', '.').trim() : x);
+    const saetze = LAUF.uebungen.flatMap((u) => u.log.map((s) => ({ id: u.id, kg: zahl(s.kg), wdh: zahl(s.wdh) })));
+    return Bestleistung.ausTraining(saetze, p.m, datumHeute());
+  } catch (e) { return []; }
+}
 function laufBeenden(status) {
   if (GYM) { const raum = GYM.raum; GYM = null; gymStationWeg(); if (raum) raum.schliessen(false, true); }
   const r = ergebnis(status);
@@ -1156,6 +1200,7 @@ function laufBeenden(status) {
     LAUF.uebungen.forEach((u, i) => { if (u.log.length && fertig.indexOf(i) < 0) fertig.push(i); });
     speicher.schreib(erledigtKey(p, ti), fertig);
   }
+  LAUF.neuePR = spielBestleistung();
   LAUF.phase = 'fertig'; LAUF.ergebnis = r; TM.frage = false;
   laufSichern(); wach(false); timerZeigen();
 }
@@ -1307,6 +1352,8 @@ function timerLaeuft() {
       h('small', { text: 'Übung geschafft' }),
       h('p', { class: 'tm-spruch', text: LAUF.spruch || '' }),
       h('span', { class: 'tm-von', text: 'Devin' }),
+      LAUF.bonus && LAUF.bonus.plus > 0 ? h('p', { class: 'tm-plus', text: '+' + LAUF.bonus.plus + ' Punkte' }) : null,
+      uebungZaehlt(u) ? null : h('p', { class: 'klein tm-mini', text: 'Unter ' + Spiel.PUNKTE.mindestSekunden + ' Sekunden: Diese Übung zählt nicht für deine Punkte.' }),
       h('p', { class: 'tm-mini', text: u.name + ' · ' + u.log.length + ' Sätze' + (b ? ' · bester Satz ' + (b.kg != null ? String(b.kg).replace('.', ',') + ' kg' : '') + (b.w != null ? (b.kg != null ? ' × ' : '') + b.w + (u.sek ? ' s' : ' Wdh') : '') : '') })));
   } else {
     teile.push(h('div', { class: 'tm-titel' }, h('p', { class: 'leise klein', text: 'Übung ' + (LAUF.ue + 1) + ' von ' + LAUF.uebungen.length }),
@@ -1336,7 +1383,7 @@ function timerLaeuft() {
           h('span', { class: 'leise klein', text: nu.s === 1 ? nu.u.saetze + ' Sätze · ' + nu.u.dosis : 'Satz ' + nu.s + ' von ' + nu.u.saetze + ' · ' + nu.u.dosis })),
         h('p', { class: 'tm-tipp tm-mitte', text: 'Pause laut Plan ' + mmss(u.pauseMin) + (u.pauseMin !== u.pauseMax ? ' bis ' + mmss(u.pauseMax) : '') + '. Danach geht es von selbst weiter.' }),
         h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: naechsterSatz, text: 'Bereit · weiter' }));
-    } else teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: () => laufBeenden('fertig'), text: 'Training abschließen' }));
+    } else teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: () => { const text = spielEinheit(S.plan); laufBeenden('fertig'); spielToast(text); }, text: 'Training abschließen' }));
   } else {
     // Satz läuft: die Figur zeigt die Übung, darunter die Satz-Uhr; ohne Figur (eigene Übung) der Ring wie in der Trainer-Seite
     if (TM.gym) teile.push(h('div', { class: 'tm-satzuhr' }, h('small', { text: 'Satz ' + (LAUF.satz + 1) + ' läuft' }), h('b', { class: 'zahl', id: 'tm-uhr', text: '0:00' })));
@@ -1369,6 +1416,7 @@ function timerFertig() {
       h('h1', { class: 'tm-name', text: r.st === 'abgebrochen' ? 'Für heute Schluss' : 'Geschafft' }),
       h('p', { class: 'tm-spruch', text: LAUF.endSpruch }),
       h('span', { class: 'tm-von', text: 'Devin' })),
+    ...(LAUF.neuePR || []).map((x) => h('div', { class: 'tm-pr' }, h('small', { text: 'Neue Bestleistung' }), h('b', { text: x.name + ' · ' + String(x.kg).replace('.', ',') + ' kg × ' + x.w }))),
     h('div', { class: 'tm-sum' }, h('div', null, h('small', { text: 'Dauer' }), h('b', { text: mmss(laufDauer(r)) })),
       h('div', null, h('small', { text: 'Sätze' }), h('b', { text: String(saetzeGesamt(r)) })),
       h('div', null, h('small', { text: 'Übungen' }), h('b', { text: String(r.u.length) }))),
@@ -1416,7 +1464,7 @@ function infoUeber() {
 const NEUE_ADRESSE = KONTAKT.adresse;
 const ALTE_ADRESSE = /\.github\.io$/.test(location.hostname) && location.origin !== new URL(NEUE_ADRESSE).origin;
 const LOOKS = ['lagune', 'klar', 'gold'];
-const UMZUG_JE = /^dk_(?:(?:tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}|spiel_stand)$/;   // seit 09.11.2026 auch der Spielstand (genau dieser eine Schlüssel, spiel.js), sonst nichts
+const UMZUG_JE = /^dk_(?:(?:tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}|spiel_stand|bestleistung)$/;   // seit 09.11.2026 auch der Spielstand (genau dieser eine Schlüssel, spiel.js), sonst nichts
 async function umzugPruefen() {
   if (!ALTE_ADRESSE || S.umzug || navigator.onLine === false) return;
   try {

@@ -329,3 +329,61 @@ body.start .kopf-innen { max-width: 1024px; }
 .raum-status-werte b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .raum-status-werte small { font-size: 12px; color: var(--text2); line-height: 1.2; }
 @media (prefers-reduced-motion: reduce) { .raum-status-balken i { transition: none; } }
+
+/* ---------- Rang, Punkte, Bestleistungen (09.11.2026) ---------- */
+.rang-wappen { --a: #8a93a3; --b: #4e5664; position: relative; width: 42px; height: 48px; flex: none; display: grid; place-items: center; color: #fff; background: linear-gradient(155deg, var(--a), var(--b));
+  clip-path: polygon(50% 0, 100% 16%, 100% 62%, 50% 100%, 0 62%, 0 16%); font-size: 17px; }
+.rang-wappen b { font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,.45); margin-top: -4px; }
+.rang-wappen.gross { width: 104px; height: 118px; font-size: 44px; }
+.rang-wappen.t2 { --a: #c79263; --b: #7c5230; } .rang-wappen.t3 { --a: #7f8791; --b: #3d434c; } .rang-wappen.t4 { --a: #a9c0d4; --b: #5a7288; }
+.rang-wappen.t5 { --a: #8fa6b3; --b: #33505f; } .rang-wappen.t6 { --a: #e8edf2; --b: #7f8b98; } .rang-wappen.t7 { --a: #ffd76a; --b: #b77f14; }
+.rang-wappen.t8 { --a: #dff3f1; --b: #6fa7a2; } .rang-wappen.t9 { --a: #9fe8ff; --b: #2f7fd0; } .rang-wappen.t10 { --a: #ffe08a; --b: #c2185b; }
+.rang-balken { height: 8px; border-radius: 99px; background: color-mix(in srgb, currentColor 14%, transparent); overflow: hidden; }
+.rang-balken i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--akzent), var(--akzent-hell)); transition: width .6s ease; }
+.rang-kurz { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; text-align: left; color: inherit; background: var(--flaeche); border: 1px solid color-mix(in srgb, currentColor 14%, transparent); border-radius: 16px; font: inherit; cursor: pointer; min-height: 64px; }
+.rang-kurz-text { flex: 1; display: grid; gap: 6px; min-width: 0; }
+.rang-kurz-pkt { font-weight: 800; font-size: 20px; font-variant-numeric: tabular-nums; }
+.rang-held { display: grid; justify-items: center; text-align: center; gap: 6px; }
+.rang-held h1 { margin: 0; }
+.rang-held .rang-balken { width: 100%; }
+.rang-pkt { font-size: 15px; } .rang-pkt b { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rang-zahlen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; margin-top: 8px; }
+.rang-zahlen b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; } .rang-zahlen small { opacity: .7; }
+.rang-regeln { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+.rang-regeln li { display: flex; gap: 12px; align-items: baseline; } .rang-regeln b { min-width: 40px; color: var(--akzent-hell); font-variant-numeric: tabular-nums; }
+.rang-leiter { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rang-leiter li { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: 12px; }
+.rang-leiter li b { flex: 1; } .rang-leiter li.zu { opacity: .5; } .rang-leiter li.zu .rang-wappen { filter: grayscale(1); }
+.rang-leiter li.jetzt { background: color-mix(in srgb, var(--akzent) 16%, transparent); }
+.rang-auf { position: fixed; inset: 0; z-index: 80; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; color: #fff; background: rgba(6,8,14,.86); overflow: hidden; animation: rang-ein .3s ease; cursor: pointer; }
+.rang-auf h1 { margin: 0; font-size: 40px; } .rang-auf p { opacity: .7; font-size: 14px; } .rang-auf small { letter-spacing: .14em; text-transform: uppercase; }
+.rang-auf .rang-wappen { animation: rang-pop .7s cubic-bezier(.2,1.5,.4,1); }
+.rang-strahlen { position: absolute; left: 50%; top: 50%; width: 170vmax; height: 170vmax; margin: -85vmax 0 0 -85vmax; background: repeating-conic-gradient(rgba(255,215,106,.13) 0 12deg, transparent 12deg 30deg); animation: rang-dreh 18s linear infinite; pointer-events: none; }
+.rang-auf > *:not(.rang-strahlen) { position: relative; }
+@keyframes rang-ein { from { opacity: 0; } } @keyframes rang-pop { from { transform: scale(.2); opacity: 0; } } @keyframes rang-dreh { to { transform: rotate(360deg); } }
+.tm-plus { margin: 6px 0 0; font-size: 26px; font-weight: 800; color: var(--akzent-hell); animation: rang-pop .5s cubic-bezier(.2,1.5,.4,1); }
+.tm-pr { margin: 10px 0; padding: 12px 14px; border-radius: 14px; text-align: center; background: color-mix(in srgb, var(--akzent) 18%, transparent); } .tm-pr small { display: block; opacity: .75; } .tm-pr b { font-size: 18px; }
+.pr-karte { padding: 14px; border-radius: 16px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
+.pr-kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; } .pr-kopf > b { font-size: 17px; }
+.pr-wert b { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pr-stange { display: flex; align-items: center; justify-content: center; height: 66px; margin: 10px 0 4px; }
+.pr-seite { display: flex; align-items: center; gap: 1px; } .pr-mitte { flex: 1; max-width: 92px; height: 5px; background: linear-gradient(#d7dbe1, #8c939d); border-radius: 2px; }
+.pr-stange .pl { display: block; width: 9px; border-radius: 3px; flex: none; }
+.pl20 { height: 64px; background: #2f6fd0; } .pl10 { height: 64px; width: 7px !important; background: #2e9e5b; } .pl5 { height: 64px; width: 5px !important; background: #e8e8e8; } .pl2_5 { height: 34px; width: 5px !important; background: #c8382e; } .pl1_25 { height: 26px; width: 4px !important; background: #b9bcc2; }
+.pr-text { text-align: center; margin: 2px 0 8px; } .pr-figur { margin: 8px 0; } .pr-figur .buehne { height: 430px; } .pr-form { display: grid; gap: 8px; margin-top: 8px; } .pr-form label { display: grid; gap: 4px; text-align: center; } .pr-form label span { display: block; position: static; font-size: 12px; opacity: .7; } .pr-meldung { min-height: 1em; margin: 0; } .pr-hinweis { margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .rang-strahlen, .rang-auf, .rang-auf .rang-wappen, .tm-plus { animation: none; } }
+
+/* PR-Raum und Medaillen (09.11.2026) */
+.pr-raum-wert { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 2px 2px 0; } .pr-raum-wert small { opacity: .7; } .pr-raum-wert b { font-size: 26px; }
+.pr-raum-tipps { margin: 4px 0 2px; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; opacity: .82; }
+.raum-inhalt .pr-stange { height: 54px; margin: 2px 0 0; } .raum-inhalt .pr-form { margin-top: 2px; }
+.pr-sicher { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.35; text-align: left; padding: 8px 2px; } .pr-sicher[hidden] { display: none; } .pr-sicher input { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--akzent); } .pr-form label.pr-sicher span { font-size: 13px; opacity: .92; }
+.med { position: fixed; inset: 0; z-index: 90; color: #fff; background: radial-gradient(circle at 50% 46%, #23202e 0%, #0b0b11 62%, #050508 100%); overflow: hidden; touch-action: none; animation: rang-ein .3s ease; }
+.med-bild { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.med-kopf { position: absolute; left: 16px; right: 16px; top: calc(18px + env(safe-area-inset-top, 0px)); text-align: center; pointer-events: none; } .med-kopf small { letter-spacing: .14em; text-transform: uppercase; opacity: .8; font-size: 12px; } .med-kopf h1 { margin: 2px 0 0; font-size: 36px; }
+.med-fuss { position: absolute; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); display: grid; justify-items: center; gap: 10px; } .med-hinweis { margin: 0; font-size: 13px; opacity: .75; transition: opacity .3s; } .med-hinweis.weg { opacity: 0; } .med-zu { min-width: 180px; }
+.med-regal { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.med-fach { appearance: none; display: grid; justify-items: center; gap: 4px; padding: 12px 4px; min-height: 104px; border-radius: 16px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); background: none; color: inherit; font: inherit; cursor: pointer; } .med-fach b { font-size: 13px; } .med-fach small { font-size: 11px; opacity: .7; } .med-fach:disabled { opacity: .42; cursor: default; filter: grayscale(1); } .med-fach.da small { color: var(--akzent); opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .med { animation: none; } .med .rang-strahlen { animation: none; } }
+.raum-pr-knopf { position: absolute; z-index: 2; right: 12px; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); min-height: 44px; padding: 0 18px; border-radius: 22px; font: inherit; font-size: 14px; font-weight: 600; color: var(--text, inherit); background: var(--glas-dicht); border: 1px solid var(--glas-rand); cursor: pointer; transition: opacity .25s; }
+.raum.faehrt .raum-pr-knopf, .raum.an-station .raum-pr-knopf { opacity: 0; pointer-events: none; }

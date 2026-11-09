@@ -19,6 +19,7 @@
       n: kunde.name || '',
       z: p.kunde && p.kunde.ziel,
       l: p.kunde && p.kunde.level,
+      m: p.bestleistung_min_wdh,
       s: p.split && (p.split.name || p.split.id),
       d: (p.erstellt || new Date().toISOString()).slice(0, 10),
       w: (p.wochen || []).map(function (w) { return phase[w.phase] || 'a'; }),
@@ -136,7 +137,7 @@
     if (!p || typeof p !== 'object' || p.v !== 1 || !Array.isArray(p.t) || !p.t.length) return null;
     if (!p.t.every(function (t) { return t && typeof t === 'object' && Array.isArray(t.u); })) return null;
     var aus = {
-      v: 1, n: text(p.n, 120), z: text(p.z, 60), l: typeof p.l === 'number' ? zahl(p.l, 0, 9) : text(p.l, 20), s: text(p.s, 120), d: datum(p.d),
+      v: 1, n: text(p.n, 120), z: text(p.z, 60), l: typeof p.l === 'number' ? zahl(p.l, 0, 9) : text(p.l, 20), m: Number.isInteger(p.m) ? zahl(p.m, 1, 15) : undefined, s: text(p.s, 120), d: datum(p.d),
       w: liste(p.w, 104).filter(function (x) { return x === 'e' || x === 'a' || x === 'd'; }),
       ft: liste(p.ft, 7).filter(function (x) { return x === Math.floor(x) && x >= 0 && x < 7; }),
       t: p.t.slice(0, 14).map(function (t) {

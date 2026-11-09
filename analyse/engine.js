@@ -520,6 +520,14 @@
     return { wdh: [lo, hi], einheit: ex.einheit || 'wdh', rir: rir, pause: pause };
   }
 
+  // Ab wie vielen Wiederholungen ein Satz als Bestleistung zählt. 1 heißt: Ein einzelner Maximalversuch ist erlaubt (Devin, 09.11.2026), das geht nur, wenn regeln_training.json (intensitaet.kraft.einzelversuch) ihn zulässt und nichts am Kunden dagegen spricht.
+  // Sonst bleibt es beim besten sauberen Satz: nie unter dem, was die Krafttabelle für das Level und die Zielgruppe erlaubt.
+  function bestleistungMinWdh(W, k, grenzen, gruppen, scr) {
+    var K = W.regeln.intensitaet.kraft, t = K && K.wdh_nach_level, lv = t && t[String(k.level)], e = K && K.einzelversuch;
+    var ok = e && +k.alter >= e.ab_alter && +k.level >= e.ab_level && !arr(k.beschwerden).filter(function (b) { return b !== 'keine'; }).length && !arr(scr.anpassen).length && !grenzen.we &&
+      arr(gruppen).every(function (g) { return arr(e.zielgruppen_erlaubt).indexOf(typeof g === 'string' ? g : g.id) >= 0; });
+    return ok ? 1 : Math.max(lv ? lv[0] : 8, grenzen.wdh ? grenzen.wdh[0] : 1);
+  }
   function wochenVolumen(W, k, grenzen) {
     var v = W.regeln.volumen_saetze_pro_muskel_woche[String(k.level)];
     if (!v) throw new Error('Wissensbasis: kein Wochenvolumen für Level ' + k.level);
@@ -1089,6 +1097,7 @@
       status: scr.anpassen.length || warnungen.length || gruppen.length ? 'angepasst' : 'ok',
       erstellt: new Date().toISOString(),
       wissen_stand: W.stand,
+      bestleistung_min_wdh: bestleistungMinWdh(W, k, grenzen, gruppen, scr),
       kunde: { name: k.name, alter: k.alter, geschlecht: k.geschlecht, ziel: k.ziel, level: k.level,
         level_name: LEVEL_NAME[k.level], tage: k.tage, minuten: k.minuten, ort: k.ort, beschwerden: k.beschwerden,
         geraete: nurMaschinen(k) ? 'maschinen' : 'alle' },

@@ -16,6 +16,7 @@ const BREITE = 20, WAND = 4.6, FACH = 6.2, SEITE_X = 3.6, STATION_R = 2.1, TUER_
 const WAND_D = 0.3, RAND = 0.4, ENDE_ABSTAND = 9, ORBIT_Y_MIN = 0.6, ORBIT_Y_MAX = Math.min(3.4, WAND - 0.2), FOV_MAX = 80;   // Wanddicke, Abstand der Kamera zu jeder Wand, Höhen beim Wischen, weiteste Sicht beim Heranrücken
 const FIGUR_RAND = 1.5;   // so nah an die Wand (Mitte der Wand) darf die Figur beim Laufen: Zwischen Figur und Kamera hinter ihr bleibt noch mindestens 0,95 m, die Kamera sitzt nie in der Figur
 const SCHIENEN_X = [SEITE_X - 0.6, BREITE / 2 - 3];
+const PR_TUER_X = -5.2, PR_TUER_Z = 3.4, PR_TUER_W = Math.PI / 2 - 0.3;   // Tür zum PR-Raum, gegenüber der Waage
 const TERRASSE = 6, WAAGE_X = 3.4, WAAGE_Z = 3.0, WAAGE_R = 1.1, WAAGE_W = -Math.PI / 2 + 0.3;   // Breite der Holzterrasse rund um die Halle; die Waage im Eingang (Mitte und Halbmesser der Trefferfläche)   // LED-Schienen unter der Decke (über den Stationsreihen und weiter außen), im Boden gespiegelt
 const frei = (rich, ab, von, bis) => (rich > 1e-9 ? (bis - ab) / rich : rich < -1e-9 ? (von - ab) / rich : Infinity);   // wie viele Schritte in Richtung rich man von ab aus kommt, bis die Grenze von oder bis erreicht ist
 
@@ -120,16 +121,17 @@ function runde(x, l, o, b, h, r) { x.beginPath(); x.moveTo(l + r, o); x.arcTo(l 
 const SCHRIFT = '-apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-serif';
 
 // spieler (optional): der eigene Charakter statt der Standardfigur. { name, bauen(ansicht, M) vor dem Aufbau der Stationen, haltung(pose, winkel) im Gehen und Stehen }. Dann: Kamera näher dran, Einstieg durch die Tür, Name über dem Kopf, „Hier trainieren“ am Gerät
-export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status }) {   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
+// pr (optional): Die Halle ist der PR-Raum. { rang, titel, level, ausgang }, die Übungen tragen scheiben und wert. prTuer (optional): Im Gym steht die Tür zum PR-Raum, der Aufruf kommt, wenn die Figur durch ist. abTuer: Die Figur kommt gerade aus dem PR-Raum zurück.
+export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status, pr, prTuer, abTuer }) {   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
   const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold', P = GOLD ? FARBEN_GOLD : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;
   // Oberfläche
-  const wurzel = el('div', 'raum'); wurzel.setAttribute('role', 'dialog'); wurzel.setAttribute('aria-modal', 'true'); wurzel.setAttribute('aria-label', 'Trainingsraum');
+  const wurzel = el('div', 'raum'); wurzel.setAttribute('role', 'dialog'); wurzel.setAttribute('aria-modal', 'true'); wurzel.setAttribute('aria-label', pr ? 'PR-Raum' : 'Trainingsraum');
   const bild = el('canvas', 'raum-bild'); bild.setAttribute('aria-label', 'Begehbares Gym mit den Geräten des Tages, von oben');
   const zu = el('button', 'raum-zu', '✕'); zu.type = 'button'; zu.setAttribute('aria-label', 'Raum verlassen');
   const kopf = el('div', 'raum-kopf'), kopfT = el('b', null, titel || 'Dein Gym heute'), kopfS = el('span', 'raum-stand');
-  const punkte = el('div', 'raum-punkte'); uebungen.forEach(() => punkte.append(el('i')));
+  const punkte = el('div', 'raum-punkte'); if (!pr) uebungen.forEach(() => punkte.append(el('i')));
   const kopfText = el('div', 'raum-kopftext'); kopfText.append(kopfT, kopfS); kopf.append(zu, kopfText, punkte);
-  const tipp = el('div', 'raum-tipp', spieler ? 'Knüppel: laufen · Wischen: Kamera' + (status ? ' · Waage: Status' : '') : 'Station' + (status ? ' oder Waage' : '') + ' antippen · Knüppel: selbst laufen');
+  const tipp = el('div', 'raum-tipp', pr ? 'Geh zu einem Gerät und trag deinen PR ein' : spieler ? 'Knüppel: laufen · Wischen: Kamera' + (status ? ' · Waage: Status' : '') : 'Station' + (status ? ' oder Waage' : '') + ' antippen · Knüppel: selbst laufen');
   const stick = el('div', 'raum-stick'), stickK = el('i'); stick.append(stickK); stick.setAttribute('aria-hidden', 'true');
   const weiter = el('button', 'raum-weiter'); weiter.type = 'button';
   const unten = el('div', 'raum-unten'); unten.append(stick, weiter);
@@ -360,7 +362,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const x = tuerSchild.getContext('2d'); x.clearRect(0, 0, 640, 128);
     x.fillStyle = P.schild.grund; runde(x, 6, 8, 628, 112, 56); x.fill();
     x.fillStyle = P.schild.text; x.font = '600 54px ' + SCHRIFT; x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.fillText(fertig ? 'Raus, geschafft!' : 'Ziel', 320, 66, 590);
+    x.fillText(pr ? (pr.ausgang || 'Zurück') : fertig ? 'Raus, geschafft!' : 'Ziel', 320, 66, 590);
     tuerTex.needsUpdate = true;
   }
   schildMalen(false);
@@ -414,16 +416,40 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       x.fillStyle = F2.grund; runde(x, 6, 14, 708, 152, 76); x.fill();
       const g = x.createLinearGradient(26, 34, 146, 154); g.addColorStop(0, F2.a); g.addColorStop(1, F2.b); x.fillStyle = g; x.beginPath(); x.arc(90, 90, 60, 0, 7); x.fill();
       x.fillStyle = F2.kreis; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '600 68px ' + SCHRIFT;
-      x.fillText(s.fertig ? '✓' : String(s.i + 1), 90, 95);
+      if (pr) x.font = '700 50px ' + SCHRIFT;
+      x.fillText(pr ? 'PR' : s.fertig ? '✓' : String(s.i + 1), 90, 95);
       x.textAlign = 'left'; x.font = '600 50px ' + SCHRIFT; x.fillStyle = s.fertig ? F2.text2 : F2.text;
       const zeilen = []; let z = '';
       for (const w of s.u.name.split(' ')) { const neu = z ? z + ' ' + w : w; if (x.measureText(neu).width > 510 && z) { zeilen.push(z); z = w; } else z = neu; } zeilen.push(z);
-      const zwei = zeilen.slice(0, 2); if (zeilen.length > 2) zwei[1] += ' …';
+      const zwei = pr ? [s.u.name, s.u.wert || 'Noch offen'] : zeilen.slice(0, 2); if (!pr && zeilen.length > 2) zwei[1] += ' …';
       zwei.forEach((zeile, i) => x.fillText(zeile, 172, 93 + (i - (zwei.length - 1) / 2) * 56, 520));
       t.needsUpdate = true;
     };
     s.schildMalen();
     return sp;
+  }
+  // Das Gerät im Stand vor dem Ablauf als feste Kopie in die Halle stellen. Gibt die Höhe zurück (für das Schild)
+  function geraetBauen(s) {
+    let oben = 1.5;
+    if (s.anim) {
+      try {
+        a.geraete.scheiben = Array.isArray(s.u.scheiben) ? s.u.scheiben : null;   // PR-Raum: genau die Scheiben des Kunden
+        a.zeige(s.anim, s.d.m || []);
+        if (a.intro) {
+          const p0 = a.intro.pose(0); a.introBild(0);
+          if (p0.becken) s.startLokal = V(p0.becken.x, 0, p0.becken.z);
+          if (p0.rumpf && p0.rumpf.basis) { const v = V(0, 0, 1).applyQuaternion(p0.rumpf.basis); s.startW = Math.atan2(v.x, v.z); }
+        } else a.bild(0);
+        a.geraete.gruppe.updateMatrixWorld(true);
+        const kopie = a.geraete.gruppe.clone(true);
+        kopie.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } o.updateMatrix(); o.matrixAutoUpdate = false; });
+        if (s.statisch) s.gruppe.remove(s.statisch);
+        s.gruppe.add(kopie); s.statisch = kopie;
+        const box = new THREE.Box3().setFromObject(a.geraete.gruppe); if (isFinite(box.max.y)) oben = Math.max(oben, box.max.y);
+      } catch (e) { s.anim = null; }
+    }
+    a.uebung = null; a.intro = null; a.geraete.leeren();
+    return oben;
   }
   for (let i = 0; i < N; i++) {
     const s = stationen[i], g = new THREE.Group();
@@ -434,24 +460,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const schatten = flach(new THREE.CircleGeometry(STATION_R * 0.86, 32), grund(0xffffff, { map: schattenT, transparent: true, depthWrite: false }), 0, 0.01, 0); schatten.renderOrder = 1;
     g.add(s.teller, s.ring, schatten);
     s.anim = s.d && s.d.a ? M.animation(s.d.a) : null;
+    s.gruppe = g;
     s.startLokal = V(0, 0, 1.8); s.startW = Math.PI;
-    let oben = 1.5;
-    if (s.anim) {
-      try {
-        a.zeige(s.anim, s.d.m || []);
-        if (a.intro) {
-          const p0 = a.intro.pose(0); a.introBild(0);
-          if (p0.becken) s.startLokal = V(p0.becken.x, 0, p0.becken.z);
-          if (p0.rumpf && p0.rumpf.basis) { const v = V(0, 0, 1).applyQuaternion(p0.rumpf.basis); s.startW = Math.atan2(v.x, v.z); }
-        } else a.bild(0);
-        a.geraete.gruppe.updateMatrixWorld(true);
-        const kopie = a.geraete.gruppe.clone(true);
-        kopie.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } o.updateMatrix(); o.matrixAutoUpdate = false; });
-        g.add(kopie); s.statisch = kopie;
-        const box = new THREE.Box3().setFromObject(a.geraete.gruppe); if (isFinite(box.max.y)) oben = Math.max(oben, box.max.y);
-      } catch (e) { s.anim = null; }
-    }
-    a.uebung = null; a.intro = null; a.geraete.leeren();
+    const oben = geraetBauen(s);
     const sp = namensSchild(s); sp.position.set(s.pos.x, Math.min(oben, 2.5) + 0.75, s.pos.z); raum.add(sp); s.schild = sp;
     s.start = ausLokal(s, s.startLokal); s.startH = s.startW + s.winkel;
     ladenT.textContent = 'Dein Gym wird aufgebaut … ' + Math.round((i + 1) / Math.max(1, N) * 100) + ' %';
@@ -499,6 +510,38 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     waageSchirmMalen(st0);
   }
 
+  /* ---------- Tür zum PR-Raum (09.11.2026, Devin: „in einen anderen Raum gehen … da ist eine Tür“): steht gegenüber der Waage. Antippen oder hindurchgehen, dann öffnet die App den PR-Raum ---------- */
+  const prT = prTuer ? { pos: V(PR_TUER_X, 0, PR_TUER_Z), r: 1.5, istTuer: true, schild: null, vorn: V(PR_TUER_X + 2.1, 0, PR_TUER_Z + 0.6), raus: Math.atan2(2.1, 0.6) } : null;
+  let naheTuer = false, tuerUnterwegs = false;
+  if (prT) {
+    const g = new THREE.Group(); g.position.copy(prT.pos); g.rotation.y = PR_TUER_W; raum.add(g); prT.gruppe = g;
+    const wand = new THREE.Mesh(kiste(3.6, TUER_H + 0.3, 0.36), grund(0xffffff, { vertexColors: true })); wand.position.set(0, (TUER_H + 0.3) / 2, -0.22);
+    const glutT = tex(zeichne(256, 512, (x, b, h) => {
+      const v = x.createLinearGradient(0, h, 0, 0); v.addColorStop(0, P.schild.a); v.addColorStop(0.55, P.schild.b); v.addColorStop(1, P.schild.grund); x.fillStyle = v; x.fillRect(0, 0, b, h);
+      const r = x.createRadialGradient(b / 2, h * 0.62, 10, b / 2, h * 0.62, b * 0.75); r.addColorStop(0, 'rgba(255,255,255,.85)'); r.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = r; x.fillRect(0, 0, b, h);
+    }));
+    const glut = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 3), grund(0xffffff, { map: glutT })); glut.position.set(0, 1.5, -0.03);
+    const rahmenTuer = grund(P.tuer, { fog: false });
+    for (const [b, h, x, y] of [[0.16, 3.16, -1.03, 1.58], [0.16, 3.16, 1.03, 1.58], [2.22, 0.16, 0, 3.08]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(b, h, 0.2), rahmenTuer); r.position.set(x, y, 0); g.add(r); }
+    const tritt = flach(new THREE.CircleGeometry(1.25, 48), grund(P.ring, { transparent: true, opacity: 0.22, depthWrite: false }), 0, 0.012, 1.3); tritt.renderOrder = 1;
+    g.add(wand, glut, tritt);
+    const schildC = zeichne(720, 180, () => {}), schildT = tex(schildC);
+    const psp = new THREE.Sprite(new THREE.SpriteMaterial({ map: schildT, transparent: true, depthWrite: false, toneMapped: false, fog: false })); psp.scale.set(2.8, 0.7, 1); psp.position.set(prT.pos.x + 0.2, TUER_H + 0.75, prT.pos.z); psp.renderOrder = 5; raum.add(psp);
+    { const x = schildC.getContext('2d'), F2 = P.schild; x.fillStyle = F2.grund; runde(x, 6, 14, 708, 152, 76); x.fill();
+      const gr = x.createLinearGradient(26, 34, 146, 154); gr.addColorStop(0, F2.a); gr.addColorStop(1, F2.b); x.fillStyle = gr; x.beginPath(); x.arc(90, 90, 60, 0, 7); x.fill();
+      x.fillStyle = F2.kreis; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 50px ' + SCHRIFT; x.fillText('PR', 90, 95);
+      x.textAlign = 'left'; x.font = '600 56px ' + SCHRIFT; x.fillStyle = F2.text; x.fillText('PR-Raum', 172, 93, 520); schildT.needsUpdate = true; }
+    prT.schild = psp;
+  }
+  if (pr && pr.titel) {   // Devin: „da siehst du deinen Rang auf jeden Fall“: große Tafel über der Tür
+    const c = zeichne(1024, 300, (x, b, h) => {
+      const F2 = P.schild; x.fillStyle = F2.grund; runde(x, 6, 6, b - 12, h - 12, 60); x.fill(); x.strokeStyle = F2.a; x.lineWidth = 6; runde(x, 6, 6, b - 12, h - 12, 60); x.stroke();
+      x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = F2.text2; x.font = '600 58px ' + SCHRIFT; x.fillText('Dein Rang ' + (pr.level || ''), b / 2, 88, b - 80);
+      const g = x.createLinearGradient(0, 130, 0, 260); g.addColorStop(0, F2.a); g.addColorStop(1, F2.b); x.fillStyle = g; x.font = '800 118px ' + SCHRIFT; x.fillText(pr.titel, b / 2, 196, b - 80);
+    });
+    const tafel = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(c), transparent: true, depthWrite: false, toneMapped: false, fog: false })); tafel.scale.set(5.2, 1.52, 1); tafel.position.set(0, 3.1, zEnde + 4.2); tafel.renderOrder = 6; raum.add(tafel);
+  }
+
   let namensTafel = null;
   if (spieler && spieler.name) {
     const t = zeichne(640, 128, (x, b) => { x.font = '800 60px ' + SCHRIFT; const w = Math.min(b - 8, x.measureText(spieler.name).width + 70); x.fillStyle = P.schild.grund; runde(x, (b - w) / 2, 10, w, 108, 54); x.fill(); x.fillStyle = P.schild.text; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(spieler.name, b / 2, 67, b - 50); });
@@ -533,6 +576,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     legeHalle(s.pos, s.winkel);
     a.figur.gruppe.position.y = 0;
     a.kamera.fov = sichtStation(); a.kamera.updateProjectionMatrix();
+    a.geraete.scheiben = Array.isArray(s.u.scheiben) ? s.u.scheiben : null;
     a.zeige(s.anim, s.d.m || []);
     s.sichtLokal = a.kamera.position.clone(); s.zielLokal = a.ziel.clone();
     if (s.statisch) s.statisch.visible = false;
@@ -542,14 +586,22 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function frei(p, w) {
     if (aktiv != null && stationen[aktiv].statisch) stationen[aktiv].statisch.visible = true;
     aktiv = null; a.uebung = null; a.intro = null; a.geraete.leeren(); a.figur.markiere([]);
+    for (const s of stationen) if (s.veraltet) { s.veraltet = false; geraetBauen(s); }   // PR-Raum: Das Gerät zeigt jetzt die neuen Scheiben
     a.figur.hutFest = null; a.figur.hutKorr = null;   // zwischen den Stationen sitzt der Hut wieder auf dem Kopf
     if (a.figur.hut) { a.figur.hut.visible = !a.figur.ohneHut; if (a.figur.haarAnzeige) a.figur.haarAnzeige(); }
     F.set(p.x, 0, p.z); H = zielH = w; legeHalle(F, 0); spielerRing.visible = true; if (namensTafel) namensTafel.visible = true;
   }
   const offeneZahl = () => stationen.filter((s) => !s.fertig).length;
-  const naechste = () => { const s = stationen.find((x) => !x.fertig); return s ? s.i : null; };
+  const naechste = () => { if (pr) return null; const s = stationen.find((x) => !x.fertig); return s ? s.i : null; };   // im PR-Raum gibt es keine Reihenfolge, die Tür ist offen
 
   function stand() {
+    if (pr) {
+      kopfS.textContent = pr.rang || ''; weiter.textContent = ''; vonZiel = 0; bisZiel = 1; wegU.von.value = 0;
+      if (nahe != null) weiter.append(el('small', null, 'PR eintragen'), el('b', null, stationen[nahe].u.name));
+      else weiter.append(el('small', null, 'Zur Tür'), el('b', null, pr.ausgang || 'Zurück'));
+      schildMalen(true); lichtSaeule.visible = false; rahmenM.opacity = 1;
+      return;
+    }
     const fertig = N - offeneZahl(), n = naechste();
     kopfS.textContent = fertig + ' von ' + N + ' geschafft';
     [...punkte.children].forEach((p, i) => { p.className = stationen[i].fertig ? 'an' : i === n ? 'jetzt' : ''; });
@@ -558,7 +610,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     bisZiel = n == null ? 1 : anteil(stationen[n].pos.z);
     wegU.von.value = vonZiel;
     weiter.textContent = '';
-    if (nahe != null && !stationen[nahe].fertig) weiter.append(el('small', null, 'Hier trainieren'), el('b', null, stationen[nahe].u.name));
+    if (naheTuer) weiter.append(el('small', null, 'Tür öffnen'), el('b', null, 'PR-Raum'));
+    else if (nahe != null && !stationen[nahe].fertig) weiter.append(el('small', null, 'Hier trainieren'), el('b', null, stationen[nahe].u.name));
     else if (n == null) weiter.append(el('small', null, 'Alles geschafft'), el('b', null, 'Zur Tür'));
     else weiter.append(el('small', null, n === 0 ? 'Los geht’s' : 'Nächste Station: ' + (n + 1)), el('b', null, stationen[n].u.name));
     if (n == null) { schildMalen(true); lichtSaeule.visible = false; rahmenM.opacity = 1; }
@@ -590,7 +643,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     F.copy(s.start); H = zielH = s.startH;
     if (s.anim) setzeAktiv(i);
     else { s.sichtLokal = V(0.8, 1.6, 4.2); s.zielLokal = V(0, 0.9, 0); }
-    pop('Station ' + (i + 1), s.u.name);
+    pop(pr ? 'PR-Raum' : 'Station ' + (i + 1), s.u.name);
     s.schild.visible = false; lichtSaeule.visible = false;
     const nah = spieler && spieler.karteKlein;   // Probetag mit kleiner Karte: Figur groß. Die Karte der App mit den Sätzen ist höher, dort bleibt es beim normalen Abstand
     const sv = stationsSicht(s, { hochkant: hochkant(), nah: !!nah, spieler: !!spieler });   // die Rechnung steht oben (reine Funktion, wird auch gemessen)
@@ -599,7 +652,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const bahn = { mitte: blick, r: Math.hypot(off.x, off.z), w: Math.atan2(off.x, off.z), y: sicht.y, fov: sichtStation(), versatz: sv.senken, heben: 0, hebenZiel: 0 }, start = umlaufKamera(halle, bahn);
     kameraZu({ pos: V(start.x, start.y, start.z), blick, fov: start.fov || sichtStation() }, 1.5, () => {
       orbit = bahn;
-      kNr.textContent = 'Station ' + (i + 1) + ' von ' + N; kNr.dataset.station = i; kInhalt.textContent = ''; kName.textContent = s.u.name; karteUnten(false, true);
+      kNr.textContent = pr ? s.u.name : 'Station ' + (i + 1) + ' von ' + N; kNr.dataset.station = i; kInhalt.textContent = ''; kName.textContent = pr ? (s.u.wert || 'Noch offen') : s.u.name; karteUnten(false, true);
       if (s.fertig || !beiStation) kInhalt.append(el('h2', null, s.u.name), el('p', 'raum-dosis', s.u.dosis || ''), el('p', 'raum-klein', s.fertig ? 'Diese Station hast du schon geschafft.' : (s.u.pause || '')));
       else beiStation(i, kInhalt);
       karte.classList.add('offen'); modusSetzen('station');
@@ -633,9 +686,22 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (navigator.vibrate) { try { navigator.vibrate(14); } catch (e) {} }
     stand();
     pop((bonus && bonus.plus > 0 ? '+' + bonus.plus + ' Punkte · ' : '') + (N - offeneZahl()) + ' von ' + N, offeneZahl() ? 'Station geschafft' : 'Alles geschafft');
-    if (bonus && bonus.levelAuf) setTimeout(() => { if (offen) pop('Neues Level: ' + bonus.levelAuf.level, bonus.levelAuf.titel); }, 1600);   // erst die Punkte lesen lassen (auch bei „Bewegung reduzieren“), nur sehen, kein Ton
+    if (bonus && bonus.levelAuf) setTimeout(() => { if (offen) pop('Neuer Rang: ' + bonus.levelAuf.level, bonus.levelAuf.titel); }, 1600);   // erst die Punkte lesen lassen (auch bei „Bewegung reduzieren“), nur sehen, kein Ton
     if (waage) { let st = null; try { st = status(); } catch (e) {} waageSchirmMalen(st); }   // das Display an der Waage zeigt gleich den neuen Stand
     zurueckZurKarte(true);
+  }
+  // Die Tür steht beim Reinlaufen hinter der Figur: Der kleine Knopf schickt sie von überall hin
+  if (prT) { const b = el('button', 'raum-pr-knopf', 'PR-Raum'); b.type = 'button'; b.setAttribute('aria-label', 'Zur Tür in den PR-Raum gehen'); b.addEventListener('click', () => zurPrTuer()); wurzel.append(b); }
+  // Zur Tür gehen, durch, Blende, dann öffnet die App den PR-Raum
+  function zurPrTuer() {
+    if (!prT || modus === 'draussen' || modus === 'station' || tuerUnterwegs) return;
+    tuerUnterwegs = true;
+    tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
+    stationen.forEach((x) => { x.schild.visible = true; });
+    if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
+    modusSetzen('lauf');
+    lauf([...route(F, prT.vorn), prT.pos.clone()], () => { ende.classList.add('offen'); setTimeout(() => { schliessen(false, true); prTuer(); }, STILL ? 0 : 480); });
+    kameraZu(verfolgen, 0.7);
   }
   /* Waage: hinlaufen (antippen) oder draufgehen, dann zeigt die Karte den Spielstand. Drehen und Karte runterwischen gehen wie an einer Station. */
   let waageAktiv = false, waageGesperrt = false, waageZeit = 0;
@@ -652,9 +718,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     let st = null; try { st = status(); } catch (e) {}
     waageSchirmMalen(st); kInhalt.textContent = '';
     if (!st) { kInhalt.append(el('h2', null, 'Dein Status'), el('p', 'raum-klein', 'Dein Spielstand ist gerade nicht da. Später nochmal versuchen.')); return; }
-    const kopf = el('div', 'raum-status-kopf'); kopf.append(el('b', null, 'Level ' + st.level), el('span', null, st.titel));
+    const kopf = el('div', 'raum-status-kopf'); kopf.append(el('b', null, 'Rang ' + st.level), el('span', null, st.titel));
     const balken = el('div', 'raum-status-balken'), fuell = el('i'); fuell.style.width = Math.round(klemme(+st.anteil || 0, 0, 1) * 100) + '%'; balken.append(fuell);
-    const bis = el('p', 'raum-klein', st.naechstes ? 'Noch ' + st.naechstes.fehlt + (st.naechstes.fehlt === 1 ? ' Punkt' : ' Punkte') + ' bis Level ' + st.naechstes.nr + ' · ' + st.naechstes.titel : 'Höchstes Level erreicht. Stark!');
+    const bis = el('p', 'raum-klein', st.naechstes ? 'Noch ' + st.naechstes.fehlt + (st.naechstes.fehlt === 1 ? ' Punkt' : ' Punkte') + ' bis Rang ' + st.naechstes.nr + ' · ' + st.naechstes.titel : 'Höchster Rang erreicht. Stark!');
     const werte = el('div', 'raum-status-werte');
     for (const [zahl, text] of [[st.punkte, 'Punkte'], [st.serieWochen, st.serieWochen === 1 ? 'Woche in Folge' : 'Wochen in Folge'], [st.einheiten, st.einheiten === 1 ? 'Einheit' : 'Einheiten']]) { const d = el('div'); d.append(el('b', null, String(zahl)), el('small', null, text)); werte.append(d); }
     kInhalt.append(kopf, balken, bis, werte); if (st.ziel) kInhalt.append(el('p', 'raum-klein', st.ziel));
@@ -719,7 +785,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   kGriff.addEventListener('click', (e) => { if (e.detail === 0) karteUnten(!karte.classList.contains('unten')); });   // Tastatur (Enter, Leertaste); Finger und Maus laufen über pointerup
 
   function rausgehen() {
-    if (offeneZahl()) { sag('Noch offen: ' + stationen.filter((s) => !s.fertig).map((s) => s.u.name).join(', ')); return; }
+    if (!pr && offeneZahl()) { sag('Noch offen: ' + stationen.filter((s) => !s.fertig).map((s) => s.u.name).join(', ')); return; }
     karte.classList.remove('offen');
     if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
     modusSetzen('draussen');
@@ -740,7 +806,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }
   let sagUhr = null;
   function sag(t) { meldung.textContent = t; meldung.classList.add('offen'); clearTimeout(sagUhr); sagUhr = setTimeout(() => meldung.classList.remove('offen'), 3200); }
-  weiter.addEventListener('click', () => { const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else zurStation(n); });
+  weiter.addEventListener('click', () => { if (naheTuer) return zurPrTuer(); const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else zurStation(n); });
 
   /* ---------- Antippen, Wischen, Knüppel ---------- */
   const strahl = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -752,13 +818,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const o = raum.worldToLocal(strahl.ray.origin.clone()), d = strahl.ray.direction.clone().applyAxisAngle(Y, hallenWinkel);
     // Boden- oder Gerätetreffer: nächste Station unter dem Finger
     let beste = null, bt = 1e9;
-    for (const s of waage ? [...stationen, waage] : stationen) {
+    for (const s of [...stationen, ...(waage ? [waage] : []), ...(prT ? [prT] : [])]) {
       const fx = o.x - s.pos.x, fz = o.z - s.pos.z, A = d.x * d.x + d.z * d.z, B = fx * d.x + fz * d.z, C = fx * fx + fz * fz - (s.r || STATION_R) ** 2, D = B * B - A * C;
       if (D < 0 || !A) continue;
       const t = (-B - Math.sqrt(D)) / A, y = o.y + d.y * Math.max(t, 0);
       if (t > -1 && y < 3.6 && t < bt) { bt = t; beste = s; }
     }
-    if (beste) return beste.istWaage ? zurWaage() : zurStation(beste.i);
+    if (beste) return beste.istWaage ? zurWaage() : beste.istTuer ? zurPrTuer() : zurStation(beste.i);
     if (d.y >= -0.01) return;
     const t = -o.y / d.y, x = o.x + d.x * t, z = o.z + d.z * t;
     if (Math.abs(x) < TUER_B && z < zEnde + 3.6) return rausgehen();
@@ -828,7 +894,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function strichLegen(dt) {
     strichU.zeit.value = STILL ? 0 : zeit;
     const n = naechste(), ziel = n == null ? V(0, 0, zEnde + 0.2) : stationen[n].start;
-    const an = aktiv == null && modus !== 'station' && Math.hypot(ziel.x - F.x, ziel.z - F.z) > 1.15 && F.z > zEnde + 1.2 ? 1 : 0;
+    const an = !pr && aktiv == null && modus !== 'station' && Math.hypot(ziel.x - F.x, ziel.z - F.z) > 1.15 && F.z > zEnde + 1.2 ? 1 : 0;
     strichU.sicht.value += (an - strichU.sicht.value) * Math.min(1, dt * (an ? 4 : 9));
     strich.visible = strichU.sicht.value > 0.01;
     if (!strich.visible || !an) return;   // beim Ausblenden bleibt die Linie, wie sie war
@@ -886,6 +952,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         if (lauft) ph += (TEMPO * Math.max(0.6, bewegt || 0.6) / Math.max(0.2, schrittL)) * dt;
         const pose = lauft ? stehen(posi, H, { phase: ph, schritt: schrittL, neigung: 2 + 8 * (schrittL / SCHRITT) }) : stehen(posi, H);
         if (!lauft) pose.becken.y += Math.sin(zeit * 1.9) * 0.004;
+        if (pr && !spieler) {   // ohne eigenen Charakter: Knopf „PR eintragen“, sobald die Figur am Gerät steht
+          let b = null, bd = 2.5;
+          if (modus === 'gehen') for (const s of stationen) { const d = Math.hypot(F.x - s.pos.x, F.z - s.pos.z); if (d < bd) { bd = d; b = s.i; } }
+          if (b !== nahe) { nahe = b; stand(); }
+        }
         if (spieler) {
           if (spieler.haltung) spieler.haltung(pose, H);
           a.atme(pose, null);   // er lebt: atmet, blinzelt, und steht er, schaut er dich an, solange du nicht hinter ihm stehst
@@ -899,6 +970,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         if (waage && modus === 'gehen' && !waageAktiv) {   // draufgehen: kurz auf der Waage stehen bleiben, dann kommt der Status; erst nach dem Weggehen wieder
           const d = Math.hypot(F.x - waage.pos.x, F.z - waage.pos.z);
           if (d < 0.7 && !waageGesperrt) { waageZeit += dt; if (waageZeit > 0.45) { waageZeit = 0; zurWaage(); } } else { waageZeit = 0; if (d > 1.7) waageGesperrt = false; }
+        }
+        if (prT && modus === 'gehen' && !tuerUnterwegs) {   // durch die Tür gehen; in der Nähe zeigt der große Knopf sie an
+          const d = Math.hypot(F.x - prT.pos.x, F.z - prT.pos.z), na = d < 2.9;
+          if (d < 1.15) zurPrTuer();
+          if (na !== naheTuer) { naheTuer = na; stand(); }
         }
         a.figur.stelle(gelenke(pose)); if (a.figur.glut) a.figur.glut(0);
         if (hupf > 0) { hupf = Math.max(0, hupf - dt / 0.62); const u = 1 - hupf; a.figur.gruppe.position.y = Math.sin(u * Math.PI) * 0.62; } else a.figur.gruppe.position.y = 0;
@@ -946,6 +1022,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       s.teller.material.opacity = s.fertig ? P.tellerFertig : P.tellerSicht;
       if (spieler) s.schild.material.opacity = klemme((Math.hypot(K.pos.x - s.pos.x, K.pos.z - s.pos.z) - 4.2) / 2.6, 0, 1);
     });
+    if (prT) {   // Steht die Figur hinter der Tür oder die Kamera, ist die Wand weg: Sie verdeckt nie die Figur
+      const nx = Math.sin(PR_TUER_W), nz = Math.cos(PR_TUER_W), seite = (p) => (p.x - prT.pos.x) * nx + (p.z - prT.pos.z) * nz;
+      prT.gruppe.visible = seite(K.pos) > 0 && seite(F) > -0.2;
+    }
+    if (prT) prT.schild.material.opacity = klemme((Math.hypot(K.pos.x - prT.pos.x, K.pos.z - prT.pos.z) - 3.6) / 2.6, 0, 1);
     if (waage && !waageAktiv) waage.schild.material.opacity = klemme((Math.hypot(K.pos.x - waage.pos.x, K.pos.z - waage.pos.z) - 4.2) / 2.6, 0, 1);   // das Schild verblasst, wenn die Kamera nah ist (sonst verdeckt es die Figur)
     lichtSaeule.material.opacity = 0.4 + 0.25 * puls;
     spielerRing.material.opacity = 0.5 + 0.4 * puls;
@@ -955,8 +1036,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   /* ---------- Los: erst die ganze Halle von hoch oben, dann läuft die Figur durch die Tür hinein ---------- */
   stand();
   wegU.bis.value = 0;
-  if (spieler) F.z = zAnfang + 0.3;
-  frei(F, Math.PI);
+  const ausPr = !!(abTuer && prT);   // zurück aus dem PR-Raum: Die Figur steht vor der Tür, ohne Einzug
+  if (ausPr) { frei(prT.vorn, prT.raus); modusSetzen('gehen'); const z = verfolgen(); K.pos.copy(z.pos); K.blick.copy(z.blick); K.fov = z.fov; tipp.classList.add('weg'); }
+  else { if (spieler) F.z = zAnfang + 0.3; frei(F, Math.PI); }
   a.figur.gruppe.visible = true;
   legeKamera();
   a.groesse();
@@ -964,8 +1046,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   a.start();
   laden.classList.add('weg');
   setTimeout(() => laden.remove(), 500);
-  pop(spieler ? 'Dein Charakter' : 'Dein Gym heute', (spieler && spieler.name) || titel || 'Training');
-  if (spieler) {
+  if (ausPr) pop('Zurück im', 'Gym');
+  else pop(pr ? 'Willkommen im' : spieler ? 'Dein Charakter' : 'Dein Gym heute', pr ? 'PR-Raum' : (spieler && spieler.name) || titel || 'Training');
+  if (ausPr) { /* er steht schon da */ }
+  else if (spieler) {
     popEl.style.top = '70%'; setTimeout(() => { popEl.style.top = ''; }, 1600);   // das Gesicht bleibt frei
     // Der Einstieg zeigt ihn von vorn. Bei „Bewegung reduzieren“ geht es ohne Fahrt gleich los
     lauf([V(0, 0, 1.6)], () => { if (modus === 'draussen') { modusSetzen('gehen'); zielH = Math.PI; } });
@@ -977,5 +1061,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     kameraZu(verfolgen, STILL ? 0.01 : 3, null);
   }, STILL ? 0 : 1300);
   setTimeout(() => { tipp.classList.add('weg'); }, 12000);
-  return { schliessen, stationFertig, zurKarte: () => (waageAktiv ? statusZu() : zurueckZurKarte(false)) };
+  // Für den PR-Raum: andere Scheiben auf die Stange (während die Karte offen ist, bleibt die Figur dabei stehen), Karte runter, kurzer Jubel
+  function scheibenSetzen(i, liste, wert) {
+    const s = stationen[i]; if (!s || !s.anim || !offen) return;
+    s.u.scheiben = liste; s.veraltet = true;
+    if (wert !== undefined) { s.u.wert = wert; s.schildMalen(); if (aktiv === i) kName.textContent = wert; }
+    if (aktiv === i) { const vor = a.einleitung; a.einleitung = false; a.geraete.scheiben = liste; a.zeige(s.anim, s.d.m || []); a.einleitung = vor; if (s.statisch) s.statisch.visible = false; }
+  }
+  const jubel = (klein, gross) => { if (!offen) return; funken(); pop(klein, gross); if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} } };
+  return { schliessen, stationFertig, scheibenSetzen, jubel, karteRunter: () => karteUnten(true), zurKarte: () => (waageAktiv ? statusZu() : zurueckZurKarte(false)) };
 }

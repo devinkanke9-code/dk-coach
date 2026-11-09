@@ -1023,11 +1023,25 @@ export class Geraete {
     for (const sx of [-1, 1]) {
       quer(new THREE.CylinderGeometry(0.025, 0.025, 0.36, 20), this.mMetall, sx * 0.83);     // Hülse
       quer(new THREE.CylinderGeometry(0.036, 0.036, 0.025, 24), this.mMetall, sx * 0.66);    // Bund
+      if (Array.isArray(this.scheiben)) { this.scheibenStecken(quer, sx, this.scheiben); continue; }   // Bestleistung: genau die Scheiben, die der Kunde drauf hat
       quer(scheibenGeo(0.225, 0.05), this.mScheibe, sx * 0.78);                                // Scheibe 20 kg
       const rand = quer(new THREE.CylinderGeometry(0.226, 0.226, 0.012, 40, 1, true), this.mAkzent, sx * 0.78); rand.castShadow = false;   // Farbrand
       quer(new THREE.CylinderGeometry(0.03, 0.03, 0.035, 16), this.mGummi, sx * 0.825);       // Verschluss
     }
     this.gruppe.add(g); return g;
+  }
+  // Scheiben vom Bund nach außen stecken. Passen sie nicht auf die Hülse, werden alle gleichmäßig dünner. 20, 10 und 5 kg haben vollen Durchmesser, die Hantel liegt beim Kreuzheben also richtig auf.
+  scheibenStecken(quer, sx, liste) {
+    const ART = { 20: [0.225, 0.05, 0x2f6fd0], 10: [0.225, 0.035, 0x2e9e5b], 5: [0.225, 0.024, 0xe8e8e8], 2.5: [0.12, 0.018, 0xc8382e], 1.25: [0.095, 0.014, 0xb9bcc2] };
+    const PLATZ = 0.31, summe = liste.reduce((a, s) => a + ART[s][1], 0), f = summe > PLATZ ? PLATZ / summe : 1;
+    let x = 0.6725;
+    for (const s of liste) {
+      const [r, d0, farbe] = ART[s], d = d0 * f;
+      quer(scheibenGeo(r, d), this.mScheibe, sx * (x + d / 2));
+      const rand = quer(new THREE.CylinderGeometry(r + 0.001, r + 0.001, d * 0.26, 40, 1, true), new THREE.MeshStandardMaterial({ color: farbe, roughness: 0.45 }), sx * (x + d / 2)); rand.castShadow = false;
+      x += d;
+    }
+    quer(new THREE.CylinderGeometry(0.03, 0.03, 0.035, 16), this.mGummi, sx * (x + 0.0175));   // Verschluss
   }
   sz() { const g = this.langhantel(); g.children[0].scale.y = 0.6; g.children.forEach((c, i) => { if (i > 0) c.position.x *= 0.62; c.scale.multiplyScalar(i > 0 ? 0.62 : 1); }); return g; }
   // Kurzhantel mit Sechskant-Köpfen aus Gummi und gerändeltem Chromgriff (Achse X, Griff in der Mitte). schwer: größere Köpfe (Faktor, Hantel für beide Hände)
