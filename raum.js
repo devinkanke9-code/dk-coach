@@ -442,7 +442,14 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         } else a.bild(0);
         a.geraete.gruppe.updateMatrixWorld(true);
         const kopie = a.geraete.gruppe.clone(true);
-        kopie.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } o.updateMatrix(); o.matrixAutoUpdate = false; });
+        // Die feste Kopie bekommt eigene Geometrien (Befund von Devin 09.11.: nach der Station waren die Geräte in der Halle weg). Das Gerät im Ablauf teilt seine Geometrien mit der Kopie und gibt sie beim Wechsel frei (leeren);
+        // danach zeichnet drei die geteilten Teile der festen Kopie nicht mehr. Je Gerät wird jede Geometrie nur einmal kopiert.
+        const eigene = new Map();
+        kopie.traverse((o) => {
+          if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; }
+          if ((o.isMesh || o.isLine || o.isPoints) && o.geometry && o.geometry.clone) { let g = eigene.get(o.geometry); if (!g) { g = o.geometry.clone(); eigene.set(o.geometry, g); } o.geometry = g; }
+          o.updateMatrix(); o.matrixAutoUpdate = false;
+        });
         if (s.statisch) s.gruppe.remove(s.statisch);
         s.gruppe.add(kopie); s.statisch = kopie;
         const box = new THREE.Box3().setFromObject(a.geraete.gruppe); if (isFinite(box.max.y)) oben = Math.max(oben, box.max.y);
@@ -832,8 +839,29 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     lauf([V(klemme(x, -BREITE / 2 + FIGUR_RAND, BREITE / 2 - FIGUR_RAND), 0, klemme(z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND))], null);
   }
   const finger = { id: null, x: 0, y: 0, sx: 0, sy: 0, zeit: 0, weit: false };
-  bild.addEventListener('pointerdown', (e) => { if (finger.id != null) return; finger.id = e.pointerId; finger.x = finger.sx = e.clientX; finger.y = finger.sy = e.clientY; finger.zeit = performance.now(); finger.weit = false; try { bild.setPointerCapture(e.pointerId); } catch (x) {} });
+  const zeiger = new Map(); let pinch = null;   // alle Finger auf dem Bild: zwei Finger zoomen (an der Übung, an der Waage und am Spiegel rückt die Kamera heran, beim Gehen ändert sich die Höhe wie beim Ziehen nach oben und unten)
+  const ZOOM_MIN = 0.3, ZOOM_MAX = 1.25, ZOOM_NAH = 1.5;   // Faktor auf den Radius der Bahn (orbit.r0 = der Radius zu Beginn); näher als 1,5 m an die Mitte geht die Kamera nie
+  const zoomSetzen = (z) => { if (orbit.r0 == null) orbit.r0 = orbit.r; orbit.r = Math.max(orbit.r0 * klemme(z, ZOOM_MIN, ZOOM_MAX), Math.min(orbit.r0, ZOOM_NAH)); };
+  const pinchStart = () => {
+    const p = [...zeiger.entries()]; if (p.length !== 2 || !((modus === 'station' && orbit) || modus === 'gehen' || modus === 'lauf')) return;
+    const d = Math.hypot(p[0][1].x - p[1][1].x, p[0][1].y - p[1][1].y); if (d < 20) return;
+    finger.weit = true; tipp.classList.add('weg');
+    pinch = { a: p[0][0], b: p[1][0], d0: d, z0: modus === 'station' && orbit ? (orbit.r0 == null ? 1 : orbit.r / orbit.r0) : kamZ };
+  };
+  bild.addEventListener('pointerdown', (e) => {
+    zeiger.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (finger.id != null) { if (!pinch && zeiger.size === 2) { pinchStart(); try { bild.setPointerCapture(e.pointerId); } catch (x) {} } return; }
+    finger.id = e.pointerId; finger.x = finger.sx = e.clientX; finger.y = finger.sy = e.clientY; finger.zeit = performance.now(); finger.weit = false; try { bild.setPointerCapture(e.pointerId); } catch (x) {}
+  });
   bild.addEventListener('pointermove', (e) => {
+    if (zeiger.has(e.pointerId)) zeiger.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch) {   // zwei Finger: auseinander = hineinzoomen, zusammen = herauszoomen
+      if (e.pointerId === finger.id) { finger.x = e.clientX; finger.y = e.clientY; }
+      const a = zeiger.get(pinch.a), b = zeiger.get(pinch.b); if (!a || !b) return;
+      const f = pinch.d0 / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y));
+      if (modus === 'station' && orbit) zoomSetzen(pinch.z0 * f); else kamZ = klemme(pinch.z0 * f, 0.55, 2.3);
+      return;
+    }
     if (e.pointerId !== finger.id) return;
     const dx = e.clientX - finger.x, dy = e.clientY - finger.y; finger.x = e.clientX; finger.y = e.clientY;
     if (Math.hypot(e.clientX - finger.sx, e.clientY - finger.sy) > 8) finger.weit = true;
@@ -842,11 +870,17 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     else if (modus === 'gehen' || modus === 'lauf') { kamW -= dx * 0.006; kamZ = klemme(kamZ + dy * 0.004, 0.55, 2.3); tipp.classList.add('weg'); }
   });
   const loslassen = (e) => {
+    zeiger.delete(e.pointerId);
+    if (pinch && (e.pointerId === pinch.a || e.pointerId === pinch.b)) { pinch = null; finger.weit = true; }   // nach dem Zoomen kein Antippen
     if (e.pointerId !== finger.id) return; finger.id = null;
     if (!finger.weit && performance.now() - finger.zeit < 450 && e.type === 'pointerup') angetippt(e.clientX, e.clientY);
   };
   bild.addEventListener('pointerup', loslassen); bild.addEventListener('pointercancel', loslassen);
-  bild.addEventListener('wheel', (e) => { e.preventDefault(); kamZ = klemme(kamZ + e.deltaY * 0.001, 0.55, 2.3); }, { passive: false });
+  bild.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (modus === 'station' && orbit) { if (orbit.r0 == null) orbit.r0 = orbit.r; zoomSetzen(orbit.r / orbit.r0 * Math.exp(e.deltaY * 0.0012)); }   // an der Übung: Mausrad zoomt
+    else kamZ = klemme(kamZ + e.deltaY * 0.001, 0.55, 2.3);
+  }, { passive: false });
   let stickId = null;
   const stickSetzen = (e) => {
     const r = stick.getBoundingClientRect(), mx = r.left + r.width / 2, my = r.top + r.height / 2, gr = r.width / 2 - 14;
