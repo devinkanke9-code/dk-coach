@@ -106,6 +106,41 @@
     return arr(W.zielgruppen && W.zielgruppen.zielgruppen).filter(function (z) { return ids[z.id]; });
   }
 
+  /* ---------- Wiedereinstieg nach OP oder Verletzung (seit 09.11.2026, Wissensbasis wiedereinstieg.json) ----------
+     Kein Reha-Programm: Ohne schriftliche Freigabe gibt es keinen Plan. Was die Stelle darf, sagen Arzt oder Physio; die Stufe stellt Devin danach ein. */
+  function wiedereinstiegDaten(W, k) {
+    var d = W.wiedereinstieg;
+    if (!d || !k || !k.we_aktiv) return null;
+    return { d: d, stufe: arr(d.stufen).filter(function (s) { return s.id === k.we_stufe; })[0] || null,
+      regionen: arr(k.we_regionen).map(function (id) { return arr(d.regionen).filter(function (r) { return r.id === id; })[0]; }).filter(Boolean) };
+  }
+  function wiedereinstiegStopp(W, k) {
+    var we = wiedereinstiegDaten(W, k);
+    if (!we) return null;
+    if (!k.arzt_freigabe) return { id: 'wiedereinstieg_freigabe', frage: 'Wiedereinstieg nach OP oder Verletzung: Die schriftliche Freigabe von Arzt oder Physio fehlt.', folge: 'Liegt sie vor, im Plan-Schritt anhaken und die Vorgaben eintragen.' };
+    if (!we.regionen.length || !we.stufe) return { id: 'wiedereinstieg_angaben', frage: 'Wiedereinstieg: Betroffene Stelle oder Stufe fehlt.', folge: 'Beides im Plan-Schritt auswählen, so wie es in der Freigabe steht.' };
+    return null;
+  }
+  // Tage aus allem, was noch erlaubt ist. Nicht mehr als technik.max_tage.
+  function wiedereinstiegSplit(W, k, ctx, warnungen) {
+    var t = W.wiedereinstieg.technik || {}, tage = Math.min(k.tage, t.max_tage || 3);
+    if (tage < k.tage) warnungen.push('Wiedereinstieg: höchstens ' + tage + ' Krafttage pro Woche.');
+    if (k.split_wunsch) warnungen.push('Wiedereinstieg: Die Aufteilung rechnet DK Coach aus dem, was erlaubt ist.');
+    var frei = bausteinGruppen(W).filter(function (g) {
+      if (arr(t.auto_ohne).indexOf(g.id) >= 0) return false;
+      return arr(g.slots).some(function (s) {
+        return W.uebungen.some(function (ex) { return ex.muster === s.muster && (!s.muskel || arr(ex.muskel_primaer).indexOf(s.muskel) >= 0) && uebungErlaubt(ex, ctx).length === 0; });
+      });
+    });
+    if (frei.length < (t.min_gruppen || 3)) return null;
+    var aufbau = [], namen = [], grosse = frei.filter(function (g) { return g.gross; }), kleine = frei.filter(function (g) { return !g.gross; });
+    for (var i = 0; i < tage; i++) {
+      var dreh = function (l) { var n = l.length ? i % l.length : 0; return l.slice(n).concat(l.slice(0, n)); };
+      aufbau.push([bausteinTyp(dreh(grosse).concat(dreh(kleine)).map(function (g) { return g.id; }))]);
+      namen.push('Training ' + 'ABC'.charAt(i));
+    }
+    return { id: 'wiedereinstieg', eigen: true, we: true, name: 'Wiedereinstieg: ' + ctx.grenzen.we.stufe.name, beschreibung: 'Plan nach schriftlicher Freigabe, ohne Belastung der betroffenen Stelle, soweit vorgegeben.', tage_aufbau: aufbau, namen: namen };
+  }
   function einschraenkungen(W, k, gruppen, scr) {
     scr = scr || { beschwerden: [], zusatz: [], rirMin: 0 };
     var lim = {}; GELENKE.forEach(function (g) { lim[g] = 2; });
@@ -152,8 +187,36 @@
       hinweise = hinweise.concat(arr(z.plan_hinweise));
       if (z.arzt_freigabe === 'pflicht' && !k.arzt_freigabe) pflichtFreigabe.push(z.name);
     });
+    var we = wiedereinstiegDaten(W, k), weGrenze = null;
+    if (we && we.stufe && we.regionen.length) {
+      var s = we.stufe;
+      weGrenze = { stufe: s, regionen: we.regionen, muskeln: {}, posVerboten: arr(s.pos_verboten), nurStabil: !!s.nur_stabil, beineMax: 2, armeMax: 2, griffMax: 2,
+        rumpfNurMaschine: !!s.muskeln_sperren && we.regionen.some(function (r) { return r.rumpf_nur_maschine; }) };
+      we.regionen.forEach(function (r) {
+        arr(r.gelenke).forEach(function (g) { if (g in lim && s.gelenk_max != null) lim[g] = Math.min(lim[g], s.gelenk_max); });
+        if (s.muskeln_sperren) {
+          arr(r.muskeln_gesperrt).forEach(function (m) { weGrenze.muskeln[m] = r.name; });
+          arr(r.muster_gesperrt).forEach(function (m) { meiden[m] = r.name; });
+        }
+        if (r.teil === 'bein' && s.beine_tragen_max != null) weGrenze.beineMax = Math.min(weGrenze.beineMax, s.beine_tragen_max);
+        if (r.teil === 'arm') {
+          if (s.arme_stuetzen_max != null) weGrenze.armeMax = Math.min(weGrenze.armeMax, s.arme_stuetzen_max);
+          var gm = r.griff_max != null && s.muskeln_sperren ? r.griff_max : s.griff_max;
+          if (gm != null) weGrenze.griffMax = Math.min(weGrenze.griffMax, gm);
+        }
+        if (s.id === 'leicht') arr(r.muster_gesperrt_leicht).forEach(function (m) { meiden[m] = r.name; });
+        // „Stufe ruht: …“ nur bei dieser Stufe, ohne das Etikett
+        hinweise = hinweise.concat(arr(r.hinweise).filter(function (t) { return !/^Stufe /.test(t) || t.toLowerCase().indexOf('stufe ' + s.id) === 0; })
+          .map(function (t) { return t.replace(/^Stufe [^:]+:\s*/, ''); }));
+      });
+      hinweise = arr(s.hinweise).concat(hinweise);
+      if (s.volumen_faktor) faktor = Math.min(faktor, s.volumen_faktor);
+      if (s.rir_min != null) rirMin = Math.max(rirMin, s.rir_min);
+      if (s.level_max != null) levelMax = Math.min(levelMax, s.level_max);
+      if (s.wdh) { wdh = wdh ? [Math.max(wdh[0], s.wdh[0]), Math.min(wdh[1], s.wdh[1])] : s.wdh.slice(); if (wdh[0] > wdh[1]) wdh = [wdh[1], wdh[1]]; }
+    }
     return { pflichtFreigabe: pflichtFreigabe, gelenkLimit: lim, musterMeiden: meiden, musterAnpassen: anpassen, hinweise: hinweise, arzt: arzt,
-      volumenFaktor: faktor, rirMin: rirMin, levelMax: levelMax, wdh: wdh };
+      volumenFaktor: faktor, rirMin: rirMin, levelMax: levelMax, wdh: wdh, we: weGrenze };
   }
 
   /* ---------- 3. Übungsauswahl ---------- */
@@ -189,6 +252,21 @@
     if (ctx.grenzen.musterMeiden[ex.muster]) gruende.push('Muster gesperrt');
     if (ctx.ausschluss[ex.id]) gruende.push('Kunde mag sie nicht');
     if (ctx.level <= 1 && ex.technik_anspruch >= 3) gruende.push('Technik zu schwer');
+    var we = ctx.grenzen.we;
+    if (we) {
+      var pos = ex.position;
+      if (!pos) gruende.push('Wiedereinstieg: Körperposition unbekannt');
+      else {
+        if (we.posVerboten.indexOf(pos.pos) >= 0) gruende.push('Wiedereinstieg: Position');
+        if (pos.beine_tragen > we.beineMax) gruende.push('Wiedereinstieg: Beine');
+        if (pos.arme_stuetzen > we.armeMax) gruende.push('Wiedereinstieg: Arme');
+        if (pos.griff > we.griffMax) gruende.push('Wiedereinstieg: Griff');
+        if (we.nurStabil && pos.pos !== 'sitzend' && pos.pos !== 'liegend') gruende.push('Wiedereinstieg: nicht stabil');
+      }
+      if (arr(ex.muskel_primaer).concat(arr(ex.muskel_sekundaer)).some(function (m) { return we.muskeln[m]; })) gruende.push('Wiedereinstieg: Stelle ruht');
+      if (ex.technik_anspruch >= 3) gruende.push('Wiedereinstieg: Technik zu schwer');
+      if (we.rumpfNurMaschine && /^rumpf/.test(ex.muster) && arr(ex.ausruestung).indexOf('maschine') < 0) gruende.push('Wiedereinstieg: Rumpf nur an der Maschine');
+    }
     return gruende;
   }
 
@@ -227,6 +305,18 @@
     // Abwechslung zwischen A/B-Tagen, Wünsche
     p -= (ctx.benutzt[ex.id] || 0) * 4;
     if (ctx.liebling[ex.id]) p += 5;
+    // Bewährte Standardübungen (planarten.json → regeln.klassiker): Rang in der Liste. Nicht bei Beschwerden, dort geht schonend vor.
+    if (ctx.grenzen.we) {
+      if (aus.indexOf('maschine') >= 0) p += 4;
+      if (ex.position && (ex.position.pos === 'sitzend' || ex.position.pos === 'liegend')) p += 3;
+      if (ex.rolle === 'isolation') p += 2;
+      if (aus.indexOf('langhantel') >= 0) p -= 4;
+      p -= (ex.technik_anspruch || 1) * 1.5;
+    } else if (ctx.klassiker && !Object.keys(ctx.grenzen.musterAnpassen).length) {
+      var kl = ctx.klassiker[slot.muster + '|' + (slot.muskel || '') + '|' + (slot.rolle || '')] || ctx.klassiker[slot.muster + '|' + (slot.muskel || '')] || ctx.klassiker[slot.muster];
+      var rang = kl ? kl.indexOf(ex.id) : -1;
+      if (rang >= 0) p += Math.max(1, 6 - rang * 0.6);
+    }
     // Gelenke schonen, stärker bei Beschwerden
     var bel = 0; GELENKE.forEach(function (g) { bel += (ex.gelenkbelastung || {})[g] || 0; });
     p -= bel * (Object.keys(ctx.grenzen.musterAnpassen).length ? 0.6 : 0.25);
@@ -281,7 +371,7 @@
   function schwerpunktEinbauen(W, ctx, tag, sp, imTag) {
     sp.forEach(function (x) {
       var s = x.def, teil = s;
-      if (!arr(s.tage).some(function (p) { return tag.typ.indexOf(p) === 0; })) return;
+      if (!arr(s.tage).some(function (p) { return tag.typ.indexOf(p) === 0 || arr(tag.def.familien).indexOf(p) >= 0; })) return;
       var ex = x.gesperrt ? null : schwerpunktWahl(W, ctx, s, tag, imTag);
       if (!ex && s.sonst) { teil = s.sonst; ex = schwerpunktWahl(W, ctx, teil, tag, imTag); }
       if (!ex) { x.fehlt++; return; }
@@ -295,6 +385,86 @@
       imTag[ex.id] = true;
       x.uebungen.push(ex.name);
     });
+  }
+  // Extra-Muskeln (Feld extra_muskeln): je Gruppe bis zu extra.tage_max Tage, zuerst Tage ohne diese Gruppe, möglichst weit auseinander
+  function extraVerteilen(W, k, tage) {
+    var ex = W.regeln.extra_muskeln || {}, alle = bausteinGruppen(W), proTyp = {};
+    var max = (ex.tage_max && ex.tage_max[String(k.level)]) || 1;
+    arr(k.extra_muskeln).forEach(function (id) {
+      var g = alle.filter(function (x) { return x.id === id; })[0];
+      if (!g) return;
+      var kraft = tage.filter(function (t) { return t.typ !== LEICHTER_TAG; });
+      var hatGruppe = function (t) { return arr(t.def.muskeln_fokus).some(function (m) { return arr(g.muskeln).indexOf(m) >= 0; }); };
+      var kand = kraft.filter(function (t) { return !hatGruppe(t); });
+      if (!kand.length) kand = kraft;
+      var typen = [], gewaehlt = [];
+      kand.forEach(function (t) { if (typen.indexOf(t.typ) < 0) typen.push(t.typ); });
+      typen.forEach(function (typ) {
+        if (gewaehlt.length >= max) return;
+        var nr = tage.filter(function (t) { return t.typ === typ; })[0].nr;
+        if (gewaehlt.some(function (x) { return Math.abs(x.nr - nr) < 2; }) && typen.length > max) return;
+        gewaehlt.push({ typ: typ, nr: nr });
+      });
+      gewaehlt.forEach(function (x) { (proTyp[x.typ] = proTyp[x.typ] || []).push(g); });
+    });
+    return proTyp;
+  }
+  function extraEinbauen(W, ctx, tag, gruppen, imTag, warnungen) {
+    var ex = W.regeln.extra_muskeln || {};
+    gruppen.forEach(function (g) {
+      var wahl = null;
+      arr(g.slots).some(function (s) { wahl = waehleUebung(W, ctx, Object.assign({}, s, { index: 60 }), imTag); return !!wahl; });
+      if (!wahl) { warnungen.push('Extra ' + g.name + ': keine passende Übung (Level, Beschwerden oder Ausrüstung).'); return; }
+      tag.uebungen.push({ id: wahl.id, slot: { muster: wahl.muster, index: 98, schwerpunkt: 'extra_' + g.id, extra: g.name, saetze: arr(ex.saetze).length ? ex.saetze : [2, 3] } });
+      ctx.benutzt[wahl.id] = (ctx.benutzt[wahl.id] || 0) + 1;
+      arr(wahl.muskel_primaer).forEach(function (m) { ctx.abdeckung[m] = (ctx.abdeckung[m] || 0) + 1; });
+      imTag[wahl.id] = true;
+    });
+  }
+  // Wiedereinstieg: kein Muskel über der Wochengrenze des Levels (primäre Sätze); erst Ergänzungen aus dem vollsten Tag, jeder Tag behält mindestens 3 Übungen
+  function wochenGrenzeWiedereinstieg(W, tage, vol) {
+    var hoch = vol.bereich[1], schutz = 0;
+    var primaer = function () { var s = {}; tage.forEach(function (t) { t.uebungen.forEach(function (u) { arr(W.index[u.id].muskel_primaer).forEach(function (m) { s[m] = (s[m] || 0) + u.saetze; }); }); }); return s; };
+    while (schutz++ < 40) {
+      var ist = primaer(), m = Object.keys(ist).filter(function (x) { return ist[x] > hoch; })[0];
+      if (!m) return;
+      var kand = [];
+      tage.forEach(function (t) { if (t.uebungen.length > 3) t.uebungen.forEach(function (u) { if (arr(W.index[u.id].muskel_primaer).indexOf(m) >= 0) kand.push({ t: t, u: u }); }); });
+      if (!kand.length) return;
+      kand.sort(function (a, b) { return (b.t.uebungen.length - a.t.uebungen.length) || ((W.index[a.u.id].rolle === 'grund' ? 1 : 0) - (W.index[b.u.id].rolle === 'grund' ? 1 : 0)); });
+      kand[0].t.uebungen.splice(kand[0].t.uebungen.indexOf(kand[0].u), 1);
+    }
+  }
+  // Extra-Muskeln dürfen die Wochengrenze des Levels nicht sprengen: sonst fällt die letzte Extra-Übung weg
+  function extraBegrenzen(W, tage, vol, warnungen) {
+    var hoch = vol.bereich[1], schutz = 0;
+    while (schutz++ < 20) {
+      var ist = volumenIst(W, tage), treffer = null;
+      for (var i = tage.length - 1; i >= 0 && !treffer; i--) {
+        tage[i].uebungen.forEach(function (u) {
+          if (u.slot.extra && arr(W.index[u.id].muskel_primaer).some(function (m) { return ist[m] > hoch; })) treffer = { tag: tage[i], u: u };
+        });
+      }
+      if (!treffer) return;
+      treffer.tag.uebungen.splice(treffer.tag.uebungen.indexOf(treffer.u), 1);
+      warnungen.push('Extra ' + treffer.u.slot.extra + ': an einem Tag weggelassen, sonst zu viele Sätze pro Woche (höchstens ' + hoch + ').');
+    }
+  }
+  // Bausteintage: höchstens so viele Sätze je Muskel und Einheit wie volumen_regeln erlaubt (die Sätze der größten Übung zuerst kürzen, nie unter 2)
+  function saetzeProEinheitBegrenzen(W, k, tag) {
+    var c = W.regeln.volumen_regeln && W.regeln.volumen_regeln.max_saetze_pro_muskel_pro_einheit;
+    var cap = c && c[String(k.level)];
+    if (!(cap > 0)) return;
+    var schutz = 0, muskelVon = function (u) { return arr(W.index[u.id].muskel_primaer); };
+    while (schutz++ < 60) {
+      var summe = {};
+      tag.uebungen.forEach(function (u) { muskelVon(u).forEach(function (m) { summe[m] = (summe[m] || 0) + u.saetze; }); });
+      var zuViel = Object.keys(summe).filter(function (m) { return summe[m] > cap; })[0];
+      if (!zuViel) return;
+      var kand = tag.uebungen.filter(function (u) { return muskelVon(u).indexOf(zuViel) >= 0 && u.saetze > 2; }).sort(function (a, b) { return b.saetze - a.saetze; })[0];
+      if (!kand) return;
+      kand.saetze--;
+    }
   }
   function letzteOhneSchwerpunkt(liste) {   // beim Kürzen bleibt der Schwerpunkt bis zuletzt
     for (var i = liste.length - 1; i >= 0; i--) if (!liste[i].slot.schwerpunkt) return liste.splice(i, 1)[0];
@@ -348,12 +518,94 @@
   }
 
   /* ---------- 5. Split ---------- */
-  function waehleSplit(W, k) {
+  function waehleSplit(W, k, warnungen) {
     var s = arr(W.regeln.splits).filter(function (x) { return x.tage === k.tage && imLevel(x.level, k.level); });
     if (!s.length) s = arr(W.regeln.splits).filter(function (x) { return x.tage === k.tage; });
     if (!s.length) throw new Error('Wissensbasis: kein Split für ' + k.tage + ' Tage');
-    if (k.split_wunsch) { var w = s.filter(function (x) { return x.id === k.split_wunsch; })[0]; if (w) return w; }
+    if (k.split_wunsch === EIGEN) { var e = eigenerSplit(W, k, warnungen || []); if (e) return e; return s[0]; }
+    if (k.split_wunsch) {
+      var w = s.filter(function (x) { return x.id === k.split_wunsch; })[0];
+      if (w) return w;
+      var nichtLevel = arr(W.regeln.splits).filter(function (x) { return x.id === k.split_wunsch; })[0];
+      if (nichtLevel && warnungen) warnungen.push('„' + nichtLevel.name + '“ passt nicht zu diesem Level oder dieser Tageszahl. Stattdessen: ' + s[0].name + '.');
+    } else if (k.split_art && k.split_art !== 'egal') {   // Wunsch des Kunden aus der Analyse; Devins Auswahl (split_wunsch) geht vor
+      var arten = W.regeln.split_wunsch_arten || {}, ids = arr(arten.splits && arten.splits[k.split_art]);
+      var passt = s.filter(function (x) { return ids.indexOf(x.id) >= 0; })[0];
+      if (passt) return passt;
+      if (ids.length && warnungen) warnungen.push('Kunde wünscht „' + ((arten.namen || {})[k.split_art] || k.split_art) + '“, das passt nicht zu Level ' + k.level + ' und ' + k.tage + ' Tagen. Stattdessen: ' + s[0].name + '.');
+    }
     return s[0];
+  }
+
+  /* ---------- Tage aus Muskelgruppen (seit 09.11.2026, Wissensbasis planarten.json → regeln.split_bausteine) ---------- */
+  var EIGEN = 'eigen';
+  function bausteinGruppen(W) { return arr(W.regeln.split_bausteine && W.regeln.split_bausteine.gruppen); }
+  function bausteinTyp(gruppen) { return 'b:' + gruppen.join('+'); }
+  function istBausteinTyp(typ) { return /^b:/.test(typ); }
+  function gruppenAusTyp(W, typ) {
+    var alle = bausteinGruppen(W);
+    return typ.slice(2).split('+').map(function (id) { return alle.filter(function (g) { return g.id === id; })[0]; }).filter(Boolean);
+  }
+  // Tagestyp aus Bausteinen, Form wie regeln.tagestypen. Reihenfolge: große Gruppen vorn, je Gruppe ihre Plätze am Stück.
+  function tagAusBausteinen(W, typ, minuten) {
+    var R = W.regeln, gruppen = gruppenAusTyp(W, typ);
+    var gross = gruppen.filter(function (g) { return g.gross; }), klein = gruppen.filter(function (g) { return !g.gross; });
+    var sortiert = gross.concat(klein);
+    var richt = (R.uebungen_pro_einheit && R.uebungen_pro_einheit.richtwert_nach_minuten) || {};
+    var stufen = Object.keys(richt).map(Number).sort(function (a, b) { return a - b; });
+    var ziel = (R.uebungen_pro_einheit && R.uebungen_pro_einheit.max) || 8;
+    for (var i = 0; i < stufen.length; i++) if (minuten <= stufen[i]) { ziel = richt[stufen[i]]; break; }
+    var anzahl = sortiert.map(function () { return 0; }), summe = 0, weiter = true;
+    while (summe < ziel && weiter) {
+      weiter = false;
+      for (var j = 0; j < sortiert.length && summe < ziel; j++) {
+        if (anzahl[j] < arr(sortiert[j].slots).length) { anzahl[j]++; summe++; weiter = true; }
+      }
+    }
+    var reihe = [];
+    sortiert.forEach(function (g, gi) { arr(g.slots).slice(0, anzahl[gi]).forEach(function (s) { reihe.push(Object.assign({}, s, { baustein: g.id })); }); });
+    var zuerst = [];
+    klein.slice().reverse().forEach(function (g) { arr(g.slots).forEach(function (s) { if (zuerst.indexOf(s.muster) < 0) zuerst.push(s.muster); }); });
+    var fokus = [], familien = {};
+    gruppen.forEach(function (g) {
+      fokus = fokus.concat(arr(g.muskeln));
+      if (g.art === 'ober') { familien.oberkoerper = true; }
+      if (g.art === 'unter') { familien.unterkoerper = true; familien.beine = true; }
+      if (g.art === 'rumpf') { familien.rumpf = true; }
+    });
+    return { name: gruppen.map(function (g) { return g.name; }).join(' + '), muster_reihenfolge: reihe, slot_muskel: [],
+      streichen_zuerst: zuerst, muskeln_fokus: fokus, familien: Object.keys(familien) };
+  }
+  // Eigener Split: je Trainingstag eine Liste von Muskelgruppen (Feld split_eigen, Trainer-Seite)
+  function eigenerSplit(W, k, warnungen) {
+    var bekannt = {}; bausteinGruppen(W).forEach(function (g) { bekannt[g.id] = g; });
+    var tage = arr(k.split_eigen).slice(0, k.tage).map(function (t) { return arr(t).filter(function (id, i, l) { return bekannt[id] && l.indexOf(id) === i; }); })
+      .filter(function (t) { return t.length; });
+    if (!tage.length) { warnungen.push('Eigener Split ist leer: Es gilt die normale Aufteilung.'); return null; }
+    if (tage.length < k.tage) warnungen.push('Eigener Split: nur ' + tage.length + ' von ' + k.tage + ' Tagen sind belegt.');
+    return { id: EIGEN, eigen: true, name: 'Eigener Split', beschreibung: tage.map(function (t, i) {
+      return 'Tag ' + (i + 1) + ': ' + t.map(function (id) { return bekannt[id].name; }).join(' + '); }).join(' · '),
+      tage_aufbau: tage.map(function (t) { return [bausteinTyp(t)]; }) };
+  }
+  function tagesDefinition(W, typ, minuten) {
+    if (istBausteinTyp(typ)) return tagAusBausteinen(W, typ, minuten);
+    return W.regeln.tagestypen[typ];
+  }
+  // Eigener Split: Hinweise für Devin (48 h Abstand, Einsteiger, Muskeln ohne Training)
+  function splitPruefen(W, k, split, warnungen) {
+    if (!split.eigen || split.we) return;
+    var R = W.regeln, grossIds = {};
+    bausteinGruppen(W).forEach(function (g) { if (g.gross) grossIds[g.id] = g.name; });
+    var tage = split.tage_aufbau.map(function (t) { return istBausteinTyp(t[0]) ? t[0].slice(2).split('+') : []; });
+    tage.forEach(function (t, i) {
+      if (i === 0) return;
+      var doppelt = t.filter(function (id) { return grossIds[id] && tage[i - 1].indexOf(id) >= 0; });
+      if (doppelt.length) warnungen.push('Eigener Split: ' + doppelt.map(function (id) { return grossIds[id]; }).join(', ') + ' an Tag ' + i + ' und Tag ' + (i + 1) +
+        '. Liegen die Tage direkt hintereinander, fehlt der Abstand von ' + ((R.split_regeln && R.split_regeln.mindestabstand_gleicher_muskel_h) || 48) + ' Stunden.');
+    });
+    if (k.level <= 1) warnungen.push('Eigener Split bei Level 1: Für Einsteiger sind 2 bis 3 Ganzkörper-Einheiten pro Woche empfohlen.');
+    var einmal = Object.keys(grossIds).filter(function (id) { return tage.filter(function (t) { return t.indexOf(id) >= 0; }).length === 1; });
+    if (einmal.length) warnungen.push('Eigener Split: ' + einmal.map(function (id) { return grossIds[id]; }).join(', ') + ' nur 1× pro Woche. Empfohlen sind 2×, damit sich die Sätze besser verteilen.');
   }
 
   // Mehr Tage als Krafttage fürs Level erlaubt (split_regeln.max_krafttage_pro_level):
@@ -370,7 +622,7 @@
     if (!(max >= 1) || kraft.length <= max) return split;
     if (!R.tagestypen[LEICHTER_TAG]) throw new Error('Wissensbasis: Tagestyp ' + LEICHTER_TAG + ' fehlt');
     // Gerüst: reiner Kraft-Split mit genau max Tagen für dieses Level, sonst die ersten max Krafttage
-    var basis = arr(R.splits).filter(function (s) {
+    var basis = split.eigen ? null : arr(R.splits).filter(function (s) {
       return s.tage === max && imLevel(s.level, k.level) && krafttage(s.tage_aufbau).length === max;
     })[0];
     var kern = basis ? basis.tage_aufbau : kraft.slice(0, max);
@@ -385,8 +637,8 @@
     });
     warnungen.push(grund + ': höchstens ' + max + ' Krafttage pro Woche. ' +
       (leicht === 1 ? '1 Tag ist ein leichter Rumpf- und Ausdauertag.' : leicht + ' Tage sind leichte Rumpf- und Ausdauertage.'));
-    var name = basis ? basis.name : kern.map(function (t) { return (R.tagestypen[t[0]] || {}).name || typNameLesbar(t[0]); }).join(' / ');
-    return { id: (basis || split).id + '_plus_' + leicht + '_leicht',
+    var name = basis ? basis.name : kern.map(function (t) { return istBausteinTyp(t[0]) ? tagAusBausteinen(W, t[0], 60).name : (R.tagestypen[t[0]] || {}).name || typNameLesbar(t[0]); }).join(' / ');
+    return { id: (basis || split).id + '_plus_' + leicht + '_leicht', eigen: split.eigen,
       name: name + ' + ' + (leicht === 1 ? 'Rumpf/Cardio-Tag' : leicht + ' Rumpf/Cardio-Tage'),
       beschreibung: max + ' Krafttage plus ' + leicht + ' leichte' + (leicht === 1 ? 'r Tag' : ' Tage') + ' (Grenze: ' + grund + ').',
       tage_aufbau: aufbau };
@@ -562,8 +814,16 @@
       return { status: 'stopp', kunde: k, screening: scr,
         text: 'Kein Plan: mindestens eine Antwort im Gesundheits-Check verlangt zuerst eine ärztliche Abklärung.' };
     }
+    var weStopp = wiedereinstiegStopp(W, k);
+    if (weStopp) {
+      scr.stopp.push(weStopp);
+      return { status: 'stopp', kunde: k, screening: scr, text: 'Kein Plan: ' + weStopp.frage };
+    }
     var gruppen = ermittleZielgruppen(W, k, scr.zielgruppen);
     var grenzen = einschraenkungen(W, k, gruppen, scr);
+    if (!grenzen.we && arr(scr.anpassen).some(function (x) { return x.id === 'operation_verletzung'; }) && W.wiedereinstieg) {
+      warnungen.push('OP oder Verletzung in den letzten 6 Monaten: Stelle im Plan-Schritt unter „Nach OP oder Verletzung“ einstellen.');
+    }
     grenzen.pflichtFreigabe.forEach(function (n) {
       scr.stopp.push({ id: 'freigabe_' + n, frage: n + ': Für diese Gruppe ist eine ärztliche Freigabe Pflicht.', folge: 'Liegt sie schriftlich vor, im Gesundheits-Check anhaken.' });
     });
@@ -572,18 +832,24 @@
         text: 'Kein Plan: mindestens eine Antwort im Gesundheits-Check verlangt zuerst eine Abklärung.' };
     }
     if (k.level > grenzen.levelMax) {
-      warnungen.push('Level von ' + k.level + ' auf ' + grenzen.levelMax + ' gesenkt (Zielgruppe).');
+      warnungen.push('Level von ' + k.level + ' auf ' + grenzen.levelMax + ' gesenkt (' + (grenzen.we ? 'Wiedereinstieg' : 'Zielgruppe') + ').');
       k.level = grenzen.levelMax;
     }
 
     var ctx = { kunde: k, level: k.level, ausruestung: verfuegbareAusruestung(k), grenzen: grenzen,
-      benutzt: {}, ausschluss: {}, liebling: {}, abdeckung: {}, zielWdh: zielWdh(W, k, grenzen) };
+      benutzt: {}, ausschluss: {}, liebling: {}, abdeckung: {}, zielWdh: zielWdh(W, k, grenzen), klassiker: W.regeln.klassiker && W.regeln.klassiker.listen };
     arr(k.ausschluss_ids).forEach(function (id) { ctx.ausschluss[id] = true; });
     arr(k.liebling_ids).forEach(function (id) { ctx.liebling[id] = true; });
     var sp = schwerpunkteFuer(W, k, gruppen, scr);
 
     var ag = alterGrenzen(W, k.alter);
-    var split = krafttageBegrenzen(W, k, waehleSplit(W, k), warnungen, ag);
+    var weSplit = grenzen.we ? wiedereinstiegSplit(W, k, ctx, warnungen) : null;
+    if (grenzen.we && !weSplit) {
+      scr.stopp.push({ id: 'wiedereinstieg_zu_wenig', frage: 'Wiedereinstieg: Mit diesen Vorgaben und dieser Ausrüstung bleiben zu wenige sichere Übungen übrig.', folge: 'Im Studio an Maschinen gibt es meist mehr Möglichkeiten. Sonst läuft das Training vorerst bei Arzt oder Physio, nach der nächsten Freigabe neu erstellen.' });
+      return { status: 'stopp', kunde: k, screening: scr, text: 'Kein Plan: Mit diesen Vorgaben und dieser Ausrüstung bleiben zu wenige sichere Übungen übrig.' };
+    }
+    var split = krafttageBegrenzen(W, k, weSplit || waehleSplit(W, k, warnungen), warnungen, ag);
+    splitPruefen(W, k, split, warnungen);
     var vol = wochenVolumen(W, k, grenzen);
     var R = W.regeln;
     var zeitSatz = R.zeit_pro_satz_sek || { grund: 45, isolation: 35 };
@@ -595,10 +861,12 @@
     // Wie oft trifft jeder Tagestyp einen Muskel? → Sätze pro Slot
     var tage = split.tage_aufbau.map(function (typen, i) {
       var typ = typen[0];
-      var def = R.tagestypen[typ];
+      var def = tagesDefinition(W, typ, k.minuten);
       if (!def) throw new Error('Wissensbasis: Tagestyp ' + typ + ' fehlt');
-      return { nr: i + 1, typ: typ, name: def.name || typNameLesbar(typ), def: def, uebungen: [] };
+      return { nr: i + 1, typ: typ, name: (split.namen && split.namen[i]) || def.name || typNameLesbar(typ), def: def, uebungen: [] };
     });
+
+    var extraProTyp = extraVerteilen(W, k, tage);
 
     // Gleicher Tagestyp = gleiche Übungen (sonst lässt sich nichts steigern)
     var proTyp = {}, zusatzProTyp = {};
@@ -626,17 +894,18 @@
           genutzt = versuche[v];
         }
         if (!ex) {
-          warnungen.push(tag.name + ': ' + musterLesbar(slot.muster) + ' entfällt' +
+          if (!grenzen.we) warnungen.push(tag.name + ': ' + musterLesbar(slot.muster) + ' entfällt' +
             (grenzen.musterMeiden[slot.muster] ? ' (' + grenzen.musterMeiden[slot.muster] + ').' : ' — keine sichere Übung mit dieser Ausrüstung.'));
           return;
         }
-        if (genutzt !== slot.muster) warnungen.push(tag.name + ': statt ' + musterLesbar(slot.muster) + ' → ' + ex.name + ' (Ausrüstung/Beschwerden).');
+        if (genutzt !== slot.muster && !grenzen.we) warnungen.push(tag.name + ': statt ' + musterLesbar(slot.muster) + ' → ' + ex.name + ' (Ausrüstung/Beschwerden).');
         ctx.benutzt[ex.id] = (ctx.benutzt[ex.id] || 0) + 1;
         arr(ex.muskel_primaer).forEach(function (m) { ctx.abdeckung[m] = (ctx.abdeckung[m] || 0) + 1; });
         imTag[ex.id] = true;
         tag.uebungen.push({ id: ex.id, slot: slot });
       });
       if (tag.typ !== LEICHTER_TAG) schwerpunktEinbauen(W, ctx, tag, sp, imTag);
+      extraEinbauen(W, ctx, tag, arr(extraProTyp[tag.typ]), imTag, warnungen);
       proTyp[tag.typ] = tag.uebungen;
     });
 
@@ -682,6 +951,13 @@
         if (u.slot.rir) it.rir = [Math.max(u.slot.rir[0], grenzen.rirMin), Math.max(u.slot.rir[1], grenzen.rirMin)];
         u.saetze = saetze;
         u.wdh = it.wdh; u.einheit = it.einheit; u.rir = it.rir; u.pause = it.pause;
+      });
+      if (istBausteinTyp(tag.typ)) saetzeProEinheitBegrenzen(W, k, tag);
+      if (grenzen.we && grenzen.we.stufe.saetze_stelle_max) tag.uebungen.forEach(function (u) {
+        var ex = W.index[u.id], trifft = grenzen.we.regionen.some(function (r) {
+          return arr(r.gelenke).some(function (g) { return ((ex.gelenkbelastung || {})[g] || 0) > 0; }) || arr(ex.muskel_primaer).some(function (m) { return arr(r.muskeln_gesperrt).indexOf(m) >= 0; });
+        });
+        if (trifft) u.saetze = Math.min(u.saetze, grenzen.we.stufe.saetze_stelle_max);
       });
       // Zeit einpassen: immer bei der Übung mit den meisten Sätzen kürzen (Ergänzungen zuerst)
       function dauer() {
@@ -748,6 +1024,8 @@
       }
       tag.dauer_min = Math.round(dauer());
     });
+    extraBegrenzen(W, tage, vol, warnungen);
+    if (grenzen.we) wochenGrenzeWiedereinstieg(W, tage, vol);
     tage.forEach(function (t) { if (t.gestrichen) warnungen.push(t.name + ': ' + uniq(t.gestrichen).join(', ') + ' weggelassen (Zeit).'); });
     // Schwerpunkt: Hinweis für den Kunden, Warnung für Devin, wenn er nicht (ganz) umsetzbar war
     var spHinweise = [], spName = {};
@@ -767,9 +1045,10 @@
     // Progression / Wochen
     var prog = arr(R.progression && R.progression.modelle).filter(function (m) { return imLevel(m.fuer_level, k.level); })[0];
     var mzw = R.mesozyklus_wochen && R.mesozyklus_wochen[String(k.level)];
-    var wochenAnzahl = +k.wochen || (mzw ? mzw[1] : 8);
+    var wePruef = grenzen.we ? ((W.wiedereinstieg.technik || {}).pruef_wochen || 4) : 0;
+    var wochenAnzahl = wePruef ? Math.min(+k.wochen || wePruef, wePruef) : (+k.wochen || (mzw ? mzw[1] : 8));
     var einstieg = R.einstiegsphase || {};
-    var einstiegWochen = k.level <= 2 ? (einstieg.wochen ? einstieg.wochen[0] : 2) : 0;
+    var einstiegWochen = wePruef ? wePruef : k.level <= 2 ? (einstieg.wochen ? einstieg.wochen[0] : 2) : 0;
     var wochen = [];
     for (var w = 1; w <= wochenAnzahl; w++) {
       var phase = w <= einstiegWochen ? 'einstieg' : (w === wochenAnzahl && wochenAnzahl >= 5 ? 'deload' : 'aufbau');
@@ -780,10 +1059,20 @@
     }
 
     // Aufwärmen + Cardio
-    tage.forEach(function (tag) { tag.aufwaermen = aufwaermenFuer(W, k, tag.typ); });
-    var cardio = arr(W.aufwaermen_cardio && W.aufwaermen_cardio.cardio).filter(function (c) {
+    var weVorsichtig = grenzen.we && grenzen.we.stufe.id !== 'aufbau';   // Aufwärmen und Ausdauer belasten die Stelle oft mit: nur nach Vorgabe
+    tage.forEach(function (tag) { tag.aufwaermen = weVorsichtig ? null : aufwaermenFuer(W, k, tag.typ); });
+    var cardio = weVorsichtig ? [] : arr(W.aufwaermen_cardio && W.aufwaermen_cardio.cardio).filter(function (c) {
       return arr(c.ziel).indexOf(k.ziel) >= 0 && imLevel(c.level, k.level);
     });
+    var weTexte = [];
+    if (grenzen.we) {
+      var we0 = W.wiedereinstieg;
+      if (weVorsichtig) weTexte.push('Aufwärmen und Ausdauer nur so, wie es Arzt oder Physio erlaubt haben. Die betroffene Stelle bleibt dabei außen vor.');
+      if (k.we_vorgaben) weTexte.push('Vorgabe von Arzt oder Physio: ' + String(k.we_vorgaben).slice(0, 400));
+      weTexte.push('Dieser Plan läuft ' + wochenAnzahl + ' Wochen. Spätestens dann, oder früher, wenn es in deiner Freigabe steht, schauen Arzt oder Physio wieder drauf. Bei Widerspruch gilt immer ihre Vorgabe, nicht dieser Plan.');
+      if (we0.gesunde_seite && we0.gesunde_seite.kurz && grenzen.we.stufe.id === 'ruht' && grenzen.we.regionen.some(function (r) { return r.teil !== 'rumpf'; })) weTexte.push(we0.gesunde_seite.kurz);
+      warnungen.push('Wiedereinstieg: Prüfe jede Übung gegen die schriftliche Vorgabe. DK Coach kennt weder Seite noch Winkel oder Lastgrenzen daraus.');
+    }
 
     var plan = {
       status: scr.anpassen.length || warnungen.length || gruppen.length ? 'angepasst' : 'ok',
@@ -794,7 +1083,7 @@
         geraete: nurMaschinen(k) ? 'maschinen' : 'alle' },
       screening: scr,
       zielgruppen: gruppen.map(function (z) { return { id: z.id, name: z.name }; }),
-      split: { id: split.id, name: split.name, beschreibung: split.beschreibung },
+      split: { id: split.id, name: split.name, beschreibung: split.beschreibung, eigen: !!split.eigen },
       volumen: { ziel_pro_muskel: vol.ziel, bereich: vol.bereich, ist: ist },
       tage: tage.map(function (t) {
         return { nr: t.nr, typ: t.typ, name: t.name, dauer_min: t.dauer_min,
@@ -804,7 +1093,7 @@
             var ex = W.index[u.id];
             return { id: u.id, name: ex.name, saetze: u.saetze, wdh: u.wdh, einheit: u.einheit, rir: u.rir,
               pause: u.pause, technik: ex.technik, vorsicht: ex.vorsicht, einseitig: ex.einseitig,
-              muskeln: ex.muskel_primaer, notiz: u.slot.schwerpunkt ? 'Schwerpunkt ' + spName[u.slot.schwerpunkt] : '' };
+              muskeln: ex.muskel_primaer, notiz: u.slot.extra ? 'Extra: ' + u.slot.extra : u.slot.schwerpunkt ? 'Schwerpunkt ' + spName[u.slot.schwerpunkt] : '' };
           }) };
       }),
       wochen: wochen,
@@ -814,11 +1103,13 @@
       cardio: cardio.slice(0, 2),
       erholung: W.aufwaermen_cardio && W.aufwaermen_cardio.erholung,
       schwerpunkte: sp.map(function (x) { return { id: x.def.id, name: x.def.name, uebungen: uniq(x.uebungen), ersatz: x.ersatz, gesperrt: x.gesperrt }; }),
-      hinweise: uniq(spHinweise.concat(grenzen.hinweise)),
+      hinweise: uniq(weTexte.concat(spHinweise, grenzen.hinweise)),
       arzt_wenn: uniq(grenzen.arzt),
       warnungen: uniq(warnungen),
       sicherheit: (W.sicherheit && W.sicherheit.standard_hinweis_plan) || '',
-      abbruch: (W.sicherheit && W.sicherheit.abbruch_warnzeichen) || [],
+      abbruch: arr(W.sicherheit && W.sicherheit.abbruch_warnzeichen).concat(grenzen.we ? arr(W.wiedereinstieg.pflicht && W.wiedereinstieg.pflicht.warnzeichen).map(function (x) { return x.text; }) : []),
+      wiedereinstieg: grenzen.we ? { stufe: grenzen.we.stufe.id, stufe_name: grenzen.we.stufe.name, regionen: grenzen.we.regionen.map(function (r) { return r.name; }),
+        art: k.we_art || '', von: k.we_von || '', datum: k.we_datum || '', vorgaben: k.we_vorgaben || '', pruefen_nach_wochen: wochenAnzahl } : null,
       abbruch_regeln: abbruchRegeln(W),
       alter_hinweise: alterHinweise(W, k.alter),
       ernaehrung: ernaehrung(W, k, scr, gruppen),
@@ -834,13 +1125,13 @@
     var gross = ['brust', 'lat', 'oberer_ruecken', 'quadrizeps', 'beinbeuger', 'gesaess'];
     gross.forEach(function (m) {
       var ist = plan.volumen.ist[m] || 0;
-      if (ist < ziel * 0.5) p.push({ ok: false, text: muskelLesbar(m) + ': nur ' + fmt(ist) + ' Sätze/Woche (Ziel ca. ' + ziel + ')' });
+      if (ist < ziel * 0.5 && !plan.wiedereinstieg) p.push({ ok: false, text: muskelLesbar(m) + ': nur ' + fmt(ist) + ' Sätze/Woche (Ziel ca. ' + ziel + ')' });
       else if (ist > plan.volumen.bereich[1] * 1.5) p.push({ ok: false, text: muskelLesbar(m) + ': ' + fmt(ist) + ' Sätze/Woche, deutlich über dem Bereich für das Level (' + plan.volumen.bereich.join('–') + ')' });
     });
     var leer = plan.tage.filter(function (t) { return t.uebungen.length < 3; });
     if (leer.length) p.push({ ok: false, text: leer.length + ' Trainingstag(e) mit weniger als 3 Übungen' });
     if (!plan.progression) p.push({ ok: false, text: 'Keine Progressionsregel für dieses Level in der Wissensbasis' });
-    if (!p.length) p.push({ ok: true, text: 'Volumen, Übungszahl und Progression im Rahmen' });
+    if (!p.length) p.push({ ok: true, text: plan.wiedereinstieg ? 'Wiedereinstieg: Muskeln an der betroffenen Stelle fehlen mit Absicht' : 'Volumen, Übungszahl und Progression im Rahmen' });
     return p;
   }
 
@@ -848,6 +1139,10 @@
   function aufwaermenFuer(W, k, typ) {
     var aufw = W.aufwaermen_cardio && W.aufwaermen_cardio.aufwaermen, routinen = arr(aufw && aufw.routinen);
     var art = /unter|bein/.test(typ) ? 'unterkoerper' : /ober|push|pull/.test(typ) ? 'oberkoerper' : 'ganzkoerper';
+    if (istBausteinTyp(typ)) {
+      var arten = {}; gruppenAusTyp(W, typ).forEach(function (g) { if (g.art !== 'rumpf') arten[g.art] = true; });
+      art = arten.ober && arten.unter ? 'ganzkoerper' : arten.unter ? 'unterkoerper' : arten.ober ? 'oberkoerper' : 'ganzkoerper';
+    }
     var orte = k.ort === 'beides' ? ['zuhause', 'gym'] : [k.ort];
     return routinen.filter(function (r) {
       return arr(r.fuer).indexOf(art) >= 0 && (!r.ort || orte.some(function (o) { return arr(r.ort).indexOf(o) >= 0; }));
@@ -972,7 +1267,7 @@
         return pu;
       }).filter(Boolean);
       tage.push({ nr: tage.length + 1, typ: tv.leicht ? LEICHTER_TAG : 'eigen', name: name, leicht: !!tv.leicht, hinweis: tv.hinweis || '',
-        aufwaermen: aufwaermenFuer(W, ctx.kunde, name.toLowerCase()), uebungen: uebungen });
+        aufwaermen: ctx.grenzen.we && ctx.grenzen.we.stufe.id !== 'aufbau' ? null : aufwaermenFuer(W, ctx.kunde, name.toLowerCase()), uebungen: uebungen });
     });
     if (+kundeIn.tage && +kundeIn.tage !== tage.length) warn.push('Die Vorlage hat ' + tage.length + ' Trainingstage, im Formular stehen ' + kundeIn.tage + '.');
     plan.tage = tage;
