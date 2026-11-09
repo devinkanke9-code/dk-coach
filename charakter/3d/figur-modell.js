@@ -94,6 +94,49 @@ export const BAU = {
   tiefe: { Root: 1.0, Hips: 1.0, Spine: 1.02, Spine1: 1.08, Spine2: 1.12, LeftShoulder: 1.08, RightShoulder: 1.08, Neck: 1.04 },
   arm: 1.12, bein: 1.1, brust: 2, kopf: 1.03, hals: 0.018
 };
+// Schulter der Haut (nur Optik, 9.11.2026; Devin: „Bei Squats sieht es aus, als ob die Schultern verrenkt sind … ein bisschen breiter lassen … generell bei jeder Übung“). Zeigt der Arm nach vorn oder hinten, trägt er seitlich
+// nicht mehr auf, und die Schulter wirkt schmal (Silhouette von hinten auf Schulterhöhe bis 14 % unter dem Stand, gemessen mit messe-schultern.mjs). Darum sitzt der Armknochen der HAUT etwas weiter außen im Rumpfrahmen und zeigt
+// weiter zum echten Ellbogen: der Deltamuskel ist breiter, der Arm läuft zum Ellbogen hin in die alte Linie zurück. Gelenke, Hände, Griffe und Geräte bleiben, wo die Vorlage sie hinlegt (Fingerabdrücke: 0 von 318 Übungen anders).
+// breit = immer, in m (bei anderer MASS.schulterBreite im gleichen Verhältnis); vorn = zusätzlich, wenn der Oberarm nach vorn oder hinten zeigt (Goblet, Frontkniebeuge, Rudern, Seitlage); dazu der Ausgleich, wenn das
+// Schlüsselbein den Arm hebt (das Gelenk rückt dabei nach innen; innen = 1 gleicht das ganz aus, 0 gar nicht). klav = Anteil, um den das Schlüsselbein (Trapez) mitgeht. Alles auf 0 = keine Verbreiterung (die Drehknochen unten bleiben)
+export const SCHULTER_HAUT = { breit: 0.015, vorn: 0.030, klav: 0.6, innen: 1, dreh: 1, hoch: 0.65 };   // dreh = Anteil der Drehung, den die Drehknochen verteilen (1 ganz, 0 gar nicht = Haut wie vorher); hoch = wie viel davon bei Armen über Kopf wegfällt (Band über der Schulter, Schutzhülle)
+// Drehknochen (9.11.2026, Runde 2; Devin: „Schultern verrenkt, wenn sie so eingedreht sind“; Frontkniebeuge: Oberarm bis 136° gedreht, Untergriff über Kopf bis 171°). Bisher drehte der Deltamuskel mit der vollen Drehung des Oberarms
+// gegen den Rumpf, und die Haut dazwischen faltete sich wie ein Bonbonpapier (Rückenbreite bis 20 cm unter dem Stand). Jetzt hat jeder Oberarm und jeder Unterarm DREH_N Stufen: die erste dreht gar nicht (reiner Schwenk des Arms, am Schultergelenk
+// bzw. Ellbogen), jede weitere ein Stück mehr, die letzte (der Knochen selbst) ganz. Die Hautgewichte gehen entlang des Arms von einer Stufe zur nächsten (statt in einem Sprung); je Stufe ändert sich die Drehung nur um ein Drittel, darum fällt die Haut
+// nicht mehr zusammen. Nur im Speicher beim Laden (Knochenliste und Hautgewichte), keine neue koerper.bin; stelle() legt die Stufen je Bild
+export const DREH_N = 3;
+export const DREH_STRECKE = { Arm: [0, 0.12], ForeArm: null };   // Strecke ab Schultergelenk bzw. Ellbogen (m), auf der die Drehung von keiner auf die ganze wächst; null = diese Kette bleibt wie vorher (der Unterarm: seine Haut reicht an Polster und Maschinen, die Schutzhülle schlug dort bei sechs Übungen an)
+export const drehName = (S, kette, j) => S + kette + 'D' + j;
+function drehKnochen(k) {
+  if (k.dreh) return;
+  k.dreh = true;
+  const haut = k.meshes.find((m) => m.mat === 'haut');
+  if (!haut) return;
+  const P = (n) => k.knochen[k.index[n]].p, ketten = [];
+  for (const S of ['Left', 'Right']) for (const [kette, naechster] of [['Arm', 'ForeArm'], ['ForeArm', 'Hand']]) {
+    if (!DREH_STRECKE[kette]) continue;
+    const basis = k.index[S + kette], J = P(S + kette), u = P(S + naechster).clone().sub(J).normalize(), stufen = [];
+    for (let j = 0; j < DREH_N; j++) { const n = drehName(S, kette, j); k.index[n] = k.knochen.length; k.knochen.push({ name: n, eltern: k.knochen[basis].eltern, p: J.clone() }); stufen.push(k.index[n]); }
+    stufen.push(basis);   // die letzte Stufe ist der Knochen selbst: volle Drehung
+    ketten.push({ basis, J, u, stufen, von: DREH_STRECKE[kette][0], bis: DREH_STRECKE[kette][1] });
+  }
+  const GI = haut.gel.array, GW = haut.gew.array, pos = haut.pos, n = pos.count;
+  for (let i = 0; i < n; i++) {
+    let infl = null;
+    for (const ke of ketten) for (let c = 0; c < 4; c++) if (GW[i * 4 + c] && GI[i * 4 + c] === ke.basis) {
+      // das Gewicht dieses Knochens auf die zwei Stufen verteilen, zwischen denen der Punkt entlang des Arms liegt
+      if (!infl) { infl = []; for (let q = 0; q < 4; q++) if (GW[i * 4 + q]) infl.push([GI[i * 4 + q], GW[i * 4 + q] / 255]); }
+      const e = infl.find((x) => x[0] === ke.basis), d = (pos.getX(i) - ke.J.x) * ke.u.x + (pos.getY(i) - ke.J.y) * ke.u.y + (pos.getZ(i) - ke.J.z) * ke.u.z;
+      const s = glatt(ke.von, ke.bis, d) * DREH_N, lo = Math.min(DREH_N - 1, Math.floor(s)), f = s - lo, w = e[1];
+      e[0] = ke.stufen[lo]; e[1] = w * (1 - f); if (f > 0.002) infl.push([ke.stufen[lo + 1], w * f]);
+      break;
+    }
+    if (!infl) continue;
+    const best = infl.filter((x) => x[1] > 0.003).sort((a, b) => b[1] - a[1]).slice(0, 4), summe = best.reduce((a, x) => a + x[1], 0) || 1;
+    const q8 = best.map((x) => Math.round(x[1] / summe * 255)); q8[0] += 255 - q8.reduce((a, x) => a + x, 0);
+    for (let c = 0; c < 4; c++) { GI[i * 4 + c] = c < best.length ? best[c][0] : 0; GW[i * 4 + c] = c < best.length ? q8[c] : 0; }
+  }
+}
 // Brustmuskel je Seite in Ruhelage (Mitte, Ausdehnung in m): dort zieht er sich zusammen bzw. dehnt sich
 const BRUST = { x: 0.085, y: 1.385, z: 0.06, bx: 0.075, by: 0.07 };
 // Muskelbäuche in der Ruhelage (T-Pose, linke Seite, Meter, am Modell gemessen 2.11., rechts gespiegelt): Mitte c, Ausdehnung s, Wölbung a in m bei voller Spannung.
@@ -300,6 +343,36 @@ function hutRadius(y) {
     if (y <= h1) return r0 + (r1 - r0) * Math.max(0, (y - h0) / (h1 - h0));
   }
   return 0;
+}
+// Hut weicht aus oder wird abgelegt (G9-H, 9.11.: „Saunahut überall dabei“). Wo er auf dem Kopf nicht geht (Liegen, Kopf unten, Polster und Stangen am Kopf), rechnet
+// Ansicht.zeige vorab EINE feste Lage für die ganze Übung (Devin, 4.11.: „Hut sitzt fest“, kein Wackeln, kein Springen): erst auf dem Kopf mit kleiner Korrektur
+// (hutKorr: höchstens 3 cm anheben, 25° kippen), sonst neben dem Kopf auf den Boden gelegt (hutFest: feste Lage, geht nicht mit dem Kopf mit)
+const HUT_KOPFUNTEN_BLEIBT = false;   // false: hängt der Kopf nach unten (Handstand), fiele der Hut ab und liegt am Boden; true: er bliebe stehen, wo er sitzt (klebt)
+const HUT_ARME = [['Arm', 'ForeArm', 0.045], ['ForeArm', 'Hand', 0.04], ['Hand', 'HandMiddle4', 0.025]];   // Kapseln wie in hutFrei
+const HUT_DREH = new THREE.Vector3(0, 1.70, -0.012);   // Drehpunkt beim Kippen: Kopfmitte in Ruhelage
+const HUT_KORREKTUREN = (() => {
+  const l = [];
+  for (const h of [0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03]) for (let n = -25; n <= 25; n += 5) for (let r = -25; r <= 25; r += 5) {
+    const k = Math.hypot(n, r); if (k <= 25.001) l.push({ hoch: h, nick: n, roll: r, kosten: h / 0.03 + k / 25 });   // 3 cm anheben kostet so viel wie 25° kippen
+  }
+  return l.sort((a, b) => a.kosten - b.kosten);   // billigste zuerst: die erste passende ist die kleinste Änderung
+})();
+function hutKorrMatrix(k) {
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(k.nick * RAD, 0, k.roll * RAD)), p2 = HUT_DREH.clone().applyQuaternion(q);
+  return new THREE.Matrix4().compose(new THREE.Vector3(0, k.hoch, 0).add(HUT_DREH).sub(p2), q, new THREE.Vector3(1, 1, 1));
+}
+// Abstand² eines Punkts zur Strecke a–b
+function segAbstand2(p, a, b) {
+  const x = b.x - a.x, y = b.y - a.y, z = b.z - a.z, l2 = x * x + y * y + z * z;
+  let t = l2 > 1e-12 ? ((p.x - a.x) * x + (p.y - a.y) * y + (p.z - a.z) * z) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const dx = a.x + x * t - p.x, dy = a.y + y * t - p.y, dz = a.z + z * t - p.z;
+  return dx * dx + dy * dy + dz * dz;
+}
+// Abstand² eines Punkts zu einem gedrehten Quader { c, ax[3], hx[3] }
+function kastenAbstand2(p, k) {
+  let s = 0;
+  for (let i = 0; i < 3; i++) { const t = Math.abs((p.x - k.c.x) * k.ax[i].x + (p.y - k.c.y) * k.ax[i].y + (p.z - k.c.z) * k.ax[i].z) - k.hx[i]; if (t > 0) s += t * t; }
+  return s;
 }
 function saunahut() {
   const aussen = HUT_AUSSEN;
@@ -695,7 +768,8 @@ function kleidungDaten(k) {
   // Hülle: alle Dreiecke mit einer Ecke im Bereich; lage(v, normale) = lockerer Punkt, eng = Abstand der engen Hülle. Punkte an den
   // Textur-Nähten der Haut (gleicher Ort, doppelt gespeichert) werden verschweißt, sonst reißt der Stoff dort auf und zeigt eine Linie
   const ort = (v) => Math.round(P[v * 3] * 1e4) + ',' + Math.round(P[v * 3 + 1] * 1e4) + ',' + Math.round(P[v * 3 + 2] * 1e4);
-  const armKnochen = new Set(['LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm'].map((b) => k.index[b]));
+  const armNamen = []; for (const S of ['Left', 'Right']) for (const kette of ['Arm', 'ForeArm']) { armNamen.push(S + kette); for (let j = 0; j < DREH_N; j++) armNamen.push(drehName(S, kette, j)); }   // mit den Drehknochen (Gewicht des Arms verteilt sich auf sie)
+  const armKnochen = new Set(armNamen.map((b) => k.index[b]));
   const baue = (name, mat, imBereich, lage, eng, randAbstand, falte, engMisch) => {
     const neu = new Map(), orte = new Map(), alt = [], tri = [];
     for (let t = 0; t < I.length; t += 3) {
@@ -1214,6 +1288,7 @@ export class FigurModell {
   constructor(k = geladen) {
     if (!k) throw new Error('Körper noch nicht geladen (ladeKoerper())');
     this.k = k;
+    drehKnochen(k);   // Drehknochen für Oberarm und Unterarm: Knochenliste und Hautgewichte, einmal je geladenem Körper (vor allem, was die Haut ausliest)
     this.gruppe = new THREE.Group();
     // Teile wie in class Figur (Ansicht fragt teile[name], um Seitennamen _l/_r zu bilden)
     this.teile = {}; for (const t of k.teile) this.teile[t] = true;
@@ -1368,6 +1443,150 @@ export class FigurModell {
     });
     return frei;
   }
+  // Schnappschuss einer Pose für die Hut-Suche (Matrizen von Figur und Geräten müssen aktuell sein): Kopfknochen A (Ruhe → Welt), T = was Charakter-Mütze und Co. dem Hut
+  // noch dazugeben (sonst Einheit), Arme als Kapseln (wie hutFrei), Körper als Kapseln aus den Gelenken g, Geräteteile als gedrehte Quader. So rechnet die Suche nicht jede Pose neu
+  hutSchnapp(geraete, g) {
+    const I = this.k.index, P = this.ruhe.P, gw = this.gruppe.matrixWorld, A = gw.clone().multiply(this.A[I.Head]);
+    const T = A.clone().invert().multiply(gw.clone().multiply(this.hut.matrix));
+    const kopf = new THREE.Vector3(0, 1.665, -0.02).applyMatrix4(A), arme = [];
+    for (const S of ['Left', 'Right']) for (const [von, bis, r] of HUT_ARME) arme.push({ a: P(S + von).clone().applyMatrix4(this.A[I[S + von]]).applyMatrix4(gw), b: P(S + bis).clone().applyMatrix4(this.A[I[S + bis]]).applyMatrix4(gw), r });
+    const K = (a, b, r) => ({ a: a.clone(), b: b.clone(), r });
+    const koerper = [K(kopf, kopf, 0.125), K(g.becken, g.brust, 0.16), K(g.schulter.l, g.schulter.r, 0.07), K(g.brust, kopf, 0.07)];
+    for (const s of ['l', 'r']) koerper.push(K(g.schulter[s], g.ellbogen[s], 0.055), K(g.ellbogen[s], g.handgelenk[s], 0.05), K(g.handgelenk[s], g.hand[s], 0.075),
+      K(g.huefte[s], g.knie[s], 0.105), K(g.knie[s], g.knoechel[s], 0.07), K(g.ferse[s], g.zehe[s], 0.07));
+    const kaesten = [], gr = V();
+    geraete.traverse((m) => {
+      if (!m.isMesh || !m.visible || !m.geometry) return;
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      const b = m.geometry.boundingBox; if (b.isEmpty()) return;
+      const me = m.matrixWorld.elements; b.getSize(gr);
+      const ax = [0, 1, 2].map((i) => V(me[4 * i], me[4 * i + 1], me[4 * i + 2])), hx = [0, 1, 2].map((i) => gr.getComponent(i) / 2 * ax[i].length());
+      ax.forEach((x) => x.normalize());
+      const c = b.getCenter(V()).applyMatrix4(m.matrixWorld);
+      const k = { c, ax, hx }; if (kastenAbstand2(kopf, k) > 1.5 * 1.5) return;   // weiter weg kommt der Hut nie hin (höchstens 80 cm neben und 75 cm unter dem Kopf)
+      kaesten.push(k);
+    });
+    return { A, T, kopf, arme, koerper, kaesten };
+  }
+  // Wie hutFrei, aber für einen Schnappschuss s und eine beliebige Hut-Matrix W (Ruhe → Welt). o.boden: tiefster erlaubter Hutpunkt (wie bisher 0,015), o.kopfUnten === false: der Hut darf
+  // nach unten zeigen
+  hutFreiIn(s, W, o = {}) {
+    const e = W.elements, pts = this.hutPunkte, boden = o.boden != null ? o.boden : 0.015;
+    if (o.kopfUnten !== false && e[5] / Math.hypot(e[4], e[5], e[6]) < -0.5) return false;
+    for (let i = 0; i < pts.length; i++) { const q = pts[i]; if (e[1] * q.x + e[5] * q.y + e[9] * q.z + e[13] < boden) return false; }
+    const lage = HUT_LAGE(), zuHut = W.clone().multiply(lage).invert(), mitte = V(0, 0.1, 0).applyMatrix4(lage).applyMatrix4(W);
+    const drin = (q, r = 0) => { const y = q.y; if (y < -r || y > 0.216 + r) return false; return Math.hypot(q.x, q.z / 1.13) < hutRadius(Math.max(0, y)) + r - 0.005; };
+    const p = V(), a = V(), b = V();
+    for (const m of s.arme) { a.copy(m.a).applyMatrix4(zuHut); b.copy(m.b).applyMatrix4(zuHut); for (let i = 0; i <= 6; i++) if (drin(p.copy(a).lerp(b, i / 6), m.r)) return false; }
+    let hw = null;
+    const d = V();
+    for (const k of s.kaesten) {
+      if (kastenAbstand2(mitte, k) > 0.19 * 0.19) continue;   // außerhalb der Hüllkugel des Huts (18 cm + 8 mm Spiel): kann nichts berühren
+      if (!hw) { hw = this._hw || (this._hw = pts.map(() => V())); for (let i = 0; i < pts.length; i++) hw[i].copy(pts[i]).applyMatrix4(W); }
+      if (hw.some((q) => { d.copy(q).sub(k.c); for (let i = 0; i < 3; i++) if (Math.abs(d.dot(k.ax[i])) > k.hx[i] - 0.008) return false; return true; })) return false;
+      const n = k.hx.map((x) => Math.min(12, Math.max(1, Math.ceil(2 * x / 0.02))));
+      for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) for (let l = 0; l < n[2]; l++) {
+        p.copy(k.c).addScaledVector(k.ax[0], k.hx[0] * ((2 * i + 1) / n[0] - 1)).addScaledVector(k.ax[1], k.hx[1] * ((2 * j + 1) / n[1] - 1)).addScaledVector(k.ax[2], k.hx[2] * ((2 * l + 1) / n[2] - 1));
+        if (drin(p.applyMatrix4(zuHut))) return false;
+      }
+    }
+    return true;
+  }
+  // Kleinste Korrektur auf dem Kopf (HUT_KORREKTUREN, billigste zuerst), bei der der Hut in allen Schnappschüssen frei ist → { K, k } oder null
+  hutKorrekturSuchen(snaps, zusatz = [0]) {
+    // zusatz: zusätzliche Anhebungen (m), die alle passen müssen: der Hut einer Charakter-Mütze sitzt bis 3,5 cm höher (hutHoch), die gerechnete Tabelle soll für jeden Charakter gelten
+    const W = new THREE.Matrix4(), Tv = zusatz.map((d) => new THREE.Matrix4().makeTranslation(0, d, 0)); let erst = 0;   // erst: Schnappschuss, an dem die letzte Korrektur scheiterte; kommt zuerst dran, so scheitern die Fehlversuche billig
+    for (const k of HUT_KORREKTUREN) {
+      const K = hutKorrMatrix(k); let ok = true;
+      for (let n = 0; n < snaps.length && ok; n++) {
+        const i = (erst + n) % snaps.length, s = snaps[i];
+        for (const tv of Tv) {
+          W.copy(s.A).multiply(K).multiply(s.T).multiply(tv);
+          if (!this.hutFreiIn(s, W, { kopfUnten: !HUT_KOPFUNTEN_BLEIBT })) { ok = false; erst = i; break; }
+        }
+      }
+      if (ok) return { K: k.hoch || k.nick || k.roll ? K : null, k };
+    }
+    return null;
+  }
+  // Tiefster Punkt des Huts in Hut-Koordinaten (Achse y, Kante bei 0): damit liegt er mit der Kante genau auf der Unterlage
+  hutTiefe() {
+    if (this._hutTiefe != null) return this._hutTiefe;
+    const l = this.hut.geometry.attributes.lokal, hi = this.hut.geometry.attributes.innen; let m = 9;
+    for (let i = 0; i < l.count; i++) if (!hi.getX(i)) m = Math.min(m, l.getY(i));
+    return (this._hutTiefe = m);
+  }
+  // Hut mit der Kante flach auf die Unterlage (Höhe y) bei (x, z) stellen, das Logo zur Kamera (28° = Richtung des Logos, HUT_LOGO.winkel) → { M: hutFest in Gruppen-Koordinaten, W: Welt }
+  hutAblegeMatrix(x, y, z, kamera) {
+    const W = new THREE.Matrix4().makeRotationY(Math.atan2(kamera.x, kamera.z) - 28 * RAD).setPosition(x, y - this.hutTiefe(), z).multiply(HUT_LAGE().invert());
+    return { M: this.gruppe.matrixWorld.clone().invert().multiply(W), W };
+  }
+  hutKorrBauen(hoch, nick, roll) { return hutKorrMatrix({ hoch, nick, roll }); }
+  // Prüfsumme über Kopf, Körper und Geräteteile der Schnappschüsse (auf 2 mm gerundet, FNV-1a): ändert sich die Übung oder die Maschine, passt eine gerechnete Hut-Lage nicht mehr
+  hutPruefsumme(snaps) {
+    let h = 2166136261; const mix = (v) => { h = Math.imul(h ^ Math.round(v * 500), 16777619); };
+    for (const s of snaps) {
+      mix(s.kopf.x); mix(s.kopf.y); mix(s.kopf.z);
+      for (const q of s.koerper) { mix(q.a.x); mix(q.a.y); mix(q.a.z); mix(q.b.x); mix(q.b.y); mix(q.b.z); }
+      for (const k of s.kaesten) { mix(k.c.x); mix(k.c.y); mix(k.c.z); mix(k.hx[0]); mix(k.hx[1]); mix(k.hx[2]); }
+    }
+    return h >>> 0;
+  }
+  // Hut neben dem Kopf ablegen: Kopf nie höher als 75 cm (liegen, Bank, Kopf unten). Sucht rund um die Kopfmitte (nahe zuerst, auf der Seite der Kamera, nicht hinter dem Körper) eine Stelle am Boden, an der
+  // in keinem Schnappschuss (Übung und Ablauf davor, snaps[nUebung…]) Körper oder Gerät (Hüllkugel 17 cm + 1 cm) berührt wird. Der Hut steht mit der Kante flach auf (Matte: 5 mm höher),
+  // das Logo zur Kamera. → { M: hutFest (Gruppen-Koordinaten), W (Welt), x, z, y } oder null
+  hutAblegenSuchen(snaps, nUebung, kamera) {
+    const c = V(); let hoch = 0;
+    for (let i = 0; i < nUebung; i++) { hoch = Math.max(hoch, snaps[i].kopf.y); c.x += snaps[i].kopf.x / nUebung; c.z += snaps[i].kopf.z / nUebung; }
+    if (hoch > 0.75) return null;
+    const rH = V(kamera.x, 0, kamera.z).normalize(), kand = [], S = V();
+    for (const rho of [0.30, 0.36, 0.44, 0.54, 0.66, 0.80]) for (let w = 0; w < 24; w++) {
+      const a = w * Math.PI / 12, dx = Math.sin(a), dz = Math.cos(a);
+      kand.push({ x: c.x + rho * dx, z: c.z + rho * dz, kosten: rho + 0.12 * (1 - (dx * rH.x + dz * rH.z)) / 2 });
+    }
+    kand.sort((p, q) => p.kosten - q.kosten);
+    const oben = (k) => k.c.y + Math.abs(k.ax[0].y) * k.hx[0] + Math.abs(k.ax[1].y) * k.hx[1] + Math.abs(k.ax[2].y) * k.hx[2];
+    // Höhe der Unterlage: Boden, auf einer Matte 5 mm höher (flache Quader bis 1,2 cm)
+    const unterlage = (x, z) => {
+      let y = 0;
+      for (const k of snaps[0].kaesten) {
+        const t = oben(k); if (t > 0.012 || Math.abs(k.ax[1].y) < 0.99) continue;
+        const dx = x - k.c.x, dz = z - k.c.z;
+        if (Math.abs(dx * k.ax[0].x + dz * k.ax[0].z) <= k.hx[0] && Math.abs(dx * k.ax[2].x + dz * k.ax[2].z) <= k.hx[2]) y = Math.max(y, t);
+      }
+      return y;
+    };
+    let erst = 0, beste = null;
+    const cam = V(kamera.x, kamera.y, kamera.z).normalize(), P = V();
+    for (const k of kand) {
+      if (beste && k.kosten >= beste.kosten) break;   // alle weiteren sind teurer
+      const y = unterlage(k.x, k.z); S.set(k.x, y + 0.11, k.z);
+      let frei = true;
+      for (let n = 0; n < snaps.length && frei; n++) {
+        const i = (erst + n) % snaps.length, s = snaps[i];
+        for (const q of s.koerper) if (segAbstand2(S, q.a, q.b) < (q.r + 0.182) ** 2) { frei = false; break; }
+        if (frei) for (const b of s.kaesten) if (oben(b) > 0.012 && kastenAbstand2(S, b) < 0.178 * 0.178) { frei = false; break; }
+        if (!frei) erst = i;
+      }
+      if (!frei) continue;
+      const h = this.hutAblegeMatrix(k.x, y, k.z, kamera);
+      if (!snaps.every((s) => this.hutFreiIn(s, h.W, { boden: y - 0.005, kopfUnten: false }))) continue;
+      // Verdeckt der Körper oder ein Gerät den Hut für die Kamera (Strahl vom Hut zur Kamera, in den Zeitpunkten der Übung)? Dann kostet es: 0,8 m weiter weg je verdecktem Anteil
+      let verdeckt = 0;
+      for (let i = 0; i < nUebung; i++) {
+        const s = snaps[i]; let v = false;
+        for (let d = 0.25; d < 1.6 && !v; d += 0.1) {
+          P.copy(S).addScaledVector(cam, d);
+          for (const q of s.koerper) if (segAbstand2(P, q.a, q.b) < (q.r + 0.07) ** 2) { v = true; break; }   // 7 cm Zuschlag: das echte Netz ist dicker als die Kapseln
+          if (!v) for (const b of s.kaesten) if (oben(b) > 0.05 && kastenAbstand2(P, b) < 0.03 * 0.03) { v = true; break; }
+        }
+        if (v) verdeckt++;
+      }
+      const kosten = k.kosten + 0.8 * verdeckt / nUebung;
+      if (!beste || kosten < beste.kosten) beste = { M: h.M, W: h.W, x: k.x, z: k.z, y, kosten };
+    }
+    return beste;
+  }
   markiere(muskeln) {
     this.muskeln = muskeln || []; this.hervor = null;
     const arbeit = this.arbeit = {};
@@ -1452,9 +1671,26 @@ export class FigurModell {
   glanz(f) { const m = this.koerperMesh.material; m.roughness = 0.5 - 0.12 * f; m.clearcoat = 0.12 + 0.3 * f; this.u.uSchweiss.value = f; }
   glut(staerke) { this.u.uGlut.value = this.hervor ? 0.15 : 0.25 + 0.9 * staerke; }
 
+  // Schulter der Haut (siehe SCHULTER_HAUT): je Seite der Punkt, an dem der Armknochen der Haut sitzt (punkt) und um wie viel er gegen das Gelenk nach außen liegt (off, Vektor)
+  schulterHaut(g) {
+    const R = g.R, sk = MASS.schulterBreite / 0.205, out = { punkt: {}, off: {} };
+    // Liegt der Rumpf (Bank, Matte, Hip Thrust, Band über dem Rücken), liegt die Schulter auf einem Gerät: Polster und Band sind für die alte Hautbreite gebaut (Schutzhülle in pruefe-3d.js: Polster höchstens 3,5 cm in der Haut,
+    // beim Hip Thrust waren es schon 3,4 cm), dort bleibt die Haut wie vorher. Liegt der Rumpf mehr als 57° aus der Senkrechten, ist es null, bis 32° voll
+    const lage = glatt(0.55, 0.85, R.oben.y);
+    for (const [s, sg] of [['l', 1], ['r', -1]]) {
+      const a = richt(g.schulter[s], g.ellbogen[s]), vorn = glatt(0.1, 0.5, Math.abs(a.dot(R.vor)));   // Oberarm zeigt nach vorn oder hinten (nicht zur Seite): dann trägt der Arm nicht mehr seitlich auf, und die Schulter wirkt schmal
+      const innen = Math.max(0, (g.schulterBasis || g.schulter)[s].clone().sub(g.schulter[s]).dot(R.links) * sg);   // so weit rückte das Gelenk durch das Heben des Schlüsselbeins nach innen
+      const d = ((SCHULTER_HAUT.breit + SCHULTER_HAUT.vorn * vorn) * sk + innen * SCHULTER_HAUT.innen) * lage;
+      out.off[s] = R.links.clone().multiplyScalar(sg * d);
+      out.punkt[s] = g.schulter[s].clone().add(out.off[s]);
+    }
+    out.lage = lage;   // 0 liegend … 1 aufrecht (auch für die Drehknochen)
+    return out;
+  }
   // Knochen aus den Gelenkpunkten (g = gelenke(pose)) legen
   stelle(g) {
     const r = this.ruhe, P = r.P, I = this.k.index, A = this.A, R = g.R, masse = this.masse || 0, armB = BAU.arm * (1 + 0.03 * masse), beinB = BAU.bein * (1 + 0.03 * masse), rumpfB = 1 + 0.02 * masse;
+    const sh = this.schulterHaut(g);
     this.u.uMasse.value = masse;
     const X = V(1, 0, 0), Y = V(0, 1, 0), Z = V(0, 0, 1);
     const gesetzt = new Set();
@@ -1478,6 +1714,8 @@ export class FigurModell {
       // Schlüsselbein dreht mit dem gehobenen Arm (gelenke: schulterDreh)
       const sd = /Shoulder$/.test(n) && g.schulterDreh && g.schulterDreh[n === 'LeftShoulder' ? 'l' : 'r'];
       if (sd) rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(sd.punkt.x, sd.punkt.y, sd.punkt.z).multiply(_T.makeRotationFromQuaternion(sd.q)).multiply(new THREE.Matrix4().makeTranslation(-sd.punkt.x, -sd.punkt.y, -sd.punkt.z)));
+      // Schulter der Haut: das Schlüsselbein (Trapez, Schulterdach) geht ein Stück mit nach außen
+      if (/Shoulder$/.test(n)) { const o = sh.off[n === 'LeftShoulder' ? 'l' : 'r'], k = SCHULTER_HAUT.klav; rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(o.x * k, o.y * k, o.z * k)); }
       setze(n, rumpf[n]);
     }
     // Kopf: sitzt auf dem Hals, dreht mit kopfQ
@@ -1487,11 +1725,12 @@ export class FigurModell {
       const S = s === 'l' ? 'Left' : 'Right', sg = s === 'l' ? 1 : -1, ru = r[S];
       // Oberarm: Ellbogenbeuge in Ruhe vorn (+Z). Jetzt zeigt sie weg von der Ellbogenspitze, und zwar aus der Knickachse der IK (ellbogenAchse): am fast gestreckten Arm ist der
       // Abstand des Ellbogens zur Linie Schulter–Handgelenk winzig und seine Richtung zufällig, daraus kippte der Oberarm bis 170° in einem Bild (Devin, 2.11.: „Wegklicken … Schultern“)
-      const dO = richt(g.schulter[s], g.ellbogen[s]);
+      // Der Armknochen der Haut sitzt in sh.punkt (etwas weiter außen als das Gelenk) und zeigt zum echten Ellbogen
+      const schultHaut = sh.punkt[s], dO = richt(schultHaut, g.ellbogen[s]);
       const wrist = g.handgelenk[s];
       const beuge = senkrecht(dO.clone().cross(g.ellbogenAchse[s]), dO, R.vor.clone().sub(R.links.clone().multiplyScalar(0.4 * sg)));
-      setze(S + 'Arm', abbilden(new THREE.Matrix4(), P(S + 'Arm'), ru.oberarm, senkrecht(Z, ru.oberarm), g.schulter[s], dO, beuge,
-        g.schulter[s].distanceTo(g.ellbogen[s]) / P(S + 'Arm').distanceTo(P(S + 'ForeArm')), armB, armB));
+      setze(S + 'Arm', abbilden(new THREE.Matrix4(), P(S + 'Arm'), ru.oberarm, senkrecht(Z, ru.oberarm), schultHaut, dO, beuge,
+        schultHaut.distanceTo(g.ellbogen[s]) / P(S + 'Arm').distanceTo(P(S + 'ForeArm')), armB, armB));
       // Unterarm: Handrücken dreht mit der Hand
       const dU = richt(g.ellbogen[s], wrist);
       let ruecken = senkrecht(g.handRuecken[s], dU, beuge);
@@ -1503,6 +1742,19 @@ export class FigurModell {
       }
       setze(S + 'ForeArm', abbilden(new THREE.Matrix4(), P(S + 'ForeArm'), ru.unterarm, senkrecht(ru.ruecken, ru.unterarm), g.ellbogen[s], dU, ruecken,
         g.ellbogen[s].distanceTo(wrist) / P(S + 'ForeArm').distanceTo(P(S + 'Hand')), armB, armB));
+      // Drehknochen (siehe drehKnochen): Oberarm = reiner Schwenk im Rumpfrahmen, dann die Drehung der Rolle in Drittel; Unterarm = neutrale Lage am Ellbogen, dann die Drehung der Hand in Drittel
+      if (I[drehName(S, 'Arm', 0)] !== undefined) {
+        const qR = R.q, aLoc = dO.clone().applyQuaternion(qR.clone().invert()), y0 = senkrecht(Z, ru.oberarm), qSw = new THREE.Quaternion().setFromUnitVectors(ru.oberarm, aLoc);
+        const ySw = y0.clone().applyQuaternion(qSw).applyQuaternion(qR), ang = Math.atan2(ySw.clone().cross(beuge).dot(dO), ySw.dot(beuge));
+        const lenO = schultHaut.distanceTo(g.ellbogen[s]) / P(S + 'Arm').distanceTo(P(S + 'ForeArm')), lenU = g.ellbogen[s].distanceTo(wrist) / P(S + 'ForeArm').distanceTo(P(S + 'Hand'));
+        const neutral = senkrecht(g.ellbogenAchse[s].clone().multiplyScalar(sg), dU, beuge), tau = Math.atan2(neutral.clone().cross(ruecken).dot(dU), neutral.dot(ruecken));
+        // Anteil der Drehung, der verteilt wird: nicht beim Liegen (Polster, Band: Schutzhülle) und weniger bei Armen über Kopf (der Deltamuskel steht dort sonst zu weit nach außen)
+        const lam = SCHULTER_HAUT.dreh * sh.lage * (1 - SCHULTER_HAUT.hoch * glatt(0.3, 0.7, dO.dot(R.oben)));
+        for (let j = 0; j < DREH_N; j++) {
+          setze(drehName(S, 'Arm', j), abbilden(new THREE.Matrix4(), P(S + 'Arm'), ru.oberarm, y0, schultHaut, dO, beuge.clone().applyAxisAngle(dO, -lam * ang * (1 - j / DREH_N)), lenO, armB, armB));
+          setze(drehName(S, 'ForeArm', j), abbilden(new THREE.Matrix4(), P(S + 'ForeArm'), ru.unterarm, senkrecht(ru.ruecken, ru.unterarm), g.ellbogen[s], dU, ruecken.clone().applyAxisAngle(dU, -lam * tau * (1 - j / DREH_N)), lenU, armB, armB));
+        }
+      }
       // Hand: Finger-Richtung (mit Knick) und Handrücken; der Rücken knickt um dieselbe Achse wie in gelenke()
       let fing = g.handFinger[s].clone().normalize();
       const knickAchse = g.handAchse[s].clone().cross(g.handRuecken[s]).normalize();
@@ -1567,7 +1819,10 @@ export class FigurModell {
     }
     // Übrige Knochen (Enden, Wurzel) gehen mit ihrem Elternknochen mit
     this.k.knochen.forEach((kn, i) => { if (!gesetzt.has(i)) A[i].copy(kn.eltern >= 0 ? A[kn.eltern] : rumpf.Hips); });
-    this.hut.matrix.copy(A[I.Head]); if (this.hutLage) this.hut.matrix.multiply(this.hutLage); this.hut.matrixWorldNeedsUpdate = true;
+    // Hut: auf dem Kopf (mit kleiner Korrektur hutKorr und leisem Wackeln hutLage) oder abgelegt (hutFest: feste Lage neben dem Kopf, rechnet Ansicht.zeige vorab)
+    if (this.hutFest) this.hut.matrix.copy(this.hutFest);
+    else { this.hut.matrix.copy(A[I.Head]); if (this.hutKorr) this.hut.matrix.multiply(this.hutKorr); if (this.hutLage) this.hut.matrix.multiply(this.hutLage); }
+    this.hut.matrixWorldNeedsUpdate = true;
     // Brust: Oberarm vor den Körper geführt (Drücken, Butterfly zu) = angespannt, hinter den Körper (Bank unten, Rudern) = gedehnt
     const pec = (s, sg) => {
       const v = richt(g.schulter[s], g.ellbogen[s]), x = v.dot(R.links) * sg, z = v.dot(R.vor);

@@ -102,7 +102,7 @@ export function vorbereiten(figur) {
   figur.gruppe.add(m);
   figur.schalen = m;
   figur.haarAnzeige = () => {
-    const cm = figur.haarCm == null ? 0.6 : figur.haarCm, hut = figur.hut.visible;
+    const cm = figur.haarCm == null ? 0.6 : figur.haarCm, hut = figur.hut.visible && !figur.hutFest;   // abgelegt (liegt am Boden): die Haare sind zu sehen
     kappe.visible = !hut && cm > 0;
     m.visible = !hut && cm >= 0.3 && !figur.haarAus;
   };

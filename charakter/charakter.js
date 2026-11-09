@@ -235,7 +235,7 @@ const _hoch = new THREE.Matrix4();
 function huetchenMit(figur) {
   if (figur.stelleOhneCharakter) return;
   figur.stelleOhneCharakter = figur.stelle;
-  figur.stelle = function (g) { const b = this.stelleOhneCharakter(g); if (this.hutHoch && UNI.uCharakter.value > 0) this.hut.matrix.multiply(_hoch.makeTranslation(0, this.hutHoch * UNI.uCharakter.value, 0)); return b; };
+  figur.stelle = function (g) { const b = this.stelleOhneCharakter(g); if (this.hutHoch && !this.hutFest && UNI.uCharakter.value > 0) this.hut.matrix.multiply(_hoch.makeTranslation(0, this.hutHoch * UNI.uCharakter.value, 0)); return b; };
 }
 // Ohne Foto: die Figur selbst ist der Ausgangspunkt, die Regler formen von dort
 function ohneFoto(figur) { huetchenMit(figur); figur.hutHoch = 0; return (figur.charakterKopf = { passung: { M: GESICHT_REF }, regler: {}, ohneFoto: true }); }

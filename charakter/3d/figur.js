@@ -526,12 +526,15 @@ export function haltErkennen(g, z, festeStangen = [], gruppe = null) {
 }
 // Griff an einem Punkt: dünner Zylinder (Gummi über Chrom), dessen Achse durch die Faust läuft; von mehreren der, dessen Oberfläche der
 // Faustmitte am nächsten ist. Radius, Achse, Abstand der Achse zur Faustmitte und ob er sich biegt (Gummiband)
+const _zylCache = new WeakMap();   // Zylinder je Gruppe, nur einmal zusammengesucht (nicht in userData, siehe unten)
 function griffFinden(wurzeln, p) {
   let best = null, wert = Infinity;
   for (const w of wurzeln) {
     // Zylinder der Gruppe nur einmal zusammensuchen (die Geräte stehen nach dem Aufbau fest; läuft je Bild und Hand)
-    if (!w.userData.zylinder) { w.userData.zylinder = []; w.traverse((m) => { const par = m.isMesh && m.geometry && m.geometry.parameters; if (par && par.radiusTop > 0 && par.height > 0) w.userData.zylinder.push(m); }); }
-    for (const m of w.userData.zylinder) {
+    // Nicht in userData ablegen (09.11.): Object3D.clone() kopiert userData per JSON und scheitert am Kreisverweis Bauteil -> Gruppe (kniebeuge_band warf dadurch bei jedem Öffnen einen Fehler)
+    let zyl = _zylCache.get(w);
+    if (!zyl) { zyl = []; _zylCache.set(w, zyl); w.traverse((m) => { const par = m.isMesh && m.geometry && m.geometry.parameters; if (par && par.radiusTop > 0 && par.height > 0) zyl.push(m); }); }
+    for (const m of zyl) {
     if (!m.visible) continue;
     const par = m.geometry.parameters;
     const sx = _gv.setFromMatrixColumn(m.matrixWorld, 0).length(), sz = _gc.setFromMatrixColumn(m.matrixWorld, 2).length();
@@ -879,6 +882,67 @@ function legeZwischen(o, A, B, laengeSkalieren = true) {
   return l;
 }
 
+// ---- DK Line: Hilfen für die neuen Bauteile (je Maß nur einmal gebaut, wie rundGeo) ----
+const _zylinder = new Map(), _holme = new Map(), _polsterGeos = new Map(), _schilder = new Map();
+export function zylGeo(r, l, seg = 20) {
+  const key = r.toFixed(4) + ',' + l.toFixed(4) + ',' + seg;
+  if (!_zylinder.has(key)) _zylinder.set(key, new THREE.CylinderGeometry(r, r, l, seg));
+  return _zylinder.get(key);
+}
+// Polster mit gerundeten Kanten (2,5 cm) und feiner Goldnaht (6 mm breit, 4,5 cm vom Rand) auf beiden großen Flächen. Außenmaße wie rundGeo(w, h, d).
+// Hier nur die Naht (je Fläche vier Leisten als eine Geometrie, also zwei Geometrien); der Polsterkörper selbst ist rundGeo mit mPolster. Leer, wenn das Polster zu klein für eine Naht ist
+function polsterGeo(w, h, d) {
+  const key = [w, h, d].map((x) => x.toFixed(4)).join(',');
+  if (_polsterGeos.has(key)) return _polsterGeos.get(key);
+  const ext = [w, h, d], t = ext.indexOf(Math.min(w, h, d)), u = (t + 1) % 3, v = (t + 2) % 3, eu = ext[u] / 2 - 0.045, ev = ext[v] / 2 - 0.045, ergebnis = [];
+  if (eu > 0.03 && ev > 0.03) {
+    const leiste = (cu, cv, lu, lv, ct) => {
+      const s = [0, 0, 0], c = [0, 0, 0]; s[u] = lu; s[v] = lv; s[t] = 0.0016; c[u] = cu; c[v] = cv; c[t] = ct;
+      return new THREE.BoxGeometry(s[0], s[1], s[2]).toNonIndexed().translate(c[0], c[1], c[2]);
+    };
+    for (const st of [-1, 1]) {   // je Fläche eine Geometrie: vier Leisten
+      const ct = st * (ext[t] / 2 + 0.0004), teile = [leiste(0, ev, 2 * eu, 0.006, ct), leiste(0, -ev, 2 * eu, 0.006, ct), leiste(eu, 0, 0.006, 2 * ev, ct), leiste(-eu, 0, 0.006, 2 * ev, ct)];
+      let n = 0; for (const g of teile) n += g.attributes.position.count;
+      const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
+      for (const g of teile) { const p = g.attributes.position, q = g.attributes.normal; for (let i = 0; i < p.count; i++, o++) { pos.set([p.getX(i), p.getY(i), p.getZ(i)], o * 3); nor.set([q.getX(i), q.getY(i), q.getZ(i)], o * 3); } }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); ergebnis.push(geo);
+    }
+  }
+  _polsterGeos.set(key, ergebnis); return ergebnis;
+}
+// Typenschild (Textur): schwarz, Goldrahmen, DK-Logo links (Pfade wie logoTextur), Übungsname groß, Muskelgruppe klein. Ohne Browser (Node-Prüfungen) ein schlichtes dunkles Material
+function schildMaterial(titel, untertitel) {
+  const key = titel + '|' + untertitel;
+  if (_schilder.has(key)) return _schilder.get(key);
+  let m;
+  if (typeof document === 'undefined') m = new THREE.MeshStandardMaterial({ color: 0x0d0e10, roughness: 0.5, metalness: 0.3 });
+  else {
+    const c = document.createElement('canvas'); c.width = 720; c.height = 320;
+    const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 720, 320);
+    g.addColorStop(0, '#f1d684'); g.addColorStop(0.5, '#b58c2c'); g.addColorStop(1, '#e8c66e');
+    x.fillStyle = '#0d0e10'; x.fillRect(0, 0, 720, 320);
+    x.strokeStyle = g; x.lineWidth = 14; x.strokeRect(12, 12, 696, 296);
+    x.save(); x.fillStyle = g; x.translate(122, 160); x.scale(0.62, 0.62); x.translate(-299, -256);
+    x.fill(new Path2D('M132 150h76c62 0 104 42 104 106s-42 106-104 106h-76zM178 196v120h28c35 0 58-24 58-60s-23-60-58-60z'));
+    x.fill(new Path2D('M300 150h46v86l62-86h54l-74 98 78 114h-56l-64-96v96h-46z'));
+    x.restore();
+    x.fillStyle = g; x.fillRect(236, 44, 4, 232);
+    x.textAlign = 'left'; x.textBaseline = 'middle';
+    const fam = '"Helvetica Neue", Arial, sans-serif', breite = 430, passt = (txt, s) => { x.font = '800 ' + s + 'px ' + fam; return Math.min(s, Math.floor(s * breite / x.measureText(txt).width)); };
+    const wort = titel.split(' '), ein = passt(titel, 76);
+    x.fillStyle = '#f4f1ea';
+    if (wort.length < 2 || ein >= 44) { x.font = '800 ' + ein + 'px ' + fam; x.fillText(titel, 262, untertitel ? 120 : 160); }
+    else {
+      const mitte = Math.ceil(wort.length / 2), l1 = wort.slice(0, mitte).join(' '), l2 = wort.slice(mitte).join(' '), s = Math.min(passt(l1, 62), passt(l2, 62));
+      x.font = '800 ' + s + 'px ' + fam; x.fillText(l1, 262, 98); x.fillText(l2, 262, 98 + s * 1.05);
+    }
+    if (untertitel) { x.fillStyle = '#d4af37'; x.font = '600 34px ' + fam; x.fillText(untertitel, 262, 250); }
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4, metalness: 0.25, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35 });
+  }
+  _schilder.set(key, m); return m;
+}
+
 export class Geraete {
   constructor() {
     this.gruppe = new THREE.Group();
@@ -895,16 +959,36 @@ export class Geraete {
     this.mGummi = mat(0x0f1012, { roughness: 0.85 });                       // Griffe, Füße, Kappen
     this.mSechskant = mat(0x1c1e22, { roughness: 0.62, metalness: 0.06, flatShading: true });
     this.mAkzent = mat(0xff8a3d, { roughness: 0.4, metalness: 0.3 });       // Farbstreifen (Ansicht setzt die Farbe der Seite)
+    // DK Line (Auftrag D, 9.11.2026): Designsprache der Maschinen. Rahmen Graphit, Hebel silbern, Kappen und Stecker Gold, Polster schwarz mit Goldnaht
+    this.mDK = mat(0x2b2d31, { metalness: 0.5, roughness: 0.55 });          // Rahmen: schwere Rundrohre, matt-metallisch
+    this.mHebel = mat(0xc9ccd1, { metalness: 0.7, roughness: 0.35 });       // Hebelarme, Stahlplatten, Rollen: hell als Kontrast
+    this.mDKGold = mat(0xd4af37, { metalness: 0.8, roughness: 0.3 });       // Lagerkappen, Stecker, Leisten
+    this.mVerkleidung = mat(0x15161a, { metalness: 0.35, roughness: 0.42 });   // Stapelverkleidung
     this.tuerme = [];
   }
-  get materialien() { return [this.mMetall, this.mScheibe, this.mPolster, this.mRahmen, this.mGold, this.mKabel, this.mBand, this.mSeil, this.mGummi, this.mSechskant, this.mAkzent]; }
+  get materialien() { return [this.mMetall, this.mScheibe, this.mPolster, this.mRahmen, this.mGold, this.mKabel, this.mBand, this.mSeil, this.mGummi, this.mSechskant, this.mAkzent, this.mDK, this.mHebel, this.mDKGold, this.mVerkleidung]; }
   // Spiegelungen für alle Geräte-Materialien (Ansicht gibt ihre Umgebung mit)
   spiegeln(env, akzent) {
     for (const m of this.materialien) { m.envMap = env; m.needsUpdate = true; }
     this.mPolster.envMapIntensity = 0.55; this.mScheibe.envMapIntensity = 0.5; this.mSeil.envMapIntensity = 0.5; this.mGummi.envMapIntensity = 0.3; this.mSechskant.envMapIntensity = 0.5;
     if (akzent) this.mAkzent.color.copy(akzent);
   }
-  leeren() { while (this.gruppe.children.length) this.gruppe.remove(this.gruppe.children[0]); this.dyn = []; this.tuerme = []; this.gruppe.userData.zylinder = null; }
+  // Alles freigeben, was die Übung gebaut hat (09.11.): Geometrien (auch zwischengespeicherte: drei lädt sie beim nächsten Gebrauch wieder hoch), eigene Materialien samt Texturen (Typenschilder, aus dem Zwischenspeicher genommen).
+  // Die gemeinsamen Materialien des Geräts (this.materialien) bleiben. Ohne das wuchs der Grafikspeicher mit jedem Übungswechsel.
+  leeren() {
+    const gemeinsam = new Set(this.materialien);
+    this.gruppe.traverse((o) => {
+      if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+      for (const m of (Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []))) {
+        if (gemeinsam.has(m)) continue;
+        if (m.map && m.map.dispose) m.map.dispose();
+        if (m.dispose) m.dispose();
+        if (typeof _schilder !== 'undefined') for (const [k, v] of _schilder) if (v === m) _schilder.delete(k);
+      }
+    });
+    while (this.gruppe.children.length) this.gruppe.remove(this.gruppe.children[0]);
+    this.dyn = []; this.tuerme = []; _zylCache.delete(this.gruppe);
+  }
   teil(geo, m, pos) { const o = new THREE.Mesh(geo, m); o.castShadow = true; o.receiveShadow = true; if (pos) o.position.copy(pos); this.gruppe.add(o); return o; }
   // Quader: Polster weich gerundet (Leder), alles andere mit kleiner Kante (Vierkantrohr, Platten)
   box(w, h, d, pos, m, rotX = 0, rotY = 0) {
@@ -1075,6 +1159,44 @@ export class Geraete {
     return s;
   }
   matte() { const m = this.box(0.7, 0.005, 1.9, V(0, 0.0025, 0), mat(0x24282f, { roughness: 0.9 })); m.castShadow = false; return m; }
+  // ---- DK Line (Auftrag D): neue Bauteile; die alten (vierkant, polster, turm …) bleiben unverändert ----
+  // Schweres Rundrohr zwischen den Mitten der beiden runden Enden A und B; d = Durchmesser (Hauptholme 9 bis 10 cm, Streben 6 bis 7 cm)
+  holm(A, B, d = 0.095, m) {
+    const l = Math.max(A.distanceTo(B), 1e-4), key = d.toFixed(4) + ',' + l.toFixed(4);
+    if (!_holme.has(key)) _holme.set(key, new THREE.CapsuleGeometry(d / 2, l, 2, 14));
+    const o = this.teil(_holme.get(key), m || this.mDK); legeZwischen(o, A, B, false); return o;
+  }
+  // Umlenkrolle im Gehäuse: silbernes Rad, zwei graphitfarbene Wangen, goldene Kappe außen; Achse = Richtung der Radachse, pos = Mitte
+  rolleDK(pos, achse, r = 0.04) {
+    const g = new THREE.Group(); g.position.copy(pos); g.quaternion.setFromUnitVectors(V(0, 1, 0), achse.clone().normalize());
+    const teil = (geo, m, y) => { const o = new THREE.Mesh(geo, m); o.position.y = y; o.castShadow = true; g.add(o); return o; };
+    teil(zylGeo(r, 0.02), this.mHebel, 0); teil(zylGeo(r * 1.4, 0.007), this.mDK, 0.0135); teil(zylGeo(r * 1.4, 0.007), this.mDK, -0.0135); teil(zylGeo(0.013, 0.012, 14), this.mDKGold, 0.0235);
+    this.gruppe.add(g); return g;
+  }
+  // Lagerbock um die Hebelachse (Richtung X) bei P: Gehäuse 9 × 17 × 17 cm, silberne Nabe innen, Goldkappe außen (aussen = +1/-1 in X)
+  lagerbock(P, aussen = 1) {
+    const g = new THREE.Group(); g.position.copy(P);
+    const teil = (geo, m, x, quer) => { const o = new THREE.Mesh(geo, m); o.position.x = x; if (quer) o.rotation.z = Math.PI / 2; o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
+    teil(rundGeo(0.09, 0.17, 0.17, 0.03, 1), this.mDK, 0, false); teil(zylGeo(0.058, 0.03, 24), this.mHebel, -aussen * 0.06, true); teil(zylGeo(0.05, 0.02, 24), this.mDKGold, aussen * 0.055, true);
+    this.gruppe.add(g); return g;
+  }
+  // Polster mit Ziernaht (Außenmaße w × h × d wie ein altes Polster, Lage über pos und q)
+  polsterGeformt(w, h, d, pos, q) {
+    const b = this.teil(rundGeo(w, h, d, 0.025, 2), this.mPolster, pos); if (q) b.quaternion.copy(q);
+    for (const ng of polsterGeo(w, h, d)) b.add(new THREE.Mesh(ng, this.mDKGold));   // Goldnaht als Kinder des Polsters (eine je Fläche)
+    return b;
+  }
+  // Typenschild 18 × 8 cm (Blick nach +Z der Gruppe): Logo, Übungsname groß, Muskelgruppe klein
+  schild(titel, untertitel = '', w = 0.18, h = 0.08) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(rundGeo(w + 0.012, h + 0.012, 0.006, 0.002, 1), this.mVerkleidung));
+    const tafel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), schildMaterial(titel, untertitel)); tafel.position.z = 0.0032; g.add(tafel);
+    this.gruppe.add(g); return g;
+  }
+  // Gummifuß unter einem Bodenholm (Mitte P am Boden)
+  fussDK(P, r = 0.036) { return this.teil(zylGeo(r, 0.0125, 16), this.mGummi, V(P.x, 0.00625, P.z)); }
+  // Seilstück (Stahlseil, 8 mm sichtbar; echte Seile haben 5 bis 6 mm, hier fürs Handy etwas dicker) zwischen A und B; mit legeStab neu setzen
+  seilTeil(A, B) { const o = this.teil(zylGeo(0.004, 1, 6), this.mKabel); legeZwischen(o, A, B, true); o.castShadow = false; return o; }
 }
 // Umgebung für Spiegelungen (Chrom, Lack, Leder): kleiner dunkler Raum mit Deckenlicht, Softbox und zwei farbigen Lichtstreifen
 const _umgebung = new WeakMap();
@@ -1113,6 +1235,22 @@ function hutImAblauf(animation, figur) {
     }
   } catch (e) { /* Ablauf nicht baubar: dann zählt nur die Übung */ }
   return true;
+}
+// Dieselben Schritte wie hutImAblauf, aber als Schnappschüsse für die Hut-Suche (FigurModell.hutSchnapp): Hut ausweichen oder ablegen muss auch dort passen
+function hutAblaufSchnapp(animation, figur) {
+  const aus = [];
+  try {
+    const ger = new Geraete(), z = animation.aufbau ? animation.aufbau(ger) : {};
+    const ein = baueEinleitung(animation, ger, z, (animation.kameraRicht || V(0.62, 0.32, 0.72)).clone().normalize());
+    for (let s = 0; s < ein.dauer; s += 0.2) {
+      const g = gelenke(ein.pose(s));
+      if (ein.gehtMit(s)) { const erg = animation.pose(ein.tStart, z); if (erg.props) erg.props(g, z); }
+      ger.nachBild(); figur.stelle(g);
+      figur.gruppe.updateMatrixWorld(true); ger.gruppe.updateMatrixWorld(true);
+      aus.push(figur.hutSchnapp(ger.gruppe, g));
+    }
+  } catch (e) { /* Ablauf nicht baubar: dann zählt nur die Übung */ }
+  return aus;
 }
 
 /* ---------- Ansicht: Szene, Kamera, Drehen mit dem Finger ---------- */
@@ -1362,9 +1500,56 @@ export class Ansicht {
     const w = this.canvas.clientWidth || 300, h = this.canvas.clientHeight || 300;
     this.renderer.setSize(w, h, false); this.kamera.aspect = w / h; this.kamera.updateProjectionMatrix();
   }
+  // Die fünf Zeitpunkte der Übung als Schnappschüsse (ohne Atmen und Wackeln: dieselbe Lage in Standbild und Live-Ansicht)
+  hutSchnappUebung() {
+    const f = this.figur, snaps = [], leb = this.lebendig; this.lebendig = false;
+    try { for (const t of [0, 0.25, 0.5, 0.75, 1]) { this.bild(t); f.gruppe.updateMatrixWorld(true); this.geraete.gruppe.updateMatrixWorld(true); snaps.push(f.hutSchnapp(this.geraete.gruppe, this.gAktuell)); } } finally { this.lebendig = leb; }
+    return snaps;
+  }
+  // Hut-Lage anwenden: k = auf dem Kopf mit kleiner Korrektur (a m anheben, b Grad nach vorn, c Grad zur Seite) · f = abgelegt bei (a, b, c) = (x, y, z) · w = bleibt weg. Setzt auch die Kamera-Box des Huts
+  hutSetze(plan, snaps, kamera, hutBox) {
+    const f = this.figur; f.hutKorr = f.hutFest = null; hutBox.makeEmpty(); this.hutPlan = plan;
+    if (plan.art === 'k') {
+      const K = plan.a || plan.b || plan.c ? f.hutKorrBauen(plan.a, plan.b, plan.c) : null;
+      f.hutKorr = K; this.hutArt = K ? 'korrigiert' : 'normal';
+      for (const s of snaps) hutBox.union(f.hutBox.clone().applyMatrix4(s.A.clone().multiply(K || new THREE.Matrix4()).multiply(s.T)));
+      return true;
+    }
+    if (plan.art === 'f') { const h = f.hutAblegeMatrix(plan.a, plan.b, plan.c, kamera); f.hutFest = h.M; this.hutArt = 'abgelegt'; hutBox.union(f.hutBox.clone().applyMatrix4(h.W)); return true; }
+    this.hutArt = 'weg'; return false;
+  }
+  // Gerechnete Lage aus HUT_TABELLE e = [Prüfsumme, Art, a, b, c]: gilt nur, solange Pose und Geräte noch dieselben sind; sonst null (dann geht es wie früher weiter und hutAusweichen rechnet neu)
+  hutAusTabelle(animation, hutBox, e) {
+    try {
+      const snaps = this.hutSchnappUebung();
+      if (this.figur.hutPruefsumme(snaps) !== e[0]) return null;
+      this.hutSumme = e[0];
+      return this.hutSetze({ art: e[1], a: e[2], b: e[3], c: e[4] }, snaps, animation.kameraRicht || V(0.62, 0.32, 0.72), hutBox);
+    } catch (err) { return null; }
+  }
+  // Der Hut passt nicht wie gewohnt auf den Kopf und die Tabelle kennt die Übung nicht (mehr): eine feste Lage für die ganze Übung suchen (FigurModell: erst kleine Korrektur auf dem Kopf, sonst
+  // neben dem Kopf ablegen). Das Ergebnis merkt sich die Ansicht (hutMerk). Fehler heißen nur: Hut bleibt weg, wie bisher
+  hutAusweichen(animation, hutBox) {
+    const f = this.figur;
+    try {
+      const snaps = this.hutSchnappUebung(), summe = f.hutPruefsumme(snaps), kamera = animation.kameraRicht || V(0.62, 0.32, 0.72);
+      const schl = animation.schluessel ? animation.schluessel + '|' + summe + '|' + Math.round(snaps[0].T.elements[13] * 1000) : null;
+      this.hutSumme = summe;
+      let plan = schl && this.hutMerk && this.hutMerk.get(schl);
+      if (!plan) {
+        const alle = snaps.concat(hutAblaufSchnapp(animation, f)), korr = f.hutKorrekturSuchen(alle, this.hutVarianten || [0]), fest = !korr && f.hutAblegenSuchen(alle, snaps.length, kamera);
+        plan = korr ? { art: 'k', a: korr.k.hoch, b: korr.k.nick, c: korr.k.roll } : fest ? { art: 'f', a: fest.x, b: fest.y, c: fest.z } : { art: 'w' };
+        if (schl) (this.hutMerk || (this.hutMerk = new Map())).set(schl, plan);
+      }
+      return this.hutSetze(plan, snaps, kamera, hutBox);
+    } catch (e) { /* Hut bleibt weg, wie bisher */ }
+    f.hutKorr = f.hutFest = null; this.hutArt = 'weg';
+    return false;
+  }
   // uebung: { aufbau(geraete) → state, pose(t, state) → {pose, props}, ziel?: Vector3, abstand? }
   zeige(animation, muskeln) {
     this.hinweis(null); this.fokus = null;
+    this.figur.hutFest = null; this.figur.hutKorr = null; this.hutArt = 'normal'; this.hutPlan = null;   // neue Übung: Hut zuerst wie gewohnt auf den Kopf
     this.geraete.leeren();
     this.uebung = animation;
     this.zustand = animation.aufbau ? animation.aufbau(this.geraete) : {};
@@ -1381,7 +1566,13 @@ export class Ansicht {
       box.expandByObject(this.figur.gruppe);
       if (hutAuf) { hutAuf = this.figur.hutFrei(this.geraete.gruppe); hutBox.union(this.figur.hutBox.clone().applyMatrix4(hut.matrixWorld)); }
     }
-    if (hutAuf && new THREE.Box3().setFromObject(this.geraete.gruppe).max.y > 0.3) hutAuf = hutImAblauf(animation, this.figur);   // Matte, Stufe, Hanteln am Boden stören nie
+    // Gerechnete Hut-Lage für diese Übung (Tabelle ganz unten, mit Prüfsumme)? Sonst wie früher prüfen und, wenn der Hut nicht passt, eine Lage suchen
+    const tab = hut && !this.figur.ohneHut && this.figur.hutSchnapp && !this.hutOhneTabelle && animation.schluessel && HUT_TABELLE[animation.schluessel], tabHut = tab ? this.hutAusTabelle(animation, hutBox, tab) : null;
+    if (tabHut !== null) hutAuf = tabHut;
+    else {
+      if (hutAuf && new THREE.Box3().setFromObject(this.geraete.gruppe).max.y > 0.3) hutAuf = hutImAblauf(animation, this.figur);   // Matte, Stufe, Hanteln am Boden stören nie
+      if (hut && !hutAuf && !this.figur.ohneHut && this.figur.hutSchnapp) hutAuf = this.hutAusweichen(animation, hutBox);   // sonst kleine Korrektur oder ablegen
+    }
     if (hut) { hut.visible = hutAuf; if (this.figur.haarAnzeige) this.figur.haarAnzeige(); }
     if (this.lebendig && this.figur.spannung) this.figur.spannung(...seitenAnteil(this.g0, this.g1));
     if (hutAuf) box.union(hutBox);
@@ -1528,8 +1719,9 @@ export class Ansicht {
     const huell = (name, v, an = 9, ab = 1.6) => { F.e[name] += (v - F.e[name]) * Math.min(1, dt * (v > F.e[name] ? an : ab)); return F.e[name]; };   // reagiert schnell, klingt langsam aus
     // Hut (Devin, 2.11.: „ein bisschen wackeln … wie ein bisschen locker“; 3.11.: „wackelt viel zu sehr“, „vielleicht sogar teilweise Standbild“; 4.11.: „nicht mehr bewegt, wenn er sich bewegt“): Er sitzt fest auf dem Kopf, bei jeder Bewegung des Körpers, auch in der Übung.
     // Nur wer still steht, dessen Hut wogt noch ganz leise. Das blendet weich ein und aus, damit nichts ruckt, und bleibt über die Pause einer Wiederholung aus; es fängt aus an, sonst ruckt er beim Losgehen
-    if (f.hut && f.hut.visible) {
-      const bewegt = Math.max(tempo('hut', g.kopf), 0.6 * Math.max(tempo('hl', g.hand.l), tempo('hr', g.hand.r), tempo('kl', g.knie.l), tempo('kr', g.knie.r), tempo('fl', g.knoechel.l), tempo('fr', g.knoechel.r)));
+    if (f.hut && f.hutFest) { f.hut.userData.schwung.value.set(0, 0); f.hut.userData.glocke.value.set(0, 0); f.hutLage = null; }   // abgelegt: liegt ruhig am Boden, nichts wackelt
+    else if (f.hut && f.hut.visible) {
+      const bewegt =Math.max(tempo('hut', g.kopf), 0.6 * Math.max(tempo('hl', g.hand.l), tempo('hr', g.hand.r), tempo('kl', g.knie.l), tempo('kr', g.knie.r), tempo('fl', g.knoechel.l), tempo('fr', g.knoechel.r)));
       const still = 1 - huell('hut', Math.min(1, bewegt * 5), 5, 0.7);
       f.hut.userData.schwung.value.set(still * 0.004 * Math.sin(z * 2.9), still * 0.003 * Math.sin(z * 2.3 + 2));
       const dq = new THREE.Quaternion().setFromEuler(new THREE.Euler(still * 0.005 * Math.sin(z * 1.7 + 1), 0, still * 0.006 * Math.sin(z * 2.3))), P = V(0, 1.83, -0.012), P2 = P.clone().applyQuaternion(dq);
@@ -1666,5 +1858,47 @@ export class Ansicht {
   standbild(t) { this.bild(t); this.renderer.render(this.szene, this.kamera); }
   entsorgen() { this.stopp(); this.renderer.dispose(); if (this.steuerung) this.steuerung.dispose(); }
 }
+
+// --- HUT_TABELLE (erzeugt von werkzeug/baue-hut-tabelle.js, nicht von Hand ändern) ---
+// Gerechnete Hut-Lagen (G9-H, 9.11.). Schlüssel = animation.schluessel, Wert = [Prüfsumme, Art, a, b, c]: k = auf dem Kopf [m anheben, Grad nach vorn, Grad zur Seite], f = abgelegt [x, y, z in m], w = bleibt weg
+const HUT_TABELLE = {
+  "rudern:{\"art\":\"umgekehrt\",\"knie\":true,\"tisch\":true,\"standVersatz\":[0,0,-0.25]}": [581919677,"f",0.425,0,-0.3985],   // tisch_rudern_knie
+  "liegestuetz:{\"art\":\"handstand\",\"standVersatz\":[0,0,0.2]}": [2676378373,"f",0.4677,0,0.3598],   // handstand_wand_halten
+  "beincurl:{\"art\":\"gleiten_einbeinig\"}": [428176917,"f",0.44,0,-0.652],   // beincurl_handtuch_einbeinig
+  "liegestuetz:{\"art\":\"erhoeht\"}": [1538278735,"f",0.2598,0.005,0.7093],   // liegestuetz_fuesse_erhoeht
+  "bankdruecken:{\"last\":\"kurzhanteln\",\"art\":\"boden\"}": [1135736629,"k",0.02,-20,5],   // kurzhantel_bodendruecken
+  "bankdruecken:{\"last\":\"kurzhanteln\",\"art\":\"ueberzug\"}": [1877601975,"f",0.2598,0,-0.2117],   // kurzhantel_pullover
+  "liegestuetz:{\"art\":\"pike\"}": [1376107265,"f",0.15,0.005,0.703],   // pike_liegestuetz
+  "liegestuetz:{\"art\":\"pike_erhoeht\"}": [2311034122,"f",-0.1139,0.005,0.8028],   // pike_liegestuetz_erhoeht
+  "liegestuetz:{\"art\":\"handstand_liegestuetz\",\"standVersatz\":[0,0,0.2]}": [1498109701,"f",0.3818,0,0.4963],   // handstand_liegestuetz_wand
+  "schulterheben:{\"art\":\"reverse_fly\",\"last\":\"kurzhanteln\",\"brustgestuetzt\":true}": [3330278024,"w"],   // kurzhantel_reverse_flys
+  "seitlage:{\"art\":\"aussenrotation\"}": [559470834,"f",-0.4162,0,-0.4617],   // aussenrotation_seitlage
+  "klimmzug:{\"art\":\"bauchlage\"}": [1708099186,"f",0.6928,0,-0.004],   // bauchlage_latzug_handtuch
+  "klimmzug:{\"art\":\"band\"}": [4186672823,"w"],   // klimmzug_band_assistiert
+  "schulterzug:{\"art\":\"yt_bauchlage\"}": [3824009075,"f",-0.1139,0.005,-0.8395],   // bauchlage_ytw
+  "schulterheben:{\"art\":\"ytw\",\"last\":\"kurzhanteln\",\"brustgestuetzt\":true}": [4471134,"w"],   // schraegbank_y_heben
+  "curl:{\"art\":\"maschine\"}": [2002889630,"k",0.005,-20,0],   // bizeps_maschine
+  "trizeps:{\"art\":\"ueberkopf\",\"last\":\"kurzhantel\"}": [1147531078,"w"],   // kurzhantel_trizeps_ueberkopf
+  "bankdruecken:{\"last\":\"sz\",\"art\":\"stirn\"}": [3773521702,"f",0.2598,0,-0.2117],   // sz_stirndruecken
+  "hueftheben:{\"art\":\"bridge\",\"last\":\"keine\"}": [3303964930,"f",0.44,0,-0.4476],   // glute_bridge
+  "beincurl:{\"art\":\"gleiten\"}": [3474866505,"f",0.44,0,-0.652],   // beincurl_handtuch
+  "seitlage:{\"art\":\"seitlage_adduktion\"}": [1498468854,"f",-0.368,0,-0.2817],   // adduktion_seitlage
+  "seitlage:{\"art\":\"clamshell\"}": [3512238665,"f",-0.368,0,-0.2817],   // clamshell
+  "seitlage:{\"art\":\"seitlage_abduktion\"}": [1273737999,"f",-0.368,0,-0.2817],   // seitlage_abduktion
+  "wadenheben:{\"art\":\"maschine\"}": [936001070,"k",0.02,0,10],   // wadenheben_maschine
+  "rumpfuebung:{\"art\":\"crunch\"}": [1277412281,"f",-0.27,0.005,-0.8437],   // crunch
+  "rumpfuebung:{\"art\":\"kabelcrunch\"}": [436834289,"w"],   // kabelcrunch
+  "bankdruecken:{\"last\":\"multipresse\",\"sitzVersatz\":0.18}": [2041677642,"k",0.03,-15,0],   // smith_bankdruecken
+  "schulterdruecken:{\"art\":\"arnold\",\"sitzend\":true}": [3618523537,"w"],   // arnold_press
+  "kniebeuge:{\"ablaufBand\":\"schlinge\",\"last\":\"band\"}": [967925057,"w"],   // kniebeuge_band
+  "hueftheben:{\"art\":\"einbeinig\"}": [2514020345,"f",0.44,0,-0.4476],   // glute_bridge_einbeinig
+  "hueftheben:{\"art\":\"marsch\"}": [3031906644,"f",0.44,0,-0.4541],   // glute_bridge_marsch
+  "curl:{\"art\":\"scott\",\"last\":\"kurzhanteln\",\"einarmig\":true}": [1488151394,"w"],   // scott_curl_kurzhantel
+  "curl:{\"art\":\"spider\",\"last\":\"kurzhanteln\"}": [402511550,"w"],   // spider_curl
+  "rumpfuebung:{\"art\":\"beinheben_liegend\"}": [3255266673,"f",0.54,0,-0.4113],   // beinheben_liegend
+  "rumpfuebung:{\"art\":\"fahrrad\"}": [1110709954,"f",-0.22,0.005,-0.7293],   // fahrrad_crunch
+  "rumpfuebung:{\"art\":\"rueckenstrecker_sanft\"}": [3606420050,"f",0.5216,0,-0.2746],   // rueckenstrecker_bauchlage_sanft
+};
+// --- ENDE HUT_TABELLE ---
 
 export { THREE, V, RAD };

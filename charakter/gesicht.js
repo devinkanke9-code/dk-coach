@@ -439,7 +439,7 @@ export function legeAuf(figur, fund, passung, o = {}) {
     figur.stelleOhneMaske = figur.stelle;
     figur.stelle = function (g) {
       const b = this.stelleOhneMaske(g);
-      if (this.gesichtMaske) { this.gesichtMaske.matrix.copy(this.A[this.k.index.Head]); this.gesichtMaske.matrixWorldNeedsUpdate = true; if (this.hutHoch) { this.hut.matrix.multiply(_hoch.makeTranslation(0, this.hutHoch, 0)); } }
+      if (this.gesichtMaske) { this.gesichtMaske.matrix.copy(this.A[this.k.index.Head]); this.gesichtMaske.matrixWorldNeedsUpdate = true; if (this.hutHoch && !this.hutFest) { this.hut.matrix.multiply(_hoch.makeTranslation(0, this.hutHoch, 0)); } }
       return b;
     };
   }

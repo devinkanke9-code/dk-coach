@@ -184,30 +184,90 @@ function basisAus(oben, vor) {
   const l = o.clone().cross(v);
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(l, o, v));
 }
+/* ---------- R4: Platten- und Rahmengeräte in der DK Line (Auftrag R, Paket R4, 09.11.2026) ----------
+   Schwere graphitfarbene Rundrohre (ger.holm), silberne Hebel- und Gleitteile, Goldkappen, geformte Polster mit Naht, Scheibenhörner mit Goldkappe und ein
+   Typenschild am Rahmen. Diese Geräte haben keinen Gewichtsstapel, also auch kein Seil. Körperkontakt (Polster, Fußplatten) und Griffe bleiben genau, wie sie waren. */
+const _r4Scheiben = new Map();
+// Hantelscheibe wie scheibenGeo (Rand, vertiefte Fläche, Nabe mit Loch), aber mit 28 statt 40 Segmenten: spart je Scheibe rund 450 Dreiecke (Grenze: 15 000 je Maschine)
+function r4_scheibeGeo(r, d) {
+  const key = r.toFixed(3) + ',' + d.toFixed(3);
+  if (!_r4Scheiben.has(key)) {
+    const h = d / 2, loch = Math.min(0.026, r * 0.3), nabe = Math.min(r * 0.32, loch + 0.03);
+    const pkt = [[loch, -h], [nabe, -h], [nabe + 0.01, -0.68 * h], [r * 0.84, -0.68 * h], [r * 0.9, -h], [r - 0.004, -h], [r, -h + 0.004], [r, h - 0.004], [r - 0.004, h], [r * 0.9, h], [r * 0.84, 0.68 * h], [nabe + 0.01, 0.68 * h], [nabe, h], [loch, h], [loch, -h]];
+    _r4Scheiben.set(key, new THREE.LatheGeometry(pkt.map(([x, y]) => new THREE.Vector2(x, y)), 28));
+  }
+  return _r4Scheiben.get(key);
+}
+// Scheibenhorn (Achse X) aus Rundrohr: von pos nach außen (sx = ±1), Länge l, Goldkappe am Ende. scheiben: [[Abstand ab pos, Radius, Dicke], …]; die Scheiben bleiben sichtbar
+function r4_horn(ger, gruppe, pos, sx, scheiben, l) {
+  const E = pos.clone().add(V(sx * l, 0, 0));
+  holmIn(ger, gruppe, pos, E, 0.05, ger.mHebel);
+  maschTeil(gruppe, dkZyl(0.03, 0.012, 18), ger.mDKGold, E.x + sx * 0.031, E.y, E.z).rotation.z = Math.PI / 2;   // die Rundung des Rohrs reicht 2,5 cm über E hinaus: die Kappe liegt an
+  for (const [d, r, dick] of scheiben) maschTeil(gruppe, r4_scheibeGeo(r, dick), ger.mScheibe, pos.x + sx * d, pos.y, pos.z).rotation.z = Math.PI / 2;
+}
+// Typenschild an einem Rahmenrohr: Halteplatte aus Graphit, davor das Schild. P = Mitte der Schildfläche, blick = Richtung, in die es schaut (waagerecht)
+function r4_schild(ger, gruppe, P, blick, titel, untertitel) {
+  const s = ger.schild(titel, untertitel); ger.gruppe.remove(s); gruppe.add(s);
+  s.position.copy(P); s.rotation.y = Math.atan2(blick.x, blick.z);
+  maschTeil(s, rundGeo(0.2, 0.1, 0.012, 0.004, 1), ger.mDK, 0, 0, -0.01);
+  return s;
+}
+// Gummifuß und geformtes Polster in einer Gruppe (bewegte Rahmen)
+function r4_fuss(ger, gruppe, P) { const f = ger.fussDK(P); if (gruppe !== ger.gruppe) { ger.gruppe.remove(f); gruppe.add(f); } return f; }
+function r4_polster(ger, gruppe, w, h, d, pos, q) { const b = ger.polsterGeformt(w, h, d, pos, q); if (gruppe !== ger.gruppe) { ger.gruppe.remove(b); gruppe.add(b); } return b; }
+// Bodenrahmen aus Rundrohr ohne Mittelholm: zwei Längsholme (x = ±xs) und zwei Querholme, Gummifüße an den Enden und in der Mitte
+function r4_boden(ger, xs, zr, zv) {
+  for (const sx of [-1, 1]) { ger.holm(V(sx * xs, 0.05, zr), V(sx * xs, 0.05, zv), DK.boden); for (const zz of [zr, (zr + zv) / 2, zv]) ger.fussDK(V(sx * xs, 0, zz)); }
+  for (const zz of [zr, zv]) ger.holm(V(-xs, 0.05, zz), V(xs, 0.05, zz), DK.boden);
+}
+// Klimmzugstation: zwei Pfosten (Rundrohr) mit Fußholm und Gummifüßen, Querstange aus Chrom (wie bisher: Achse X, Höhe hoehe, Tiefe zz), goldene Flansche an den Pfosten, Typenschild
+function r4_klimmzugStation(ger, hoehe, breite, zz) {
+  const s = ger.zyl(0.016, breite, ger.mMetall); s.rotation.z = Math.PI / 2; s.position.set(0, hoehe, zz);
+  for (const sx of [-1, 1]) {
+    const x = sx * breite / 2;
+    ger.holm(V(x, 0.05, zz), V(x, hoehe + 0.04, zz), DK.holm);                                             // Pfosten Ø 9,5 cm
+    ger.holm(V(x, 0.05, zz - 0.25), V(x, 0.05, zz + 0.25), DK.boden);                                      // Fußholm (Grundfläche wie die alte Fußplatte)
+    for (const dz of [-0.25, 0.25]) ger.fussDK(V(x, 0, zz + dz));
+    ger.teil(dkZyl(0.05, 0.012, 20), ger.mDKGold, V(x - sx * (0.0475 + 0.006), hoehe, zz)).rotation.z = Math.PI / 2;   // Flansch an der Innenseite des Pfostens, die Stange geht hindurch
+  }
+  r4_schild(ger, ger.gruppe, V(breite / 2 + 0.0475 + 0.016, 1.35, zz), V(1, 0, 0), 'KLIMMZUG', 'RÜCKEN');
+  return s;
+}
 // Multipresse: zwei Führungsschienen an den Stangenenden
 // Multipresse (Smith-Maschine): Die Stange läuft mit zwei Lagerböcken an senkrechten Chromstangen (Führungen bei x = ±SMITH_X), die Scheiben
 // sitzen außen davon. Rahmen mit vier Pfosten, oben und hinten verbunden, vorne offen; Sicherheitsanschläge unten an den Führungen,
 // Scheibenablage hinten. Die Stange kann nur senkrecht fahren: smithFuehren() legt die Hand-Ziele dieser Vorlagen auf die Führungslinie
 const SMITH_X = 0.62;
+// DK Line (R4): vier Pfosten Ø 9,5 cm, Kopf- und Bodenholme, chromblanke Führungen (wie bisher), Scheibenablage hinten mit Goldkappe, Typenschild oben vorn. Der Rahmen fährt in z mit der Stange
 function schienenAufbauen(ger, z) {
   const r = new THREE.Group();
-  const teil = (geo, m, x, y, zz) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, zz); o.castShadow = true; o.receiveShadow = true; r.add(o); return o; };
+  const holm = (A, B, d, m) => holmIn(ger, r, A, B, d, m), teil = (geo, m, x, y, zz) => maschTeil(r, geo, m, x, y, zz);
+  const HX = 1.02, ZV = 0.38, ZH = -0.38, HO = 2.3;
   for (const sx of [-1, 1]) {
-    for (const zz of [-0.38, 0.38]) teil(rundGeo(0.08, 2.2, 0.08, 0.01, 1), ger.mRahmen, sx * 1.02, 1.1, zz);
-    for (const y of [0.03, 2.2]) teil(rundGeo(0.08, 0.06, 0.84, 0.01, 1), ger.mRahmen, sx * 1.02, y, 0);
-    for (const y of [0.07, 2.16]) teil(rundGeo(1.02 - SMITH_X + 0.06, 0.06, 0.07, 0.01, 1), ger.mRahmen, sx * (1.02 + SMITH_X) / 2, y, 0);
+    for (const zz of [ZH, ZV]) {                                                                              // vier Pfosten mit Goldringen
+      holm(V(sx * HX, 0.05, zz), V(sx * HX, HO, zz), DK.holm);
+      for (const y of [0.3, HO - 0.14]) teil(dkZyl(0.0525, 0.012, 20), ger.mDKGold, sx * HX, y, zz);
+    }
+    holm(V(sx * HX, 0.05, ZH - 0.04), V(sx * HX, 0.05, ZV + 0.04), DK.boden);                               // Bodenholm je Seite
+    holm(V(sx * HX, HO - 0.05, ZH), V(sx * HX, HO - 0.05, ZV), DK.strebe);                                     // Kopfholm je Seite
+    for (const y of [0.075, 2.2]) holm(V(sx * SMITH_X, y, 0), V(sx * HX, y, 0), DK.strebe);               // Führungshalter unten und oben
+    for (const zz of [ZH - 0.04, ZV + 0.04]) r4_fuss(ger, r, V(sx * HX, 0, zz));
     // Führung mit Sicherheitsanschlag (in einer Gruppe, die bei schrägen Führungen um ihre Mitte kippt)
     const f = new THREE.Group(); f.position.set(sx * SMITH_X, 1.12, 0); r.add(f); (z.smithFuehrung = z.smithFuehrung || []).push(f);
-    maschTeil(f, new THREE.CylinderGeometry(0.016, 0.016, 2.08, 16), ger.mMetall);
+    maschTeil(f, new THREE.CylinderGeometry(0.016, 0.016, 2.16, 16), ger.mMetall);
     maschTeil(f, new THREE.CylinderGeometry(0.042, 0.042, 0.07, 20), ger.mGummi, 0, 0.42 - 1.12, 0);
-    maschTeil(f, rundGeo(0.1, 0.03, 0.06, 0.008, 1), ger.mRahmen, 0, 0.375 - 1.12, 0);
-    const horn = teil(new THREE.CylinderGeometry(0.025, 0.025, 0.24, 16), ger.mMetall, sx * 1.02, 0.55, -0.5); horn.rotation.x = Math.PI / 2;   // Scheibenablage
-    teil(scheibenGeo(0.225, 0.05), ger.mScheibe, sx * 1.02, 0.55, -0.52).rotation.x = Math.PI / 2;
+    maschTeil(f, rundGeo(0.1, 0.03, 0.06, 0.008, 1), ger.mHebel, 0, 0.375 - 1.12, 0);
+    // Scheibenablage hinten: Horn nach hinten aus dem Pfosten, darauf eine Scheibe
+    holm(V(sx * HX, 0.55, ZH), V(sx * HX, 0.55, -0.62), 0.05, ger.mHebel);
+    teil(dkZyl(0.03, 0.012, 18), ger.mDKGold, sx * HX, 0.55, -0.62 - 0.031).rotation.x = Math.PI / 2;
+    teil(r4_scheibeGeo(0.225, 0.05), ger.mScheibe, sx * HX, 0.55, -0.52).rotation.x = Math.PI / 2;
   }
-  for (const y of [0.03, 2.2]) teil(rundGeo(2.12, 0.06, 0.08, 0.01, 1), ger.mRahmen, 0, y, -0.38);
-  teil(rundGeo(2.12, 0.06, 0.08, 0.01, 1), ger.mRahmen, 0, 2.2, 0.38);
+  holm(V(-HX, 0.05, ZH), V(HX, 0.05, ZH), DK.boden);                                                        // Querholm unten hinten (vorn bleibt offen)
+  holm(V(-HX, HO, ZH), V(HX, HO, ZH), DK.holm);                                                             // Querholme oben
+  holm(V(-HX, HO, ZV), V(HX, HO, ZV), DK.holm);
+  r4_schild(ger, r, V(0, HO, ZV + 0.0475 + 0.016), V(0, 0, 1), 'MULTIPRESSE', 'GANZKÖRPER');
   ger.gruppe.add(r);
-  z.smith = r;
+  z.smith = r; z.smithMat = { hebel: ger.mHebel, gold: ger.mDKGold };
 }
 function schienenAn(z) {
   if (!z.smith || !z.lh) return;
@@ -215,11 +275,13 @@ function schienenAn(z) {
   const L = z.smithLinie;
   z.smith.position.set(0, 0, L ? L.z + (1.12 - L.y) * Math.tan(L.kipp) : z.lh.position.z);
   for (const f of z.smithFuehrung || []) f.rotation.x = L ? L.kipp : 0;
-  if (!z.lager) {   // Lagerböcke mit Haken: gehören zur Stange und fahren mit ihr an den Führungen
+  if (!z.lager) {   // DK Line (R4): Gleitlager der Stange in Silber mit Goldleiste und Sicherheitshaken in Gold; sie gehören zur Stange und fahren mit ihr an den Führungen
+    const M = z.smithMat;
     z.lager = [-1, 1].map((sx) => {
       const g = new THREE.Group(); g.position.x = sx * SMITH_X;
-      const block = new THREE.Mesh(rundGeo(0.07, 0.13, 0.075, 0.01, 1), z.smith.children[0].material); block.castShadow = true; g.add(block);
-      const haken = new THREE.Mesh(rundGeo(0.02, 0.06, 0.05, 0.006, 1), z.smith.children[0].material); haken.position.set(0, 0.07, -0.05); g.add(haken);
+      const block = new THREE.Mesh(rundGeo(0.09, 0.13, 0.085, 0.015, 1), M.hebel); block.castShadow = true; g.add(block);
+      const leiste = new THREE.Mesh(rundGeo(0.05, 0.012, 0.004, 0.0015, 1), M.gold); leiste.position.set(0, 0.03, 0.0445); g.add(leiste);
+      const haken = new THREE.Mesh(rundGeo(0.025, 0.06, 0.05, 0.006, 1), M.gold); haken.position.set(0, 0.07, -0.05); g.add(haken);
       z.lh.add(g); return g;
     });
   }
@@ -581,6 +643,51 @@ function vorDemRumpf(pose, r = 0.016) {
   const fehlt = f + r + 0.003 - m.dot(R.vor);
   if (fehlt > 0) for (const s of ['l', 'r']) pose.hand[s] = pose.hand[s].clone().addScaledVector(R.vor, fehlt);
 }
+/* ---------- Paket R3 (Auftrag R, 09.11.2026): Kabelzug in der DK Line ----------
+   Jeder Kabelzug mit Kabel (nicht Band) steht an einem Turm wie kabelturmDK (Fliegende), aber an beliebiger Stelle und in beliebiger Richtung:
+   r3_turm baut Säule mit Schiene, Wagen und Öse am Seilausgang A, dahinter den Stapel (gewichtsblockDK). Das Seil läuft von der Öse senkrecht hoch zur Rolle oben
+   auf der Säule, waagerecht zur Kopfrolle des Stapels und über die bewegliche Rolle zur festen Öse (2:1): zieht jemand das Seil um d länger, steigt der Stapel
+   um d/2 (turm.zieh(Länge der Strecke Öse bis Hand oder Griff)). Der Stapel hebt sich nur über das Seil (kein ger.turm, kein nachBild mehr).
+   A = Seilausgang, weg = waagerechte Richtung von der Öse zur Säule (vom Trainierenden weg), kam = Kamerarichtung: der Stapel steht zur Kamera hin offen (Schild lesbar) */
+function r3_turm(ger, A, weg, kam, titel = 'KABELZUG', untertitel = '', o = {}) {
+  const yTop = o.yTop || Math.max(2.3, A.y + 0.3), hMax = o.hMax || 0.5, F = yTop - (0.14 + hMax + 0.18);   // Rolle oben mindestens 30 cm über der Öse
+  const w = V(weg.x, 0, weg.z).normalize(), fw = w.clone().negate(), P = V(A.x, 0, A.z).addScaledVector(w, 0.135), ry = Math.atan2(fw.x, fw.z);   // Säule 13,5 cm hinter der Öse (fw zeigt zum Trainierenden)
+  const vorn = V(-w.z, 0, w.x); if (vorn.dot(kam) < 0) vorn.negate();
+  const an = (d, y) => P.clone().addScaledVector(fw, d).setY(y);   // Punkt in Höhe y, d vor der Säulenachse (zum Trainierenden hin)
+  const teil = (geo, m, d, y) => { const t = ger.teil(geo, m, an(d, y)); t.rotation.y = ry; return t; };
+  teil(rundGeo(0.3, 0.05, 0.2, 0.02, 1), ger.mDK, 0.08, 0.025);                                                  // Fußplatte der Säule
+  ger.holm(an(0, 0.08), an(0, yTop), DK.holm);                                                                    // Säule
+  const yU = Math.min(0.3, A.y - 0.1);
+  teil(rundGeo(0.06, yTop - 0.12 - yU, 0.012, 0.004, 1), ger.mHebel, 0.0535, (yU + yTop - 0.12) / 2);             // Schiene (reicht bis unter die Öse)
+  teil(rundGeo(0.14, 0.13, 0.06, 0.012, 1), ger.mDK, 0.0895, A.y);                                                // Wagen
+  ger.teil(new THREE.TorusGeometry(0.02, 0.0045, 8, 16), ger.mDKGold, A).rotation.y = ry;                        // Seilöse am Seilausgang
+  const B = gewichtsblockDK(ger, P.clone().addScaledVector(w, 0.31), vorn, F, titel, untertitel, { hMax });
+  const seil = stapelAnHebel(ger, { block: B, straenge: 2, naben: [{ zug: true, x: A.x, y: A.y, z: A.z, rN: 0, dir: 1, dD: yTop - A.y }] });
+  ger.holm(an(0, yTop), seil.nb[0].Wd, 0.045);                                                                    // Halter der Rolle oben auf der Säule
+  let ruhe = Infinity;   // kürzestes Seil bisher: dort steht der Stapel unten (wie früher ger.nachBild)
+  seil.zieh = (l) => { ruhe = Math.min(ruhe, l); return seil.stelle([l - ruhe]); };
+  return Object.assign(seil, { A, P, fw, an, yTop });
+}
+// Turm(e) an z hängen: z.dkTurm (für Prüfung und props) und je Turm z.stapel_i (so findet das Prüfwerkzeug den Gewichtsblock)
+const r3_setze = (z, ...tuerme) => { z.dkTurm = tuerme; tuerme.forEach((t, i) => { z['stapel_' + i] = t.block; }); return z; };
+// Seilknoten (goldene Hülse) am Kabelende, an der die zwei Seilenden eines Seilgriffs hängen; die Vorlage setzt sie in props auf den Knoten
+const r3_knoten = (ger) => ger.teil(new THREE.SphereGeometry(0.013, 12, 8), ger.mDKGold);
+// Länge eines Seilwegs über mehrere Punkte (Kabel, das am Körper vorbei läuft)
+const r3_laenge = (punkte) => punkte.reduce((s, p, i) => (i ? s + p.distanceTo(punkte[i - 1]) : 0), 0);
+// Vorlauf (beim Aufbau, einmal durch die Bewegung): so kennt jeder Turm das kürzeste Seil schon vor dem ersten Bild, der Stapel steht in Ruhe unten und die Seillänge
+// bleibt von Anfang an gleich (sonst stellt sich das erst im ersten Durchlauf ein, wie früher bei ger.nachBild). a = die Vorlage (this im Aufbau)
+function r3_vorlauf(a, z) {
+  try { for (let i = 0; i <= 20; i++) { const e = a.pose(i / 20, {}), g = gelenke(e.pose); if (e.props) e.props(g, z); } } catch (err) { /* ohne Vorlauf: der Stapel stellt sich im ersten Durchlauf ein */ }
+}
+// Halterung vom Haltegriff G zur Säule: an der Flanke der Säule, damit das senkrechte Seil an der Öse frei bleibt (mindestens 3,5 cm Luft); sonst erst seitlich weg, dann zur Säule
+function r3_halter(ger, T, G, b = 0.028) {
+  const t = V(-T.fw.z, 0, T.fw.x), a = V(T.A.x, 0, T.A.z), g = V(G.x, 0, G.z);
+  const abstand = (f) => { const d = f.clone().sub(g), u = Math.max(0, Math.min(1, a.clone().sub(g).dot(d) / Math.max(d.lengthSq(), 1e-9))); return a.distanceTo(g.clone().addScaledVector(d, u)); };
+  const wahl = [1, -1].map((s) => { const f = V(T.P.x, 0, T.P.z).addScaledVector(t, s * 0.05); return { s, f, d: abstand(f) }; }).sort((x, y) => y.d - x.d)[0];
+  const F = V(wahl.f.x, G.y, wahl.f.z);
+  if (wahl.d >= 0.035) ger.vierkant(G, F, b);
+  else { const M = G.clone().addScaledVector(t, wahl.s * 0.1); ger.vierkant(G, M, b); ger.vierkant(M, F, b); }
+}
 // Einbeiniges RDL (links steht, rechtes Bein geht nach hinten) und Pull-Through (Zug von hinten zwischen den Beinen)
 function hueftbeuge(art, o) {
   const last = o.last || (art === 'pull_through' ? 'kabel' : 'keine');
@@ -590,10 +697,11 @@ function hueftbeuge(art, o) {
       if (art === 'einbeinig' && last === 'kurzhanteln') khAufbauen(ger, z);
       if (art === 'einbeinig' && last === 'kurzhantel') z.kh_r = ger.kurzhantel();
       if (art === 'pull_through') {
-        if (last === 'kabel') ger.turm(V(0, 0, -1.05)); else ger.box(0.08, 0.4, 0.08, V(0, 0.2, -1.05), ger.mRahmen);
-        z.seil = ger.stab(V(), V(0, 1, 0), last === 'band' ? 0.012 : 0.006, last === 'band' ? ger.mBand : ger.mKabel);
-        if (last === 'kabel') { z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); }   // Seilgriff: je ein Ende in jeder Hand
+        if (last === 'kabel') r3_setze(z, r3_turm(ger, V(0, 0.22, -1.0), V(0, 0, -1), V(1, 0.35, 0.2), 'KABELZUG', 'GESÄSS')); else ger.box(0.08, 0.4, 0.08, V(0, 0.2, -1.05), ger.mRahmen);   // R3: DK-Kabelturm hinter der Figur
+        z.seil = ger.stab(V(), V(0, 1, 0), last === 'band' ? 0.012 : 0.004, last === 'band' ? ger.mBand : ger.mKabel);
+        if (last === 'kabel') { z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.knoten = r3_knoten(ger); }   // Seilgriff: je ein Ende in jeder Hand
       }
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -619,7 +727,7 @@ function hueftbeuge(art, o) {
       return { pose: Object.assign({ becken, rumpf: r, kopf: { neigung: -10 }, hand, ellbogenPol: seiten((s, sg) => V(sg, 0, -0.3)), kniePol: seiten((s, sg) => V(sg * 0.35, 0, 1)) }, stehFuesse(0.2, 0, 0.4)),
         props(g, z) {
           const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5), a = last === 'kabel' ? V(0, 0.22, -1.0) : V(0, 0.32, -1.0);
-          if (z.strang_l) { const knoten = m.clone().add(a.clone().sub(m).setLength(0.16)); seil(z.seil, a, knoten); seil(z.strang_l, knoten, g.hand.l); seil(z.strang_r, knoten, g.hand.r); }
+          if (z.strang_l) { const knoten = m.clone().add(a.clone().sub(m).setLength(0.16)); seil(z.seil, a, knoten); seil(z.strang_l, knoten, g.hand.l); seil(z.strang_r, knoten, g.hand.r); z.knoten.position.copy(knoten); z.dkTurm[0].zieh(a.distanceTo(knoten)); }
           else seil(z.seil, a, m);
         } };
     },
@@ -1076,7 +1184,7 @@ export function wadenheben(o = {}) {
         props(g, z) {
           if (o.last === 'kurzhanteln') kurzhantelnAn(z, g, 'hammer');
           if (z.lh) { stangeAn(z.lh, g); schienenAn(z); }
-          if (z.wk) { const y = g.schulter.l.y; z.wk.sl.position.set(0, y, 0); seil(z.wk.kabel, V(0, y + 0.155, z.wk.zb), V(0, 2.03, -0.32)); z.block.heben(anheben * 1.2); }
+          if (z.wk) r2_wadenStellen(z, g);   // DK Line: Hebel, Seil und Stapel
         } };
     },
     blick: V(0, 0.55, 0), abstand: 2.9, kameraRicht: anWand ? V(-1, 0.25, 0.5) : V(1, 0.25, 0.5), dauer: art === 'einbeinstand' ? STATISCH : undefined   // an der Wand: Blick von der freien Seite, die Wand steht dahinter (bis 5.11. verdeckte sie die Figur ganz)
@@ -1106,6 +1214,173 @@ function gewichtsblock(ger, pos, vorn = V(0, 0, 1), hoehe = 1.9) {
   ger.gruppe.add(g);
   return { g, heben(m) { platten.children.forEach((p, i) => { const k = i < N ? i : STIFT - 1; p.position.y = y0 + k * 0.047 + (k >= STIFT - 1 ? Math.max(0, m) : 0); }); } };
 }
+/* ---------- DK Line (Auftrag D, 09.11.2026): Designsprache, Gewichtsstapel mit Seil, Pilotmaschinen ----------
+   Vorbild für Rahmen und Hebel: schwere graphitfarbene Rundrohre, silberne Hebelarme, dicke Lagerböcke mit Goldkappe, schwarze Polster mit Goldnaht;
+   Stapel in schwarzer Verkleidung mit Sichtfenster und Typenschild. Eigene Marke "DK" (keine fremden Namen oder Logos). Maße: daten/designsprache.md */
+const DK = { holm: 0.095, strebe: 0.065, boden: 0.075, achse: 0.52 };   // Durchmesser Hauptholm, Strebe, Bodenholm; Mitte der Seitenrahmen (x)
+const _dkZyl = new Map();
+function dkZyl(r, l, seg = 20) { const k = r.toFixed(4) + ',' + l.toFixed(4) + ',' + seg; if (!_dkZyl.has(k)) _dkZyl.set(k, new THREE.CylinderGeometry(r, r, l, seg)); return _dkZyl.get(k); }
+// Mehrere Geometrien (nur verschoben, ohne Index) zu einer: spart Meshes (Plattenstapel). teile: [[Geometrie, Verschiebung], …]
+function verschmelze(teile) {
+  let n = 0; for (const [g] of teile) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
+  for (const [g, p] of teile) {
+    const a = g.attributes.position, b = g.attributes.normal;
+    for (let i = 0; i < a.count; i++, o++) { pos.set([a.getX(i) + p.x, a.getY(i) + p.y, a.getZ(i) + p.z], o * 3); nor.set([b.getX(i), b.getY(i), b.getZ(i)], o * 3); }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return geo;
+}
+// Rundrohr in einer Gruppe (Koordinaten der Gruppe), z. B. am Hebel oder am Stapel
+function holmIn(ger, gruppe, A, B, d, m) { const o = ger.holm(A, B, d, m); ger.gruppe.remove(o); gruppe.add(o); return o; }
+// Seil um eine Rolle (Mitte W, Radius r) zwischen den Punkten P0 (davor) und P1 (danach): Achse der Rolle und die beiden Berührpunkte
+// (ein = Seil läuft von P0 auf die Rolle, aus = Seil läuft zu P1); die Achse steht senkrecht auf der Ebene P0, W, P1
+function umlenk(P0, W, P1, r) {
+  const a = W.clone().sub(P0).cross(P1.clone().sub(W));
+  if (a.lengthSq() < 1e-10) a.set(1, 0, 0);
+  a.normalize();
+  const tang = (P, davor) => {
+    const d = P.clone().sub(W), D = Math.max(d.length(), r * 1.001), ed = d.clone().divideScalar(D), ep = a.clone().cross(ed), c = r / D, s = Math.sqrt(1 - c * c);
+    let best = null, bw = -Infinity;
+    for (const sg of [1, -1]) {
+      const N = W.clone().addScaledVector(ed, r * c).addScaledVector(ep, sg * r * s), t = a.clone().cross(N.clone().sub(W)).divideScalar(r);   // t: Laufrichtung auf der Rolle
+      const w = davor ? N.clone().sub(P).dot(t) : P.clone().sub(N).dot(t);
+      if (w > bw) { bw = w; best = N; }
+    }
+    return best;
+  };
+  return { a, ein: tang(P0, true), aus: tang(P1, false) };
+}
+// Bodenrahmen: Seitenholme außen (x = ±xs), Querholme hinten (zr) und vorn (zv), Mittelholm von zm bis vorn (trägt Sitz und Säulen), Gummifüße
+function dkBoden(ger, xs, zr, zv, zm = zr, zq = zv) {   // zq: vorderer Querholm (bei kurzem Querholm laufen die Seitenholme weiter bis zv)
+  for (const x of [-xs, xs]) ger.holm(V(x, 0.05, zr), V(x, 0.05, zv), DK.boden);
+  for (const zz of [zr, zq]) ger.holm(V(-xs, 0.05, zz), V(xs, 0.05, zz), DK.boden);
+  ger.holm(V(0, 0.05, zm), V(0, 0.05, zq), DK.boden);
+  for (const x of [-xs, xs]) for (const zz of [zr, (zr + zv) / 2, zv]) ger.fussDK(V(x, 0, zz));
+}
+// Sitz auf Rundrohr-Säule mit Rastbolzen (Polsterfläche wie bei sitzSaeule: mitte = Mitte der Sitzfläche, Oberkante)
+function sitzSaeuleDK(ger, mitte, w = 0.42, l = 0.42, neigung = 0) {
+  ger.polsterGeformt(w, 0.09, l, mitte.clone().sub(V(0, 0.045, 0)), quer(-neigung));
+  ger.holm(V(mitte.x, 0.05, mitte.z), V(mitte.x, mitte.y - 0.125, mitte.z), 0.07);   // obere Kappe liegt unter dem Polster an
+  maschTeil(ger.gruppe, dkZyl(0.012, 0.07, 10), ger.mMetall, mitte.x + 0.07, mitte.y - 0.25, mitte.z).rotation.z = Math.PI / 2;
+  maschTeil(ger.gruppe, new THREE.SphereGeometry(0.022, 14, 10), ger.mDKGold, mitte.x + 0.11, mitte.y - 0.25, mitte.z);
+}
+// Seitenrahmen (sg = ±1): Pfosten aus Rundrohr mit Lagerbock auf der Hebelachse C, darüber ein dünnerer Mast bis zur Seilrolle (oben m über C), schräge Strebe
+// zum Boden (strebe = { y, z } oder null). Kein Querrohr zur anderen Seite: beide Seiten hängen nur über den Bodenrahmen zusammen
+function dkSeitenrahmen(ger, sg, C, oben, strebe, xs = DK.achse) {
+  const x = sg * xs;
+  ger.holm(V(x, 0.05, C.z), V(x, C.y - 0.085, C.z), DK.holm);
+  ger.lagerbock(V(x, C.y, C.z), sg);
+  ger.holm(V(x, C.y + 0.085, C.z), V(x, C.y + oben, C.z), DK.strebe);
+  if (strebe) ger.holm(V(x, strebe.y, C.z), V(x, 0.05, strebe.z), DK.strebe);
+}
+// Gewichtsstapel DK Line: schwarze Verkleidung mit Sichtfenster und Typenschild, 12 Stahlplatten (6 am Stecker), zwei Chromstangen, goldener Stecker, Zugstab oben
+// aus dem Deckel mit beweglicher Rolle (o.mRolle) oder Öse; darüber der Rollenkopf. pos = Fußpunkt, vorn = offene Seite (zum Trainierenden), F = Höhe der Verkleidung.
+// Der Stapel hebt sich nur über stapelAnHebel (Seillänge); heben(h) setzt die Höhe (m) direkt
+function gewichtsblockDK(ger, pos, vorn, F = 1.55, titel = '', untertitel = '', o = {}) {
+  const g = new THREE.Group(); g.position.copy(pos); g.rotation.y = Math.atan2(vorn.x, vorn.z);
+  const t = (geo, m, x, y, zz) => maschTeil(g, geo, m, x, y, zz);
+  const N = 12, STIFT = 6, P0 = 0.12, PITCH = 0.047, hMax = o.hMax || 0.3, rm = 0.04, rg = 0.04, yM0 = F + 0.14, yG = yM0 + hMax + 0.18;
+  t(rundGeo(0.56, 0.1, 0.46, 0.02, 1), ger.mDK, 0, 0.05, 0);                                                                  // Sockel
+  for (const sx of [-1, 1]) t(rundGeo(0.035, F - 0.1, 0.36, 0.01, 1), ger.mVerkleidung, sx * 0.245, (F + 0.1) / 2, 0);        // Seitenwände
+  t(rundGeo(0.455, F - 0.1, 0.035, 0.01, 1), ger.mVerkleidung, 0, (F + 0.1) / 2, -0.2);                                       // Rückwand
+  const yF = P0 + N * PITCH + 0.1;                                                                                             // Oberkante des Sichtfensters
+  t(rundGeo(0.455, F - yF, 0.03, 0.008, 1), ger.mVerkleidung, 0, (F + yF) / 2, 0.175);                                         // Blende über dem Fenster
+  t(rundGeo(0.455, 0.014, 0.034, 0.004, 1), ger.mDKGold, 0, yF + 0.007, 0.175);                                                // goldene Leiste
+  t(rundGeo(0.012, F - yF - 0.05, 0.004, 0.002, 1), ger.mDKGold, 0.2, (F + yF) / 2, 0.1925);                                   // goldener Streifen
+  for (const sz of [-1, 1]) t(rundGeo(0.56, 0.05, 0.2, 0.016, 1), ger.mDK, 0, F + 0.025, sz * 0.13);                                // Deckel in zwei Hälften mit Schlitz für den Zugstab
+  for (const sx of [-1, 1]) t(dkZyl(0.011, F - 0.1, 12), ger.mMetall, sx * 0.19, (F + 0.1) / 2, 0);                            // Führungsstangen (außerhalb der Platten)
+  const kasten = (w, h, d) => new THREE.BoxGeometry(w, h, d).toNonIndexed(), platten = new THREE.Group(); g.add(platten);
+  for (let i = 0; i < N; i++) {                                                                                                 // zwölf Platten 30 × 3,5 × 20 cm mit zwei Führungsohren, einzeln (die oberen sechs steigen)
+    const y = P0 + i * PITCH + 0.0175;
+    maschTeil(platten, verschmelze([[kasten(0.3, 0.035, 0.2), V(0, y, 0)], [kasten(0.029, 0.035, 0.05), V(0.1645, y, 0)], [kasten(0.029, 0.035, 0.05), V(-0.1645, y, 0)]]), ger.mHebel);
+  }
+  const bewegt = new THREE.Group(); g.add(bewegt);   // Zubehör, das mit den Platten steigt: Stecker, Zugstab, Rolle
+  const yStift = P0 + STIFT * PITCH + 0.0175, yO = P0 + (N - 1) * PITCH + 0.035;
+  maschTeil(bewegt, dkZyl(0.007, 0.17, 10), ger.mMetall, 0, yStift, 0.085).rotation.x = Math.PI / 2;                           // Stecker
+  maschTeil(bewegt, new THREE.SphereGeometry(0.017, 14, 10), ger.mDKGold, 0, yStift, 0.185);
+  const yE = o.mRolle === false ? yM0 : yM0 - rm;   // Zugstab endet an der Öse bzw. am tiefsten Punkt der Rolle (dort läuft das Seil unten herum)
+  maschTeil(bewegt, dkZyl(0.009, yE - yO, 12), ger.mKabel, 0, (yO + yE) / 2, 0);                                              // Zugstab (Seilmaterial: Teil der Kette Platten, Stab, Seil)
+  if (o.mRolle === false) maschTeil(bewegt, new THREE.SphereGeometry(0.014, 12, 8), ger.mDKGold, 0, yM0, 0);                   // Öse am Kopf des Zugstabs
+  else { const M = ger.rolleDK(V(0, yM0, 0), V(0, 0, 1), rm); ger.gruppe.remove(M); bewegt.add(M); }
+  for (const sx of [-1, 1]) holmIn(ger, g, V(sx * 0.2, F + 0.05, -0.14), V(sx * 0.2, yG + 0.07, -0.14), 0.055);                 // Rollenkopf: zwei Pfosten und Querstück
+  t(rundGeo(0.46, 0.09, 0.07, 0.02, 1), ger.mDK, 0, yG, -0.1);
+  if (titel) {   // Schild vorn auf der Blende (Stapel seitlich der Maschine) oder außen auf der +x-Wand (Stapel hinter der Maschine: von der Kamera aus lesbar)
+    const s = ger.schild(titel, untertitel); ger.gruppe.remove(s); g.add(s);
+    if (o.seite) { s.rotation.y = Math.PI / 2; s.position.set(0.2655, F - 0.22, 0); } else s.position.set(0, F - 0.16, 0.19);
+  }
+  ger.gruppe.add(g);
+  const welt = (v) => v.clone().applyAxisAngle(V(0, 1, 0), g.rotation.y).add(g.position);
+  return { g, bewegt, platten, F, yM0, yG, hMax, rm, rg, welt, heben(h) { bewegt.position.y = h; platten.children.forEach((p, i) => { p.position.y = i >= STIFT ? h : 0; }); } };
+}
+// Seilweg Stapel → Hebel (wiederverwendbar): Stahlseil vom Zugstab des Stapels (bewegliche Rolle mit zwei Strängen oder Öse) über Rollen am Rollenkopf und
+// Rollen über den Hebeln zu den Nocken (Scheiben auf der Hebelachse). Beide Enden hängen an Anschlüssen (Nocken-Nase am Hebel, Öse am Stapelkopf), das Seil ist
+// immer straff und die Länge bleibt gleich: dreht der Hebel um dTheta, wickelt sich das Seil um die Nocke (Länge rN · dTheta) und der Stapel steigt um die
+// Längenänderung geteilt durch die Zahl der Stränge an der Rolle (zwei Hebel: Mittelwert, ein Hebel mit Öse: 1:1, mit Rolle und fester Öse: 2:1).
+// o: { block, straenge: 1 | 2, naben: [{ x, y, z (Hebelachse an der Nockenebene), rN (Nockenradius), dir (+1/-1: in welche Richtung dreht der Hebel in der Übung,
+// Winkel von +z nach +y), dD (Höhe der Rolle über der Achse) }] }. stelle([theta je Nocke]) setzt Seil, Nocken und Stapel und liefert die Hubhöhe (m)
+function stapelAnHebel(ger, o) {
+  const B = o.block, rm = B.rm, rg = B.rg, rD = 0.04, w0 = 0.5, zwei = o.straenge !== 1;
+  const nb = o.naben.map((n) => {
+    const dD = n.dD || 0.45, beta = Math.acos(n.rN / dD), phiT = Math.PI / 2 + n.dir * beta, C = V(n.x, n.y, n.z);
+    return { ...n, dD, phiT, C, K: C.clone().add(V(0, dD, 0)), T: C.clone().add(V(0, n.rN * Math.sin(phiT), n.rN * Math.cos(phiT))), L0: 6 * n.rN * Math.sin(w0 / 6), th0: null, arc: [V(), V(), V()] };
+  });
+  const S = zwei ? [B.welt(V(-rm, B.yG, 0)), B.welt(V(rm, B.yG, 0))] : [B.welt(V(0, B.yG, 0))];
+  const horiz = (a, b) => V(b.x - a.x, 0, b.z - a.z).normalize();
+  const kreuzen = (a, b, c, d) => { const f = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x); return f(a, b, c) * f(a, b, d) < 0 && f(c, d, a) * f(c, d, b) < 0; };
+  let zuord = nb.map((_, k) => k);   // Strang i läuft zur Nocke zuord[i]; so, dass sich die Seile in der Draufsicht nicht kreuzen
+  if (nb.length === 2) { const wg = (i, k) => S[i].clone().addScaledVector(horiz(S[i], nb[k].K), rg); if (kreuzen(wg(0, 0), nb[0].K, wg(1, 1), nb[1].K)) zuord = [1, 0]; }
+  const i0 = nb.length === 1 && zwei && S[1].distanceTo(nb[0].K) < S[0].distanceTo(nb[0].K) ? 1 : 0;   // ein Hebel mit fester Öse: der nähere Strang läuft zum Hebel
+  zuord.forEach((k, i) => {
+    const si = nb.length === 1 && zwei ? i0 : i, n = nb[k], Wg = S[si].clone().addScaledVector(horiz(S[si], n.K), rg), G = umlenk(S[si].clone().sub(V(0, 0.3, 0)), Wg, n.K, rg);
+    const tau = n.T.clone().sub(n.K).normalize(), uin = n.K.clone().sub(G.aus).normalize();
+    const Wd = n.K.clone().sub(uin.clone().sub(tau.clone().multiplyScalar(uin.dot(tau))).normalize().multiplyScalar(rD)), D = umlenk(G.aus, Wd, n.T, rD);   // Rolle berührt die Tangente zur Nocke in K
+    const mitte = (W, r, A, B) => { const v = A.clone().sub(W).add(B.clone().sub(W)); return v.lengthSq() < 1e-8 ? A.clone() : W.clone().addScaledVector(v.normalize(), r); };   // Punkt auf dem Radrand in der Mitte des Bogens
+    n.Wd = Wd; n.strang = si; n.kette = [n.T, D.aus, mitte(Wd, rD, D.aus, D.ein), D.ein, G.aus, mitte(Wg, rg, G.aus, G.ein), S[si].clone()];
+    ger.rolleDK(Wg, G.a, rg); ger.rolleDK(Wd, D.a, rD);
+    if (n.zug) return;   // Seilende wandert mit der Hand (Kabelturm): keine Nocke
+    n.nase = ger.teil(new THREE.SphereGeometry(0.009, 12, 8), ger.mDKGold);   // Seilende: Kugel (gepresste Seilkugel) an der Nocke
+    // Nocke: Kreisausschnitt aus Stahlblech (3 cm), dreht mit dem Hebel um die Achse; das Seil läuft auf ihrem Rand. Er reicht von der Nase bis dorthin,
+    // wo das Seil bei vollem Hebelweg (dth, rad) abläuft
+    const R0 = n.rN - 0.004, aA = n.phiT - n.dir * ((n.dth || 0.8) + 0.15), aB = n.phiT + n.dir * (w0 + 0.12), lo = Math.min(aA, aB), hi = Math.max(aA, aB);
+    n.nocke = new THREE.Group(); n.nocke.position.copy(n.C); ger.gruppe.add(n.nocke);
+    for (let k = 0; k < 3; k++) {   // drei Keile: so liegt das Seil am Rand außerhalb der Kästen der Teile
+      // Keil in eigener Lage: Mittellinie entlang +Y (so liegt sein Kasten eng an), dann um X auf seinen Winkel gedreht
+      const w1 = new THREE.Shape(), a1 = lo + (hi - lo) * k / 3, a2 = lo + (hi - lo) * (k + 1) / 3, am = (a1 + a2) / 2, ha = (a2 - a1) / 2; w1.moveTo(0, 0);
+      for (let j = 0; j <= 6; j++) { const b = -ha + 2 * ha * j / 6; w1.lineTo(-R0 * Math.sin(b), R0 * Math.cos(b)); }
+      w1.lineTo(0, 0);
+      const ng = new THREE.ExtrudeGeometry(w1, { depth: 0.03, bevelEnabled: false, curveSegments: 1 }); ng.rotateY(Math.PI / 2); ng.translate(-0.015, 0, 0);
+      const m = new THREE.Mesh(ng, ger.mHebel); m.rotation.x = Math.PI / 2 - am; m.castShadow = true; m.receiveShadow = true; n.nocke.add(m);
+    }
+  });
+  const M = [V(), V(), V()], knoten = [];   // Knoten von Anschluss zu Anschluss: Nocke (oder Zugstelle), Rollen, bewegliche Rolle, Rollen, Nocke oder feste Öse
+  const vor = (n) => (n.zug ? [...n.kette] : [n.arc[2], n.arc[1], n.arc[0], ...n.kette]), rueck = (n) => (n.zug ? [...n.kette].reverse() : [...n.kette].reverse().concat([n.arc[0], n.arc[1], n.arc[2]]));
+  const oese = (si) => { const E = B.welt(V(si ? rm : -rm, B.yG, 0)); ger.teil(new THREE.SphereGeometry(0.009, 12, 8), ger.mDKGold, E); holmIn(ger, ger.gruppe, B.welt(V(si ? rm : -rm, B.yG, -0.07)), E, 0.02); return E; };
+  if (zwei) { const e0 = nb.find((n) => n.strang === 0), e1 = nb.find((n) => n.strang === 1); knoten.push(...(e0 ? vor(e0) : [oese(0)]), ...M, ...(e1 ? rueck(e1) : [oese(1)])); }
+  else knoten.push(...vor(nb[0]), M[0]);
+  const seg = []; for (let i = 0; i < knoten.length - 1; i++) seg.push(ger.seilTeil(knoten[i], knoten[i + 1]));
+  const setze = (ws, h) => {
+    nb.forEach((n, k) => { if (!n.zug) n.arc.forEach((p, j) => { const a = n.phiT + n.dir * ws[k] * (j + 1) / 3; p.set(n.x, n.y + n.rN * Math.sin(a), n.z + n.rN * Math.cos(a)); }); });
+    B.heben(h);
+    const yM = B.yM0 + h;
+    if (zwei) { M[0].copy(B.welt(V(-rm, yM, 0))); M[1].copy(B.welt(V(0, yM - rm, 0))); M[2].copy(B.welt(V(rm, yM, 0))); } else M[0].copy(B.welt(V(0, yM, 0)));
+    seg.forEach((s, i) => ger.legeStab(s, knoten[i], knoten[i + 1]));
+    nb.forEach((n, k) => { if (!n.zug) { n.nase.position.copy(n.arc[2]); n.nocke.rotation.x = -n.dir * (ws[k] - w0); } });   // Nocke dreht mit dem Hebel
+  };
+  setze(nb.map(() => w0), 0);
+  const res = {
+    nb, seg, knoten, hub: 0, block: B,
+    stelle(th) {
+      let summe = 0;
+      const ws = nb.map((n, k) => { if (n.th0 === null) n.th0 = th[k]; if (n.zug) { summe += th[k] - n.th0; return w0; } const w = Math.max(0.02, w0 + n.dir * (th[k] - n.th0)); summe += 6 * n.rN * Math.sin(w / 6) - n.L0; return w; });
+      res.hub = Math.max(0, Math.min(B.hMax, summe / (zwei ? 2 : 1)));
+      setze(ws, res.hub); return res.hub;
+    }
+  };
+  return res;
+}
+// Brustpolster-Rudermaschine, Beinstrecker und Drückmaschinen bauen mit diesen Teilen weiter unten (rudermaschineBauen, drueckmaschineBauen, streckerBauenDK)
 // Schaumstoffrolle (Beinstrecker, Beinbeuger, Rückenstrecker): Achse X, mit Chromkappen
 function rollePolster(ger, laenge = 0.34, r = 0.048, gruppe = ger.gruppe) {
   const g = new THREE.Group();
@@ -1158,7 +1433,34 @@ function bogenHand(h0, h1, C, t) {
 // Drückmaschine (Brustpresse, Schulterpresse): Sitz, Rückenpolster (r = Rumpf), zwei getrennte Hebelarme außen (Drehachse C, Achse X),
 // Querrohr nach innen zum Griff; griff 'senkrecht' (Neutralgriff Brustpresse) oder 'laengs' (Neutralgriff über Kopf); Gewichtsblock hinten
 const DM_X = 0.43;
-function drueckmaschineBauen(ger, z, becken, r, C, griff) {
+function drueckmaschineBauen(ger, z, becken, r, C, griff, dk) {
+  if (!dk) return drueckmaschineBauenAlt(ger, z, becken, r, C, griff);   // ohne DK-Angaben wie bisher
+  // DK Line (Auftrag D): getrennte Seitenrahmen mit Lagerböcken statt Querrohr auf Achshöhe; Stapel hinten zwischen den Holmen des Bodenrahmens.
+  // dk: { titel, untertitel (Schild), dir (Drehrichtung des Hebels in der Übung), rN (Nockenradius) }
+  const R = rumpfRahmen(r), oben = 0.45, stackZ = dk.stackZ != null ? dk.stackZ : becken.z - 0.78, zr = Math.min(-0.85, C.z - 0.12, stackZ - 0.28), zv = becken.z > 0.1 ? 1.1 : 0.7;
+  dkBoden(ger, DK.achse, zr, zv, stackZ + 0.23);
+  sitzSaeuleDK(ger, V(0, becken.y - 0.115, becken.z + 0.02), 0.44, 0.44);
+  ger.polsterGeformt(0.32, 0.66, 0.09, becken.clone().add(R.oben.clone().multiplyScalar(0.36)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045)), basisAus(R.oben, R.vor));   // schmal: Ellbogen gehen unten daran vorbei
+  ger.holm(V(0, 0.05, becken.z - 0.42), becken.clone().add(R.oben.clone().multiplyScalar(0.34)).sub(R.vor.clone().multiplyScalar(0.2625)), DK.strebe);   // Kappe liegt an der Polsterrückseite an
+  const strebe = C.y > 0.8 ? { y: C.y - 0.45, z: C.z + (C.z > -0.3 ? -0.75 : 0.75) } : null;
+  for (const sx of [-1, 1]) {
+    const s = sx > 0 ? 'l' : 'r';
+    dkSeitenrahmen(ger, sx, C, oben, strebe);
+    z['dmArm_' + s] = ger.stab(V(), V(0, 1, 0), 0.0275, ger.mHebel);
+    z['dmQuer_' + s] = ger.stab(V(), V(0, 1, 0), 0.022, ger.mHebel);
+    const gg = new THREE.Group(); ger.gruppe.add(gg);
+    griffRohr(ger, V(0, -0.075, 0), V(0, 0.075, 0), gg, 0.75);
+    if (griff === 'laengs') gg.userData.frei = V(0, 1, 0);   // Schwenkgriff: dreht mit der Hand
+    z['dmGriff_' + s] = gg;
+  }
+  ger.holm(V(0, 0.05, becken.z + 0.62), V(0, 0.25, becken.z + 0.62), DK.strebe);
+  ger.stab(V(-0.2, 0.25, becken.z + 0.62), V(0.2, 0.25, becken.z + 0.62), 0.016, ger.mMetall);   // Fußstütze
+  z.block = gewichtsblockDK(ger, V(0, 0, stackZ), V(0, 0, 1), 1.55, dk.titel, dk.untertitel, { seite: true });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 2, naben: [1, -1].map((sg) => ({ x: sg * (DK.achse + 0.08), y: C.y, z: C.z, rN: dk.rN, dir: dk.dir, dth: dk.dth, dD: oben })) });
+  seil.nb.forEach((n) => ger.holm(V(Math.sign(n.x) * DK.achse, C.y + oben, C.z), n.Wd, 0.04));   // Halter der Seilrolle am Mast
+  z.dkSeil = seil; z.dm = { C, griff, dk: seil };
+}
+function drueckmaschineBauenAlt(ger, z, becken, r, C, griff) {
   const R = rumpfRahmen(r);
   bodenrahmen(ger, -0.45, 0.45, -0.85, becken.z > 0.1 ? 1.1 : 0.7);   // vorderes Rahmenrohr vor den Füßen, nicht darunter (Schrägpresse: Füße weiter vorn)
   sitzSaeule(ger, V(0, becken.y - 0.115, becken.z + 0.02), 0.44, 0.44);
@@ -1183,103 +1485,337 @@ function drueckmaschineBauen(ger, z, becken, r, C, griff) {
 }
 // Arme und Griffe an die Hände setzen; hub = Anteil der Bewegung (0…1) für den Gewichtsblock
 function drueckmaschineStellen(z, g, hub) {
-  const { C, griff } = z.dm, X = z.dm.x || DM_X;
+  const { C, griff } = z.dm, X = z.dm.x || DM_X, th = [];
   for (const [s, sg] of [['l', 1], ['r', -1]]) {
     const h = g.hand[s], A = V(sg * X, h.y, h.z), P = V(sg * X, C.y, C.z);
+    th.push(Math.atan2(h.y - C.y, h.z - C.z));   // Winkel des Hebels (von +z nach +y): dreht die Nocke und zieht das Seil (DK Line)
     seil(z['dmArm_' + s], P, A);
     // Querrohr vom Hebelarm bis zum Griff (Griff quer: bis zu seinem äußeren Ende)
     seil(z['dmQuer_' + s], A, h.clone().add(V(sg * (griff === 'quer' ? 0.075 : 0.03), griff === 'senkrecht' ? 0.075 : 0, 0)));
     const gr = z['dmGriff_' + s]; gr.position.copy(h);
     gr.quaternion.setFromUnitVectors(V(0, 1, 0), griff === 'senkrecht' ? V(0, 1, 0) : griff === 'quer' ? V(1, 0, 0) : V(0, 0, 1));
   }
-  z.block.heben(0.3 * hub);
+  if (z.dm.dk) z.dm.dk.stelle(th); else z.block.heben(0.3 * hub);   // DK Line: der Stapel hebt sich so, wie das Seil es zulässt
 }
-// Bizepsmaschine / Trizepsstrecker: Sitz, schräges Armpolster unter den Oberarmen, Hebel mit Kurvenscheiben dreht um die
-// Ellbogenachse C (Achse X); Bizeps: Stange im Untergriff am Hebelende, Trizeps: zwei senkrechte Griffe (Handflächen zueinander).
-// Gewichtsblock vorn, Kabel zur Kurvenscheibe
-function armmaschineBauen(ger, z, becken, C, trizeps) {
-  // Rahmen nur dort, wo weder Hebel (x = ±0,3) noch Beine sind: Pfosten außen senkrecht zum Lager, Träger am Boden
-  sitzSaeule(ger, V(0, becken.y - 0.115, becken.z + 0.02), 0.42, 0.4);
-  for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.37, 0.05, C.z), V(sx * 0.37, C.y, C.z), 0.06); drehlager(ger, V(sx * 0.37, C.y, C.z), V(1, 0, 0), 0.09); }
-  ger.vierkant(V(-0.4, 0.035, C.z), V(0.4, 0.035, C.z), 0.07);
-  ger.vierkant(V(0, 0.035, becken.z - 0.2), V(0, 0.035, C.z), 0.07);
-  ger.vierkant(V(-0.22, 0.035, becken.z - 0.2), V(0.22, 0.035, becken.z - 0.2), 0.07);
-  scottPolster(ger, z, becken, 0.07);   // fest, bewegt sich nicht mit dem Arm
+/* ---------- Paket R1 (Auftrag R, 09.11.2026): Sitz-, Hebel-, Arm- und Butterfly-Maschinen in der DK Line ----------
+   Eigene Bausteine mit Präfix r1_. r1_nockenSeil macht dasselbe wie stapelAnHebel (Seil von Anschluss zu Anschluss, Länge konstant, der Stapel steigt nur über das Seil),
+   aber für jede Hebelachse (Nockenebene aus achse und e2, Winkel von e1 = e2 × achse nach e2), mit der Nockenscheibe an der Stelle, an der das Seil aufliegt
+   (stapelAnHebel setzt sie gespiegelt), mit einer Mastrolle (oben) für tief liegende Nocken und mit direktem Seilweg zur Kopfrolle (Butterfly). */
+function r1_nockenSeil(ger, o) {
+  const B = o.block, rm = B.rm, rg = B.rg, rD = 0.04, w0 = 0.5, zwei = o.straenge !== 1;
+  const wickel = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+  const rolle = (pos, achse, r) => (o.sparsam ? r1_rolle(ger, pos, achse, r) : ger.rolleDK(pos, achse, r));   // sparsam: Rollen ohne Goldkappe (weniger Meshes)
+  const nb = o.naben.map((n) => {
+    const e2 = n.e2.clone().normalize(), a = n.achse.clone().normalize(), e1 = e2.clone().cross(a).normalize();   // e1 × e2 = a: Drehrichtung der Winkel
+    const r = { ...n, e1, e2, a, C: n.C.clone(), dD: n.dD || 0.45, rE: n.oben ? n.oben.r || 0.04 : 0, th0: n.th0 == null ? null : n.th0, dir: n.dir || 1, dth: n.dth || 0.8 };
+    r.w = (v) => Math.atan2(v.dot(e2), v.dot(e1));   // Winkel einer Richtung in der Nockenebene
+    r.pt = (rr, phi) => r.C.clone().addScaledVector(e1, rr * Math.cos(phi)).addScaledVector(e2, rr * Math.sin(phi));
+    if (n.v0 && n.v1) { r.th0 = r.w(n.v0); const d = wickel(r.w(n.v1) - r.th0); r.dir = d < 0 ? -1 : 1; r.dth = Math.abs(d); }   // Ruhelage und Drehrichtung aus der Lage des Hebels am Anfang und am Ende der Übung
+    r.nA = Math.min(5, Math.max(3, Math.ceil((w0 + r.dth + 0.1) / 0.5))); r.arc = Array.from({ length: r.nA }, () => V()); r.L0 = 2 * r.nA * n.rN * Math.sin(w0 / (2 * r.nA));   // Sehnen auf dem Nockenrand: je höchstens 0,45 rad, damit das Seil nicht tief in die Scheibe schneidet
+    if (!n.direkt) { r.phiT = Math.PI / 2 + r.dir * Math.acos(Math.min(1, n.rN / r.dD)); r.K = r.pt(r.dD, Math.PI / 2); r.T = r.pt(n.rN, r.phiT); }
+    return r;
+  });
+  const S = zwei ? [B.welt(V(-rm, B.yG, 0)), B.welt(V(rm, B.yG, 0))] : [B.welt(V(0, B.yG, 0))];
+  const horiz = (a, b) => { const d = V(b.x - a.x, 0, b.z - a.z); return d.lengthSq() < 1e-8 ? V(1, 0, 0) : d.normalize(); };
+  const ziel = (n) => (n.oben ? n.oben.W : n.direkt ? n.C : n.K);
+  const kreuzen = (a, b, c, d) => { const f = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x); return f(a, b, c) * f(a, b, d) < 0 && f(c, d, a) * f(c, d, b) < 0; };
+  let zuord = nb.map((_, k) => k);   // Strang i läuft zur Nocke zuord[i]; so, dass sich die Seile von oben gesehen nicht kreuzen
+  if (zwei && nb.length === 2) { const wg = (i, k) => S[i].clone().addScaledVector(horiz(S[i], ziel(nb[k])), rg); if (kreuzen(wg(0, 0), ziel(nb[0]), wg(1, 1), ziel(nb[1]))) zuord = [1, 0]; }
+  const mitte = (W, r, A, Bp) => { const v = A.clone().sub(W).add(Bp.clone().sub(W)); return v.lengthSq() < 1e-8 ? A.clone() : W.clone().addScaledVector(v.normalize(), r); };   // Punkt auf dem Radrand mitten im Bogen
+  zuord.forEach((k, i) => {
+    const n = nb[k], Z = ziel(n), Wg = S[i].clone().addScaledVector(horiz(S[i], Z), rg), P0 = S[i].clone().sub(V(0, 0.3, 0));
+    let G = umlenk(P0, Wg, Z, rg), kette;
+    if (n.direkt) {   // Seil von der Kopfrolle gerade zur Nocke: der Berührpunkt T folgt aus dem Ablaufpunkt der Kopfrolle
+      for (let it = 0; it < 3; it++) {
+        const d = G.aus.clone().sub(n.C), dx = d.dot(n.e1), dy = d.dot(n.e2), Dn = Math.max(Math.hypot(dx, dy), n.rN * 1.01);
+        n.phiT = Math.atan2(dy, dx) + n.dir * Math.acos(n.rN / Dn); n.T = n.pt(n.rN, n.phiT);
+        G = umlenk(P0, Wg, n.T, rg);
+      }
+      kette = [n.T, G.aus, mitte(Wg, rg, G.aus, G.ein), S[i].clone()];
+    } else {
+      const tau = n.T.clone().sub(n.K).normalize(), We = n.oben ? n.oben.W.clone() : null;
+      let E = null, D = null, Wd = n.K.clone();
+      G = umlenk(P0, Wg, We || n.K, rg);
+      for (let it = 0; it < 3; it++) {   // Rollen so lange abgleichen, bis die Tangenten zueinander passen
+        if (We) E = umlenk(G.aus, We, D ? D.ein : n.K, n.rE);
+        const vor = We ? E.aus : G.aus, uin = n.K.clone().sub(vor).normalize();
+        Wd = n.K.clone().sub(uin.clone().sub(tau.clone().multiplyScalar(uin.dot(tau))).normalize().multiplyScalar(rD));   // Rolle D berührt die Tangente zur Nocke in K
+        D = umlenk(vor, Wd, n.T, rD);
+        G = umlenk(P0, Wg, We ? E.ein : D.ein, rg);
+      }
+      kette = [n.T, D.aus, mitte(Wd, rD, D.aus, D.ein), D.ein, ...(We ? [E.aus, mitte(We, n.rE, E.aus, E.ein), E.ein] : []), G.aus, mitte(Wg, rg, G.aus, G.ein), S[i].clone()];
+      n.Wd = Wd; n.We = We; rolle(Wd, D.a, rD); if (We) rolle(We, E.a, n.rE);
+    }
+    n.Wg = Wg; n.strang = i; n.kette = kette; rolle(Wg, G.a, rg);
+    n.nase = ger.teil(new THREE.SphereGeometry(0.009, 12, 8), ger.mDKGold);   // Seilende: gepresste Kugel an der Nocke
+    // Nocke: Kreisausschnitt aus Stahlblech (3 cm), dreht mit dem Hebel um die Achse; das Seil läuft auf ihrem Rand. Er reicht von der Nase bis dorthin, wo das Seil bei vollem Hebelweg abläuft
+    const R0 = n.rN - 0.004, aA = n.phiT - n.dir * (n.dth + 0.15), aB = n.phiT + n.dir * (w0 + 0.12), lo = Math.min(aA, aB), hi = Math.max(aA, aB);
+    n.nocke = new THREE.Group(); n.nocke.position.copy(n.C); ger.gruppe.add(n.nocke);
+    const keile = n.keile || Math.min(4, Math.max(2, Math.ceil((hi - lo) / 0.8)));
+    for (let q = 0; q < keile; q++) {   // mehrere Keile (je höchstens 0,8 rad), jeder in eigener Lage mit der Mittellinie entlang +x: so liegt das Seil am Rand außerhalb der Kästen der Teile
+      const a1 = lo + (hi - lo) * q / keile, a2 = lo + (hi - lo) * (q + 1) / keile, am = (a1 + a2) / 2, ha = (a2 - a1) / 2, sh = new THREE.Shape(); sh.moveTo(0, 0);
+      for (let j = 0; j <= 6; j++) { const b = -ha + 2 * ha * j / 6; sh.lineTo(R0 * Math.cos(b), R0 * Math.sin(b)); }
+      sh.lineTo(0, 0);
+      const ng = new THREE.ExtrudeGeometry(sh, { depth: 0.03, bevelEnabled: false, curveSegments: 1 }); ng.translate(0, 0, -0.015);   // Dicke entlang der Achse
+      const m = new THREE.Mesh(ng, ger.mHebel); m.castShadow = true; m.receiveShadow = true;
+      m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(n.e1.clone().multiplyScalar(Math.cos(am)).addScaledVector(n.e2, Math.sin(am)), n.e1.clone().multiplyScalar(-Math.sin(am)).addScaledVector(n.e2, Math.cos(am)), n.a));   // x = Richtung des Keils (Winkel am, von e1 nach e2)
+      n.nocke.add(m);
+    }
+  });
+  const M = [V(), V(), V()], knoten = [];   // Knoten von Anschluss zu Anschluss: Nasen, Rollen, bewegliche Rolle (oder Öse am Zugstab)
+  const vor = (n) => [...n.arc].reverse().concat(n.kette), rueck = (n) => [...n.kette].reverse().concat(n.arc);
+  if (zwei) { const e0 = nb.find((n) => n.strang === 0), e1 = nb.find((n) => n.strang === 1); knoten.push(...vor(e0), ...M, ...rueck(e1)); }
+  else knoten.push(...vor(nb[0]), M[0]);
+  const seg = []; for (let i = 0; i < knoten.length - 1; i++) seg.push(ger.seilTeil(knoten[i], knoten[i + 1]));
+  const setze = (ws, h) => {
+    nb.forEach((n, k) => { n.arc.forEach((p, j) => p.copy(n.pt(n.rN, n.phiT + n.dir * ws[k] * (j + 1) / n.nA))); });
+    B.heben(h);
+    const yM = B.yM0 + h;
+    if (zwei) { M[0].copy(B.welt(V(-rm, yM, 0))); M[1].copy(B.welt(V(0, yM - rm, 0))); M[2].copy(B.welt(V(rm, yM, 0))); } else M[0].copy(B.welt(V(0, yM, 0)));
+    seg.forEach((s, i) => ger.legeStab(s, knoten[i], knoten[i + 1]));
+    nb.forEach((n, k) => { n.nase.position.copy(n.arc[n.nA - 1]); n.nocke.quaternion.setFromAxisAngle(n.a, n.dir * (ws[k] - w0)); });   // die Nocke dreht mit dem Hebel
+  };
+  setze(nb.map(() => w0), 0);
+  const res = {
+    nb, seg, knoten, hub: 0, block: B,
+    stelle(th) {   // th: Winkel des Hebels je Nocke (von e1 nach e2); liefert die Hubhöhe (m)
+      let summe = 0;
+      const ws = nb.map((n, k) => {
+        if (n.th0 === null) n.th0 = th[k];
+        if (n.dir * wickel(th[k] - n.th0) < 0) n.th0 = th[k];   // hinter der Ruhelage: Ruhelage nachziehen (Stapel bleibt unten)
+        const w = Math.max(0.02, w0 + n.dir * wickel(th[k] - n.th0)); summe += 2 * n.nA * n.rN * Math.sin(w / (2 * n.nA)) - n.L0; return w;
+      });
+      res.hub = Math.max(0, Math.min(B.hMax, summe / (zwei ? 2 : 1)));
+      setze(ws, res.hub); return res.hub;
+    },
+    stelleV(vek) { return res.stelle(vek.map((v, k) => nb[k].w(v))); }   // wie stelle, aber aus der Richtung des Hebels (Welt)
+  };
+  return res;
+}
+// Umlenkrolle mit nur drei Teilen (Rad und zwei Wangen, ohne Goldkappe): spart Meshes bei den Maschinen mit vielen Rollen
+function r1_rolle(ger, pos, achse, r) {
+  const g = new THREE.Group(); g.position.copy(pos); g.quaternion.setFromUnitVectors(V(0, 1, 0), achse.clone().normalize());
+  const teil = (geo, m, y) => { const o = new THREE.Mesh(geo, m); o.position.y = y; o.castShadow = true; g.add(o); return o; };
+  teil(dkZyl(r, 0.02, 20), ger.mHebel, 0); teil(dkZyl(r * 1.4, 0.007, 20), ger.mDK, 0.0135); teil(dkZyl(r * 1.4, 0.007, 20), ger.mDK, -0.0135);
+  ger.gruppe.add(g); return g;
+}
+// Lagerbock um eine beliebige Hebelachse P (Richtung achse): wie ger.lagerbock, nur nicht auf X festgelegt. hub = +1/-1: auf welcher Seite entlang der Achse die silberne Nabe
+// (Hebelseite) sitzt; kappe = false lässt die Goldkappe auf der anderen Seite weg
+function r1_lager(ger, P, achse, hub = -1, kappe = true, hubL = 0.03) {
+  const g = new THREE.Group(); g.position.copy(P); g.quaternion.setFromUnitVectors(V(1, 0, 0), achse.clone().normalize());
+  const teil = (geo, m, x, quer) => { const o = new THREE.Mesh(geo, m); o.position.x = x; if (quer) o.rotation.z = Math.PI / 2; o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
+  teil(rundGeo(0.09, 0.17, 0.17, 0.03, 1), ger.mDK, 0, false); teil(dkZyl(0.058, hubL, 24), ger.mHebel, hub * (0.045 + hubL / 2), true);   // hubL: Länge der Nabe (länger, wenn die Nocke ohne Achsstück direkt darauf sitzen soll)
+  if (kappe) teil(dkZyl(0.05, 0.02, 24), ger.mDKGold, -hub * 0.055, true);
+  ger.gruppe.add(g); return g;
+}
+// Rundrohr von (x, 0.05, z) senkrecht hoch bis unter die Unterseite eines Polsters (Mitte pc, Dicke d, Flächennormale n nach oben): die Kappe liegt an der Fläche an
+function r1_stuetzeUnter(ger, pc, n, d, x, z, dm = DK.strebe) {
+  const r = dm / 2, y = pc.y + (-d / 2 - r - (x - pc.x) * n.x - (z - pc.z) * n.z) / n.y;
+  return ger.holm(V(x, 0.05, z), V(x, y, z), dm);
+}
+// Armpolster der Bizeps-/Trizepsmaschine (wie scottPolster, Größe und Lage gleich; scottPolster selbst bleibt für die freie Scott-Bank): Polster mit Naht, darunter ein Rundrohr bis zum Querholm
+function r1_scottPolster(ger, z, becken, dicke, zStuetze) {
+  const L = scottLage(becken);
+  z.pult = ger.polsterGeformt(0.5, dicke, 0.34, V());
+  scottPultLegen(z.pult, L.schM, L.ellM);
+  r1_stuetzeUnter(ger, z.pult.position, V(0, 1, 0).applyQuaternion(z.pult.quaternion), dicke, 0, zStuetze);
+  return L;
+}
+// Beinbeuger liegend in der DK Line: Polster und Griffe wie bisher, Seitenholme tragen Lagerbock und Griffpfosten, Hebel silbern, Stapel links mit Seil zur Nocke (1:1)
+function r1_beugerLiegend(ger, z) {
+  const XS = 0.40, P = BL_KNIE.clone().setX(-SM_HEBEL_X), zS = 0.15, oben = 2.13 - P.y;   // Hebel links (neben dem Stapel): die rechte Seite bleibt frei für den Weg zur Bank. Seilrolle auf 2,13 m
+  dkBoden(ger, XS, -1.0, 0.8, -1.0, 0.8);
+  ger.polsterGeformt(0.38, 0.09, 0.75, V(0, 0.54, -0.475));   // Brustpolster
+  const hq = quer(-6), hp = V(0, 0.562, 0.2);
+  ger.polsterGeformt(0.38, 0.09, 0.62, hp, hq);   // etwas höheres Hüftpolster
+  r1_stuetzeUnter(ger, V(0, 0.54, -0.475), V(0, 1, 0), 0.09, 0, -0.5);
+  r1_stuetzeUnter(ger, hp, V(0, 1, 0).applyQuaternion(hq), 0.09, 0, 0.2);
+  for (const sx of [-1, 1]) { ger.holm(V(sx * 0.385, 0.05, -0.54), V(sx * 0.385, 0.56, -0.54), 0.045); griffRohr(ger, V(sx * 0.385, 0.58, -0.54), V(sx * 0.385, 0.74, -0.54)); }   // Griffe senkrecht, quer zum Unterarm
+  dkSeitenrahmen(ger, -1, P, oben, null, XS);
+  z.hebel = new THREE.Group(); z.hebel.position.copy(P); ger.gruppe.add(z.hebel);
+  const L = 0.385, rz = 0.103, rl = 0.36;   // Rolle liegt oben am Unterschenkel an (Rückseite des Beins in Bauchlage)
+  holmIn(ger, z.hebel, V(0, 0, 0), V(0, -L, rz), 0.055, ger.mHebel);
+  holmIn(ger, z.hebel, V(0, -L, rz), V(-Math.sign(P.x) * (Math.abs(P.x) - rl / 2 - 0.01), -L, rz), 0.04, ger.mHebel);   // Querrohr vom Hebelarm bis zum Ende der Rolle
+  rollePolster(ger, rl, 0.048, z.hebel).position.set(-P.x, -L, rz);
+  z.block = gewichtsblockDK(ger, V(-0.8, 0, zS), V(1, 0, 0), 1.55, 'BEINBEUGER LIEGEND', 'OBERSCHENKEL', { mRolle: false });
+  ger.holm(V(-XS, 0.05, zS), V(-0.57, 0.05, zS), DK.boden);   // Seitenholm links bis zum Sockel des Stapels
+  z.dkSeil = r1_nockenSeil(ger, { block: z.block, straenge: 1, naben: [{ C: V(-(XS + 0.08), P.y, P.z), achse: V(-1, 0, 0), e2: V(0, 1, 0), rN: 0.14, dD: oben, v0: V(0, Math.sin(2 * RAD), Math.cos(2 * RAD)), v1: V(0, Math.sin(115 * RAD), Math.cos(115 * RAD)) }] });
+  ger.holm(V(-XS, P.y + oben, P.z), z.dkSeil.nb[0].Wd, 0.04);   // Halter der Seilrolle am Mast
+  return z;
+}
+// Lage des Polsters am Knie bei Spreizung a (rad) für Adduktoren/Abduktoren, wie in beinmaschine.props gerechnet (Knie aus smKnie, Hüfte aus dem Becken)
+function r1_padLage(a, sg, abd) {
+  const R = rumpfRahmen(SM_RUMPF), K = smKnie(a)[sg > 0 ? 'l' : 'r'], H = SM_BECKEN.clone().sub(R.oben.clone().multiplyScalar(0.02)).add(V(sg * MASS.hueftBreite, 0, 0));
+  const td = K.clone().sub(H).setY(0).normalize(), aussen = V(sg * td.z, 0, -sg * td.x);
+  return K.clone().sub(td.clone().multiplyScalar(0.05)).add(aussen.multiplyScalar(abd ? 0.11 : -0.11));
+}
+// Adduktoren/Abduktoren: je Seite ein Schwenkarm um eine senkrechte Achse unter der Sitzvorderkante (Pfosten auf dem Querholm, Lagerbock, Nabe mit Armen, darüber die Nocke).
+// Das Seil verlässt die Nocke waagrecht nach hinten, läuft an einem Mast hinter der Lehne hoch und oben zur Kopfrolle des Stapels
+function r1_schwenkBauen(ger, z, art, zS) {
+  const abd = art === 'abduktoren', zM = -0.70, zP = 0.14, yH = 0.30, yC = yH + 0.045, yE = 2.13, nab = [], hubs = {};
+  const a0 = (abd ? 8 : 42) * RAD, a1 = (abd ? 40 : 8) * RAD;
+  for (const [s, sg] of [['l', 1], ['r', -1]]) {
+    const A = V(sg * 0.13, yH, zP), C = V(A.x, yC, zP), K = V(sg * 0.22, yC, zM + 0.12);
+    hubs[s] = A;
+    ger.holm(V(A.x, 0.05, zP), V(A.x, yH - 0.06 - 0.045 - 0.0325, zP), DK.strebe);   // Pfosten auf dem vorderen Querholm, die Kappe liegt unter dem Lagerbock an
+    r1_lager(ger, V(A.x, yH - 0.06, zP), V(0, 1, 0), 1, false, 0.045);   // Gehäuse; die silberne Nabe (Arme, 4,5 cm hoch) sitzt darüber, die Nocke direkt auf der Nabe
+    const out = V(-0.8 - K.x, 0, zS - K.z).normalize(), We = V(K.x, yE, K.z - 0.04).addScaledVector(out, 0.04);   // Mastrolle: das senkrechte Seil läuft 4 cm hinter K hoch
+    ger.holm(V(K.x, 0.05, zM), V(K.x, yC, zM), DK.strebe); ger.holm(V(K.x, yC, zM), V(K.x, yE, zM), DK.strebe);   // Mast in zwei Stücken: am Treffpunkt hängen die Halter der Rollen
+    const dir0 = r1_padLage(a0, sg, abd).sub(A).setY(0), dir1 = r1_padLage(a1, sg, abd).sub(A).setY(0);
+    nab.push({ C, achse: V(0, 1, 0), e2: K.clone().sub(C).normalize(), rN: abd ? 0.10 : 0.12, dD: K.distanceTo(C), oben: { W: We, r: 0.04 }, keile: 2, v0: dir0, v1: dir1, mastX: K.x, mastZ: zM, K });
+  }
+  for (const s of ['l', 'r']) {
+    z['arm_' + s] = ger.stab(V(), V(0, 1, 0), 0.026, ger.mHebel); z['rarm_' + s] = ger.stab(V(), V(0, 1, 0), 0.02, ger.mHebel);
+    z['pad_' + s] = ger.polsterGeformt(0.065, 0.2, 0.26, V()); z['raste_' + s] = ger.stab(V(), V(0, 1, 0), 0.016, ger.mMetall);
+  }
+  z.block = gewichtsblockDK(ger, V(-0.8, 0, zS), V(1, 0, 0), 1.55, abd ? 'ABDUKTOREN' : 'ADDUKTOREN', abd ? 'AUSSEN-OBERSCHENKEL' : 'INNEN-OBERSCHENKEL');
+  ger.holm(V(-0.40, 0.05, zS), V(-0.57, 0.05, zS), DK.boden);   // Seitenholm links bis zum Sockel des Stapels
+  z.dkSeil = r1_nockenSeil(ger, { block: z.block, straenge: 2, sparsam: true, naben: nab.map((n) => ({ ...n })) });
+  z.dkSeil.nb.forEach((n) => { ger.holm(V(n.mastX, n.oben.W.y, n.mastZ), n.oben.W, 0.04); ger.holm(V(n.mastX, n.K.y, n.mastZ), n.Wd, 0.04); });   // Halter von Mastrolle und unterer Rolle
+  z.r1 = { hubs, abd };
+}
+function r1_schwenkStellen(z, g) {
+  const abd = z.r1.abd, vek = [];
+  for (const [s, sg] of [['l', 1], ['r', -1]]) {
+    const td = g.knie[s].clone().sub(g.huefte[s]).setY(0).normalize(), aussen = V(sg * td.z, 0, -sg * td.x), H = z.r1.hubs[s];
+    const pad = g.knie[s].clone().sub(td.clone().multiplyScalar(0.05)).add(aussen.multiplyScalar(abd ? 0.11 : -0.11));
+    z['pad_' + s].position.copy(pad); z['pad_' + s].quaternion.copy(basisAus(V(0, 1, 0), td));
+    seil(z['arm_' + s], H, pad.clone().sub(V(0, 0.1, 0)));
+    const raste = g.knoechel[s].clone().add(V(0, -0.085, 0.03));
+    seil(z['raste_' + s], raste.clone().sub(V(0.07, 0, 0)), raste.clone().add(V(0.07, 0, 0)));
+    seil(z['rarm_' + s], H, raste);
+    vek.push(V(pad.x - H.x, 0, pad.z - H.z));
+  }
+  z.dkSeil.stelleV(vek);
+}
+// Seitheben-Maschine in der DK Line: Sitz, Lehne, Säule wie bisher; je Seite ein Lagerbock auf der Drehachse durch die Schulter (Achse shAchse), Hebel silbern, Polster am Oberarm,
+// Nocke hinter dem Lager; das Seil läuft senkrecht an einem Mast hinter der Maschine hoch und oben zum Stapel links
+function r1_seithebenBauen(ger, z, SH_BECKEN, SH_RUMPF) {
+  const k = rumpf(SH_BECKEN, SH_RUMPF), R = k.R, saeuleZ = SH_BECKEN.z - 0.42, zS = SH_BECKEN.z - 0.1, yE = 2.13, nab = [];
+  dkBoden(ger, 0.42, saeuleZ, 0.3, saeuleZ, 0.3);
+  sitzSaeuleDK(ger, V(0, SH_BECKEN.y - 0.115, SH_BECKEN.z), 0.42, 0.4);
+  ger.polsterGeformt(0.4, 0.6, 0.09, SH_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.36)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045)), basisAus(R.oben, R.vor));
+  const yB = k.schulter.l.y + 0.1145;   // Höhe der Halter (Oberkante der Lagergehäuse; die Achsen liegen waagrecht auf Schulterhöhe)
+  ger.holm(V(0, 0.05, saeuleZ), V(0, yB, saeuleZ), DK.holm);
+  ger.holm(V(0, 0.62, saeuleZ), SH_BECKEN.clone().add(V(0, 0.2, -0.24)).sub(R.vor.clone().multiplyScalar(0.0325)), DK.strebe);   // Strebe zur Rückseite der Lehne
+  for (const [sd, sg] of [['l', 1], ['r', -1]]) {
+    const a = shAchse(sg), P = k.schulter[sd].clone().addScaledVector(a, -0.2), Ph = P.clone().addScaledVector(a, -0.06), C = P.clone().addScaledVector(a, -0.14);
+    ger.holm(V(0, Ph.y + 0.1145, saeuleZ), V(Ph.x, Ph.y + 0.1145, Ph.z), DK.strebe);   // Halter von der Säule über das Lagergehäuse, die Kappe liegt oben an
+    r1_lager(ger, Ph, a, 1);   // Nabe auf der Hebelseite (vorn), Goldkappe hinten
+    const K = V(C.x, yE, C.z), mZ = saeuleZ, out = V(-0.82 - K.x, 0, zS - K.z).normalize();
+    ger.holm(V(C.x, 0.05, mZ), V(C.x, yE, mZ), DK.strebe);   // Mast hinter der Nocke
+    const dD = yE - C.y, v0 = V(0, -Math.cos(26 * RAD), 0).addScaledVector(shQuer(sg), Math.sin(26 * RAD)), v1 = V(0, -Math.cos(88 * RAD), 0).addScaledVector(shQuer(sg), Math.sin(88 * RAD));
+    nab.push({ C, achse: a, e2: V(0, 1, 0), rN: 0.17, dD, v0, v1, mastX: C.x, mastZ: mZ, yE });
+    z['shArm_' + sd] = ger.stab(V(), V(0, 1, 0), 0.026, ger.mHebel); z['shVor_' + sd] = ger.stab(V(), V(0, 1, 0), 0.022, ger.mHebel);
+    z['shHand_' + sd] = ger.stab(V(), V(0, 1, 0), 0.016, ger.mHebel); z['shStift_' + sd] = ger.stab(V(), V(0, 1, 0), 0.016, ger.mHebel);
+    z['pad_' + sd] = ger.polsterGeformt(0.07, 0.2, 0.13, V());
+    const gr = new THREE.Group(); ger.gruppe.add(gr); griffRohr(ger, V(0, -0.06, 0), V(0, 0.06, 0), gr, 0.75); gr.userData.frei = V(0, 1, 0); z['shGriff_' + sd] = gr;   // dreht mit der Hand
+    z['shDreh_' + sd] = P;
+  }
+  z.block = gewichtsblockDK(ger, V(-0.82, 0, zS), V(1, 0, 0), 1.55, 'SEITHEBEN', 'SCHULTERN');
+  ger.holm(V(-0.42, 0.05, zS), V(-0.59, 0.05, zS), DK.boden);   // Seitenholm links bis zum Sockel des Stapels
+  z.dkSeil = r1_nockenSeil(ger, { block: z.block, straenge: 2, naben: nab.map((n) => ({ ...n })) });
+  z.dkSeil.nb.forEach((n) => ger.holm(V(n.mastX, n.yE, n.mastZ), n.Wd, 0.04));   // Halter der Seilrolle am Mastkopf
+}
+// Bizepsmaschine / Trizepsstrecker in der DK Line: Sitz und Armpolster an denselben Stellen wie bisher, Seitenrahmen mit Lagerböcken außen (die Hebelarme bei x = ±0,3 laufen innen
+// daran vorbei), Hebel silbern, Nocken außen am Lager, Stapel links mit Typenschild; das Seil läuft von beiden Nocken an den Masten hoch zur Kopfrolle des Stapels (zwei Stränge, Mittelwert).
+// Der Hebel dreht um die Ellbogenachse C (Achse X); Bizeps: Stange im Untergriff am Hebelende, Trizeps: zwei senkrechte Griffe (Handflächen zueinander).
+// winkel = { v0, v1 }: Richtung des Hebels (Welt, y-z) am Anfang und am Ende der Übung (aus der Vorlage), daraus folgen Ruhelage und Drehrichtung der Nocke
+function armmaschineBauen(ger, z, becken, C, trizeps, winkel) {
+  const XS = 0.40, oben = 2.13 - C.y, zS = C.z - 0.05;
+  dkBoden(ger, XS, C.z - 0.75, C.z, C.z - 0.75, C.z);   // Seitenholme tragen Lagerböcke und Streben, der Mittelholm Sitz und Armpolster
+  sitzSaeuleDK(ger, V(0, becken.y - 0.115, becken.z + 0.02), 0.42, 0.4);
+  r1_scottPolster(ger, z, becken, 0.07, C.z - 0.07);   // fest, bewegt sich nicht mit dem Arm
+  for (const sg of [-1, 1]) dkSeitenrahmen(ger, sg, C, oben, { y: C.y - 0.45, z: C.z - 0.75 }, XS);
   // Hebel: lokal zeigt er nach +z (Länge = Unterarm bis Faustmitte), dreht um X durch C
   const L = UNTERARM, h = new THREE.Group(); h.position.copy(C); ger.gruppe.add(h);
   for (const sx of [-1, 1]) {
-    maschTeil(h, new THREE.CylinderGeometry(0.1, 0.1, 0.022, 32), ger.mRahmen, sx * 0.3).rotation.z = Math.PI / 2;      // Kurvenscheibe
-    maschTeil(h, new THREE.CylinderGeometry(0.03, 0.03, 0.026, 18), ger.mMetall, sx * 0.3).rotation.z = Math.PI / 2;
-    rohrIn(ger, h, V(sx * 0.3, 0, 0.02), V(sx * 0.3, 0, L + 0.03), 0.045);
+    holmIn(ger, h, V(sx * 0.3, 0, 0.02), V(sx * 0.3, 0, L + 0.03), 0.055, ger.mHebel);
     if (trizeps) {
       griffRohr(ger, V(sx * 0.225, -0.075, L), V(sx * 0.225, 0.075, L), h, 0.75);
-      rohrIn(ger, h, V(sx * 0.3, -0.085, L), V(sx * 0.225, -0.085, L), 0.032);
-      rohrIn(ger, h, V(sx * 0.3, -0.085, L), V(sx * 0.3, 0, L), 0.032);
+      holmIn(ger, h, V(sx * 0.3, -0.085, L), V(sx * 0.225, -0.085, L), 0.032, ger.mHebel);
+      holmIn(ger, h, V(sx * 0.3, -0.085, L), V(sx * 0.3, 0, L), 0.032, ger.mHebel);
     }
   }
   if (!trizeps) griffRohr(ger, V(-0.3, 0, L), V(0.3, 0, L), h, 0.62);
-  // Gewichtsblock rechts neben der Maschine (offene Seite zum Sitz), Kabel von der rechten Kurvenscheibe über eine Rolle oben
-  z.block = gewichtsblock(ger, V(-0.78, 0, C.z - 0.05), V(1, 0, 0), 1.55);
-  const rolle = V(-0.78, 1.66, C.z - 0.05);
-  ger.vierkant(V(-0.4, C.y - 0.3, C.z), V(-0.62, C.y - 0.3, C.z - 0.05), 0.05);   // Strebe vom Pfosten zum Gewichtsturm
-  ger.stab(V(-0.3, C.y + 0.1, C.z), V(-0.5, C.y + 0.1, C.z), 0.006, ger.mKabel);
-  ger.stab(V(-0.5, C.y + 0.1, C.z), rolle, 0.006, ger.mKabel);
+  // Stapel links neben der Maschine (offene Seite zum Sitz), Seil von beiden Nocken über die Masten
+  z.block = gewichtsblockDK(ger, V(-0.8, 0, zS), V(1, 0, 0), 1.55, trizeps ? 'TRIZEPSSTRECKER' : 'BIZEPSMASCHINE', 'OBERARM');
+  ger.holm(V(-XS, 0.05, zS), V(-0.57, 0.05, zS), DK.boden);   // Seitenholm links bis zum Sockel des Stapels
+  z.dkSeil = r1_nockenSeil(ger, { block: z.block, straenge: 2, naben: [1, -1].map((sg) => ({ C: V(sg * (XS + 0.08), C.y, C.z), achse: V(-1, 0, 0), e2: V(0, 1, 0), rN: 0.125, dD: oben, v0: winkel.v0, v1: winkel.v1 })) });
+  z.dkSeil.nb.forEach((n) => ger.holm(V(Math.sign(n.C.x) * XS, C.y + oben, C.z), n.Wd, 0.04));   // Halter der Seilrolle am Mast
   z.am = { C, hebel: h };
 }
 function armmaschineStellen(z, g, hub) {
   const { C } = z.am, m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5);
   z.am.hebel.rotation.x = Math.atan2(-(m.y - C.y), m.z - C.z);
-  z.block.heben(0.25 * hub);
+  const v = V(0, m.y - C.y, m.z - C.z);
+  z.dkSeil.stelleV([v, v]);   // beide Nocken sitzen am selben Hebel; der Stapel hebt sich nur über das Seil
+}
+/* ---------- Paket R2 (Auftrag R, 09.11.2026): Zug-, Rumpf-, Hüft- und Wadenmaschinen in der DK Line ----------
+   Wie die Pilotmaschinen (daten/designsprache.md): Rundrohr-Rahmen, silberne Hebel, Lagerböcke mit Goldkappe, Polster mit Goldnaht, Stapel mit Typenschild und
+   Seil von Anschluss zu Anschluss (stapelAnHebel). Pose, Handwege, Polsterflächen und Griffe bleiben wie bisher. Hilfen mit Präfix r2_ */
+// Polster mit Goldnaht in einer Gruppe (zum Beispiel am Hebel): Größe und Lage wie das alte Polster. ohneNaht = -1 oder +1: auf dieser Seite der dünnsten Achse fehlt die Naht
+// (dort liegt der Körper an und drückt das weiche Polster ein; die Naht zählt für die Schutzhülle nicht als Polster und darf nur 2,5 cm eintauchen)
+function r2_polsterIn(ger, gruppe, w, h, d, pos, q, ohneNaht) {
+  const p = ger.polsterGeformt(w, h, d, pos, q); ger.gruppe.remove(p); gruppe.add(p);
+  if (ohneNaht && p.children.length === 2) p.remove(p.children[ohneNaht < 0 ? 0 : 1]);
+  return p;
+}
+// Typenschild auf einer kleinen Tafel außen an einem Pfosten (x = Außenfläche des Pfostens, Blick nach +x zur Kamera)
+function r2_tafel(ger, x, y, zz, titel, untertitel) {
+  ger.teil(rundGeo(0.02, 0.14, 0.26, 0.004, 1), ger.mDK, V(x + 0.01, y, zz));
+  const s = ger.schild(titel, untertitel); s.rotation.y = Math.PI / 2; s.position.set(x + 0.023, y, zz); return s;
 }
 // Bauchmaschine / Rückenstrecker-Maschine im Sitzen: Der Oberkörper dreht um die Hüfte, also dreht der Hebel um die Hüftachse
-// (Lager außen neben dem Becken) und folgt dem Rumpf. Bauch: Brustpolster und Griffe neben dem Kopf, Rolle vor den Schienbeinen;
-// Rücken: Rückenpolster unter den Schulterblättern, Gurtpolster über den Oberschenkeln, Fußplatte. Gewichtsblock rechts hinten
+// (Lagerböcke außen neben dem Becken) und folgt dem Rumpf. Bauch: Brustpolster und Griffe neben dem Kopf, Rolle vor den Schienbeinen;
+// Rücken: Rückenpolster unter den Schulterblättern, Gurtpolster über den Oberschenkeln, Fußplatte. DK Line: Stapel links neben der Maschine,
+// Seil von der Nocke am Hebel über die Rolle am Mast zum Stapel (1:1)
 function rumpfmaschineBauen(ger, z, becken, bauch) {
-  const k0 = rumpf(becken, { neigung: 0 }), lok = (p) => p.clone().sub(becken);   // aufrecht: Rumpf-Lage = Welt-Lage
-  bodenrahmen(ger, -0.4, 0.4, becken.z - 0.5, becken.z + 0.72);   // vorn vor den Zehen (bis 31.10. 10 cm weiter hinten, Zehen darauf)
-  sitzSaeule(ger, V(0, becken.y - 0.115, becken.z + 0.04), 0.42, 0.44);
-  for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.37, 0.05, becken.z), V(sx * 0.37, becken.y - 0.06, becken.z), 0.07); drehlager(ger, V(sx * 0.37, becken.y, becken.z), V(1, 0, 0), 0.08); }
+  const k0 = rumpf(becken, { neigung: 0 }), lok = (p) => p.clone().sub(becken), XS = 0.47, oben = 0.55;   // aufrecht: Rumpf-Lage = Welt-Lage
+  dkBoden(ger, XS, becken.z - 0.5, becken.z + 0.72);   // vorn vor den Zehen (bis 31.10. 10 cm weiter hinten, Zehen darauf)
+  ger.holm(V(-XS, 0.05, becken.z - 0.2), V(-0.72, 0.05, becken.z - 0.2), DK.boden);   // verbindet den Bodenrahmen mit dem Sockel des Stapels
+  sitzSaeuleDK(ger, V(0, becken.y - 0.115, becken.z + 0.04), 0.42, 0.44);
+  for (const sg of [-1, 1]) dkSeitenrahmen(ger, sg, V(0, becken.y, becken.z), sg < 0 ? oben : 0.1, null, XS);   // Hüftlager außen; links der Mast für die Seilrolle
   const h = new THREE.Group(); h.position.copy(becken); ger.gruppe.add(h);
-  const brust = lok(k0.brust), sch = { l: lok(k0.schulter.l), r: lok(k0.schulter.r) };
-  maschTeil(h, new THREE.CylinderGeometry(0.09, 0.09, 0.022, 32), ger.mRahmen, -0.33).rotation.z = Math.PI / 2;   // Kurvenscheibe rechts
+  const brust = lok(k0.brust), sch = { l: lok(k0.schulter.l), r: lok(k0.schulter.r) }, hm = (A, B, d) => holmIn(ger, h, A, B, d, ger.mHebel);
   if (bauch) {
     const pad = brust.clone().add(V(0, -0.06, 0.22)), hy = sch.l.y + 0.08, hz = sch.l.z + 0.22;   // Polster vor der Brust (steht gut 20 cm vor), Griffe weiter vorn (Ellbogen rund 140°)
     for (const sx of [-1, 1]) {
       const s = sx > 0 ? 'l' : 'r', gx = sch[s].x - sx * 0.04;
-      rohrIn(ger, h, V(sx * 0.4, 0, 0), V(sx * 0.4, hy, 0.02), 0.05);
-      rohrIn(ger, h, V(sx * 0.4, hy, 0.02), V(sx * 0.4, hy, hz + 0.09), 0.045);
-      rohrIn(ger, h, V(sx * 0.4, hy, hz + 0.09), V(gx, hy, hz + 0.09), 0.035);
+      hm(V(sx * 0.4, 0, 0), V(sx * 0.4, hy, 0.02), 0.055);
+      hm(V(sx * 0.4, hy, 0.02), V(sx * 0.4, hy, hz + 0.09), 0.045);
+      hm(V(sx * 0.4, hy, hz + 0.09), V(gx, hy, hz + 0.09), 0.035);
       griffRohr(ger, V(gx, hy, hz - 0.075), V(gx, hy, hz + 0.09), h, 0.7);
     }
     // Brustpolster vor dem Brustbein, an einem Querrohr zwischen den Armen
-    rohrIn(ger, h, V(-0.4, pad.y, pad.z + 0.06), V(0.4, pad.y, pad.z + 0.06), 0.045);
-    for (const sx of [-1, 1]) rohrIn(ger, h, V(sx * 0.4, pad.y, 0.02), V(sx * 0.4, pad.y, pad.z + 0.06), 0.04);
-    maschTeil(h, rundGeo(0.36, 0.2, 0.08, 0.03, 3), ger.mPolster, 0, pad.y, pad.z);
+    hm(V(-0.4, pad.y, pad.z + 0.06), V(0.4, pad.y, pad.z + 0.06), 0.045);
+    for (const sx of [-1, 1]) hm(V(sx * 0.4, pad.y, 0.02), V(sx * 0.4, pad.y, pad.z + 0.06), 0.04);
+    r2_polsterIn(ger, h, 0.36, 0.2, 0.08, V(0, pad.y, pad.z), undefined, -1);   // Brust liegt an der hinteren Fläche an
     // Rolle vor den Schienbeinen (Füße eingehakt)
-    ger.vierkant(V(0, 0.05, becken.z + 0.6), V(0, 0.2, becken.z + 0.6), 0.06);
-    ger.vierkant(V(-0.2, 0.2, becken.z + 0.6), V(0.2, 0.2, becken.z + 0.6), 0.05);
+    ger.holm(V(0, 0.05, becken.z + 0.6), V(0, 0.2, becken.z + 0.6), DK.strebe);
+    ger.holm(V(-0.2, 0.2, becken.z + 0.6), V(0.2, 0.2, becken.z + 0.6), 0.05);
     rollePolster(ger, 0.36, 0.05).position.set(0, 0.2, becken.z + 0.53);
   } else {
     const pad = brust.clone().add(V(0, -0.12, -0.17));
     for (const sx of [-1, 1]) {
-      rohrIn(ger, h, V(sx * 0.33, 0, 0), V(sx * 0.33, pad.y, -0.05), 0.05);
-      rohrIn(ger, h, V(sx * 0.33, pad.y, -0.05), V(sx * 0.33, pad.y, pad.z - 0.06), 0.045);
+      hm(V(sx * 0.41, 0, 0), V(sx * 0.33, 0, 0), 0.05);   // von der Nabe des Lagerbocks zum Arm
+      hm(V(sx * 0.33, 0, 0), V(sx * 0.33, pad.y, -0.05), 0.05);
+      hm(V(sx * 0.33, pad.y, -0.05), V(sx * 0.33, pad.y, pad.z - 0.06), 0.045);
     }
-    rohrIn(ger, h, V(-0.33, pad.y, pad.z - 0.06), V(0.33, pad.y, pad.z - 0.06), 0.045);
-    maschTeil(h, rundGeo(0.4, 0.26, 0.08, 0.03, 3), ger.mPolster, 0, pad.y, pad.z);
+    hm(V(-0.33, pad.y, pad.z - 0.06), V(0.33, pad.y, pad.z - 0.06), 0.045);
+    r2_polsterIn(ger, h, 0.4, 0.26, 0.08, V(0, pad.y, pad.z));
     // Gurtpolster über den Oberschenkeln, Fußplatte
     const knie = V(0, becken.y + 0.06, becken.z + 0.38);   // Gurtpolster nah am Knie: Bauch und Brust beugen sich frei darüber
-    for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.3, becken.y - 0.06, becken.z), V(sx * 0.3, knie.y + 0.12, knie.z), 0.05);
-    for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.3, knie.y + 0.12, knie.z), V(sx * 0.22, knie.y + 0.07, knie.z), 0.04);   // Polster seitlich gehalten, kein Rohr quer vor dem Bauch
-    ger.box(0.46, 0.07, 0.14, knie.clone().add(V(0, 0.06, 0)), ger.mPolster);   // liegt auf den Oberschenkeln, drückt nicht hinein
-    for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.2, 0.035, becken.z + 0.5), V(sx * 0.2, 0.05, becken.z + 0.5), 0.05);
+    for (const sx of [-1, 1]) ger.holm(V(sx * 0.3, becken.y - 0.06, becken.z), V(sx * 0.3, knie.y + 0.12, knie.z), 0.05);
+    for (const sx of [-1, 1]) ger.holm(V(sx * 0.3, knie.y + 0.12, knie.z), V(sx * 0.22, knie.y + 0.07, knie.z), 0.04);   // Polster seitlich gehalten, kein Rohr quer vor dem Bauch
+    ger.polsterGeformt(0.46, 0.07, 0.14, knie.clone().add(V(0, 0.06, 0)));   // liegt auf den Oberschenkeln, drückt nicht hinein
+    for (const sx of [-1, 1]) ger.holm(V(sx * 0.2, 0.04, becken.z + 0.5), V(sx * 0.2, 0.05, becken.z + 0.5), 0.05);
     ger.box(0.52, 0.03, 0.3, V(0, 0.065, becken.z + 0.5), ger.mGummi);   // Fußplatte (Oberkante 0,08)
   }
-  z.block = gewichtsblock(ger, V(-0.72, 0, becken.z - 0.2), V(1, 0, 0), 1.55);
-  ger.vierkant(V(-0.37, 0.4, becken.z), V(-0.56, 0.4, becken.z - 0.2), 0.05);
-  ger.stab(V(-0.33, becken.y + 0.09, becken.z), V(-0.5, becken.y + 0.09, becken.z), 0.006, ger.mKabel);
-  ger.stab(V(-0.5, becken.y + 0.09, becken.z), V(-0.72, 1.66, becken.z - 0.2), 0.006, ger.mKabel);
-  z.rm = { hebel: h };
+  z.block = gewichtsblockDK(ger, V(-0.95, 0, becken.z - 0.2), V(1, 0, 0), 1.55, bauch ? 'BAUCHMASCHINE' : 'RÜCKENSTRECKER', bauch ? 'BAUCH' : 'RÜCKEN', { mRolle: false });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 1, naben: [{ x: -(XS + 0.08), y: becken.y, z: becken.z, rN: 0.2, dir: bauch ? -1 : 1, dth: 0.9, dD: oben }] });   // Bauch: der Hebel dreht beim Einrollen nach vorn, Rücken: nach hinten
+  ger.holm(V(-XS, becken.y + oben, becken.z), seil.nb[0].Wd, 0.04);   // Halter der Seilrolle am Mast
+  z.rm = { hebel: h, dk: seil }; z.dkSeil = seil;
 }
 // Hebel, der um eine Achse X durch P dreht und lokal nach richt (±z) zeigt: Winkel, mit dem sein Ende auf ziel (y-z) zeigt
 function hebelWinkel(P, ziel, richt = -1) { const dy = ziel.y - P.y, dz = ziel.z - P.z; return richt < 0 ? Math.atan2(dy, -dz) : Math.atan2(-dy, dz); }
@@ -1288,230 +1824,302 @@ function scheibenHorn(ger, gruppe, pos, sx, n = 2, r = 0.2) {
   maschTeil(gruppe, new THREE.CylinderGeometry(0.025, 0.025, 0.07 + n * 0.045, 16), ger.mMetall, pos.x + sx * (0.035 + n * 0.0225), pos.y, pos.z).rotation.z = Math.PI / 2;
   for (let i = 0; i < n; i++) maschTeil(gruppe, scheibenGeo(r, 0.04), ger.mScheibe, pos.x + sx * (0.05 + i * 0.045), pos.y, pos.z).rotation.z = Math.PI / 2;
 }
-// Wadenmaschine stehend: Stufe, zwei Säulen hinten mit Führungen, Schlitten mit Schulterpolstern und Griffen (fährt mit den Schultern),
-// Gewichtsblock dahinter, Kabel über eine Rolle oben. k0 = Rumpf zu Beginn (Schultern)
+// Wadenmaschine stehend (DK Line): Stufe unter dem Vorfuß wie bisher, je Seite ein Seitenrahmen mit Lagerbock hinter den Schultern, ein silberner Hebel zum
+// Schulterpolster (der Schlitten mit Polstern und Griffen fährt mit den Schultern), Stapel hinten, Seil von der Nocke am Hebel über die Rolle am Mast zum Stapel.
+// Hebt sich die Ferse, hebt sich der Hebel und mit ihm der Stapel. k0 = Rumpf zu Beginn (Schultern)
 function wadenmaschineBauen(ger, z, k0) {
-  bodenrahmen(ger, -0.46, 0.46, -0.86, 0.3);
+  const XS = 0.47, oben = 0.45, y0 = k0.schulter.l.y, zb = k0.schulter.l.z - 0.14, qx = Math.abs(k0.schulter.l.x) + 0.1;   // Träger und Hebel laufen außen am Polster (x wie der Griff), nicht über dem Polster: mehr Abstand zum Kopfraum
+  const C = V(0, y0 + 0.1, -0.35), strebe = { y: C.y - 0.5, z: C.z - 0.7 };
+  dkBoden(ger, XS, -1.08, 0.5, -1.08, -1.08);
   // Stufe, Oberkante 0,12, nur unter dem Vorfuß (bis 31.10. 10 cm weiter hinten: Fußgewölbe 2,8 cm in der Kante)
   ger.box(0.62, 0.1, 0.26, V(0, 0.05, 0.265), ger.mRahmen); ger.box(0.6, 0.02, 0.24, V(0, 0.11, 0.265), ger.mGummi);
-  for (const sx of [-1, 1]) {
-    ger.vierkant(V(sx * 0.42, 0.05, -0.32), V(sx * 0.42, 2.08, -0.32), 0.08);
-    ger.stab(V(sx * 0.42, 0.35, -0.25), V(sx * 0.42, 1.98, -0.25), 0.013, ger.mMetall);
-    for (const y of [0.35, 1.98]) ger.vierkant(V(sx * 0.42, y, -0.33), V(sx * 0.42, y, -0.24), 0.035);
-  }
-  ger.vierkant(V(-0.46, 2.08, -0.32), V(0.46, 2.08, -0.32), 0.08);
-  const sl = new THREE.Group(); ger.gruppe.add(sl);
-  const zb = k0.schulter.l.z - 0.14, y0 = k0.schulter.l.y;
-  rohrIn(ger, sl, V(-0.42, 0.155, zb), V(0.42, 0.155, zb), 0.06);
+  for (const sx of [-1, 1]) dkSeitenrahmen(ger, sx, C, oben, strebe, XS);
+  const sl = new THREE.Group(); ger.gruppe.add(sl);   // fährt mit den Schultern: Polster, Griffe, Rohre dazwischen
   for (const [s, sx] of [['l', 1], ['r', -1]]) {
     const sch = k0.schulter[s], px = sch.x + sx * 0.02, hx = sch.x + sx * 0.1;
-    maschTeil(sl, rundGeo(0.07, 0.17, 0.08, 0.01, 1), ger.mRahmen, sx * 0.42, 0.155, -0.25);
-    rohrIn(ger, sl, V(sx * 0.42, 0.155, -0.25), V(sx * 0.42, 0.155, zb), 0.05);
-    rohrIn(ger, sl, V(px, 0.155, zb), V(px, 0.155, sch.z + 0.08), 0.045);
-    maschTeil(sl, rundGeo(0.15, 0.07, 0.22, 0.03, 3), ger.mPolster, px, 0.1, sch.z);                 // Schulterpolster
-    griffRohr(ger, V(hx, 0.1, sch.z + 0.03), V(hx, 0.1, sch.z + 0.17), sl, 0.7);                      // Griff längs
-    rohrIn(ger, sl, V(px, 0.155, sch.z + 0.08), V(hx, 0.1, sch.z + 0.03), 0.03);
+    holmIn(ger, sl, V(sx * qx, 0.1, zb), V(sx * qx, 0.1, sch.z + 0.03), 0.045, ger.mHebel);   // Träger von hinten außen am Polster entlang bis zum Griff
+    r2_polsterIn(ger, sl, 0.15, 0.07, 0.22, V(px, 0.1, sch.z));                 // Schulterpolster
+    griffRohr(ger, V(hx, 0.1, sch.z + 0.03), V(hx, 0.1, sch.z + 0.17), sl, 0.7);   // Griff längs
   }
-  z.block = gewichtsblock(ger, V(0, 0, -0.68), V(0, 0, 1), 1.85);
-  ger.stab(V(0, 2.03, -0.32), V(0, 1.9, -0.68), 0.006, ger.mKabel);
-  maschTeil(ger.gruppe, new THREE.CylinderGeometry(0.05, 0.05, 0.03, 20), ger.mMetall, 0, 2.03, -0.32).rotation.z = Math.PI / 2;
-  z.wk = { sl, y0, zb, kabel: ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel) };
+  z.block = gewichtsblockDK(ger, V(0, 0, -0.8), V(0, 0, 1), 1.55, 'WADENPRESSE', 'WADEN', { seite: true });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 2, naben: [1, -1].map((sg) => ({ x: sg * (XS + 0.08), y: C.y, z: C.z, rN: 0.2, dir: 1, dth: 0.35, dD: oben })) });
+  seil.nb.forEach((n) => ger.holm(V(Math.sign(n.x) * XS, C.y + oben, C.z), n.Wd, 0.04));   // Halter der Seilrolle am Mast
+  const arm = { l: ger.stab(V(), V(0, 1, 0), 0.0275, ger.mHebel), r: ger.stab(V(), V(0, 1, 0), 0.0275, ger.mHebel) };
+  z.dkSeil = seil;
+  z.wk = { sl, y0, zb, qx, P: { l: V(XS - 0.06, C.y, C.z), r: V(-(XS - 0.06), C.y, C.z) }, arm, dk: seil };
 }
-// Wadenmaschine sitzend: Sitz, Fußplatte, Hebel mit Drehpunkt vorn unten, Kniepolster auf den Oberschenkeln, Griffe, Scheibenhorn
+// Schlitten folgt den Schultern, je Seite ein Hebel vom Lager zum Schlitten; der Stapel hebt sich über die Nocken
+function r2_wadenStellen(z, g) {
+  const w = z.wk, y = g.schulter.l.y, th = [];
+  w.sl.position.set(0, y, 0);
+  for (const [s, sg] of [['l', 1], ['r', -1]]) {
+    const Q = V(sg * w.qx, y + 0.1, w.zb), P = w.P[s];
+    seil(w.arm[s], P, Q); th.push(Math.atan2(Q.y - P.y, Q.z - P.z));
+  }
+  w.dk.stelle(th);
+}
+// Wadenmaschine sitzend (DK Line, mit Scheiben beladen, kein Stapel): Sitz, Fußblock, Hebel mit Drehpunkt vorn unten (Lagerböcke mit Goldkappe), Kniepolster
+// auf den Oberschenkeln, Griffe, Scheibenhorn, Typenschild am Rahmen
 function wadensitzBauen(ger, z, becken, P, polster0, stufe) {
-  bodenrahmen(ger, -0.36, 0.36, becken.z - 0.36, P.z + 0.12);
-  sitzSaeule(ger, V(0, becken.y - 0.125, becken.z - 0.02), 0.42, 0.32);   // Sitz kürzer: Unten sinkt das Knie, die Sitzkante blieb sonst im Oberschenkel
+  const XS = 0.33;
+  dkBoden(ger, XS, becken.z - 0.36, P.z + 0.12, becken.z - 0.36, 0.1);   // vorderer Querholm unter dem Sitz, nicht unter den Fersen
+  sitzSaeuleDK(ger, V(0, becken.y - 0.125, becken.z - 0.02), 0.42, 0.32);   // Sitz kürzer: Unten sinkt das Knie, die Sitzkante blieb sonst im Oberschenkel
   ger.box(0.5, stufe - 0.012, 0.26, V(0, (stufe - 0.012) / 2, 0.55), ger.mRahmen); ger.box(0.5, 0.012, 0.26, V(0, stufe - 0.006, 0.55), ger.mGummi);   // Fußblock: Kante direkt hinter dem Fußballen, die Ferse sinkt darunter
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.33, 0.05, P.z), V(sx * 0.33, P.y, P.z), 0.07);
-  drehlager(ger, P, V(1, 0, 0), 0.72);
+  for (const sx of [-1, 1]) { ger.holm(V(sx * XS, 0.05, P.z), V(sx * XS, P.y - 0.085, P.z), DK.holm); ger.lagerbock(V(sx * XS, P.y, P.z), sx); }
+  r2_tafel(ger, XS + 0.0475, 0.2, P.z, 'WADENPRESSE', 'SITZEND');
   const L = polster0.distanceTo(P), h = new THREE.Group(); h.position.copy(P); ger.gruppe.add(h);
   for (const sx of [-1, 1]) {
-    rohrIn(ger, h, V(sx * 0.27, 0, 0), V(sx * 0.27, 0, -L - 0.04), 0.05);
+    holmIn(ger, h, V(sx * 0.27, 0, 0), V(sx * 0.27, 0, -L - 0.04), 0.05, ger.mHebel);
     griffRohr(ger, V(sx * 0.33, -0.045, -L), V(sx * 0.33, 0.105, -L), h, 0.7);   // senkrecht: quer zum Unterarm (längs lief er fast parallel dazu)
-    rohrIn(ger, h, V(sx * 0.27, 0.03, -L), V(sx * 0.33, 0.03, -L), 0.03);
+    holmIn(ger, h, V(sx * 0.27, 0.03, -L), V(sx * 0.33, 0.03, -L), 0.03, ger.mHebel);
     scheibenHorn(ger, h, V(sx * 0.3, -0.02, -L + 0.3), sx, 2, 0.2);
   }
-  maschTeil(h, rundGeo(0.46, 0.07, 0.15, 0.03, 3), ger.mPolster, 0, 0, -L);
+  r2_polsterIn(ger, h, 0.46, 0.07, 0.15, V(0, 0, -L));
   z.ws = { P, hebel: h, L };
 }
-// Esel-Wadenheben: Stufe, Griffstange vorn, Hüftpolster an einem Hebel mit Drehpunkt hinten oben, Scheibenhorn am Hebel
+// Esel-Wadenheben (DK Line, mit Scheiben beladen, kein Stapel): Stufe, Griffstange vorn, Hüftpolster an einem Hebel mit Drehpunkt hinten oben (Lagerböcke
+// mit Goldkappe), Scheibenhorn am Hebel, Typenschild am Rahmen
 function eselBauen(ger, z, P, polster0) {
-  bodenrahmen(ger, -0.42, 0.42, P.z - 0.1, 1.02);
+  const XS = 0.3;
+  dkBoden(ger, 0.42, P.z, 1.02, 1.02, 1.02);
   ger.box(0.62, 0.1, 0.26, V(0, 0.05, 0.285), ger.mRahmen); ger.box(0.6, 0.02, 0.24, V(0, 0.11, 0.285), ger.mGummi);   // nur unter dem Vorfuß
-  for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.36, 0.05, 0.98), V(sx * 0.36, 0.99, 0.98), 0.07); ger.vierkant(V(sx * 0.36, 0.97, 0.98), V(sx * 0.36, 0.97, 0.84), 0.05); }
+  for (const sx of [-1, 1]) { ger.holm(V(sx * 0.36, 0.05, 0.98), V(sx * 0.36, 0.99, 0.98), DK.strebe); ger.holm(V(sx * 0.36, 0.97, 0.98), V(sx * 0.36, 0.97, 0.84), 0.05); }
   griffRohr(ger, V(-0.38, 0.97, 0.84), V(0.38, 0.97, 0.84), ger.gruppe, 0.66);
-  ger.polster(0.5, 0.06, 0.2, V(0, 1.03, 0.96));   // Unterarmpolster vorn
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.3, 0.05, P.z), V(sx * 0.3, P.y, P.z), 0.08);
-  drehlager(ger, P, V(1, 0, 0), 0.66);
+  ger.polsterGeformt(0.5, 0.06, 0.2, V(0, 1.03, 0.96));   // Unterarmpolster vorn
+  for (const sx of [-1, 1]) { ger.holm(V(sx * XS, 0.05, P.z), V(sx * XS, P.y - 0.085, P.z), DK.holm); ger.lagerbock(V(sx * XS, P.y, P.z), sx); }
+  r2_tafel(ger, XS + 0.0475, 0.5, P.z, 'ESEL-WADEN', 'WADEN');
   const L = polster0.distanceTo(P), h = new THREE.Group(); h.position.copy(P); ger.gruppe.add(h);
-  for (const sx of [-1, 1]) rohrIn(ger, h, V(sx * 0.24, 0, 0), V(sx * 0.24, 0, L + 0.05), 0.05);
-  maschTeil(h, rundGeo(0.44, 0.08, 0.24, 0.03, 3), ger.mPolster, 0, -0.02, L);
+  for (const sx of [-1, 1]) holmIn(ger, h, V(sx * 0.24, 0, 0), V(sx * 0.24, 0, L + 0.05), 0.05, ger.mHebel);
+  r2_polsterIn(ger, h, 0.44, 0.08, 0.24, V(0, -0.02, L), undefined, -1);   // Gesäß liegt an der Unterseite an
   for (const sx of [-1, 1]) scheibenHorn(ger, h, V(sx * 0.27, 0, 0.28), sx, 2, 0.2);
   z.es = { P, hebel: h };
 }
-// Beinbeuger stehend: Plattform, Rahmen vorn mit Griffen und Oberschenkelpolster, Hebel um die rechte Knieachse mit Rolle hinter dem Knöchel
+// Beinbeuger stehend (DK Line): Plattform wie bisher, Rahmen vorn mit Griffen und Oberschenkelpolster, Hebel um die rechte Knieachse (Lagerbock links außen) mit Rolle
+// hinter dem Knöchel; der Stapel steht links, das Seil läuft von der Nocke am Hebel über die Rolle am Mast zum Stapel (1:1)
 function beincurlStehendBauen(ger, z, knie) {
-  bodenrahmen(ger, -0.4, 0.4, -0.36, 0.5);
+  const XS = 0.33, oben = 0.45, P = V(-XS, knie.y, knie.z), rx = -0.1 + XS;   // Rolle liegt in der Welt bei x = -0,1 am Unterschenkel (rx: dieselbe Stelle am Hebel)
+  dkBoden(ger, 0.4, -0.36, 0.5, 0.5, 0.5);
+  ger.holm(V(-0.4, 0.05, knie.z), V(-0.72, 0.05, knie.z), DK.boden);   // verbindet den Bodenrahmen mit dem Sockel des Stapels
   ger.box(0.56, 0.08, 0.5, V(0, 0.05, 0.0), ger.mRahmen); ger.box(0.54, 0.02, 0.48, V(0, 0.095, 0.0), ger.mGummi);   // Oberkante 0,1
-  ger.vierkant(V(0, 0.05, 0.44), V(0, 1.22, 0.44), 0.08);
-  ger.vierkant(V(-0.3, 1.25, 0.36), V(0.3, 1.25, 0.36), 0.06);
-  ger.vierkant(V(0, 1.22, 0.44), V(0, 1.25, 0.36), 0.06);
+  ger.holm(V(0, 0.05, 0.44), V(0, 1.22, 0.44), DK.holm);
+  ger.holm(V(-0.3, 1.25, 0.36), V(0.3, 1.25, 0.36), DK.strebe);
+  ger.holm(V(0, 1.22, 0.44), V(0, 1.25, 0.36), DK.strebe);
   for (const sx of [-1, 1]) griffRohr(ger, V(sx * 0.18, 1.25, 0.3), V(sx * 0.3, 1.25, 0.3), ger.gruppe, 0.8);
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.3, 1.25, 0.36), V(sx * 0.3, 1.25, 0.3), 0.05);
+  for (const sx of [-1, 1]) ger.holm(V(sx * 0.3, 1.25, 0.36), V(sx * 0.3, 1.25, 0.3), 0.05);
   // Oberschenkelpolster vor dem rechten Oberschenkel über dem Knie
-  ger.vierkant(V(0, knie.y + 0.14, 0.44), V(-0.1, knie.y + 0.14, knie.z + 0.16), 0.05);
-  ger.polster(0.18, 0.14, 0.07, V(-0.1, knie.y + 0.14, knie.z + 0.105));
-  const P = V(-0.3, knie.y, knie.z);
-  ger.vierkant(V(P.x, 0.05, P.z), P.clone().sub(V(0, 0.05, 0)), 0.07);
-  drehlager(ger, P);
+  ger.holm(V(0, knie.y + 0.14, 0.44), V(-0.1, knie.y + 0.14, knie.z + 0.165), 0.05);   // Kappe liegt an der Polsterrückseite an
+  ger.polsterGeformt(0.18, 0.14, 0.07, V(-0.1, knie.y + 0.14, knie.z + 0.105));
+  dkSeitenrahmen(ger, -1, P, oben, null, XS);
   z.hebel = new THREE.Group(); z.hebel.position.copy(P); ger.gruppe.add(z.hebel);
   const L = MASS.unterschenkel - 0.05, rz = -0.085;
-  maschTeil(z.hebel, new THREE.CylinderGeometry(0.09, 0.09, 0.022, 32), ger.mRahmen, -0.05).rotation.z = Math.PI / 2;
-  rohrIn(ger, z.hebel, V(0, 0, 0), V(0, -L, rz), 0.055);
-  rohrIn(ger, z.hebel, V(0, -L, rz), V(0.29, -L, rz), 0.04);
-  rollePolster(ger, 0.17, 0.048, z.hebel).position.set(0.2, -L, rz);
-  z.block = gewichtsblock(ger, V(-0.8, 0, 0.05), V(1, 0, 0), 1.6);
-  ger.stab(V(-0.36, knie.y + 0.09, knie.z), V(-0.8, 1.7, 0.05), 0.006, ger.mKabel);
+  holmIn(ger, z.hebel, V(0.06, 0, 0), V(0.06, -L, rz), 0.055, ger.mHebel);   // Nabe des Lagerbocks liegt 6 cm innen
+  holmIn(ger, z.hebel, V(0.06, -L, rz), V(rx + 0.09, -L, rz), 0.04, ger.mHebel);
+  rollePolster(ger, 0.17, 0.048, z.hebel).position.set(rx, -L, rz);
+  z.block = gewichtsblockDK(ger, V(-0.95, 0, knie.z), V(1, 0, 0), 1.55, 'BEINBEUGER', 'RÜCKSEITE', { mRolle: false });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 1, naben: [{ x: P.x - 0.08, y: P.y, z: P.z, rN: 0.15, dir: -1, dth: 1.7, dD: oben }] });   // der Unterschenkel dreht nach hinten
+  ger.holm(V(P.x, P.y + oben, P.z), seil.nb[0].Wd, 0.04);   // Halter der Seilrolle am Mast
+  // hebelStellen meldet den Winkel von +z nach +y: hinter der Waagerechten springt er von -180° auf +180°, hier fortlaufend weiterzählen
+  z.dkSeil = Object.create(seil, { stelle: { value(th) { return seil.stelle([th[0] > 0 ? th[0] - 2 * Math.PI : th[0]]); } } });
 }
-// Glute-Kickback-Maschine: Brustpolster, Griffstange, Hebel um die rechte Hüftachse mit Fußplatte unter der Sohle (geht mit dem Bein)
+// Glute-Kickback-Maschine (DK Line): Brustpolster, Griffstange, Hebel um die rechte Hüftachse mit Fußplatte unter der Sohle (geht mit dem Bein), Lagerbock links
+// außen; der Stapel steht links, das Seil läuft von der Nocke am Hebel über die Rolle am Mast zum Stapel (1:1)
 function kickbackMaschineBauen(ger, z, becken, r, huefte, bein) {
-  const k = rumpf(becken, r), R = rumpfRahmen(r);
-  bodenrahmen(ger, -0.42, 0.42, -0.55, 0.66);
+  const k = rumpf(becken, r), R = rumpfRahmen(r), XS = 0.36, oben = 0.5, P = V(-XS, huefte.y, huefte.z);
+  dkBoden(ger, XS, -0.55, 0.6, 0.6, 0.6);
+  ger.holm(V(-XS, 0.05, P.z), V(-0.72, 0.05, P.z), DK.boden);   // verbindet den Bodenrahmen mit dem Sockel des Stapels
   ger.box(0.5, 0.02, 0.5, V(0.08, 0.01, 0.02), ger.mGummi);
   const pad = k.brust.clone().add(R.vor.clone().multiplyScalar(0.27)).sub(R.oben.clone().multiplyScalar(0.1));   // an der Brust (steht gut 23 cm vor)
-  ger.polster(0.42, 0.44, 0.08, pad, basisAus(R.oben, R.vor));
-  const hinter = pad.clone().add(R.vor.clone().multiplyScalar(0.09));
-  ger.vierkant(V(0, 0.05, 0.6), V(0, 1.0, 0.6), 0.08);
-  ger.vierkant(V(0, 0.85, 0.6), hinter, 0.07);
-  ger.vierkant(V(-0.32, 1.0, 0.6), V(0.32, 1.0, 0.6), 0.06);
-  for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.32, 1.0, 0.6), V(sx * 0.32, 1.0, 0.53), 0.05); griffRohr(ger, V(sx * 0.32, 1.0, 0.53), V(sx * 0.08, 1.0, 0.53), ger.gruppe, 0.75); }
-  const P = V(-0.36, huefte.y, huefte.z);
-  ger.vierkant(V(P.x, 0.05, P.z), P.clone().sub(V(0, 0.06, 0)), 0.08);
-  drehlager(ger, P);
+  ger.polsterGeformt(0.42, 0.44, 0.08, pad, basisAus(R.oben, R.vor));
+  ger.holm(V(0, 0.05, 0.6), V(0, 1.0, 0.6), DK.holm);
+  ger.holm(V(0, 0.85, 0.6), pad.clone().add(R.vor.clone().multiplyScalar(0.0725)), DK.strebe);   // Kappe liegt an der Polsterfläche an
+  ger.holm(V(-0.32, 1.0, 0.6), V(0.32, 1.0, 0.6), DK.strebe);
+  for (const sx of [-1, 1]) { ger.holm(V(sx * 0.32, 1.0, 0.6), V(sx * 0.32, 1.0, 0.53), 0.05); griffRohr(ger, V(sx * 0.32, 1.0, 0.53), V(sx * 0.08, 1.0, 0.53), ger.gruppe, 0.75); }
+  dkSeitenrahmen(ger, -1, P, oben, null, XS);
   z.hebel = new THREE.Group(); z.hebel.position.copy(P); ger.gruppe.add(z.hebel);
   const fx = huefte.x - P.x, tief = bein + SOHLE + 0.015;
-  maschTeil(z.hebel, new THREE.CylinderGeometry(0.09, 0.09, 0.022, 32), ger.mRahmen, -0.05).rotation.z = Math.PI / 2;
-  rohrIn(ger, z.hebel, V(0, 0, 0), V(0, -tief - 0.02, 0.0), 0.055);
-  rohrIn(ger, z.hebel, V(0, -tief - 0.02, 0.0), V(fx + 0.07, -tief - 0.02, 0.0), 0.04);
+  holmIn(ger, z.hebel, V(0.06, 0, 0), V(0.06, -tief - 0.02, 0.0), 0.055, ger.mHebel);   // Nabe des Lagerbocks liegt 6 cm innen
+  holmIn(ger, z.hebel, V(0.06, -tief - 0.02, 0.0), V(fx + 0.07, -tief - 0.02, 0.0), 0.04, ger.mHebel);
   maschTeil(z.hebel, rundGeo(0.16, 0.03, 0.3, 0.008, 1), ger.mRahmen, fx, -tief, 0.05);
   maschTeil(z.hebel, rundGeo(0.15, 0.008, 0.28, 0.003, 1), ger.mGummi, fx, -tief + 0.017, 0.05);
-  z.block = gewichtsblock(ger, V(-0.85, 0, -0.1), V(1, 0, 0), 1.6);
-  ger.stab(V(-0.36, huefte.y + 0.09, huefte.z), V(-0.85, 1.7, -0.1), 0.006, ger.mKabel);
+  z.block = gewichtsblockDK(ger, V(-0.95, 0, P.z), V(1, 0, 0), 1.55, 'KICKBACK', 'GESÄSS', { mRolle: false });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 1, naben: [{ x: P.x - 0.08, y: P.y, z: P.z, rN: 0.18, dir: -1, dth: 0.9, dD: oben }] });   // das Bein schwingt nach hinten
+  ger.holm(V(P.x, P.y + oben, P.z), seil.nb[0].Wd, 0.04);   // Halter der Seilrolle am Mast
+  z.dkSeil = seil;
 }
-// Hip-Thrust-Maschine: Bank für die Schulterblätter, Fußplatte, Hebel mit Drehpunkt vorn am Boden, Hüftpolster mit Griffen, Scheibenhörner
+// Hip-Thrust-Maschine (DK Line, mit Scheiben beladen, kein Stapel): Bank für die Schulterblätter (aus der Vorlage), Fußplatte, Hebel mit Drehpunkt vorn am Boden
+// (Lagerböcke mit Goldkappe), Hüftpolster mit Griffen, Scheibenhörner, Typenschild am Rahmen
 function hipthrustMaschineBauen(ger, z, P, polster0) {
-  bodenrahmen(ger, -0.45, 0.45, -0.55, P.z + 0.1);
+  const XS = 0.46;
+  dkBoden(ger, XS, -0.55, P.z + 0.1, P.z + 0.1, P.z + 0.1);
   ger.box(0.72, 0.006, 0.42, V(0, 0.003, 0.62), ger.mGummi);
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.42, 0.05, P.z), V(sx * 0.42, P.y, P.z), 0.08);
-  drehlager(ger, P, V(1, 0, 0), 0.92);
+  for (const sx of [-1, 1]) { ger.holm(V(sx * XS, 0.05, P.z), V(sx * XS, P.y - 0.085, P.z), DK.holm); ger.lagerbock(V(sx * XS, P.y, P.z), sx); }
+  r2_tafel(ger, XS + 0.0475, 0.2, P.z, 'HIP THRUST', 'GESÄSS');
   const L = polster0.distanceTo(P), h = new THREE.Group(); h.position.copy(P); ger.gruppe.add(h);
   for (const sx of [-1, 1]) {
-    rohrIn(ger, h, V(sx * 0.4, 0, 0), V(sx * 0.4, 0, -L - 0.03), 0.055);
-    rohrIn(ger, h, V(sx * 0.31, 0, -L), V(sx * 0.4, 0, -L), 0.04);
+    holmIn(ger, h, V(sx * 0.4, 0, 0), V(sx * 0.4, 0, -L - 0.03), 0.055, ger.mHebel);
+    holmIn(ger, h, V(sx * 0.31, 0, -L), V(sx * 0.4, 0, -L), 0.04, ger.mHebel);
     griffRohr(ger, V(sx * 0.36, -0.02, -L), V(sx * 0.36, -0.17, -L), h, 0.7);   // senkrecht unter dem Querrohr: quer zum Unterarm (längs lief er fast parallel dazu)
     scheibenHorn(ger, h, V(sx * 0.43, 0, -L + 0.12), sx, 2, 0.2);
   }
-  maschTeil(h, rundGeo(0.62, 0.09, 0.2, 0.035, 3), ger.mPolster, 0, 0, -L);
+  r2_polsterIn(ger, h, 0.62, 0.09, 0.2, V(0, 0, -L));
   z.ht = { P, hebel: h };
 }
 // T-Bar: Lagerbock hinten am Boden (Drehachse X durch P), Stange zwischen den Beinen nach vorn, enger Griff (zwei Griffe längs,
 // Handflächen zueinander) und dahinter das Scheibenhorn mit Scheiben. Lokal zeigt der Hebel nach +z, griff0 = Griffmitte zu Beginn.
 // brust: Brustpolster (r, becken) und Fußplatte für das brustgestützte T-Bar-Rudern
+// DK Line (R4): zwei Lagerböcke mit Goldkappe auf Rundrohr-Füßen (keine durchgehende Achse), Hebel aus silbernem Rundrohr, Hörner mit Goldkappe, geformtes Brustpolster
 function tbarBauen(ger, z, P, griff0, brust) {
-  ger.box(0.34, 0.05, 0.34, V(0, 0.025, P.z), ger.mRahmen);
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.07, 0.05, P.z), V(sx * 0.07, P.y + 0.03, P.z), 0.05);
-  drehlager(ger, P, V(1, 0, 0), 0.18);
+  for (const sx of [-1, 1]) {
+    ger.lagerbock(V(sx * 0.11, P.y, P.z), sx);
+    ger.holm(V(sx * 0.11, 0.05, P.z - 0.2), V(sx * 0.11, 0.05, P.z + 0.3), DK.boden);                       // Fußholm
+    if (P.y - 0.085 > 0.1) ger.holm(V(sx * 0.11, 0.05, P.z), V(sx * 0.11, P.y - 0.085, P.z), DK.strebe);   // Stütze unter dem Lager
+    for (const dz of [-0.2, 0.3]) ger.fussDK(V(sx * 0.11, 0, P.z + dz));
+  }
+  ger.holm(V(-0.11, 0.05, P.z - 0.2), V(0.11, 0.05, P.z - 0.2), DK.boden);                                   // Querholm hinten
+  r4_schild(ger, ger.gruppe, V(0.11 + 0.0375 + 0.016, 0.05, P.z + 0.2), V(1, 0, 0), 'T-BAR-RUDERN', 'RÜCKEN');
   const L = griff0.distanceTo(P), h = new THREE.Group(); h.position.copy(P); ger.gruppe.add(h);
+  maschTeil(h, dkZyl(0.04, 0.07, 18), ger.mHebel).rotation.z = Math.PI / 2;                                   // Nabe des Hebels zwischen den Lagern
   // brustgestützt: die Stange läuft 7 cm unter den Griffen und unter dem Polster durch bis vor den Griff
   if (brust) {
-    maschTeil(h, new THREE.CylinderGeometry(0.024, 0.024, L + 0.26, 18), ger.mMetall, 0, -0.07, (L + 0.26) / 2).rotation.x = Math.PI / 2;
-    rohrIn(ger, h, V(0, 0, 0), V(0, -0.07, 0.03), 0.04); rohrIn(ger, h, V(0, -0.03, L - 0.06), V(0, -0.07, L - 0.06), 0.03);
-  } else maschTeil(h, new THREE.CylinderGeometry(0.024, 0.024, L + 0.02, 18), ger.mMetall, 0, 0, (L + 0.02) / 2).rotation.x = Math.PI / 2;
-  // Griff: kurzes Querstück unter der Stange, zwei Griffe längs (in den Händen)
-  maschTeil(h, rundGeo(0.2, 0.03, 0.04, 0.008, 1), ger.mRahmen, 0, -0.03, L - 0.06);
-  for (const sx of [-1, 1]) { griffRohr(ger, V(sx * 0.08, 0, L - 0.08), V(sx * 0.08, 0, L + 0.07), h, 0.8); rohrIn(ger, h, V(sx * 0.08, -0.03, L - 0.08), V(sx * 0.08, 0, L - 0.08), 0.025); }
-  if (!brust) {   // stehend: Scheiben am Stangenende vor dem Griff (unter dem Oberkörper)
-    // Scheiben etwas weiter vorn und kleiner (Ø 30 cm): oben bleiben sie vor der Brust
-    maschTeil(h, new THREE.CylinderGeometry(0.026, 0.026, 0.3, 18), ger.mMetall, 0, 0, L + 0.3).rotation.x = Math.PI / 2;
-    maschTeil(h, new THREE.CylinderGeometry(0.045, 0.045, 0.03, 20), ger.mMetall, 0, 0, L + 0.17).rotation.x = Math.PI / 2;
-    for (let i = 0; i < 2; i++) maschTeil(h, scheibenGeo(0.15, 0.045), ger.mScheibe, 0, 0, L + 0.21 + i * 0.05).rotation.x = Math.PI / 2;
-  } else {       // brustgestützt: Querrohr am vorderen Hebelende direkt vor dem Griff, Scheibenhörner seitlich neben dem Polster (bis 5.11. hinter dem Griff neben den Unterschenkeln)
-    rohrIn(ger, h, V(-0.3, -0.07, L + 0.24), V(0.3, -0.07, L + 0.24), 0.05);
-    for (const sx of [-1, 1]) scheibenHorn(ger, h, V(sx * 0.3, -0.07, L + 0.24), sx, 2, 0.17);
+    holmIn(ger, h, V(0, -0.07, 0.03), V(0, -0.07, L + 0.26), 0.05, ger.mHebel);
+    holmIn(ger, h, V(0, 0, 0), V(0, -0.07, 0.03), 0.05, ger.mHebel); holmIn(ger, h, V(0, -0.03, L - 0.06), V(0, -0.07, L - 0.06), 0.03, ger.mHebel);
+  } else holmIn(ger, h, V(0, 0, 0), V(0, 0, L + 0.02), 0.05, ger.mHebel);
+  // Griff: kurzes Querstück unter der Stange, zwei Griffe längs (in den Händen; unverändert)
+  maschTeil(h, rundGeo(0.2, 0.03, 0.04, 0.008, 1), ger.mDK, 0, -0.03, L - 0.06);
+  for (const sx of [-1, 1]) { griffRohr(ger, V(sx * 0.08, 0, L - 0.08), V(sx * 0.08, 0, L + 0.07), h, 0.8); holmIn(ger, h, V(sx * 0.08, -0.03, L - 0.08), V(sx * 0.08, 0, L - 0.08), 0.025, ger.mHebel); }
+  if (!brust) {   // stehend: Scheiben am Stangenende vor dem Griff (unter dem Oberkörper), Ø 30 cm: oben bleiben sie vor der Brust
+    holmIn(ger, h, V(0, 0, L + 0.12), V(0, 0, L + 0.45), 0.05, ger.mHebel);
+    maschTeil(h, dkZyl(0.03, 0.012, 18), ger.mDKGold, 0, 0, L + 0.481).rotation.x = Math.PI / 2;
+    maschTeil(h, dkZyl(0.045, 0.03, 20), ger.mDKGold, 0, 0, L + 0.17).rotation.x = Math.PI / 2;
+    for (let i = 0; i < 2; i++) maschTeil(h, r4_scheibeGeo(0.15, 0.045), ger.mScheibe, 0, 0, L + 0.21 + i * 0.05).rotation.x = Math.PI / 2;
+  } else {        // brustgestützt: Querrohr am vorderen Hebelende direkt vor dem Griff, Scheibenhörner seitlich neben dem Polster
+    holmIn(ger, h, V(-0.3, -0.07, L + 0.24), V(0.3, -0.07, L + 0.24), 0.05, ger.mHebel);
+    for (const sx of [-1, 1]) r4_horn(ger, h, V(sx * 0.3, -0.07, L + 0.24), sx, [[0.05, 0.17, 0.04], [0.095, 0.17, 0.04]], 0.16);
   }
   if (brust) {
     const k = rumpf(brust.becken, brust.r), R = rumpfRahmen(brust.r);
-    const pad = k.brust.clone().add(R.vor.clone().multiplyScalar(0.255)).sub(R.oben.clone().multiplyScalar(0.05));   // an der Brust (gut 21 cm vor der Rumpfachse), schmal für die Ellbogen; Griffe kommen unter der Unterkante zum unteren Brustkorb
-    ger.polster(0.24, 0.25, 0.08, pad, basisAus(R.oben, R.vor));
+    const pad = k.brust.clone().add(R.vor.clone().multiplyScalar(0.255)).sub(R.oben.clone().multiplyScalar(0.05));   // an der Brust (gut 21 cm vor der Rumpfachse), schmal für die Ellbogen
+    ger.polsterGeformt(0.24, 0.25, 0.08, pad, basisAus(R.oben, R.vor));
     const hinter = pad.clone().add(R.vor.clone().multiplyScalar(0.07));
-    ger.vierkant(V(0, 0.05, hinter.z + 0.5), hinter.clone().add(R.oben.clone().multiplyScalar(0.08)), 0.08);
-    ger.vierkant(V(0, 0.05, hinter.z + 0.5), V(0, 0.05, P.z), 0.07);
-    for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.32, 0.035, P.z + 0.1), V(sx * 0.32, 0.035, hinter.z + 0.58), 0.07);
+    ger.holm(V(0, 0.05, hinter.z + 0.5), hinter.clone().add(R.oben.clone().multiplyScalar(0.08)), DK.boden);
+    ger.holm(V(0, 0.05, hinter.z + 0.5), V(0, 0.05, P.z), DK.boden);
+    for (const sx of [-1, 1]) { ger.holm(V(sx * 0.32, 0.05, P.z + 0.1), V(sx * 0.32, 0.05, hinter.z + 0.58), DK.boden); for (const zz of [P.z + 0.1, hinter.z + 0.58]) ger.fussDK(V(sx * 0.32, 0, zz)); }
+    ger.holm(V(-0.32, 0.05, hinter.z + 0.58), V(0.32, 0.05, hinter.z + 0.58), DK.boden);
     ger.box(0.62, 0.006, 0.34, V(0, 0.003, TB_FUSS_Z), ger.mGummi);   // Gummimatte unter den Füßen
   }
   z.tb = { P, hebel: h };
 }
 // Hyperextension 45°: Rahmen mit schrägem Hauptholm, zwei Hüftpolster vorn oben, Fußplatte senkrecht zu den Beinen mit Rollen hinter
 // den Waden. fuss = Knöchel (Mitte), bein = Richtung Knöchel → Hüfte
+// DK Line (R4): Hauptholm Ø 8 cm, Rundrohr-Bodenrahmen mit Gummifüßen, Hüftpolster geformt, Rollenachse silbern, Typenschild am Hauptholm
 function hyperBauen(ger, fuss, becken, bein) {
   const hinten = V(0, bein.z, -bein.y);   // Rückseite der Waden (nach oben-hinten)
-  bodenrahmen(ger, -0.3, 0.3, fuss.z - 0.25, becken.z + 0.7);
+  const zr = fuss.z - 0.25, zv = becken.z + 0.7;
+  for (const sx of [-1, 1]) { ger.holm(V(sx * 0.3, 0.05, zr), V(sx * 0.3, 0.05, zv), DK.boden); for (const zz of [zr, (zr + zv) / 2, zv]) ger.fussDK(V(sx * 0.3, 0, zz)); }
+  for (const zz of [zr, zv]) ger.holm(V(-0.3, 0.05, zz), V(0.3, 0.05, zz), DK.boden);
   const fussMitte = fuss.clone().sub(bein.clone().multiplyScalar(SOHLE + 0.015)).add(hinten.clone().multiplyScalar(-0.05));
-  // Hauptholm und Stütze treffen sich unter dem Polster, nicht unter dem Bauch (vorher stak das Holmende 7 cm im Bauch, wenn der Rumpf vorklappt)
-  // Hüftpolster: schräg (45°) vor den Oberschenkeln, Oberkante knapp unter der Hüftbeuge: der Bauch klappt darüber (vorher 9 cm im Polster)
+  // Hüftpolster: schräg (45°) vor den Oberschenkeln, Oberkante knapp unter der Hüftbeuge: der Bauch klappt darüber
   const pad = becken.clone().add(V(0, -0.07, 0.11)).sub(bein.clone().multiplyScalar(0.3)).sub(hinten.clone().multiplyScalar(0.14)), q = basisAus(bein, hinten.clone().negate());
-  const knoten = V(0, becken.y - 0.33, becken.z - 0.02);   // 1.11.: 3 cm tiefer, der Holm lief zwischen den kräftigeren Oberschenkeln
-  ger.vierkant(V(0, 0.05, fuss.z - 0.2), knoten, 0.08);                // Hauptholm
-  ger.vierkant(V(0, 0.05, becken.z + 0.62), knoten, 0.07);             // Stütze vorn, weit vorn am Boden: der Rumpf hängt frei davor
-  ger.vierkant(knoten, pad.clone().add(hinten.clone().multiplyScalar(0.03)), 0.06);   // Träger endet im Polster
-  ger.polster(0.5, 0.03, 0.34, fussMitte, basisAus(bein, hinten.clone().negate()), ger.mGummi);
-  ger.vierkant(V(0, 0.05, fussMitte.z - 0.05), fussMitte.clone().sub(bein.clone().multiplyScalar(0.03)), 0.06);
+  const knoten = V(0, becken.y - 0.33, becken.z - 0.02);
+  ger.holm(V(0, 0.05, fuss.z - 0.2), knoten, 0.08);                                // Hauptholm
+  ger.holm(V(0, 0.05, becken.z + 0.62), knoten, DK.boden);                         // Stütze vorn, weit vorn am Boden: der Rumpf hängt frei davor
+  ger.holm(knoten, pad.clone().add(hinten.clone().multiplyScalar(0.03)), DK.strebe);   // Träger endet im Polster
+  ger.polster(0.5, 0.03, 0.34, fussMitte, basisAus(bein, hinten.clone().negate()), ger.mGummi);   // Fußplatte (Körperkontakt, unverändert)
+  ger.holm(V(0, 0.05, fussMitte.z - 0.05), fussMitte.clone().sub(bein.clone().multiplyScalar(0.03)), DK.strebe);
   const rolle = fuss.clone().add(bein.clone().multiplyScalar(0.1)).add(hinten.clone().multiplyScalar(0.075));
   for (const sx of [-1, 1]) rollePolster(ger, 0.16, 0.045).position.copy(rolle).add(V(sx * 0.1, 0, 0));
-  ger.vierkant(V(-0.2, rolle.y, rolle.z), V(0.2, rolle.y, rolle.z), 0.03);
-  ger.vierkant(fussMitte.clone().add(hinten.clone().multiplyScalar(0.08)), V(0, rolle.y, rolle.z), 0.04);
-  for (const sx of [-1, 1]) ger.polster(0.17, 0.3, 0.08, pad.clone().add(V(sx * 0.1, 0, 0)), q);
+  ger.holm(V(-0.2, rolle.y, rolle.z), V(0.2, rolle.y, rolle.z), 0.03, ger.mHebel);   // Achse der Rollen
+  ger.holm(fussMitte.clone().add(hinten.clone().multiplyScalar(0.08)), V(0, rolle.y, rolle.z), 0.04, ger.mHebel);
+  for (const sx of [-1, 1]) ger.polsterGeformt(0.17, 0.3, 0.08, pad.clone().add(V(sx * 0.1, 0, 0)), q);
+  r4_schild(ger, ger.gruppe, V(0.04 + 0.016, 0.1 + (knoten.y - 0.1) * 0.45, fuss.z - 0.2 + (knoten.z - fuss.z + 0.2) * 0.45), V(1, 0, 0), 'RÜCKENSTRECKER', 'RÜCKEN');
 }
 // Glute Ham Raise (GHD): langer Rahmen, rundes Kniepolster vorn, Fußplatte hinten mit zwei Rollen um die Knöchel
+// DK Line (R4): Mittelholm mit Querrohr unter dem Kniepolster (das Polster liegt auf, ohne einzusinken), Rundrohr-Rahmen, Rollen am Silberrahmen, Typenschild
 function ghdBauen(ger, knie, fussZ, fussY) {
-  bodenrahmen(ger, -0.3, 0.3, fussZ - 0.25, 0.45);
-  ger.vierkant(V(0, 0.05, 0.12), V(0, knie.y - 0.24, 0.12), 0.08);
-  ger.vierkant(V(0, 0.05, fussZ - 0.12), V(0, fussY + 0.08, fussZ - 0.12), 0.08);
-  ger.vierkant(V(0, knie.y - 0.24, 0.12), V(0, knie.y - 0.24, fussZ - 0.12), 0.07);
-  // runder Buckel unter den Oberschenkeln kurz vor dem Knie: die Oberschenkel liegen auf, statt 7 cm einzusinken
-  maschTeil(ger.gruppe, new THREE.CylinderGeometry(0.11, 0.11, 0.44, 28), ger.mPolster, 0, knie.y - 0.23, 0.2).rotation.z = Math.PI / 2;
-  ger.box(0.44, 0.04, 0.24, V(0, knie.y - 0.25, 0.2), ger.mRahmen);
-  ger.box(0.4, 0.26, 0.03, V(0, fussY + 0.02, fussZ - 0.11), ger.mGummi);                             // Fußplatte hinter den Fußsohlen
+  const zv = 0.45, zr = fussZ - 0.25;
+  for (const sx of [-1, 1]) { ger.holm(V(sx * 0.3, 0.05, zr), V(sx * 0.3, 0.05, zv), DK.boden); for (const zz of [zr, (zr + zv) / 2, zv]) ger.fussDK(V(sx * 0.3, 0, zz)); }
+  for (const zz of [zr, zv]) ger.holm(V(-0.3, 0.05, zz), V(0.3, 0.05, zz), DK.boden);
+  const yB = knie.y - 0.23, yQ = yB - 0.11 - 0.0225;   // Kniepolster (r = 11 cm) liegt oben auf dem Querrohr
+  ger.holm(V(0, 0.05, 0.12), V(0, yQ, 0.12), DK.holm);                                          // vordere Stütze
+  ger.holm(V(0, 0.05, fussZ - 0.12), V(0, fussY + 0.08, fussZ - 0.12), DK.holm);                // hintere Stütze
+  ger.holm(V(0, yQ, 0.12), V(0, yQ, fussZ - 0.12), DK.strebe);                                  // Längsholm
+  ger.holm(V(-0.2, yQ, 0.2), V(0.2, yQ, 0.2), 0.045, ger.mHebel);                               // Querrohr, trägt das Polster
+  ger.holm(V(0, yQ, 0.12), V(0, yQ, 0.2), 0.045);
+  // runder Buckel unter den Oberschenkeln kurz vor dem Knie (Körperkontakt, unverändert) mit goldenen Endkappen
+  maschTeil(ger.gruppe, new THREE.CylinderGeometry(0.11, 0.11, 0.44, 28), ger.mPolster, 0, yB, 0.2).rotation.z = Math.PI / 2;
+  for (const sx of [-1, 1]) maschTeil(ger.gruppe, dkZyl(0.1, 0.012, 24), ger.mDKGold, sx * 0.226, yB, 0.2).rotation.z = Math.PI / 2;
+  ger.box(0.4, 0.26, 0.03, V(0, fussY + 0.02, fussZ - 0.11), ger.mGummi);                       // Fußplatte hinter den Fußsohlen (unverändert)
   // untere Rolle liegt vorn am Schienbein an, nicht darin
   for (const [dy, dz] of [[0.075, 0.0], [-0.105, 0.03]]) { const r = rollePolster(ger, 0.36, 0.045); r.position.set(0, fussY + dy, fussZ + 0.06 + dz); }
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.2, fussY - 0.105, fussZ - 0.11), V(sx * 0.2, fussY + 0.075, fussZ + 0.06), 0.03);
+  for (const sx of [-1, 1]) {   // je Seite ein Silberarm von der Fußplatte zu beiden Rollen (die untere Rolle hing bisher frei)
+    ger.holm(V(sx * 0.2, fussY - 0.105, fussZ - 0.11), V(sx * 0.2, fussY + 0.075, fussZ + 0.06), 0.035, ger.mHebel);
+    ger.holm(V(sx * 0.2, fussY - 0.105, fussZ - 0.11), V(sx * 0.2, fussY - 0.105, fussZ + 0.09), 0.035, ger.mHebel);
+  }
+  r4_schild(ger, ger.gruppe, V(0.0475 + 0.016, 0.55, fussZ - 0.12), V(1, 0, 0), 'GHD', 'RÜCKSEITE');
 }
 // Reverse Hyperextension auf der Bank: hohe, stabile Bank mit Griffen vorn, ohne Pendel und ohne Gewicht (so steht es im Text; bis 5.11. Maschine mit Pendel und Scheiben). Hinten ist die Bank offen, die Beine schwingen frei
+// DK Line (R4): Bank mit Rundrohr-Rahmen, geformtes Polster (unverändert in Lage und Größe), Griffe wie bisher auf Rundrohr-Pfosten, Typenschild am Mittelpfosten
 function reverseHyperBauen(ger, z, becken, griffZ) {
-  bodenrahmen(ger, -0.36, 0.36, griffZ - 0.15, becken.z - 0.1);   // endet vor den Füßen
+  const zr = griffZ - 0.15, zv = becken.z - 0.1;   // endet vor den Füßen
+  for (const sx of [-1, 1]) { ger.holm(V(sx * 0.36, 0.05, zr), V(sx * 0.36, 0.05, zv), DK.boden); for (const zz of [zr, (zr + zv) / 2, zv]) ger.fussDK(V(sx * 0.36, 0, zz)); }
+  for (const zz of [zr, zv]) ger.holm(V(-0.36, 0.05, zz), V(0.36, 0.05, zz), DK.boden);
   // Polster so hoch, dass die Brust (24,5 cm vor der Wirbelsäule) aufliegt; Griffe seitlich neben dem Polster auf eigenen Pfosten
   const oben = becken.y - 0.23;
-  ger.polster(0.42, 0.08, 0.9, V(0, oben - 0.04, becken.z - 0.57));   // endet vor der Leiste: Oberschenkel hängen frei
-  for (const sz of [griffZ + 0.05, becken.z - 0.2]) ger.vierkant(V(0, 0.05, sz), V(0, oben - 0.08, sz), 0.08);
+  ger.polsterGeformt(0.42, 0.08, 0.9, V(0, oben - 0.04, becken.z - 0.57));   // endet vor der Leiste: Oberschenkel hängen frei
+  for (const sz of [griffZ + 0.05, becken.z - 0.2]) ger.holm(V(0, 0.05, sz), V(0, oben - 0.08 - 0.0475, sz), DK.holm);
+  ger.holm(V(0, oben - 0.08 - 0.0475, griffZ + 0.05), V(0, oben - 0.08 - 0.0475, becken.z - 0.2), DK.strebe);   // Längsholm unter dem Polster
   const gy = becken.y - 0.23;   // Griffe auf Höhe der Polsteroberkante
-  for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.27, 0.05, griffZ + 0.05), V(sx * 0.27, gy - 0.02, griffZ + 0.05), 0.05); ger.vierkant(V(sx * 0.27, gy - 0.02, griffZ + 0.05), V(sx * 0.27, gy - 0.02, griffZ - 0.04), 0.04); griffRohr(ger, V(sx * 0.27, gy, griffZ - 0.12), V(sx * 0.27, gy, griffZ + 0.02), ger.gruppe, 0.75); }
+  for (const sx of [-1, 1]) { ger.holm(V(sx * 0.27, 0.05, griffZ + 0.05), V(sx * 0.27, gy - 0.02, griffZ + 0.05), DK.boden); ger.holm(V(sx * 0.27, gy - 0.02, griffZ + 0.05), V(sx * 0.27, gy - 0.02, griffZ - 0.04), 0.045); griffRohr(ger, V(sx * 0.27, gy, griffZ - 0.12), V(sx * 0.27, gy, griffZ + 0.02), ger.gruppe, 0.75); }
+  r4_schild(ger, ger.gruppe, V(0.0475 + 0.016, 0.5, griffZ + 0.05), V(1, 0, 0), 'REVERSE-HYPER', 'GESÄSS, RÜCKEN');
 }
 // Belt Squat: Plattform mit Gummiauflage und Schlitz, zwei Säulen mit Griffstange, Gewichtsblock vorn, Kabel unter der Plattform zur Kette
 const BELT_ROLLE_Z = 0.03;   // Die Kette läuft vom Gurt senkrecht nach unten zwischen den Beinen zur Rolle im Boden (bis 5.11. 16 cm vor den Füßen)
+// DK Line (R4): Plattform aus zwei Graphit-Deckplatten mit Gummiauflage (Körperkontakt wie bisher) und offenem Schlitz für die Kette, Rundrohr-Rahmen mit Gummifüßen, Haltesäulen mit Griffen (unverändert).
+// Kein Stapel und kein Seil: Die Kette der Vorlage läuft durch den Schlitz über eine Rolle, unter der Plattform zu einer Säule links und dort hoch zu einem Gewichtsträger (silberne Gleithülsen auf
+// zwei Chromstangen, Horn mit Goldkappe und Scheiben). z.block.heben(h) setzt die Höhe des Trägers; die Vorlage ruft es in jedem Bild auf
 function beltBauen(ger, z) {
-  bodenrahmen(ger, -0.45, 0.45, -0.4, 0.5);
-  ger.box(0.84, 0.12, 0.62, V(0, 0.07, 0), ger.mRahmen);
-  for (const sx of [-1, 1]) ger.box(0.36, 0.015, 0.56, V(sx * 0.21, 0.1375, 0), ger.mGummi);
+  const z0 = BELT_ROLLE_Z, xc = -0.74, yC = 0.4;
+  r4_boden(ger, 0.45, -0.4, 0.5);
+  for (const zz of [-0.25, 0.25]) ger.holm(V(xc, 0.05, zz), V(0.45, 0.05, zz), DK.boden);   // Querholme unter den Deckplatten, bis zur Säule links
+  ger.holm(V(-0.45, 0.05, 0.42), V(0.45, 0.05, 0.42), DK.boden);                              // Querholm unter den Haltesäulen
+  ger.holm(V(xc, 0.05, -0.25), V(xc, 0.05, 0.25), DK.boden);                                  // Fußholm der Gewichtssäule
+  for (const zz of [-0.25, 0.25]) ger.fussDK(V(xc, 0, zz));
   for (const sx of [-1, 1]) {
-    ger.vierkant(V(sx * 0.32, 0.13, 0.42), V(sx * 0.32, 1.13, 0.42), 0.07);
-    ger.vierkant(V(sx * 0.32, 1.13, 0.42), V(sx * 0.32, 1.13, 0.38), 0.05);
-    griffRohr(ger, V(sx * 0.34, 1.13, 0.38), V(sx * 0.12, 1.13, 0.38), ger.gruppe, 0.75);
+    ger.box(0.36, 0.06, 0.56, V(sx * 0.21, 0.1, 0), ger.mDK);                                 // Deckplatte
+    ger.box(0.36, 0.015, 0.56, V(sx * 0.21, 0.1375, 0), ger.mGummi);                          // Gummiauflage (Körperkontakt, unverändert)
+    ger.holm(V(sx * 0.32, 0.05, 0.42), V(sx * 0.32, 1.13, 0.42), DK.holm);                    // Haltesäule
+    ger.holm(V(sx * 0.32, 1.13, 0.42), V(sx * 0.32, 1.13, 0.38), 0.05);
+    griffRohr(ger, V(sx * 0.34, 1.13, 0.38), V(sx * 0.12, 1.13, 0.38), ger.gruppe, 0.75);       // Griffe (unverändert)
   }
-  ger.vierkant(V(-0.12, 1.13, 0.38), V(0.12, 1.13, 0.38), 0.04);
-  // Gewichtsblock rechts neben der Plattform, Kabel unter der Plattform zur Rolle unter dem Schlitz
-  z.block = gewichtsblock(ger, V(-0.8, 0, 0.1), V(1, 0, 0), 1.6);
-  maschTeil(ger.gruppe, new THREE.CylinderGeometry(0.045, 0.045, 0.03, 20), ger.mMetall, 0, 0.1, BELT_ROLLE_Z).rotation.z = Math.PI / 2;
-  ger.stab(V(0, 0.06, BELT_ROLLE_Z), V(-0.62, 0.06, BELT_ROLLE_Z), 0.006, ger.mKabel);
+  ger.holm(V(-0.12, 1.13, 0.38), V(0.12, 1.13, 0.38), 0.04);
+  r4_schild(ger, ger.gruppe, V(0.32 + 0.0475 + 0.016, 0.7, 0.42), V(1, 0, 0), 'BELT SQUAT', 'BEINE, GESÄSS');
+  // Rolle im Schlitz (Oberkante y = 0,14: dort endet die Kette der Vorlage), Kette unter der linken Deckplatte zur Rolle am Fuß der Säule und links um sie herum nach oben
+  ger.holm(V(-0.05, 0.035, z0), V(0.05, 0.035, z0), 0.05);
+  ger.rolleDK(V(0, 0.1, z0), V(1, 0, 0), 0.04);
+  const kette = (A, B) => ger.stab(A, B, 0.01, ger.mMetall);
+  const r1b = [V(0, 0.14, z0), V(-0.0283, 0.1283, z0), V(-0.04, 0.1, z0), V(-0.0283, 0.0717, z0), V(0, 0.06, z0)];
+  for (let i = 0; i < r1b.length - 1; i++) kette(r1b[i], r1b[i + 1]);
+  kette(V(0, 0.06, z0), V(xc + 0.04, 0.06, z0));
+  ger.rolleDK(V(xc + 0.04, 0.1, z0), V(0, 0, 1), 0.04);
+  const r2 = [V(xc + 0.04, 0.06, z0), V(xc + 0.04 - 0.0283, 0.0717, z0), V(xc, 0.1, z0)];
+  for (let i = 0; i < r2.length - 1; i++) kette(r2[i], r2[i + 1]);
+  // Gewichtssäule: zwei Rohre mit Kopfholm, dazwischen zwei Chromstangen; der Träger gleitet mit Hülsen darauf
+  for (const sz of [-1, 1]) {
+    ger.holm(V(xc, 0.05, z0 + sz * 0.14), V(xc, 1.0, z0 + sz * 0.14), DK.strebe);
+    ger.stab(V(xc, 0.0875, z0 + sz * 0.07), V(xc, 0.975, z0 + sz * 0.07), 0.012, ger.mMetall);
+  }
+  ger.holm(V(xc, 1.0, z0 - 0.14), V(xc, 1.0, z0 + 0.14), DK.strebe);
+  const kw = new THREE.Group(); kw.position.set(xc, yC, z0); ger.gruppe.add(kw);
+  for (const sz of [-1, 1]) {
+    maschTeil(kw, dkZyl(0.03, 0.12, 20), ger.mHebel, 0, 0, sz * 0.07);                        // Gleithülse (gleiche Achse wie die Chromstange)
+    for (const dy of [-0.066, 0.066]) maschTeil(kw, dkZyl(0.034, 0.012, 20), ger.mDKGold, 0, dy, sz * 0.07);
+  }
+  holmIn(ger, kw, V(0, 0, -0.07), V(0, 0, 0.07), 0.05, ger.mHebel);                           // Querstück zwischen den Hülsen
+  maschTeil(kw, new THREE.SphereGeometry(0.014, 12, 8), ger.mDKGold, 0, -0.045, 0);           // Öse für die Kette
+  r4_horn(ger, kw, V(0, 0, 0), -1, [[0.12, 0.2, 0.05], [0.175, 0.2, 0.05], [0.23, 0.18, 0.05]], 0.34);
+  const kV = kette(V(xc, 0.1, z0), V(xc, 0.2, z0)), A0 = V(xc, 0.1, z0);   // senkrechtes Kettenstück von der Rolle zur Öse (länger, wenn der Träger steigt)
+  z.block = { heben(h) { const y = yC + Math.max(0, Math.min(0.3, h)); kw.position.y = y; seil(kV, A0, V(xc, y - 0.059, z0)); } };
+  z.block.heben(0);
 }
 // Schrägbank für Übungen mit der Brust auf dem Polster (brustgestütztes Rudern, Spider Curl, Y-Heben, Reverse Flys): das Polster liegt
 // am Oberkörper entlang vom Bauch bis zur oberen Brust, darunter ein Holm auf zwei Stützen mit Füßen
@@ -1539,15 +2147,21 @@ function schraegbankBauen(ger, becken, r) {
   for (const zz of [becken.z + 0.3, lehne.z - 0.1]) ger.vierkant(V(-0.24, 0.035, zz), V(0.24, 0.035, zz), 0.07);
 }
 // Dip-Station: je Seite ein Holm mit Gummigriff (vorn), zwei Stützen und ein Fuß; y = Höhe der Holme, zMitte = Mitte der Holme
+// DK Line (R4): je Seite Griff wie bisher (Chrom mit Gummi), Stützen und Fuß aus Rundrohr mit Gummifüßen, Typenschild an der Stütze
 function dipBarrenBauen(ger, y = 1.25, zMitte = 0.05, x = 0.27) {
   for (const sx of [-1, 1]) {
-    const hinten = V(sx * x, y, zMitte - 0.32), vorn = V(sx * x, y, zMitte + 0.3);
+    const hinten = V(sx * x, y, zMitte - 0.32), vorn = V(sx * x, y, zMitte + 0.3), xs = sx * (x + 0.04);
     griffRohr(ger, hinten, vorn, ger.gruppe, 0.5);
-    for (const zz of [zMitte - 0.26, zMitte + 0.22]) ger.vierkant(V(sx * (x + 0.04), 0.05, zz), V(sx * (x + 0.04), y - 0.02, zz), 0.05);
-    for (const zz of [zMitte - 0.26, zMitte + 0.22]) ger.vierkant(V(sx * (x + 0.04), y - 0.02, zz), V(sx * x, y - 0.02, zz), 0.04);
-    ger.vierkant(V(sx * (x + 0.04), 0.035, zMitte - 0.4), V(sx * (x + 0.04), 0.035, zMitte + 0.36), 0.07);
+    for (const zz of [zMitte - 0.26, zMitte + 0.22]) {
+      ger.holm(V(xs, 0.05, zz), V(xs, y - 0.02, zz), DK.boden);                    // Stütze
+      ger.teil(dkZyl(0.045, 0.012, 20), ger.mDKGold, V(xs, 0.4, zz));
+      ger.holm(V(xs, y - 0.02, zz), V(sx * x, y - 0.02, zz), 0.045);               // Arm zum Griff
+    }
+    ger.holm(V(xs, 0.05, zMitte - 0.4), V(xs, 0.05, zMitte + 0.36), DK.boden);     // Fußholm
+    for (const zz of [zMitte - 0.4, zMitte + 0.36]) ger.fussDK(V(xs, 0, zz));
   }
-  for (const zz of [zMitte - 0.4, zMitte + 0.36]) ger.vierkant(V(-x - 0.04, 0.035, zz), V(x + 0.04, 0.035, zz), 0.06);
+  for (const zz of [zMitte - 0.4, zMitte + 0.36]) ger.holm(V(-x - 0.04, 0.05, zz), V(x + 0.04, 0.05, zz), DK.boden);
+  r4_schild(ger, ger.gruppe, V(x + 0.04 + 0.0375 + 0.016, 0.8, zMitte + 0.22), V(1, 0, 0), 'DIP-BARREN', 'TRIZEPS, BRUST');
 }
 // Trap Bar (Sechseck): Rahmen um den Trainierenden, Griffe innen links und rechts (längs, Neutralgriff), Hülsen mit Scheiben
 function trapBar(ger) {
@@ -1564,43 +2178,52 @@ function trapBar(ger) {
   }
   ger.gruppe.add(g); return g;
 }
-// Butterfly (Brust) bzw. Reverse Butterfly (hintere Schulter): Drehachsen senkrecht über den Schultern, die Hebel laufen oben waagrecht
-// zum Griff hinüber und hängen dort senkrecht herab (sie drehen um die Schulter, um den Körper herum; vorher hing ein Rohr genau auf der
-// Achse und ging durch die Schulter, Devin 31.10.). richtung = 1: Figur sitzt mit dem Rücken zum Polster (Butterfly), -1: Brust am Polster (Reverse)
+// Butterfly (Brust) bzw. Reverse Butterfly (hintere Schulter) in der DK Line: Drehachsen senkrecht über den Schultern, die Hebel laufen oben waagrecht zum Griff hinüber und hängen dort
+// senkrecht herab (sie drehen um die Schulter, um den Körper herum). richtung = 1: Figur sitzt mit dem Rücken zum Polster (Butterfly), -1: Brust am Polster (Reverse).
+// DK Line: Säule aus Rundrohr auf dem Bodenrahmen, je Seite Lagergehäuse mit Nabe (Arme unten) und Goldkappe, darüber die Nocke; der Stapel steht hinter der Säule (bei Reverse davor),
+// das Seil läuft waagrecht über die Säule zur Kopfrolle (kein Mast nötig); die Hebelwinkel stehen in den Vorlagen (Butterfly 80° bis -13°, Reverse 8° bis 86°, von +z nach außen)
 function butterflyBauen(ger, z, becken, r, richtung) {
-  const R = rumpfRahmen(r), k = rumpf(becken, r);
-  bodenrahmen(ger, -0.42, 0.42, -0.7, 0.64);   // vorderes Rahmenrohr vor den Zehen (bis 31.10. bei 0,52: Zehen 2,8 cm darin)
-  sitzSaeule(ger, V(0, becken.y - 0.115, becken.z + 0.02 * richtung), 0.44, 0.42);
+  // Reverse: Drehachsen auf 2,14 m (die stehende Figur geht beim Hereinkommen unter den Lagern durch, mindestens 5 cm über dem Hutraum), Verkleidung 1,70 m: Kopfrolle auf 2,32 m knapp über den Nocken (2,28 m)
+  const R = rumpfRahmen(r), k = rumpf(becken, r), XS = 0.42, yP = richtung > 0 ? 1.88 : 2.14, F = richtung > 0 ? 1.48 : 1.70;   // Butterfly: Achsen auf 1,88 m, Kopfrolle auf 2,10 m, Nocken auf 2,02 m
+  sitzSaeuleDK(ger, V(0, becken.y - 0.115, becken.z + 0.02 * richtung), 0.44, 0.42);
   const lehne = richtung > 0 ? becken.clone().add(R.oben.clone().multiplyScalar(0.36)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045))
     : becken.clone().add(R.oben.clone().multiplyScalar(0.36)).add(R.vor.clone().multiplyScalar(0.245 + 0.045));   // Brustpolster vor der Brust, endet über dem Schoß
-  ger.polster(richtung > 0 ? 0.4 : 0.32, richtung > 0 ? 0.66 : 0.38, 0.09, lehne, basisAus(R.oben, R.vor));
-  const saeule = V(0, 0, lehne.z - 0.25 * richtung);
-  ger.vierkant(saeule.clone().setY(0.05), saeule.clone().setY(1.95), 0.09);
-  ger.vierkant(saeule.clone().setY(lehne.y), lehne.clone().sub(R.vor.clone().multiplyScalar(0.06 * richtung)), 0.06);
-  for (const sx of [-1, 1]) {
-    const s = sx > 0 ? 'l' : 'r', P = V(k.schulter[s].x, 1.88, k.schulter[s].z);
-    ger.vierkant(saeule.clone().setY(1.92), P.clone().setY(1.92), 0.07);
-    drehlager(ger, P, V(0, 1, 0), 0.12);
-    z['bfArm_' + s] = ger.stab(V(), V(0, 1, 0), 0.028, ger.mRahmen);
-    z['bfQuer_' + s] = ger.stab(V(), V(0, 1, 0), 0.026, ger.mRahmen);
+  ger.polsterGeformt(richtung > 0 ? 0.4 : 0.32, richtung > 0 ? 0.66 : 0.38, 0.09, lehne, basisAus(R.oben, R.vor));
+  const saeule = V(0, 0, lehne.z - 0.25 * richtung), zS = saeule.z - richtung * 0.35;
+  if (richtung > 0) dkBoden(ger, XS, saeule.z, 0.2, saeule.z, 0.2);   // Säule steht auf dem hinteren Querholm
+  else { dkBoden(ger, XS, -0.7, 0, -0.7, 0); ger.holm(V(0, 0.05, 0), V(0, 0.05, saeule.z), DK.boden); ger.fussDK(V(0, 0, saeule.z)); }   // Mittelholm bis zur Säule (die Füße stehen daneben)
+  ger.holm(V(0, 0.05, saeule.z), V(0, yP + 0.06, saeule.z), DK.holm);   // Säule bis zur Höhe der Lagergehäuse
+  ger.holm(V(0, lehne.y, saeule.z), lehne.clone().sub(R.vor.clone().multiplyScalar(0.0775 * richtung)), DK.strebe);   // Strebe zum Polster, die Kappe liegt an
+  const w0 = (richtung > 0 ? 80 : 8) * RAD, w1 = (richtung > 0 ? -13 : 86) * RAD, nab = [];
+  for (const [s, sg] of [['l', 1], ['r', -1]]) {
+    const P = V(k.schulter[s].x, yP, k.schulter[s].z), Ph = P.clone().add(V(0, 0.06, 0)), C = P.clone().add(V(0, 0.14, 0));
+    r1_lager(ger, Ph, V(0, 1, 0), -1);   // Nabe unten (Arme), Gehäuse, Goldkappe oben; darüber die Nocke
+    ger.holm(V(0, Ph.y, saeule.z), V(P.x, Ph.y, P.z - richtung * 0.1145), DK.strebe);   // Halter von der Säule, die Kappe liegt an der Rückseite des Gehäuses an
+    nab.push({ C, achse: V(0, sg, 0), e2: V(0, 0, -richtung), rN: 0.17, direkt: true, v0: V(sg * Math.sin(w0), 0, Math.cos(w0)), v1: V(sg * Math.sin(w1), 0, Math.cos(w1)) });
+    z['bfArm_' + s] = ger.stab(V(), V(0, 1, 0), 0.028, ger.mHebel);
+    z['bfQuer_' + s] = ger.stab(V(), V(0, 1, 0), 0.026, ger.mHebel);
     const g = new THREE.Group(); ger.gruppe.add(g); griffRohr(ger, V(0, -0.075, 0), V(0, 0.075, 0), g, 0.75); z['bfGriff_' + s] = g;
     z['bfDreh_' + s] = P;
   }
-  z.block = gewichtsblock(ger, V(-0.86, 0, saeule.z), V(1, 0, 0));   // weiter außen: die Arme schwingen beim Reverse Butterfly frei
+  z.block = gewichtsblockDK(ger, V(0, 0, zS), V(0, 0, richtung), F, richtung > 0 ? 'BUTTERFLY' : 'REVERSE BUTTERFLY', richtung > 0 ? 'BRUST' : 'HINTERE SCHULTER', { seite: true });
+  ger.holm(V(0, 0.05, saeule.z), V(0, 0.05, zS + richtung * 0.23), DK.boden);   // Mittelholm bis zum Sockel des Stapels
+  z.dkSeil = r1_nockenSeil(ger, { block: z.block, straenge: 2, naben: nab });
   z.bf = { richtung };
 }
 function butterflyStellen(z, g, hub) {
+  const vek = [];
   for (const s of ['l', 'r']) {
     const P = z['bfDreh_' + s], h = g.hand[s], ueber = V(h.x, P.y, h.z);   // über dem Griff, in Höhe des Drehlagers
     seil(z['bfQuer_' + s], P, ueber);
     seil(z['bfArm_' + s], ueber, V(h.x, h.y + 0.09, h.z));
     z['bfGriff_' + s].position.copy(h); z['bfGriff_' + s].quaternion.identity();
+    vek.push(V(ueber.x - P.x, 0, ueber.z - P.z));   // Richtung des Hebels von oben gesehen
   }
-  z.block.heben(0.28 * hub);
+  z.dkSeil.stelleV(vek);   // der Stapel hebt sich nur über das Seil
 }
 
 // Latzugstange: breit/normal mit abgewinkelten Enden und Gummigriffen, 'gerade' (Untergriff) oder 'parallel' (eng, Neutralgriff:
-// zwei Griffe quer zur Stange). Achse X, Mitte im Ursprung (stangeAn legt sie zwischen die Fäuste), Öse für den Karabiner oben
+// zwei Griffe quer zur Stange). Achse X, Mitte im Ursprung (stangeAn legt sie zwischen die Fäuste), Öse (DK Line: Gold) für den Karabiner oben
 function latzugstange(ger, typ, breite) {
   const g = new THREE.Group(), quer = (geo, m, x, y = 0) => { const o = maschTeil(g, geo, m, x, y); o.rotation.z = Math.PI / 2; return o; };
   if (typ === 'parallel') {
@@ -1621,74 +2244,137 @@ function latzugstange(ger, typ, breite) {
       gr.rotation.z = -sx * (Math.PI / 2 + 0.27);
     }
   }
-  maschTeil(g, new THREE.TorusGeometry(0.02, 0.005, 8, 16), ger.mMetall, 0, 0.035);
+  maschTeil(g, new THREE.TorusGeometry(0.02, 0.005, 8, 16), ger.mDKGold, 0, 0.035);
   ger.gruppe.add(g); return g;
 }
-// Latzugstation: Gewichtsblock vorn (die Figur schaut darauf), Säule bis oben, Ausleger mit Umlenkrolle über der Stange, Sitz,
-// Knierolle über den Oberschenkeln
+// Latzugstation (DK Line): Sitz und Knierolle wie bisher (Rundrohr), der Stapel steht vorn quer (Fenster und Typenschild zur Kamera), ein Ausleger mit Rolle
+// über der Stange; das Seil läuft von der Öse an der Stange über die Rolle am Ausleger zur Kopfrolle des Stapels und über die bewegliche Rolle zur festen Öse
+// (2:1: wird das Seil zwischen Stange und Rolle um d länger, steigt der Stapel um d/2). Die Länge setzt r2_latzugStellen
 function latzugBauen(ger, z, stangeZ) {
-  bodenrahmen(ger, -0.36, 0.36, -0.32, 1.0);
-  sitzSaeule(ger, V(0, 0.435, -0.02), 0.44, 0.42);
-  z.block = gewichtsblock(ger, V(0, 0, 0.84), V(0, 0, -1), 2.05);
-  ger.vierkant(V(0, 2.08, 0.84), V(0, 2.42, 0.84), 0.1);
-  ger.vierkant(V(0, 2.42, 0.92), V(0, 2.42, stangeZ - 0.07), 0.09);
-  const rolle = ger.rolle(0.05); rolle.position.set(0, 2.33, stangeZ); rolle.rotation.y = Math.PI / 2;
-  ger.vierkant(V(0, 2.42, stangeZ), V(0, 2.36, stangeZ), 0.05);
-  ger.vierkant(V(0, 0.66, 0.66), V(0, 0.66, 0.2), 0.06);
-  ger.vierkant(V(0, 0.05, 0.66), V(0, 0.66, 0.66), 0.06);
+  const hMax = 0.45, F = 1.7, zS = 0.98, dD = 0.14;
+  dkBoden(ger, 0.36, -0.32, 0.66);
+  sitzSaeuleDK(ger, V(0, 0.435, -0.02), 0.44, 0.42);
+  z.block = gewichtsblockDK(ger, V(0, 0, zS), V(1, 0, 0), F, 'LATZUG', 'RÜCKEN', { hMax });
+  const yG = z.block.yG;
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 2, naben: [{ zug: true, x: 0, y: yG - dD, z: stangeZ, rN: 0, dir: 1, dD }] });
+  const Wd = seil.nb[0].Wd;
+  ger.holm(V(-0.075, yG - 0.01, zS - 0.23), V(-0.075, yG - 0.01, Wd.z), DK.strebe);   // Ausleger vom Rollenkopf des Stapels nach vorn über den Kopf
+  ger.holm(V(-0.075, yG, Wd.z), Wd, 0.045);   // Halter der Rolle am Ende
+  ger.holm(V(0, 0.05, 0.66), V(0, 0.665, 0.66), DK.strebe);   // Halter der Knierolle: Pfosten auf dem vorderen Querholm, Arm bis an die Rolle (Kappe liegt an)
+  ger.holm(V(0, 0.665, 0.66), V(0, 0.665, 0.18 + 0.0325), DK.strebe);
   rollePolster(ger, 0.42, 0.05).position.set(0, 0.665, 0.13);
+  z.lz = { aus: seil.nb[0].T.clone(), dk: seil, kugel: ger.teil(new THREE.SphereGeometry(0.012, 12, 8), ger.mDKGold) }; z.dkTurm = [seil];   // goldene Seilkugel am Seilende an der Stange
 }
-// Unterstützungsmaschine (Klimmzug bzw. Dips mit Kniepolster): hoher Rahmen, Gewichtsblock hinten (zieht das Polster nach oben),
-// Kniepolster auf einem Hebel von hinten unten, Tritte zum Aufsteigen; Klimmzuggriffe oben bzw. Barrengriffe
-function assistBauen(ger, z, art) {
-  bodenrahmen(ger, -0.62, 0.62, -0.95, 0.35);
+// Seil von der Austrittsstelle an der Rolle zur Öse der Stange; der Stapel hebt sich mit der Seillänge
+function r2_latzugStellen(z) {
+  const oese = z.lh.position.clone().add(V(0, 0.04, 0));
+  seil(z.seil, z.lz.aus, oese); z.seil_l = z.seil; z.lz.kugel.position.copy(oese);   // Handseil unter dem Namen der Kabeltürme (Messwerkzeug)
+  z.lz.dk.stelle([oese.distanceTo(z.lz.aus)]);
+}
+// Hebel-Latzug (DK Line): Seitenrahmen mit Lagerböcken um die Achse LH_C (Kreisbogen der Griffe), silberne Arme mit Schwenkgriffen, Sitz und Knierolle wie bisher,
+// Stapel hinten, Seil von den Nocken über die Rollen an den Masten zum Stapel
+function r2_latzugHebelBauen(ger, z) {
+  const C = LH_C, oben = 0.45, stackZ = -0.8, strebe = C.y > 0.8 ? { y: C.y - 0.45, z: C.z + 0.75 } : null;
+  dkBoden(ger, DK.achse, -1.08, 0.7, stackZ + 0.23);
+  sitzSaeuleDK(ger, V(0, 0.435, -0.02), 0.44, 0.42);
+  ger.holm(V(0, 0.05, 0.55), V(0, 0.665, 0.55), DK.strebe);   // Halter der Knierolle (Kappe liegt an der Rolle an)
+  ger.holm(V(0, 0.665, 0.55), V(0, 0.665, 0.18 + 0.0325), DK.strebe);
+  rollePolster(ger, 0.42, 0.05).position.set(0, 0.665, 0.13);
   for (const sx of [-1, 1]) {
-    ger.vierkant(V(sx * 0.62, 0.05, -0.35), V(sx * 0.62, 2.42, -0.35), 0.09);
-    ger.box(0.13, 0.035, 0.22, V(sx * 0.4, 0.5, -0.1), ger.mGummi);
-    ger.vierkant(V(sx * 0.4, 0.475, -0.18), V(sx * 0.62, 0.475, -0.35), 0.05);
+    const sd = sx > 0 ? 'l' : 'r';
+    dkSeitenrahmen(ger, sx, C, oben, strebe);
+    z['dmArm_' + sd] = ger.stab(V(), V(0, 1, 0), 0.0275, ger.mHebel); z['dmQuer_' + sd] = ger.stab(V(), V(0, 1, 0), 0.022, ger.mHebel);
+    const g = new THREE.Group(); ger.gruppe.add(g); griffRohr(ger, V(0, -0.075, 0), V(0, 0.075, 0), g, 0.75); g.userData.frei = V(0, 1, 0); z['dmGriff_' + sd] = g;   // Schwenkgriffe
   }
-  ger.vierkant(V(-0.62, 2.42, -0.35), V(0.62, 2.42, -0.35), 0.09);
+  z.block = gewichtsblockDK(ger, V(0, 0, stackZ), V(0, 0, 1), 1.55, 'LATZUG', 'RÜCKEN', { seite: true });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 2, naben: [1, -1].map((sg) => ({ x: sg * (DK.achse + 0.08), y: C.y, z: C.z, rN: 0.22, dir: -1, dth: 0.9, dD: oben })) });
+  seil.nb.forEach((n) => ger.holm(V(Math.sign(n.x) * DK.achse, C.y + oben, C.z), n.Wd, 0.04));   // Halter der Seilrolle am Mast
+  z.dkSeil = seil; z.dm = { C, griff: 'laengs', x: 0.44, dk: seil };
+}
+// Unterstützungsmaschine (Klimmzug bzw. Dips mit Kniepolster, DK Line): hoher Rahmen aus Rundrohr (Pfosten hinter der Stange, damit der Kopf oben frei bleibt),
+// Tritte zum Aufsteigen, Klimmzuggriffe oben bzw. Barrengriffe; das Kniepolster hängt an zwei silbernen Hebeln, die hinten in Lagerböcken drehen. Der Stapel steht
+// hinten und hebt sich über das Seil an den Nocken, wenn das Polster sinkt (Gegengewicht). Lage des Polsters wie bisher
+function assistBauen(ger, z, art) {
+  const XS = 0.3, oben = 0.5, zP = -0.95, zS = -1.5, ax = 0.24;
+  // Höhe des Drehpunkts: so, dass sich der Hebelarm bis zum Polster über die ganze Bewegung möglichst wenig streckt (gesucht aus der Polsterbahn der Vorlage)
+  const E = []; for (let i = 0; i <= 10; i++) E.push(r2_assistPad(art, i / 10).add(V(0, -0.035, -0.05)));
+  let yP = 0.7, beste = 1e9;
+  for (let y = 0.2; y <= 1.6; y += 0.025) { const L = E.map((e) => Math.hypot(e.y - y, e.z - zP)), r = Math.max(...L) / Math.min(...L); if (r < beste) { beste = r; yP = y; } }
+  const C = V(0, yP, zP);
+  dkBoden(ger, 0.62, zS - 0.265, 0.35, zS + 0.23 + 0.0375);
+  for (const zz of [zP, zS + 0.23 + 0.0375]) ger.holm(V(-0.62, 0.05, zz), V(0.62, 0.05, zz), DK.boden);
+  for (const sx of [-1, 1]) {
+    ger.holm(V(sx * 0.62, 0.05, -0.5), V(sx * 0.62, 2.42, -0.5), DK.holm);
+    ger.box(0.13, 0.035, 0.22, V(sx * 0.4, 0.31, -0.1), ger.mGummi);   // Tritt, 31 cm hoch (bis 9.11. 50 cm: unter der Stange stieß der Hut beim Hinaufsteigen an die Stange)
+    ger.holm(V(sx * 0.4, 0.26, -0.18), V(sx * 0.62, 0.26, -0.5), DK.strebe);
+  }
+  ger.holm(V(-0.62, 2.42, -0.5), V(0.62, 2.42, -0.5), DK.holm);
   if (art === 'klimmzug') {
     z.stange = ger.zyl(0.016, 1.3, ger.mMetall); z.stange.rotation.z = Math.PI / 2; z.stange.position.set(0, 2.25, 0);
-    for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.62, 2.25, 0.0), V(sx * 0.62, 2.25, -0.35), 0.07); ger.box(0.05, 0.05, 0.05, V(sx * 0.64, 2.25, 0), ger.mRahmen); }
+    for (const sx of [-1, 1]) { ger.holm(V(sx * 0.62, 2.25, -0.5), V(sx * 0.62, 2.25, 0.0), DK.strebe); ger.teil(new THREE.SphereGeometry(0.026, 14, 10), ger.mDKGold, V(sx * 0.655, 2.25, 0)); }
   } else {
     for (const sx of [-1, 1]) {
       const b = ger.zyl(0.02, 0.6, ger.mMetall); b.rotation.x = Math.PI / 2; b.position.set(sx * 0.27, 1.25, 0.05);
       const gr = ger.zyl(0.024, 0.2, ger.mGummi); gr.rotation.x = Math.PI / 2; gr.position.set(sx * 0.27, 1.25, 0.12);
-      ger.vierkant(V(sx * 0.27, 1.25, -0.25), V(sx * 0.62, 1.25, -0.35), 0.06);
+      ger.holm(V(sx * 0.27, 1.25, -0.25), V(sx * 0.62, 1.25, -0.5), DK.strebe);
     }
   }
-  z.block = gewichtsblock(ger, V(0, 0, -0.8), V(0, 0, 1), 2.05);
-  z.assistDreh = V(0, 0.32, -0.6);
-  drehlager(ger, z.assistDreh, V(1, 0, 0), 0.2);
-  z.hub = ger.stab(V(), V(0, 1, 0), 0.035, ger.mRahmen);
-  z.polster = ger.box(0.5, 0.07, 0.4, V(), ger.mPolster);
+  for (const sx of [-1, 1]) dkSeitenrahmen(ger, sx, C, oben, null, XS);
+  z.block = gewichtsblockDK(ger, V(0, 0, zS), V(0, 0, 1), 1.55, art === 'klimmzug' ? 'KLIMMZUG-HILFE' : 'DIP-HILFE', art === 'klimmzug' ? 'RÜCKEN' : 'TRIZEPS', { seite: true });
+  const th1 = Math.atan2(E[10].y - yP, E[10].z - zP);   // höchste Lage des Polsters (t = 1): dort ruht der Stapel
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 2, naben: [1, -1].map((sg) => ({ x: sg * (XS + 0.08), y: yP, z: zP, rN: 0.22, dir: -1, dth: 0.7, dD: oben })) });
+  seil.nb.forEach((n) => { n.th0 = th1; ger.holm(V(Math.sign(n.x) * XS, yP + oben, zP), n.Wd, 0.04); });   // Halter der Seilrolle am Mast
+  z.polster = ger.polsterGeformt(0.5, 0.07, 0.4, V());
+  z.dkSeil = seil;
+  z.assist = { P: { l: V(ax, yP, zP), r: V(-ax, yP, zP) }, arm: { l: ger.stab(V(), V(0, 1, 0), 0.0275, ger.mHebel), r: ger.stab(V(), V(0, 1, 0), 0.0275, ger.mHebel) }, dk: seil };
 }
-// Kniepolster unter die Knie, Hebel dorthin; der Block hebt sich, wenn die Figur tiefer geht (Gegengewicht)
+// Lage des Kniepolsters bei t (wie assistStellen, aus der Pose der Vorlage gerechnet)
+function r2_assistPad(art, t) {
+  const g = gelenke((art === 'klimmzug' ? klimmzug({ art: 'maschine' }) : trizeps({ art: 'dips', assistiert: true })).pose(t).pose);
+  return g.knie.l.clone().add(g.knie.r).multiplyScalar(0.5).add(V(0, -0.085, -0.12));
+}
+// Kniepolster unter die Knie, die Hebel dorthin; der Stapel hebt sich über das Seil, wenn die Figur tiefer geht (Gegengewicht)
 function assistStellen(z, g) {
-  const knie = g.knie.l.clone().add(g.knie.r).multiplyScalar(0.5);
+  const knie = g.knie.l.clone().add(g.knie.r).multiplyScalar(0.5), a = z.assist, th = [];
   z.polster.position.copy(knie).add(V(0, -0.085, -0.12));
-  seil(z.hub, z.assistDreh, z.polster.position.clone().add(V(0, -0.035, -0.05)));
-  z.assistMax = Math.max(z.assistMax || 0, knie.y);
-  z.block.heben(Math.min(0.5, (z.assistMax - knie.y) * 0.8));
+  for (const [s, sg] of [['l', 1], ['r', -1]]) {
+    const E = z.polster.position.clone().add(V(0, -0.035, -0.05)); E.x = sg * 0.24;
+    seil(a.arm[s], a.P[s], E); th.push(Math.atan2(E.y - a.P[s].y, E.z - a.P[s].z));
+  }
+  a.dk.stelle(th);
 }
-// Kabelrudern sitzend: lange Bank, zwei schräge Fußplatten (Lücke für das Kabel), Umlenkrolle unten, Gewichtsblock vorn
-// Rolle etwa auf der Linie des gestreckten Arms, breiter Griff: Rolle höher (hohe Ellbogen, Zug fast waagerecht). Fußplatten so weit vorn, dass die Knie nur leicht gebeugt sind
+// Kabelrudern sitzend (DK Line): lange Bank, zwei schräge Fußplatten (Lücke für das Kabel), Kabelturm mit Säule, Schiene, Wagen und Seilöse am Seilausgang, dahinter
+// der Stapel quer (Fenster und Schild zur Kamera). Das Seil läuft von der Öse senkrecht hoch zur Rolle oben auf der Säule, waagerecht zur Kopfrolle des Stapels und
+// über die bewegliche Rolle zur festen Öse (2:1). Rolle etwa auf der Linie des gestreckten Arms, breiter Griff: Rolle höher (hohe Ellbogen, Zug fast waagerecht).
+// Fußplatten so weit vorn, dass die Knie nur leicht gebeugt sind
 const RU_FUSSFLAECHE = V(0, 0.42, -0.907), RU_ANKER = V(0, 0.4, 1.08), RU_ANKER_HOCH = V(0, 0.8, 1.08), RU_FUSS_Z = 0.7;
 function kabelruderBauen(ger, z, breit) {
-  ger.vierkant(V(0, 0.05, -0.75), V(0, 0.05, 1.38), 0.09);
-  for (const zz of [-0.62, 0.22]) ger.vierkant(V(0, 0.05, zz), V(0, 0.295, zz), 0.07);
-  ger.box(0.4, 0.09, 1.0, V(0, 0.34, -0.2));
+  const anker = breit ? RU_ANKER_HOCH : RU_ANKER, hMax = 0.3, yTop = 2.2, F = yTop - (0.14 + hMax + 0.18), zc = anker.z + 0.135, zS = zc + 0.33, A = V(0, anker.y, anker.z);
+  ger.holm(V(0, 0.05, -0.75), V(0, 0.05, zc), DK.holm);
+  for (const zz of [-0.62, 0.22]) ger.holm(V(0, 0.05, zz), V(0, 0.2625, zz), DK.strebe);
+  ger.polsterGeformt(0.4, 0.09, 1.0, V(0, 0.34, -0.2));
   for (const sx of [-1, 1]) {
     const mitte = V(sx * 0.13, 0.32, RU_FUSS_Z).sub(RU_FUSSFLAECHE.clone().multiplyScalar(SOHLE + 0.015)).add(V(0, 0.907, 0.42).multiplyScalar(0.06));
     ger.polster(0.17, 0.3, 0.03, mitte, basisAus(V(0, 0.907, 0.42), RU_FUSSFLAECHE), ger.mRahmen);
-    ger.vierkant(V(sx * 0.13, 0.05, mitte.z + 0.06), mitte.clone().add(V(0, -0.08, 0.04)), 0.05);
+    ger.holm(V(sx * 0.13, 0.05, mitte.z + 0.22), mitte.clone().add(RU_FUSSFLAECHE.clone().multiplyScalar(-0.04)), 0.05);   // Strebe von hinten an die Plattenrückseite
   }
-  const anker = breit ? RU_ANKER_HOCH : RU_ANKER, rolle = ger.rolle(0.05); rolle.position.copy(anker);
-  ger.vierkant(V(0, 0.05, anker.z), anker.clone().sub(V(0, 0.06, 0)), 0.07);
-  z.block = gewichtsblock(ger, V(0, 0, 1.45), V(0, 0, -1), 1.7);
+  ger.teil(rundGeo(0.3, 0.05, 0.2, 0.02, 1), ger.mDK, V(0, 0.025, zc - 0.08));                                               // Fußplatte der Säule
+  ger.holm(V(0, 0.08, zc), V(0, yTop - 0.03, zc), DK.holm);                                                                  // Säule
+  ger.teil(rundGeo(0.06, yTop - 0.42, 0.012, 0.004, 1), ger.mHebel, V(0, (0.3 + yTop - 0.12) / 2, zc - 0.0535));            // Schiene
+  ger.teil(rundGeo(0.14, 0.13, 0.06, 0.012, 1), ger.mDK, V(0, anker.y, zc - 0.0895));                                        // Wagen
+  ger.teil(new THREE.TorusGeometry(0.02, 0.0045, 8, 16), ger.mDKGold, A);                                                    // Seilöse am Seilausgang
+  z.block = gewichtsblockDK(ger, V(0, 0, zS), V(1, 0, 0), F, 'KABELRUDERN', 'RÜCKEN', { hMax });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 2, naben: [{ zug: true, x: 0, y: anker.y, z: anker.z, rN: 0, dir: 1, dD: yTop - anker.y }] });
+  ger.holm(V(0, yTop, zc), seil.nb[0].Wd, 0.045);   // Halter der Rolle oben auf der Säule
+  z.kr = { oese: A, dk: seil, kugel: ger.teil(new THREE.SphereGeometry(0.012, 12, 8), ger.mDKGold) }; z.dkTurm = [seil];   // goldene Seilkugel am Seilende am Griff
   z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel);
   z.griff = breit ? latzugstange(ger, 'gerade', 0.3) : rudergriffV(ger);
+}
+// Seil von der Öse am Turm zum Griff (Ring des V-Griffs: der Griff dreht nur um die senkrechte Achse, der Ring liegt 18 cm vor der Mitte auf der waagerechten Linie
+// zum Turm; breite Stange: Öse 2 cm über der Mitte); der Stapel hebt sich mit der Seillänge
+function r2_kabelruderStellen(z, mitte, anker, breit) {
+  const d = anker.clone().sub(mitte), ende = mitte.clone().add(breit ? d.normalize().multiplyScalar(0.02) : V(d.x, 0, d.z).normalize().multiplyScalar(0.18));
+  seil(z.seil, z.kr.oese, ende); z.seil_l = z.seil; z.kr.kugel.position.copy(ende); z.kr.dk.stelle([ende.distanceTo(z.kr.oese)]);
 }
 // V-Griff fürs enge Rudern: zwei senkrechte Gummigriffe nebeneinander, Bügel nach vorn zum Karabiner (lokal: Z zum Kabel)
 function rudergriffV(ger) {
@@ -1708,25 +2394,28 @@ const rmSchulter = (sg) => rumpf(RM_BECKEN, RM_RUMPF).schulter[sg > 0 ? 'l' : 'r
 const rmVorn = (sg) => rmSchulter(sg).add(V(sg * 0.04, -0.06, ARM * 0.9995)), rmNah = (sg) => ruderEnde(rumpf(RM_BECKEN, RM_RUMPF), sg > 0 ? 'l' : 'r', sg, { ext: 42, abd: 22, zug: V(0, -0.1, 1) });
 const RM_C = bogenMitte(rmVorn(1), rmNah(1), { y: 1.72 });
 function rudermaschineBauen(ger, z) {
-  const R = rumpfRahmen(RM_RUMPF);
-  bodenrahmen(ger, -0.45, 0.45, -0.45, 1.05);
-  sitzSaeule(ger, V(0, RM_BECKEN.y - 0.115, RM_BECKEN.z), 0.42, 0.38);
+  // DK Line (Auftrag D): zwei getrennte Seitenrahmen mit Lagerböcken (kein Querrohr über dem Kopf), Hebel silbern, Stapel mit Seil und Schild.
+  // Körper, Polster und Handwege (RM_C, bogenHand) bleiben wie bisher
+  const R = rumpfRahmen(RM_RUMPF), C = RM_C, oben = 0.45;
+  dkBoden(ger, DK.achse, -0.55, 1.05);
+  ger.holm(V(-DK.achse, 0.05, C.z - 0.15), V(-0.62, 0.05, C.z - 0.15), DK.boden);   // verbindet den Bodenrahmen mit dem Sockel des Stapels
+  sitzSaeuleDK(ger, V(0, RM_BECKEN.y - 0.115, RM_BECKEN.z), 0.42, 0.38);
   // Brustpolster 30 cm breit, 2,5 cm weiter vorn: die Oberarme gehen vorn daran vorbei, die Brust liegt an (bis 31.10. 4,7 cm darin)
   const brust = RM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.36)).add(R.vor.clone().multiplyScalar(0.215 + 0.045));
-  ger.polster(0.3, 0.44, 0.09, brust, basisAus(R.oben, R.vor));
-  ger.vierkant(V(0, 0.05, brust.z + 0.25), V(0, brust.y - 0.05, brust.z + 0.25), 0.08);
-  ger.vierkant(V(0, brust.y - 0.05, brust.z + 0.25), brust.clone().add(R.vor.clone().multiplyScalar(0.05)), 0.06);
+  ger.polsterGeformt(0.3, 0.44, 0.09, brust, basisAus(R.oben, R.vor));
+  ger.holm(V(0, 0.05, brust.z + 0.25), V(0, brust.y - 0.05, brust.z + 0.25), 0.075);
+  ger.holm(V(0, brust.y - 0.05, brust.z + 0.25), brust.clone().add(R.vor.clone().multiplyScalar(0.0725)), 0.055);   // Kappe liegt an der Polsterfläche an
   for (const sx of [-1, 1]) {
-    const sd = sx > 0 ? 'l' : 'r', P = V(sx * DM_X, RM_C.y, RM_C.z);
-    ger.vierkant(V(sx * DM_X, 0.05, RM_C.z), P.clone().sub(V(0, 0.06, 0)), 0.08);
-    drehlager(ger, P, V(1, 0, 0), 0.13);
-    z['dmArm_' + sd] = ger.stab(V(), V(0, 1, 0), 0.03, ger.mRahmen);
-    z['dmQuer_' + sd] = ger.stab(V(), V(0, 1, 0), 0.022, ger.mRahmen);
+    const sd = sx > 0 ? 'l' : 'r';
+    dkSeitenrahmen(ger, sx, C, oben, { y: C.y - 0.5, z: C.z - 0.75 });
+    z['dmArm_' + sd] = ger.stab(V(), V(0, 1, 0), 0.0275, ger.mHebel);
+    z['dmQuer_' + sd] = ger.stab(V(), V(0, 1, 0), 0.022, ger.mHebel);
     const g = new THREE.Group(); ger.gruppe.add(g); griffRohr(ger, V(0, -0.075, 0), V(0, 0.075, 0), g, 0.75); z['dmGriff_' + sd] = g;
   }
-  ger.vierkant(V(-DM_X, RM_C.y, RM_C.z), V(DM_X, RM_C.y, RM_C.z), 0.06);
-  z.block = gewichtsblock(ger, V(-0.85, 0, RM_C.z - 0.15), V(1, 0, 0));   // seitlich, damit die Figur von vorn zu sehen ist
-  z.dm = { C: RM_C, griff: 'senkrecht' };
+  z.block = gewichtsblockDK(ger, V(-0.85, 0, C.z - 0.15), V(1, 0, 0), 1.55, 'SITZENDES RUDERN', 'RÜCKEN');   // seitlich, damit die Figur von vorn zu sehen ist
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 2, naben: [1, -1].map((sg) => ({ x: sg * (DK.achse + 0.08), y: C.y, z: C.z, rN: 0.24, dir: -1, dth: 0.66, dD: oben })) });
+  seil.nb.forEach((n) => ger.holm(V(Math.sign(n.x) * DK.achse, C.y + oben, C.z), n.Wd, 0.04));   // Halter der Seilrolle am Mast
+  z.dkSeil = seil; z.dm = { C, griff: 'senkrecht', dk: seil };
 }
 
 /* ---------- Beinpresse 45° (mit Scheiben beladen) ---------- */
@@ -1755,22 +2444,24 @@ function bpHub(beuge, m = BP_STD) {
 // Mitte der Plattenoberfläche, wenn der Schlitten um hub (m) aus der unteren Stellung gefahren ist
 const bpPlatte = (hub, m = BP_STD) => bpFuss0(1, m).add(bpFuss0(-1, m)).multiplyScalar(0.5).add(BP_SCHIENE.clone().multiplyScalar(hub + SOHLE)).add(BP_PLATTE_OBEN.clone().multiplyScalar(0.07));   // Fußmitte etwa in der Plattenmitte
 const BP_DREH = basisAus(BP_PLATTE_OBEN, BP_SCHIENE);   // Schlitten-Lage: X quer, Y Platte nach oben, Z = Fahrrichtung
+// DK Line (R4): Sitz- und Rückenpolster geformt (Lage und Maße wie bisher), Bodenrahmen und Schienen aus Rundrohr, silberne Chromführungen, Schlitten mit Graphitplatte,
+// Gummibelag (Körperkontakt, unverändert), Goldleiste, goldenen Radkappen und Hörnern mit Goldkappe; die Scheiben bleiben sichtbar. Typenschild an der hinteren Stütze und auf der Plattenrückseite
 function beinpresseBauen(ger, z, m = BP_STD) {
-  const R = bpRahmen(m), X = V(1, 0, 0);
-  const lok = (x, y, zz) => V(x, y, zz).applyQuaternion(BP_DREH);
-  // Sitz: Rückenpolster parallel zum Rücken, Sitzpolster unter dem Po, beide auf einem Stahlrahmen
-  ger.polster(0.46, 0.72, 0.09, BP_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.33)).sub(R.vor.clone().multiplyScalar(0.13 + 0.045)), basisAus(R.oben, R.vor));
+  const R = bpRahmen(m), X = V(1, 0, 0), PO = BP_PLATTE_OBEN, PS = BP_SCHIENE;
+  // Sitz: Rückenpolster parallel zum Rücken, Sitzpolster unter dem Po, beide auf Rundrohr-Stützen
+  ger.polsterGeformt(0.46, 0.72, 0.09, BP_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.33)).sub(R.vor.clone().multiplyScalar(0.13 + 0.045)), basisAus(R.oben, R.vor));
   const sitzN = R.oben.clone().multiplyScalar(Math.cos(35 * RAD)).add(R.vor.clone().multiplyScalar(Math.sin(35 * RAD))).normalize();
   const sitzVor = X.clone().cross(sitzN).normalize();
   const sitz = BP_BECKEN.clone().sub(sitzN.clone().multiplyScalar(0.115 + 0.045)).add(sitzVor.clone().multiplyScalar(0.06));
-  ger.polster(0.44, 0.09, 0.42, sitz, basisAus(sitzN, sitzVor));
+  ger.polsterGeformt(0.44, 0.09, 0.42, sitz, basisAus(sitzN, sitzVor));
   const unterSitz = sitz.clone().sub(sitzN.clone().multiplyScalar(0.08)), unterLehne = BP_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.45)).sub(R.vor.clone().multiplyScalar(0.27));
   for (const sx of [-1, 1]) {
-    ger.vierkant(V(sx * 0.17, 0.06, unterSitz.z), unterSitz.clone().add(V(sx * 0.17, 0, 0)), 0.06);
-    ger.vierkant(V(sx * 0.17, 0.06, unterLehne.z - 0.1), unterLehne.clone().add(V(sx * 0.17, 0, 0)), 0.06);
-    // Haltegriff neben dem Sitz: Pfosten, waagerechte Chromstange mit Gummigriff
+    ger.holm(V(sx * 0.17, 0.05, unterSitz.z), unterSitz.clone().add(V(sx * 0.17, 0, 0)), DK.strebe);                          // Stütze unter dem Sitz (Kappe liegt unter dem Polster an)
+    ger.holm(V(sx * 0.17, 0.05, unterLehne.z - 0.1), unterLehne.clone().add(V(sx * 0.17, 0, 0)), DK.strebe);                  // Stütze hinter der Lehne
+    for (const zz of [unterSitz.z, unterLehne.z - 0.1]) ger.holm(V(sx * 0.17, 0.05, zz), V(sx * 0.3, 0.05, zz), DK.strebe);   // kurze Fußstreben zu den Längsholmen
+    // Haltegriff neben dem Sitz: Pfosten, waagerechte Chromstange mit Gummigriff (Griffe unverändert)
     const griff = BP_BECKEN.clone().add(V(sx * 0.34, 0, 0)).add(sitzN.clone().multiplyScalar(0.02)).add(sitzVor.clone().multiplyScalar(0.07));
-    ger.vierkant(V(sx * 0.34, 0.06, griff.z - 0.02), griff.clone().sub(sitzN.clone().multiplyScalar(0.1)), 0.045);
+    ger.holm(V(sx * 0.34, 0.06, griff.z - 0.02), griff.clone().sub(sitzN.clone().multiplyScalar(0.1)), 0.05);
     // senkrecht zur Sitzfläche, quer zum Unterarm (längs lief er fast parallel dazu)
     ger.stab(griff.clone().sub(sitzN.clone().multiplyScalar(0.11)), griff.clone().add(sitzN.clone().multiplyScalar(0.09)), 0.014, ger.mMetall);
     ger.stab(griff.clone().sub(sitzN.clone().multiplyScalar(0.075)), griff.clone().add(sitzN.clone().multiplyScalar(0.075)), 0.018, ger.mGummi);
@@ -1778,31 +2469,38 @@ function beinpresseBauen(ger, z, m = BP_STD) {
   z.bpGriff = { sitzVor };
   // Grundrahmen am Boden, Schienen unter 45°, Stützen
   const P0 = bpPlatte(0, m), hubMax = bpHub(BP_OBEN, m);
-  const schiene = (sx, s) => P0.clone().add(X.clone().multiplyScalar(sx * 0.26)).add(BP_PLATTE_OBEN.clone().multiplyScalar(-0.42)).add(BP_SCHIENE.clone().multiplyScalar(s));
-  const s0 = -0.42, s1 = hubMax + 0.78;
+  const schiene = (sx, s) => P0.clone().add(X.clone().multiplyScalar(sx * 0.26)).add(PO.clone().multiplyScalar(-0.42)).add(PS.clone().multiplyScalar(s));
+  const s0 = -0.42, s1 = hubMax + 0.78, zHinten = -0.95, zVorn = schiene(1, s1).z + 0.12;
   for (const sx of [-1, 1]) {
-    ger.vierkant(V(sx * 0.3, 0.04, -0.95), V(sx * 0.3, 0.04, schiene(sx, s1).z + 0.12), 0.08);
-    ger.vierkant(schiene(sx, s0), schiene(sx, s1), 0.075);
-    ger.stab(schiene(sx, s0).add(BP_PLATTE_OBEN.clone().multiplyScalar(0.045)), schiene(sx, s1).add(BP_PLATTE_OBEN.clone().multiplyScalar(0.045)), 0.012, ger.mMetall);   // Laufschiene
-    ger.vierkant(V(sx * 0.26, 0.05, schiene(sx, s0).z), schiene(sx, s0), 0.07);
-    ger.vierkant(V(sx * 0.3, 0.05, schiene(sx, s1).z), schiene(sx, s1), 0.08);
-    ger.vierkant(V(sx * 0.3, 0.05, schiene(sx, s1).z - 0.55), schiene(sx, s1 - 0.5), 0.06);
-    ger.box(0.06, 0.06, 0.1, schiene(sx, s0 + 0.12).add(BP_PLATTE_OBEN.clone().multiplyScalar(0.07)), ger.mGummi);   // Anschlag unten
+    ger.holm(V(sx * 0.3, 0.05, zHinten), V(sx * 0.3, 0.05, zVorn), DK.boden);                                                 // Längsholm am Boden
+    for (const zz of [zHinten, (zHinten + zVorn) / 2, zVorn]) ger.fussDK(V(sx * 0.3, 0, zz));
+    ger.holm(schiene(sx, s0), schiene(sx, s1), 0.075);                                                                        // Schiene
+    ger.stab(schiene(sx, s0).add(PO.clone().multiplyScalar(0.0495)), schiene(sx, s1).add(PO.clone().multiplyScalar(0.0495)), 0.012, ger.mMetall);   // Laufschiene (Chrom)
+    ger.holm(V(sx * 0.26, 0.05, schiene(sx, s0).z), schiene(sx, s0), DK.strebe);                                              // Stütze unten
+    ger.teil(dkZyl(0.04, 0.012, 20), ger.mDKGold, V(sx * 0.26, 0.3, schiene(sx, s0).z));
+    for (const y of [0.3, 1.1]) ger.teil(dkZyl(0.0525, 0.012, 20), ger.mDKGold, V(sx * 0.3, y, schiene(sx, s1).z));
+    ger.holm(V(sx * 0.3, 0.05, schiene(sx, s1).z), schiene(sx, s1), DK.holm);                                                 // Stütze oben (hinten)
+    ger.holm(V(sx * 0.3, 0.05, schiene(sx, s1).z - 0.55), schiene(sx, s1 - 0.5), DK.strebe);                                  // Strebe
+    const anschlag = ger.teil(rundGeo(0.07, 0.07, 0.12, 0.015, 1), ger.mGummi, schiene(sx, s0 + 0.12).add(PO.clone().multiplyScalar(0.0495 + 0.012 + 0.035))); anschlag.quaternion.copy(BP_DREH);   // Anschlag unten: liegt auf der Chromführung
   }
-  for (const zz of [-0.95, schiene(1, s1).z + 0.12]) ger.vierkant(V(-0.34, 0.04, zz), V(0.34, 0.04, zz), 0.08);
-  ger.vierkant(schiene(-1, s1), schiene(1, s1), 0.07);
+  for (const zz of [zHinten, zVorn]) ger.holm(V(-0.3, 0.05, zz), V(0.3, 0.05, zz), DK.boden);
+  ger.holm(schiene(-1, s1), schiene(1, s1), DK.strebe);
+  r4_schild(ger, ger.gruppe, schiene(1, s1).add(V(0.0475 + 0.016, -0.35, 0)), V(1, 0, 0), 'BEINPRESSE', 'OBERSCHENKEL');
   // Schlitten: Fußplatte mit Gummibelag, Wagen auf den Schienen, Hörner mit Scheiben (alles in einer Gruppe, fährt mit)
   const sch = new THREE.Group(); sch.quaternion.copy(BP_DREH);
-  const teil = (geo, m, x, y, zz) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, zz); o.castShadow = true; o.receiveShadow = true; sch.add(o); return o; };
-  teil(rundGeo(0.78, 0.62, 0.045, 0.012, 2), ger.mRahmen, 0, 0, 0.0225 + 0.008);
-  teil(rundGeo(0.72, 0.56, 0.012, 0.005, 1), ger.mGummi, 0, 0, 0.004);
-  teil(rundGeo(0.62, 0.12, 0.5, 0.012, 1), ger.mRahmen, 0, -0.33, 0.29);
+  const teil = (geo, mat, x, y, zz) => maschTeil(sch, geo, mat, x, y, zz);
+  teil(rundGeo(0.78, 0.62, 0.045, 0.012, 2), ger.mDK, 0, 0, 0.0225 + 0.008);
+  teil(rundGeo(0.72, 0.56, 0.012, 0.005, 1), ger.mGummi, 0, 0, 0.004);   // Gummibelag (Körperkontakt, unverändert)
+  teil(rundGeo(0.7, 0.012, 0.008, 0.003, 1), ger.mDKGold, 0, 0.295, 0.004);   // Goldleiste am oberen Rand der Platte
+  const schild = ger.schild('BEINPRESSE', 'OBERSCHENKEL'); ger.gruppe.remove(schild); sch.add(schild); schild.position.set(0, 0.12, 0.056);   // auf der Rückseite der Platte
   for (const sx of [-1, 1]) {
-    teil(rundGeo(0.06, 0.4, 0.06, 0.01, 1), ger.mRahmen, sx * 0.3, -0.12, 0.2).rotation.x = -0.6;
-    for (const zz of [0.12, 0.46]) teil(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 16), ger.mGummi, sx * 0.26, -0.39, zz).rotation.z = Math.PI / 2;   // Laufrollen
-    const horn = teil(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 20), ger.mMetall, sx * 0.47, -0.2, 0.3); horn.rotation.z = Math.PI / 2;
-    for (const [i, x] of [[0, 0.385], [1, 0.44]]) { const p = teil(scheibenGeo(i ? 0.2 : 0.225, 0.05), ger.mScheibe, sx * x, -0.2, 0.3); p.rotation.z = Math.PI / 2; }
+    holmIn(ger, sch, V(sx * 0.26, -0.33, 0.04), V(sx * 0.26, -0.33, 0.54), 0.06);                                            // Wagenholm über der Schiene
+    holmIn(ger, sch, V(sx * 0.3, -0.22, 0.06), V(sx * 0.26, -0.33, 0.3), 0.06);                                              // Strebe von der Platte zum Wagen
+    for (const zz of [0.12, 0.46]) teil(dkZyl(0.028, 0.012, 16), ger.mDKGold, sx * 0.296, -0.33, zz).rotation.z = Math.PI / 2;   // goldene Radkappen
+    holmIn(ger, sch, V(sx * 0.26, -0.33, 0.3), V(sx * 0.3, -0.2, 0.3), 0.05);                                                // Hornträger
+    r4_horn(ger, sch, V(sx * 0.3, -0.2, 0.3), sx, [[0.085, 0.225, 0.05], [0.14, 0.2, 0.05]], 0.32);
   }
+  holmIn(ger, sch, V(-0.26, -0.33, 0.5), V(0.26, -0.33, 0.5), 0.06);                                                         // Querholm hinten am Wagen
   ger.gruppe.add(sch);
   z.schlitten = sch;
   return z;
@@ -1821,35 +2519,9 @@ export function beinmaschine(o = {}) {
       if (art === 'hackenschmidt') return hackBauen(ger, z, pendel ? 0 : hw, pendel);
       // Bank 2 cm niedriger und vorn 5 cm kürzer: Oberschenkel und Waden liegen an, statt 4 cm einzusinken (bis 31.10.)
       if (band) { ger.box(0.4, 0.43, 0.95, V(0, 0.215, -0.225), ger.mPolster); z.band = ger.teil(new THREE.BoxGeometry(0.006, 1, 0.05), ger.mBand); return z; }   // flaches Miniband
-      if (art === 'beuger_liegend') {
-        // Liegender Beinbeuger: Brustpolster, etwas höheres Hüftpolster, Griffe vorn; Drehachse auf dem Kniegelenk, Rolle über den Fersen
-        bodenrahmen(ger, -0.26, 0.26, -1.0, 0.72);
-        ger.box(0.38, 0.09, 0.75, V(0, 0.54, -0.475), ger.mPolster);
-        ger.polster(0.38, 0.09, 0.62, V(0, 0.562, 0.2), quer(-6));
-        for (const zz of [-0.7, 0.35]) ger.vierkant(V(0, 0.05, zz), V(0, 0.5, zz), 0.07);
-        for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.385, 0.05, -0.54), V(sx * 0.385, 0.59, -0.54), 0.045); griffRohr(ger, V(sx * 0.385, 0.58, -0.54), V(sx * 0.385, 0.74, -0.54)); }   // senkrecht, quer zum Unterarm
-        hebelBauen(ger, z, BL_KNIE.clone().setX(SM_HEBEL_X), 1, false);
-        z.block = gewichtsblock(ger, V(-0.78, 0, 0.15), V(1, 0, 0));
-        return z;
-      }
-      sitzmaschineBauen(ger, z, art === 'beuger_sitzend');
-      if (art === 'strecker' || art === 'beuger_sitzend') {
-        hebelBauen(ger, z, SM_KNIE.clone().setX(SM_HEBEL_X), art === 'strecker' ? 1 : -1, o.einbeinig);
-        if (art === 'beuger_sitzend') {   // Polster über den Knien hält die Oberschenkel auf dem Sitz
-          const y = SM_KNIE.y + 0.135;
-          ger.polster(0.42, 0.075, 0.15, V(0, y, 0.24));
-          ger.vierkant(V(SM_HEBEL_X, y, 0.24), V(0.2, y, 0.24), 0.045);
-          ger.vierkant(V(SM_HEBEL_X, 0.05, 0.22), V(SM_HEBEL_X, y + 0.02, 0.22), 0.05);
-        }
-      } else {
-        // Adduktoren/Abduktoren: zwei Hebelarme, die um senkrechte Achsen unter der Sitzvorderkante drehen; Polster am Knie, Fußraste
-        for (const s of ['l', 'r']) {
-          z['arm_' + s] = ger.stab(V(), V(0, 1, 0), 0.026, ger.mRahmen); z['rarm_' + s] = ger.stab(V(), V(0, 1, 0), 0.02, ger.mRahmen);
-          z['pad_' + s] = ger.polster(0.065, 0.2, 0.26, V()); z['raste_' + s] = ger.stab(V(), V(0, 1, 0), 0.016, ger.mMetall);
-        }
-        for (const sx of [-1, 1]) drehlager(ger, V(sx * 0.13, 0.36, 0.14), V(0, 1, 0), 0.1);
-      }
-      return z;
+      if (art === 'beuger_liegend') return r1_beugerLiegend(ger, z);   // R1: DK Line
+      if (art === 'strecker') return streckerBauenDK(ger, z, o.einbeinig);   // DK Line (Auftrag D)
+      return sitzmaschineBauen(ger, z, art, o);   // R1: Beinbeuger sitzend, Adduktoren, Abduktoren in der DK Line
     },
     pose(t) {
       if (art === 'beuger_liegend') {
@@ -1938,21 +2610,7 @@ export function beinmaschine(o = {}) {
             bogen('l', 1, 90, -90); bogen('r', -1, -90, 90); pkt.push(pkt[0].clone());
             bandKette(z, 'band', pkt);
           }
-          if (z.pad_l) {
-            let spreiz = 0;
-            for (const [s, sg] of [['l', 1], ['r', -1]]) {
-              const td = g.knie[s].clone().sub(g.huefte[s]).setY(0).normalize(), aussen = V(sg * td.z, 0, -sg * td.x);
-              const pad = g.knie[s].clone().sub(td.clone().multiplyScalar(0.05)).add(aussen.clone().multiplyScalar(art === 'abduktoren' ? 0.11 : -0.11));
-              z['pad_' + s].position.copy(pad); z['pad_' + s].quaternion.copy(basisAus(V(0, 1, 0), td));
-              const dreh = V(sg * 0.13, 0.36, 0.14);
-              seil(z['arm_' + s], dreh, pad.clone().sub(V(0, 0.1, 0)));
-              const raste = g.knoechel[s].clone().add(V(0, -0.085, 0.03));
-              seil(z['raste_' + s], raste.clone().sub(V(0.07, 0, 0)), raste.clone().add(V(0.07, 0, 0)));
-              seil(z['rarm_' + s], dreh, raste);
-              spreiz += Math.abs(Math.atan2(td.x, td.z)) / 2;
-            }
-            if (z.block) z.block.heben(0.3 * Math.abs(spreiz - (art === 'adduktoren' ? 42 : 8) * RAD));
-          }
+          if (z.pad_l) r1_schwenkStellen(z, g);   // R1: Polster, Arme, Fußraste und Seil (der Stapel hebt sich nur über das Seil)
         } };
     },
     blick: V(0, 0.6, 0.1), abstand: 3.0, kameraRicht: V(1, 0.4, 0.35), dauer: o.isometrisch ? [1.2, 3, 1.2, 0.6] : undefined
@@ -1968,35 +2626,87 @@ function smKnie(a) {
   const R = rumpfRahmen(SM_RUMPF);
   return seiten((s, sg) => SM_BECKEN.clone().sub(R.oben.clone().multiplyScalar(0.02)).add(V(sg * MASS.hueftBreite, 0, 0)).add(V(sg * Math.sin(a), -0.05, Math.cos(a)).setLength(MASS.oberschenkel)));
 }
-// Sitz, Rückenpolster, Griffe neben dem Sitz, Gewichtsblock links daneben
-function sitzmaschineBauen(ger, z, kurz = false) {
-  const R = rumpfRahmen(SM_RUMPF);
-  bodenrahmen(ger, -0.32, 0.32, -0.62, kurz ? 0.5 : 0.3);   // kurz (Beinbeuger): vorn Platz für die Zehen bei voller Beugung
-  sitzSaeule(ger, V(0, 0.51, kurz ? -0.09 : -0.03), 0.44, kurz ? 0.32 : 0.44, -5);
-  ger.polster(0.44, 0.62, 0.09, SM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.35)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045)), basisAus(R.oben, R.vor));
-  ger.vierkant(V(0, 0.05, -0.55), SM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.33)).sub(R.vor.clone().multiplyScalar(0.23)), 0.07);
+// Sitzende Beinmaschinen in der DK Line (Beinbeuger sitzend, Adduktoren, Abduktoren): Sitz, Rückenpolster und Haltegriffe an denselben Stellen wie bisher (Rundrohr statt Vierkant),
+// Rahmen aus Rundrohr mit Gummifüßen, Stapel links daneben. art: beuger_sitzend | adduktoren | abduktoren (der Beinstrecker hat seine eigene Fassung, streckerBauenDK)
+function sitzmaschineBauen(ger, z, art, o = {}) {
+  const R = rumpfRahmen(SM_RUMPF), beuger = art === 'beuger_sitzend', XS = 0.40, zS = -0.25;
+  if (beuger) dkBoden(ger, XS, -0.62, 0.5, -0.62, -0.02);   // vorderer Querholm unter der Sitzvorderkante: bei voller Beugung hängen die Füße davor (3 cm Abstand zu den Fersen)
+  else dkBoden(ger, XS, -0.70, 0.19, -0.70, 0.14);   // hinten die Masten, vorn die Lagerpfosten der Schwenkarme
+  sitzSaeuleDK(ger, V(0, 0.51, beuger ? -0.09 : -0.03), 0.44, beuger ? 0.32 : 0.44, -5);   // kurz (Beinbeuger): vorn Platz für die Zehen bei voller Beugung
+  ger.polsterGeformt(0.44, 0.62, 0.09, SM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.35)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045)), basisAus(R.oben, R.vor));
+  ger.holm(V(0, 0.05, -0.55), SM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.33)).sub(R.vor.clone().multiplyScalar(0.2625)), DK.strebe);   // Kappe liegt an der Polsterrückseite an
   for (const sx of [-1, 1]) {
-    ger.vierkant(V(sx * 0.36, 0.05, -0.05), V(sx * 0.36, 0.585, -0.05), 0.045);   // außen neben Hüfte und Oberschenkel
+    ger.holm(V(sx * 0.36, 0.05, -0.05), V(sx * 0.36, 0.5635, -0.05), 0.045);   // außen neben Hüfte und Oberschenkel
     griffRohr(ger, V(sx * 0.36, 0.6, -0.19), V(sx * 0.36, 0.6, 0.09));
   }
-  z.block = gewichtsblock(ger, V(-0.8, 0, -0.25), V(1, 0, 0));
+  if (beuger) hebelBauen(ger, z, SM_KNIE.clone().setX(SM_HEBEL_X), -1, o.einbeinig, zS);
+  else r1_schwenkBauen(ger, z, art, zS);
+  return z;
 }
-// Hebel mit Drehachse P (Achse X) am Kniegelenk: Arm am Schienbein entlang, Querrohr, Schaumstoffrolle über dem Knöchel,
-// seite = +1 vor dem Schienbein (Beinstrecker; beim liegenden Beinbeuger oben = hinten am Bein), -1 dahinter (Beinbeuger sitzend)
-function hebelBauen(ger, z, P, seite, einbeinig) {
-  ger.vierkant(V(P.x, 0.05, P.z), P.clone().sub(V(0, 0.05, 0)), 0.07);
-  drehlager(ger, P);
+// Hebel mit Drehachse P (Achse X) am Kniegelenk in der DK Line: Lagerbock außen im Seitenrahmen, Arm am Schienbein entlang (silbern), Querrohr, Schaumstoffrolle über dem Knöchel,
+// seite = +1 vor dem Schienbein, -1 dahinter (Beinbeuger sitzend); Stapel links, Seil von der Nocke außen am Lager hoch zur Rolle über dem Lager (1:1)
+function hebelBauen(ger, z, P, seite, einbeinig, zS = -0.25) {
+  const XS = 0.40, oben = 2.13 - P.y;   // Seilrolle auf 2,13 m: das Seil quert hoch über dem Kopf, auch beim Hereinkommen im Stehen
+  dkSeitenrahmen(ger, 1, P, oben, null, XS);
   z.hebel = new THREE.Group(); z.hebel.position.copy(P); ger.gruppe.add(z.hebel);
   const L = 0.385, rz = seite * (seite < 0 ? 0.118 : 0.103), rx = einbeinig ? 0.11 : 0, rl = einbeinig ? 0.17 : 0.36;   // Rolle liegt am Schienbein (vorn ~5 cm) bzw. an der Wade (hinten ~7 cm) an
-  rohrIn(ger, z.hebel, V(0, 0, 0), V(0, -L, rz), 0.055);
-  rohrIn(ger, z.hebel, V(0, -L, rz), V(rx + rl / 2 - P.x + 0.01, -L, rz), 0.04);
+  holmIn(ger, z.hebel, V(0, 0, 0), V(0, -L, rz), 0.055, ger.mHebel);
+  holmIn(ger, z.hebel, V(0, -L, rz), V(rx + rl / 2 - P.x + 0.01, -L, rz), 0.04, ger.mHebel);
   rollePolster(ger, rl, 0.048, z.hebel).position.set(rx - P.x, -L, rz);
+  z.block = gewichtsblockDK(ger, V(-0.8, 0, zS), V(1, 0, 0), 1.55, 'BEINBEUGER SITZEND', 'OBERSCHENKEL', { mRolle: false });
+  ger.holm(V(-XS, 0.05, zS), V(-0.57, 0.05, zS), DK.boden);   // Seitenholm links bis zum Sockel des Stapels
+  z.dkSeil = r1_nockenSeil(ger, { block: z.block, straenge: 1, naben: [{ C: V(XS + 0.08, P.y, P.z), achse: V(-1, 0, 0), e2: V(0, 1, 0), rN: 0.14, dD: oben, v0: V(0, -Math.sin(5 * RAD), Math.cos(5 * RAD)), v1: V(0, -Math.sin(125 * RAD), Math.cos(125 * RAD)) }] });
+  ger.holm(V(XS, P.y + oben, P.z), z.dkSeil.nb[0].Wd, 0.04);   // Halter der Seilrolle am Mast
+  // Polster über den Knien hält die Oberschenkel auf dem Sitz; es hängt mit einem Rundrohr am unteren Ende des Mastes (dort endet auch der Mast), weit weg vom Hebel
+  const y = SM_KNIE.y + 0.135;
+  ger.polsterGeformt(0.42, 0.075, 0.15, V(0, y, 0.24));
+  ger.holm(V(XS, P.y + 0.085, P.z), V(0.21 + 0.0225 - 0.003, y, 0.24), 0.045);
 }
 // Hebel dreht so, dass er am Schienbein der Seite s anliegt; heben(phi) = Hub des Gewichtsblocks aus dem Winkel (Grad, 0 = Schienbein senkrecht nach unten)
 function hebelStellen(z, g, s, heben) {
   const d = g.knoechel[s].clone().sub(g.knie[s]); d.x = 0; d.normalize();
   z.hebel.quaternion.setFromUnitVectors(V(0, -1, 0), d);
-  if (z.block) z.block.heben(heben(Math.atan2(d.z, -d.y) / RAD));
+  if (z.dkSeil) z.dkSeil.stelle([Math.atan2(d.y, d.z)]);   // DK Line (Beinstrecker): Nocke und Seil bestimmen die Hubhöhe
+  else if (z.block) z.block.heben(heben(Math.atan2(d.z, -d.y) / RAD));
+}
+// Kabelturm DK Line (Fliegende): eine Säule je Seite (sx = ±1) mit Schiene, Wagen und Seilöse am Seilausgang anker, dahinter der Stapel mit Rollenkopf.
+// Das Seil läuft von der Öse senkrecht hoch zur Rolle oben auf der Säule, waagerecht zur Kopfrolle des Stapels und über die bewegliche Rolle zur festen Öse (2:1):
+// wird das Seil zwischen Griff und Öse um d länger, steigt der Stapel um d/2. Die Strecke Griff bis Öse setzt die Vorlage, die Länge stellt stelle([Länge]) ein
+function kabelturmDK(ger, sx, anker) {
+  const x = sx * Math.abs(anker.x), yTop = 2.3, hMax = 0.5, F = yTop - (0.14 + hMax + 0.18), zc = anker.z - 0.135, zS = zc - 0.31, A = V(x, anker.y, anker.z);
+  ger.teil(rundGeo(0.3, 0.05, 0.2, 0.02, 1), ger.mDK, V(x, 0.025, zc + 0.08));                                              // Fußplatte der Säule
+  ger.holm(V(x, 0.08, zc), V(x, yTop, zc), DK.holm);                                                                         // Säule
+  ger.teil(rundGeo(0.06, yTop - 0.42, 0.012, 0.004, 1), ger.mHebel, V(x, (0.3 + yTop - 0.12) / 2, zc + 0.0535));            // Schiene
+  ger.teil(rundGeo(0.14, 0.13, 0.06, 0.012, 1), ger.mDK, V(x, anker.y, zc + 0.0895));                                        // Wagen
+  ger.teil(new THREE.TorusGeometry(0.02, 0.0045, 8, 16), ger.mDKGold, A);                                                    // Seilöse am Seilausgang
+  const B = gewichtsblockDK(ger, V(x, 0, zS), V(-sx, 0, 0), F, 'KABELZUG', 'BRUST', { hMax });
+  const seil = stapelAnHebel(ger, { block: B, straenge: 2, naben: [{ zug: true, x, y: anker.y, z: anker.z, rN: 0, dir: 1, dD: yTop - anker.y }] });
+  ger.holm(V(x, yTop, zc), seil.nb[0].Wd, 0.045);                                                                            // Halter der Rolle oben auf der Säule
+  return seil;
+}
+// Beinstrecker in der DK Line: Sitz, Rückenpolster und Haltegriffe an denselben Stellen wie bisher (Rundrohr statt Vierkant), Hebel silbern am Schienbein mit
+// Lagerbock außen (links); der Stapel steht rechts daneben, das Seil läuft vom Rollenkopf über eine Rolle über dem Lager zur Nocke (1:1, ein Strang)
+function streckerBauenDK(ger, z, einbeinig) {
+  const R = rumpfRahmen(SM_RUMPF), XS = 0.40, P = SM_KNIE.clone().setX(SM_HEBEL_X), oben = 1.55;   // Seilrolle auf 2,1 m: das Seil quert hoch über dem Kopf, auch beim Hereinkommen im Stehen
+  dkBoden(ger, XS, -0.62, 0.45, -0.62, 0.18);   // vorderer Querholm hinter der Ferse (Füße hängen davor)
+  ger.holm(V(-XS, 0.05, -0.25), V(-0.57, 0.05, -0.25), DK.boden);   // verbindet den Bodenrahmen mit dem Sockel des Stapels
+  sitzSaeuleDK(ger, V(0, 0.51, -0.03), 0.44, 0.44, -5);
+  ger.polsterGeformt(0.44, 0.62, 0.09, SM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.35)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045)), basisAus(R.oben, R.vor));
+  ger.holm(V(0, 0.05, -0.55), SM_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.33)).sub(R.vor.clone().multiplyScalar(0.2625)), DK.strebe);
+  for (const sx of [-1, 1]) {
+    ger.holm(V(sx * 0.36, 0.05, -0.05), V(sx * 0.36, 0.585, -0.05), 0.045);   // außen neben Hüfte und Oberschenkel
+    griffRohr(ger, V(sx * 0.36, 0.6, -0.19), V(sx * 0.36, 0.6, 0.09));
+  }
+  dkSeitenrahmen(ger, 1, P, oben, null, XS);
+  z.hebel = new THREE.Group(); z.hebel.position.copy(P); ger.gruppe.add(z.hebel);
+  const L = 0.385, rz = 0.103, rx = einbeinig ? 0.11 : 0, rl = einbeinig ? 0.17 : 0.36;   // Rolle liegt am Schienbein (vorn ~5 cm) an
+  holmIn(ger, z.hebel, V(0, 0, 0), V(0, -L, rz), 0.055, ger.mHebel);
+  holmIn(ger, z.hebel, V(0, -L, rz), V(rx + rl / 2 - P.x + 0.01, -L, rz), 0.04, ger.mHebel);
+  rollePolster(ger, rl, 0.048, z.hebel).position.set(rx - P.x, -L, rz);
+  z.block = gewichtsblockDK(ger, V(-0.8, 0, -0.25), V(1, 0, 0), 1.55, 'BEINSTRECKER', 'OBERSCHENKEL', { mRolle: false });
+  const seil = stapelAnHebel(ger, { block: z.block, straenge: 1, naben: [{ x: XS + 0.08, y: P.y, z: P.z, rN: 0.15, dir: 1, dth: 1.65, dD: oben }] });
+  ger.holm(V(XS, P.y + oben, P.z), seil.nb[0].Wd, 0.04);
+  z.dkSeil = seil; return z;
 }
 // Hackenschmidt: Fußplattform vorne 12° höher, Schienen hinter dem Rücken (HACK Grad zurückgelehnt), Schlitten mit Rückenpolster,
 // Schulterpolstern, Griffen und Hörnern mit Scheiben; der Schlitten fährt mit dem Becken
@@ -2005,43 +2715,58 @@ const HACK_PLATTFORM = V(0, Math.cos(12 * RAD), -Math.sin(12 * RAD));
 // PD_P = Drehpunkt so, dass PD_WINKEL Grad Schwenk beide verbindet; der Rumpf dreht mit, oben PD_LEHNE Grad zurückgelehnt
 const PD_PLATTFORM = V(0, Math.cos(8 * RAD), -Math.sin(8 * RAD)), PD_FUSS = V(0, 0.21, 0.45), PD_WINKEL = 18, PD_LEHNE = 23, PD_HUEFTE = V(0, 1.075, 0.297), PD_UNTEN = V(0, 0.684, 0.259);
 const PD_P = (() => { const c = PD_UNTEN.clone().sub(PD_HUEFTE), l = c.length(), R = l / (2 * Math.sin(PD_WINKEL / 2 * RAD)); c.divideScalar(l); return PD_HUEFTE.clone().lerp(PD_UNTEN, 0.5).add(V(0, -c.z, c.y).multiplyScalar(R * Math.cos(PD_WINKEL / 2 * RAD))); })();
+// DK Line (R4): Hackenschmidt und Pendel-Kniebeuge. Rundrohr-Rahmen mit Gummifüßen, Schienen mit Chromführung und silbernen Gleithülsen am Schlitten, Rückenplatte nur so hoch wie das
+// Polster (der Kopf bleibt frei), Hörner mit Goldkappe; Pendel: je Seite ein Rahmen mit Lagerbock (keine durchgehende Achse), silberne Schwenkarme. Polster, Griffe und Fußplatten wie bisher
 function hackBauen(ger, z, hw, pendel = false) {
   const u = pendel ? V(0, Math.cos(PD_LEHNE * RAD), -Math.sin(PD_LEHNE * RAD)) : V(0, Math.cos(hw * RAD), -Math.sin(hw * RAD)), vor = pendel ? V(0, Math.sin(PD_LEHNE * RAD), Math.cos(PD_LEHNE * RAD)) : V(0, Math.sin(hw * RAD), Math.cos(hw * RAD)), X = V(1, 0, 0);
+  const titel = pendel ? 'PENDEL-KNIEBEUGE' : 'HACKENSCHMIDT';
   if (pendel) {
-    // Rahmen, zwei Säulen mit Drehpunkt hinter der Figur, Schwenkarm bis zum Polster (keine Schienen)
-    bodenrahmen(ger, -0.42, 0.42, PD_P.z - 0.12, 0.72);
-    ger.box(0.72, 0.05, 0.6, V(0, 0.085, 0.42), ger.mRahmen, -8);
+    // zwei Seitenrahmen mit Drehpunkt hinter der Figur (PD_P), Schwenkarme bis zum Polster (keine Schienen)
+    r4_boden(ger, 0.4, PD_P.z - 0.2, 0.72);
+    ger.box(0.72, 0.05, 0.6, V(0, 0.085, 0.42), ger.mDK, -8);
     ger.box(0.66, 0.012, 0.54, V(0, 0.085, 0.42).add(PD_PLATTFORM.clone().multiplyScalar(0.031)), ger.mGummi, -8);
-    for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.3, 0.05, 0.42), V(sx * 0.3, 0.07, 0.42), 0.06); ger.vierkant(V(sx * 0.42, 0.05, PD_P.z), V(sx * 0.42, PD_P.y + 0.04, PD_P.z), 0.08); }
-    drehlager(ger, PD_P, V(1, 0, 0), 0.92);
-    z.pdArm_l = ger.stab(V(), V(0, 1, 0), 0.03, ger.mRahmen); z.pdArm_r = ger.stab(V(), V(0, 1, 0), 0.03, ger.mRahmen);
+    for (const sx of [-1, 1]) {
+      ger.holm(V(sx * 0.3, 0.05, 0.42), V(sx * 0.3, 0.065, 0.42), 0.05);
+      dkSeitenrahmen(ger, sx, PD_P, 0.16, { y: 0.55, z: PD_P.z + 0.65 }, 0.4);
+    }
+    r4_schild(ger, ger.gruppe, V(0.4 + 0.0475 + 0.016, 0.6, PD_P.z), V(1, 0, 0), titel, 'BEINE, GESÄSS');
+    z.pdArm_l = ger.stab(V(), V(0, 1, 0), 0.03, ger.mHebel); z.pdArm_r = ger.stab(V(), V(0, 1, 0), 0.03, ger.mHebel);
   } else {
-  bodenrahmen(ger, -0.42, 0.42, -1.3, 0.66);
-  ger.box(0.72, 0.05, 0.58, V(0, 0.08, 0.32), ger.mRahmen, -12);
-  ger.box(0.66, 0.012, 0.52, V(0, 0.08, 0.32).add(HACK_PLATTFORM.clone().multiplyScalar(0.031)), ger.mGummi, -12);
-  for (const sx of [-1, 1]) ger.vierkant(V(sx * 0.3, 0.05, 0.32), V(sx * 0.3, 0.07, 0.32), 0.06);
-  const A = (sx) => HACK_FUSS.clone().sub(vor.clone().multiplyScalar(0.3)).add(X.clone().multiplyScalar(sx * 0.3)).sub(u.clone().multiplyScalar(0.12));
-  const B = (sx) => A(sx).add(u.clone().multiplyScalar(2.05));
-  for (const sx of [-1, 1]) {
-    ger.vierkant(A(sx), B(sx), 0.075);
-    ger.stab(A(sx).add(vor.clone().multiplyScalar(0.05)), B(sx).add(vor.clone().multiplyScalar(0.05)), 0.012, ger.mMetall);
-    ger.vierkant(V(sx * 0.3, 0.05, A(sx).z), A(sx), 0.07);
-    ger.vierkant(V(sx * 0.36, 0.05, B(sx).z), B(sx), 0.075);
-  }
-  ger.vierkant(B(-1), B(1), 0.07);
+    r4_boden(ger, 0.42, -1.3, 0.66);
+    ger.box(0.72, 0.05, 0.58, V(0, 0.08, 0.32), ger.mDK, -12);
+    ger.box(0.66, 0.012, 0.52, V(0, 0.08, 0.32).add(HACK_PLATTFORM.clone().multiplyScalar(0.031)), ger.mGummi, -12);
+    const A = (sx) => HACK_FUSS.clone().sub(vor.clone().multiplyScalar(0.3)).add(X.clone().multiplyScalar(sx * 0.3)).sub(u.clone().multiplyScalar(0.12));
+    const B = (sx) => A(sx).add(u.clone().multiplyScalar(2.05));
+    for (const sx of [-1, 1]) {
+      ger.holm(V(sx * 0.3, 0.05, 0.32), V(sx * 0.3, 0.065, 0.32), 0.05);
+      ger.holm(A(sx), B(sx), 0.075);                                                                    // Schiene
+      ger.stab(A(sx).add(vor.clone().multiplyScalar(0.05)), B(sx).add(vor.clone().multiplyScalar(0.05)), 0.012, ger.mMetall);   // Chromführung
+      ger.holm(V(sx * 0.3, 0.05, A(sx).z), A(sx), DK.strebe);                                          // Stütze unten
+      ger.holm(V(sx * 0.36, 0.05, B(sx).z), B(sx), DK.holm);                                           // Stütze oben
+    }
+    ger.holm(B(-1), B(1), DK.strebe);
+    const Bm = B(1), unten = V(0.36, 0.05, Bm.z);
+    r4_schild(ger, ger.gruppe, V(0.36 + (Bm.x - 0.36) * 0.5 + 0.0475 + 0.016, 0.9, Bm.z), V(1, 0, 0), titel, 'BEINE, GESÄSS');
   }
   // Schlitten im Becken-Rahmen (X quer, Y = u entlang der Schienen, Z = vor)
   const sch = new THREE.Group(); sch.quaternion.copy(basisAus(u, vor));
-  maschTeil(sch, rundGeo(0.42, 0.72, 0.07, 0.028, 3), ger.mPolster, 0, 0.3, -0.17);
-  maschTeil(sch, rundGeo(0.62, 0.8, 0.05, 0.01, 1), ger.mRahmen, 0, 0.32, -0.235);
+  r4_polster(ger, sch, 0.42, 0.72, 0.07, V(0, 0.3, -0.17));                                            // Rückenpolster (Körperkontakt, unverändert)
+  const plH = pendel ? 0.5 : 0.64;                                                                        // Rückenplatte: niedriger als das Polster (Abstand zum Kopf; Pendel: der Kopf liegt näher)
+  maschTeil(sch, rundGeo(0.5, plH, 0.05, 0.01, 1), ger.mDK, 0, -0.06 + plH / 2, -0.235);
   for (const sx of [-1, 1]) {
-    maschTeil(sch, rundGeo(0.13, 0.08, 0.22, 0.03, 3), ger.mPolster, sx * 0.2, 0.47 + 0.1, 0.0);
-    rohrIn(ger, sch, V(sx * 0.2, 0.47 + 0.11, -0.12), V(sx * 0.2, 0.47 + 0.11, -0.235), 0.05);
-    griffRohr(ger, V(sx * 0.325, 0.57, 0.02), V(sx * 0.325, 0.57, 0.17), sch);
-    rohrIn(ger, sch, V(sx * 0.325, 0.57, 0.02), V(sx * 0.3, 0.55, -0.235), 0.035);
-    for (const y of [0.05, 0.6]) maschTeil(sch, rundGeo(0.1, 0.14, 0.09, 0.01, 1), ger.mRahmen, sx * 0.3, y, -0.265);
-    const horn = maschTeil(sch, new THREE.CylinderGeometry(0.025, 0.025, 0.28, 20), ger.mMetall, sx * 0.47, 0.08, -0.265); horn.rotation.z = Math.PI / 2;
-    for (const [i, x] of [[0, 0.4], [1, 0.455]]) maschTeil(sch, scheibenGeo(i ? 0.2 : 0.225, 0.05), ger.mScheibe, sx * x, 0.08, -0.265).rotation.z = Math.PI / 2;
+    r4_polster(ger, sch, 0.13, 0.08, 0.22, V(sx * 0.2, 0.47 + 0.1, 0.0));                              // Schulterpolster
+    holmIn(ger, sch, V(sx * 0.235, 0.47 + 0.11, -0.12), V(sx * 0.235, 0.47 + 0.11, -0.235), 0.045);   // Halter weit außen im Polster: Abstand zum Kopf
+    griffRohr(ger, V(sx * 0.325, 0.57, 0.02), V(sx * 0.325, 0.57, 0.17), sch);                          // Griffe (unverändert)
+    holmIn(ger, sch, V(sx * 0.325, 0.57, 0.02), V(sx * 0.3, 0.55, -0.235), 0.035);
+    for (const y of [0.05, 0.6]) {
+      holmIn(ger, sch, V(sx * 0.25, y, -0.235), V(sx * 0.3, y, -0.25), 0.04);                           // Arm von der Platte zur Hülse
+      if (!pendel) {                                                                                      // Gleithülse auf der Chromführung (gleiche Achse)
+        maschTeil(sch, dkZyl(0.032, 0.14, 20), ger.mHebel, sx * 0.3, y, -0.25);
+        for (const dy of [-0.077, 0.077]) maschTeil(sch, dkZyl(0.036, 0.012, 20), ger.mDKGold, sx * 0.3, y + dy, -0.25);
+      }
+    }
+    if (pendel) holmIn(ger, sch, V(sx * 0.25, 0.32, -0.235), V(sx * 0.3, 0.32, -0.235), 0.05);          // hier greift der Schwenkarm an
+    r4_horn(ger, sch, V(sx * 0.31, 0.08, -0.25), sx, [[0.09, 0.225, 0.05], [0.145, 0.2, 0.05]], 0.3);
   }
   ger.gruppe.add(sch);
   z.hackSchlitten = sch;
@@ -2105,7 +2830,7 @@ export function bankdruecken(o = {}) {
       if (last === 'multipresse') schienenAufbauen(ger, z);
       if (last === 'kurzhanteln' && art === 'ueberzug') z.kh_l = ger.kurzhantel(KELCH_MASS.innen.schwer);   // Überzug: eine schwere Hantel mit beiden Händen
       else if (last === 'kurzhanteln') khAufbauen(ger, z, !o.einarmig);
-      if (last === 'maschine') { const sp = schraegBahn(); drueckmaschineBauen(ger, z, sp.becken, sp.r, sp.C, 'quer'); }   // Schräg-Brustpresse
+      if (last === 'maschine') { const sp = schraegBahn(); drueckmaschineBauen(ger, z, sp.becken, sp.r, sp.C, 'quer', { titel: 'SCHRÄGE BRUSTPRESSE', untertitel: 'BRUST', dir: 1, rN: 0.30, dth: 0.32, stackZ: -0.8 }); }   // Schräg-Brustpresse
       return z;
     },
     pose(t) {
@@ -2465,7 +3190,7 @@ export function schulterdruecken(o = {}) {
       if (last === 'multipresse') schienenAufbauen(ger, z);
       if (last === 'kettlebell' && o.einarmig) z.kb = ger.kettlebell();
       else if (last === 'kurzhanteln' || last === 'kettlebell') khAufbauen(ger, z, !o.einarmig);
-      if (last === 'maschine') drueckmaschineBauen(ger, z, SP_BECKEN, SP_RUMPF, SP_C, 'laengs');
+      if (last === 'maschine') drueckmaschineBauen(ger, z, SP_BECKEN, SP_RUMPF, SP_C, 'laengs', { titel: 'SCHULTERPRESSE', untertitel: 'SCHULTERN', dir: 1, rN: 0.22, dth: 0.8 });
       if (last === 'band') { z.band_l = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_unter = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); }
       return z;
     },
@@ -2596,41 +3321,24 @@ export function schulterheben(o = {}) {
     ablaufEigen: maschine ? seithebenMaschineAblauf : undefined,
     aufbau(ger) {
       const z = {};
-      if (maschine) {
-        // Sitz, Rückenpolster, Säule; Drehachsen in Armrichtung durch die Schultergelenke (Lager dahinter), Hebel außen am Oberarm, Polster kurz über dem Ellbogen, Griff vorn neben dem Unterarm
-        const k = rumpf(SH_BECKEN, SH_RUMPF), R = k.R;
-        bodenrahmen(ger, -0.42, 0.42, -0.62, 0.3);
-        sitzSaeule(ger, V(0, SH_BECKEN.y - 0.115, SH_BECKEN.z), 0.42, 0.4);
-        ger.polster(0.4, 0.6, 0.09, SH_BECKEN.clone().add(R.oben.clone().multiplyScalar(0.36)).sub(R.vor.clone().multiplyScalar(0.135 + 0.045)), basisAus(R.oben, R.vor));
-        const saeule = V(0, 0, SH_BECKEN.z - 0.42);
-        ger.vierkant(saeule.clone().setY(0.05), saeule.clone().setY(k.schulter.l.y + 0.12), 0.09);
-        ger.vierkant(saeule.clone().setY(0.62), SH_BECKEN.clone().add(V(0, 0.2, -0.24)), 0.06);
-        for (const [sd, sg] of [['l', 1], ['r', -1]]) {
-          const P = k.schulter[sd].clone().addScaledVector(shAchse(sg), -0.2);
-          ger.vierkant(saeule.clone().setY(P.y + 0.12), V(P.x, P.y + 0.12, P.z), 0.07); ger.vierkant(V(P.x, P.y + 0.12, P.z), P.clone().add(V(0, 0.05, 0)), 0.06);
-          drehlager(ger, P, shAchse(sg), 0.1);
-          z['shArm_' + sd] = ger.stab(V(), V(0, 1, 0), 0.026, ger.mRahmen); z['shVor_' + sd] = ger.stab(V(), V(0, 1, 0), 0.022, ger.mRahmen);
-          z['shHand_' + sd] = ger.stab(V(), V(0, 1, 0), 0.016, ger.mRahmen); z['shStift_' + sd] = ger.stab(V(), V(0, 1, 0), 0.016, ger.mRahmen);
-          z['pad_' + sd] = ger.polster(0.07, 0.2, 0.13, V());
-          const gr = new THREE.Group(); ger.gruppe.add(gr); griffRohr(ger, V(0, -0.06, 0), V(0, 0.06, 0), gr, 0.75); gr.userData.frei = V(0, 1, 0); z['shGriff_' + sd] = gr;   // dreht mit der Hand
-          z['shDreh_' + sd] = P;
-        }
-        z.block = gewichtsblock(ger, V(-0.82, 0, SH_BECKEN.z - 0.1), V(1, 0, 0));
-      }
+      if (maschine) r1_seithebenBauen(ger, z, SH_BECKEN, SH_RUMPF);   // R1: DK Line
       if (last === 'kurzhanteln') khAufbauen(ger, z, !angelehnt);
       if (last === 'scheibe') { z.scheibe = ger.zyl(0.2, 0.05, ger.mScheibe, 28); }
       if (last === 'band') { z.band_l = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_unter = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); }   // Band unter beiden Mittelfüßen, je ein Ende in der Hand
       if (angelehnt) ger.box(0.08, 1.8, 0.08, V(-0.45, 0.9, 0.05), ger.mRahmen);
-      if (yKabel) { ger.turm(V(0.62, 0, 0.12)); ger.turm(V(-0.62, 0, 0.12)); z.seil_l = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.seil_r = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); }
+      if (yKabel) { r3_setze(z, r3_turm(ger, V(-0.62, 0.15, 0.12), V(-1, 0, 0), V(0.35, 0.25, 1), 'KABELZUG', 'SCHULTERN', { hMax: 0.7 }), r3_turm(ger, V(0.62, 0.15, 0.12), V(1, 0, 0), V(0.35, 0.25, 1), 'KABELZUG', 'SCHULTERN', { hMax: 0.7 })); z.seil_l = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.seil_r = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); }   // R3: zwei DK-Kabeltürme, Seil kreuzt
       else if (last === 'kabel') {
         // Seitheben: Turm rechts neben der Figur, Rolle unten etwas vor der Körperebene (das Kabel läuft vor den Beinen zur linken Hand)
-        z.anker = ger.turm(art === 'seitheben' ? KSH_TURM : V(0, 0, art === 'aufrecht' ? SEIL_AUFRECHT : art === 'reverse_fly' ? 0.7 : -0.55)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel);
+        // R3: DK-Kabelturm; die Öse sitzt, wo das Seil bisher ausgetreten ist (Seitheben rechts neben der Figur, Stapel nach außen; Aufrechtes Rudern vor, Frontheben hinter der Figur)
+        const aK = art === 'seitheben' ? KSH_TURM.clone().add(V(0.06, 0.15, 0)) : V(0, art === 'reverse_fly' ? 1.6 : 0.15, art === 'aufrecht' ? SEIL_AUFRECHT : art === 'reverse_fly' ? 0.7 : -0.55);
+        r3_setze(z, r3_turm(ger, aK, art === 'seitheben' ? V(-1, 0, 0) : V(0, 0, aK.z > 0 ? 1 : -1), art === 'aufrecht' ? V(0.8, 0.25, 0.6) : V(0.35, 0.25, 1), 'KABELZUG', 'SCHULTERN')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel);
         if (art === 'frontheben' || art === 'aufrecht') z.griff = ger.griff(art === 'aufrecht' ? 0.62 : 0.46);
         // Griff am Turm für die freie Hand (Text: „mit freier Hand festhalten“)
-        if (art === 'seitheben') { const x = KSH_TURM.x + 0.1, zz = KSH_TURM.z; griffRohr(ger, V(x, 0.92, zz), V(x, 1.08, zz)); for (const y of [0.93, 1.07]) ger.vierkant(V(KSH_TURM.x, y, zz), V(x, y, zz), 0.024); }
+        if (art === 'seitheben') { const x = KSH_TURM.x + 0.1, zz = KSH_TURM.z; griffRohr(ger, V(x, 0.92, zz), V(x, 1.08, zz)); for (const y of [0.93, 1.07]) r3_halter(ger, z.dkTurm[0], V(x, y, zz), 0.024); }   // R3: Halter an der Flanke der Säule, das Seil an der Öse bleibt frei
       }
       if (o.brustgestuetzt) schraegPolsterBauen(ger, SH_BAUCH, { neigung: 45 });
       if (sitzend && !maschine) ger.bank(-0.3, 0.9, 0.41, 0);   // Flachbank, die Figur sitzt am vorderen Ende (bis 5.11. ein Würfel)
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -2659,7 +3367,7 @@ export function schulterheben(o = {}) {
               seil(z['shHand_' + sd], pad.clone().addScaledVector(a, 0.065), vorn); seil(z['shStift_' + sd], vorn, g.hand[sd].clone().addScaledVector(u, -0.062));
               z['shGriff_' + sd].position.copy(g.hand[sd]); z['shGriff_' + sd].quaternion.identity();
             }
-            z.block.heben(0.28 * t);
+            z.dkSeil.stelleV(['l', 'r'].map((sd) => g.ellbogen[sd].clone().sub(g.schulter[sd])));   // R1: der Stapel hebt sich nur über das Seil (Richtung des Oberarms)
           } };
       }
       const k = rumpf(becken, r);
@@ -2727,8 +3435,8 @@ export function schulterheben(o = {}) {
             for (const [s, sg] of [['l', 1], ['r', -1]]) { bandKette(z, 'band_' + s, g.hand[s].y < 0.72 ? [g.hand[s], bandAmFuss(g, s, sg)] : umDenKoerper(g, bandAmFuss(g, s, sg), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg)).reverse()); (z.griffAchse = z.griffAchse || {})[s] = 'neutral'; }   // von der Hand aus: das erste Stück bleibt in der Hand; beim Aufheben liegt das Band außen, gerade
             seil(z.band_unter, bandAmFuss(g, 'l', 1), bandAmFuss(g, 'r', -1));
           }
-          if (z.seil_l) { seil(z.seil_l, V(-0.62, 0.15, 0.12), g.hand.l); seil(z.seil_r, V(0.62, 0.15, 0.12), g.hand.r); }
-          if (z.seil) { const a = art === 'seitheben' ? KSH_TURM.clone().add(V(0.06, 0.15, 0)) : V(0, art === 'reverse_fly' ? 1.6 : 0.15, art === 'aufrecht' ? SEIL_AUFRECHT : art === 'reverse_fly' ? 0.7 : -0.55); const ziel = z.griff ? mitte : g.hand.l; const d = ziel.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(ziel).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); }
+          if (z.seil_l) { seil(z.seil_l, V(-0.62, 0.15, 0.12), g.hand.l); seil(z.seil_r, V(0.62, 0.15, 0.12), g.hand.r); if (z.dkTurm) { z.dkTurm[0].zieh(V(-0.62, 0.15, 0.12).distanceTo(g.hand.l)); z.dkTurm[1].zieh(V(0.62, 0.15, 0.12).distanceTo(g.hand.r)); } }
+          if (z.seil) { const a = art === 'seitheben' ? KSH_TURM.clone().add(V(0.06, 0.15, 0)) : V(0, art === 'reverse_fly' ? 1.6 : 0.15, art === 'aufrecht' ? SEIL_AUFRECHT : art === 'reverse_fly' ? 0.7 : -0.55); const ziel = z.griff ? mitte : g.hand.l; const d = ziel.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(ziel).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); if (z.dkTurm) z.dkTurm[0].zieh(l); }
         }
       };
     },
@@ -2859,8 +3567,7 @@ export function rudern(o = {}) {
           props(g, z) {
             const mitte = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5);
             z.griff.position.copy(mitte); z.griff.quaternion.copy(breitGriff ? new THREE.Quaternion() : basisAus(V(0, 1, 0), anker.clone().sub(mitte)));
-            seil(z.seil, anker.clone().add(V(0, 0.04, 0)), mitte.clone().add(anker.clone().sub(mitte).normalize().multiplyScalar(breitGriff ? 0.02 : 0.18)));
-            z.block.heben(0.3 * t);
+            r2_kabelruderStellen(z, mitte, anker, breitGriff);   // Seil und Stapel (DK Line)
           } };
       }
       if (art === 'einarmig' && last === 'kettlebell') {
@@ -2962,11 +3669,12 @@ function rudernStehend(art, o = {}) {
       }
       else if (o.band) { ger.box(0.08, 1.4, 0.08, V(-0.15, 0.7, 1.0), ger.mRahmen); z.seil = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.griff = ger.griff(); }
       else {
-        ger.turm(V(-0.15, 0, 1.0)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff = ger.griff();
+        r3_setze(z, r3_turm(ger, V(-0.15, 1.2, 0.95), V(0, 0, 1), V(1, 0.3, 0.5), 'KABELZUG', 'RÜCKEN')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff = ger.griff();   // R3: DK-Kabelturm, Öse wie bisher auf 1,2 m
         // Haltestange am Gestell für die freie Hand, in Reichweite neben dem Turm
         ger.stab(V(0.3, 0.04, 0.62), V(0.3, 1.5, 0.62), 0.02, ger.mRahmen);
-        ger.vierkant(V(0.3, 0.03, 0.62), V(-0.15, 0.03, 1.0), 0.06); ger.vierkant(V(0.3, 1.5, 0.62), V(-0.15, 1.5, 1.0), 0.05);
+        ger.vierkant(V(0.3, 0.03, 0.62), z.dkTurm[0].an(0.15, 0.03), 0.06); r3_halter(ger, z.dkTurm[0], V(0.3, 1.5, 0.62), 0.05);
       }
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -2997,7 +3705,7 @@ function rudernStehend(art, o = {}) {
       // vorn: Arm lang zur Rolle; hinten: Ellbogen neben der Hüfte, 40° hinter dem Rumpf, Griff an der Hüfte (bis 5.11. Ellbogen 29° bis 140°, Griff vor der Brust)
       const hand = { r: mv(k.schulter.r.clone().add(anker.clone().sub(k.schulter.r).setLength(ARM * 0.998)), ruderEnde(k, 'r', -1, { ext: 40, abd: 8, zug: V(0.02, -0.5, 1) }), t), l: o.band ? becken.clone().add(V(0.17, 0.05, 0.06)) : V(0.3, 1.16, 0.62) };
       return { pose: { becken, rumpf: r, hand, handflaeche: { r: V(1, 0, 0) }, ellbogenPol: { r: V(-0.3, -0.3, -1), l: o.band ? V(1, 0, -0.5) : V(1, -0.6, -0.4) }, fuss: { l: V(0.13, FY, 0.32), r: V(-0.13, FY, -0.3) }, zehen: { l: 0, r: 20 }, kniePol: seiten((s, sg) => V(sg * 0.1, 0, 1)) },
-        props(g, z) { z.griff.position.copy(g.hand.r); seil(z.seil, anker, g.hand.r); } };
+        props(g, z) { z.griff.position.copy(g.hand.r); seil(z.seil, anker, g.hand.r); if (z.dkTurm) z.dkTurm[0].zieh(anker.distanceTo(g.hand.r)); } };
     },
     blick: V(0, 1.0, 0.1), abstand: 3.6, kameraRicht: V(1, 0.3, art === 'tuerrahmen' ? -0.35 : 0.5)
   };
@@ -3007,7 +3715,7 @@ function rudernStehend(art, o = {}) {
 const KZ_BOX = 0.36, KZ_BOX_Z = 0.2, KZ_FUSS_Z = 0.16;
 // Griff neutral: zwei parallele Griffe in Blickrichtung (Handflächen zueinander). Sie ragen von der Querstange, die weiter vorn sitzt, zur Figur: Der Griff liegt, wo sonst die Stange ist, der Kopf geht frei daran vorbei
 function klimmzugParallelBauen(ger, z, breit) {
-  z.stange = ger.stange(2.25, 1.3, 0.17);
+  z.stange = r4_klimmzugStation(ger, 2.25, 1.3, 0.17);
   for (const sx of [-1, 1]) {
     griffRohr(ger, V(sx * breit, 2.25, -0.09), V(sx * breit, 2.25, 0.09), ger.gruppe, 0.85);
     ger.stab(V(sx * breit, 2.25, 0.09), V(sx * breit, 2.25, 0.17), 0.014, ger.mMetall);
@@ -3028,20 +3736,7 @@ export function klimmzug(o = {}) {
       const z = {};
       if (latzug) {
         if (hebel) {
-          // Hebel-Latzug: Sitz, Knierolle, zwei Hebelarme von einer Drehachse hinten oben, Griffe an den Armen
-          bodenrahmen(ger, -0.5, 0.5, -0.75, 0.7);
-          sitzSaeule(ger, V(0, 0.435, -0.02), 0.44, 0.42);
-          ger.vierkant(V(0, 0.05, 0.55), V(0, 0.66, 0.55), 0.06); ger.vierkant(V(0, 0.66, 0.55), V(0, 0.66, 0.2), 0.06); rollePolster(ger, 0.42, 0.05).position.set(0, 0.665, 0.13);
-          for (const sx of [-1, 1]) {
-            const sd = sx > 0 ? 'l' : 'r', P = V(sx * 0.47, LH_C.y, LH_C.z);
-            ger.vierkant(V(sx * 0.47, 0.05, LH_C.z), P.clone().sub(V(0, 0.06, 0)), 0.08);
-            drehlager(ger, P, V(1, 0, 0), 0.13);
-            z['dmArm_' + sd] = ger.stab(V(), V(0, 1, 0), 0.03, ger.mRahmen); z['dmQuer_' + sd] = ger.stab(V(), V(0, 1, 0), 0.022, ger.mRahmen);
-            const g = new THREE.Group(); ger.gruppe.add(g); griffRohr(ger, V(0, -0.075, 0), V(0, 0.075, 0), g, 0.75); g.userData.frei = V(0, 1, 0); z['dmGriff_' + sd] = g;   // Schwenkgriffe
-          }
-          ger.vierkant(V(-0.47, LH_C.y, LH_C.z), V(0.47, LH_C.y, LH_C.z), 0.06);
-          z.block = gewichtsblock(ger, V(0, 0, LH_C.z - 0.35), V(0, 0, 1));
-          z.dm = { C: LH_C, griff: 'laengs', x: 0.47 };
+          r2_latzugHebelBauen(ger, z);   // Hebel-Latzug in der DK Line (Auftrag R, Paket R2)
         } else {
           latzugBauen(ger, z, LZ_STANGE_Z);
           z.lh = latzugstange(ger, art === 'latzug_eng' ? 'parallel' : o.griff === 'unter' ? 'gerade' : 'gewinkelt', art === 'latzug_eng' ? 0.16 : o.griff === 'unter' ? 0.18 : o.griff === 'breit' ? 0.42 : 0.33);
@@ -3050,7 +3745,7 @@ export function klimmzug(o = {}) {
       }
       else if (art === 'maschine') assistBauen(ger, z, 'klimmzug');
       else if (o.griff === 'neutral') klimmzugParallelBauen(ger, z, 0.2);
-      else z.stange = ger.stange(2.25, art === 'archer' ? 1.5 : 1.3, 0);
+      else z.stange = r4_klimmzugStation(ger, 2.25, art === 'archer' ? 1.8 : 1.3, 0);
       if (art === 'sprung' || art === 'negativ' || art === 'halten') ger.box(0.5, KZ_BOX, 0.45, V(0, KZ_BOX / 2, KZ_BOX_Z), ger.mPolster);
       if (art === 'band') { z.band_a = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand); z.band_b = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand); }
       if (art === 'zusatzgewicht') z.kh = ger.kurzhantel();
@@ -3072,8 +3767,7 @@ export function klimmzug(o = {}) {
         return { pose: { becken, rumpf: r, kopf: { neigung: -15 }, hand, handflaeche: hebel ? seiten((s, sg) => V(-sg, 0, 0)) : flaeche, ellbogenPol: seiten((s, sg) => (o.griff === 'unter' ? V(sg * 0.12, -0.85, 0.5) : V(sg * 0.36, -0.92, 0.13))), fuss: seiten((s, sg) => V(sg * 0.2, FY, 0.38)), kniePol: seiten((s, sg) => V(sg * 0.2, 1, 1)) },
           props(g, z) {
             if (z.dm) { drueckmaschineStellen(z, g, t); return; }
-            stangeAn(z.lh, g, art === 'latzug' && o.griff !== 'unter' ? V(0, 0.035, 0) : null); seil(z.seil, V(0, 2.28, LZ_STANGE_Z), z.lh.position.clone().add(V(0, 0.04, 0)));   // gewinkelte Stange: Griffe 3,5 cm unter der Mitte
-            z.block.heben(0.3 * t);
+            stangeAn(z.lh, g, art === 'latzug' && o.griff !== 'unter' ? V(0, 0.035, 0) : null); r2_latzugStellen(z);   // gewinkelte Stange: Griffe 3,5 cm unter der Mitte; Seil und Stapel (DK Line)
           } };
       }
       // Schulterblatt-Klimmzug: Die Arme bleiben gestreckt, die Hände und Schultergelenke bleiben, wo sie sind. Im Hang hängen die Schultern an den Ohren (schulterHub), sie senken sich und der Körper steigt um diesen Weg (bis 5.11. stieg die Schulter, Ellbogen 4° bis 60°: ein Teilklimmzug)
@@ -3124,9 +3818,10 @@ function latzugBoden(art) {
   return {
     aufbau(ger) {
       const z = {};
-      if (art === 'latzug_einarmig') { ger.turm(V(-0.3, 0, 0.45), 2.3); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff = ger.griff(); ger.matte(); }
+      if (art === 'latzug_einarmig') { r3_setze(z, r3_turm(ger, V(-0.3, 2.2, 0.4), V(0, 0, 1), V(-1, 0.3, 0.3), 'KABELZUG', 'RÜCKEN')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff = ger.griff(); ger.matte(); }   // R3: DK-Kabelturm mit hoher Säule (Öse bei 2,2 m)
       else if (art === 'latzug_band') { tuer(ger, 0.62); ger.matte(); z.band_l = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); }
       else { ger.matte(); z.tuch = ger.stab(V(), V(0, 1, 0), 0.02, ger.mBand); }
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -3149,7 +3844,7 @@ function latzugBoden(art) {
         // oben Arm gestreckt Richtung Kabelrolle
         const hand = { r: mv(k.schulter.r.clone().add(V(-0.3, 2.2, 0.4).sub(k.schulter.r).normalize().multiplyScalar(ARM * 1.01)), k.schulter.r.clone().add(V(-0.1, -0.06, 0.3)), t), l: V(0.15, 0.56, 0.32) };   // unten Griff neben der Brust, Ellbogen etwa 120° (vorher Hand an der Schulter, 156°)
         return { pose: { becken, rumpf: r, hand, ellbogenPol: { r: V(-0.36, -0.92, 0.13), l: V(1, 0, -0.5) }, fuss: { l: V(0.14, FY, 0.4), r: V(-0.1, 0.1, -0.52) }, kniePol: { l: V(0.1, 0, 1), r: V(0, -1, 0.3) }, fussRicht: { l: V(0.1, 0, 1), r: V(0, -0.3, -1) }, zehen: { l: 0, r: -60 } },
-          props(g, z) { z.griff.position.copy(g.hand.r); seil(z.seil, V(-0.3, 2.2, 0.4), g.hand.r); } };
+          props(g, z) { z.griff.position.copy(g.hand.r); seil(z.seil, V(-0.3, 2.2, 0.4), g.hand.r); z.dkTurm[0].zieh(V(-0.3, 2.2, 0.4).distanceTo(g.hand.r)); } };
       }
       // Bauchlage, Kopf nach -z: Becken bleibt liegen, die Brust (Neigung -13: liegt auf dem Boden) hebt sich erst im Zug (Wirbelsäule). Das Handtuch ist ein straffes, gerades Stück zwischen den Händen: vorn lange Arme,
       // dann im Bogen über den Kopf zum Nacken, die Hände ziehen es auseinander, die Ellbogen gehen Richtung Hüfte, Oberarm am Ende rund 50° zum Rumpf (bis 5.11. Knick über einen dritten Punkt, dann unter dem Kinn zur Brust: Oberarm 68°, Ellbogen nur wenig unter Schulterhöhe)
@@ -3243,7 +3938,8 @@ export function curl(o = {}) {
     // Bizepsmaschine (o.trizeps: Trizepsstrecker, gleiche Maschine, Arm streckt sich, Griffe senkrecht): Armweg wie Scott-Curl um den Ellbogen
     const tri = !!o.trizeps, c = curl(tri ? { art: 'scott', last: 'sz', beugung: [-2, 126], griffX: 0.225 } : { art: 'scott', last: 'sz' }), pose = c.pose;   // Trizeps: Griffe in der Linie der Unterarme, unten ganz gestreckt
     const becken = V(0, 0.56, -0.08), C = scottLage(becken).ellM;
-    c.aufbau = (ger) => { const z = {}; armmaschineBauen(ger, z, becken, C, tri); return z; };
+    const hebelRichtung = (t) => { const g0 = gelenke(pose(tri ? 1 - t : t).pose), m = g0.hand.l.clone().add(g0.hand.r).multiplyScalar(0.5); return V(0, m.y - C.y, m.z - C.z); };   // R1: Richtung des Hebels zur Hand (y-z)
+    c.aufbau = (ger) => { const z = {}; armmaschineBauen(ger, z, becken, C, tri, { v0: hebelRichtung(0), v1: hebelRichtung(1) }); return z; };
     c.pose = (t, zst) => {
       const p = pose(tri ? 1 - t : t, zst);
       if (tri) p.pose.handflaeche = seiten((s, sg) => V(-sg, 0, 0));
@@ -3269,10 +3965,11 @@ export function curl(o = {}) {
         z.griff_l = ger.griff(); z.griff_r = ger.griff();
       }
       if (last === 'kabel') {
-        ger.turm(V(0, 0, 0.6)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel);
-        if (o.seilgriff) { z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); }
+        r3_setze(z, r3_turm(ger, V(0, 0.15, 0.55), V(0, 0, 1), V(0.9, 0.2, 0.6), 'KABELZUG', 'BIZEPS')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel);   // R3: DK-Kabelturm vor der Figur
+        if (o.seilgriff) { z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.knoten = r3_knoten(ger); }
         else z.griff = ger.griff(0.5);
       }
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t, zst) {
@@ -3366,7 +4063,8 @@ export function curl(o = {}) {
             if (z.strang_l) {   // Seilgriff: Kabel bis zum Knoten, von dort je ein Seilende in jede Hand
               const knoten = mitte.clone().add(a.clone().sub(mitte).normalize().multiplyScalar(0.16));
               seil(z.seil, a, knoten); seil(z.strang_l, knoten, g.hand.l); seil(z.strang_r, knoten, g.hand.r);
-            } else { kabelstangeAn(z.griff, g, a); seil(z.seil, a, mitte.clone().add(a.clone().sub(mitte).normalize().multiplyScalar(0.03))); }
+              z.knoten.position.copy(knoten); z.dkTurm[0].zieh(a.distanceTo(knoten));
+            } else { kabelstangeAn(z.griff, g, a); seil(z.seil, a, mitte.clone().add(a.clone().sub(mitte).normalize().multiplyScalar(0.03))); z.dkTurm[0].zieh(a.distanceTo(mitte) - 0.03); }
           }
         }
       };
@@ -3406,7 +4104,7 @@ function handgelenkCurl(o) {
 // (bis 5.11. klappte er nach hinten, die Hand landete hinter dem Kopf; das Kabel läuft außen an der Hüfte vorbei)
 function bayesianCurl() {
   return {
-    aufbau(ger) { ger.turm(V(-0.42, 0, -0.8)); return { seil: ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel), griff: ger.griff() }; },
+    aufbau(ger) { const z = r3_setze({}, r3_turm(ger, V(-0.42, 0.25, -0.75), V(0, 0, -1), V(1, 0.2, 0.15), 'KABELZUG', 'BIZEPS')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff = ger.griff(); r3_vorlauf(this, z); return z; },   // R3: DK-Kabelturm hinter der Figur
     pose(t) {
       const becken = V(0, 0.96, 0.02);
       const r = { neigung: 8 };
@@ -3419,7 +4117,7 @@ function bayesianCurl() {
       const handR = genau(ell.clone().addScaledVector(a, UNTERARM));
       return { pose: { becken, rumpf: r, hand: { r: handR, l: becken.clone().add(V(0.17, 0.05, 0.06)) }, handflaeche: { r: V(0, a.z, -a.y) }, ellbogenPol: { r: ell.clone().sub(k.schulter.r.clone().lerp(handR, 0.5)), l: V(1, 0, -0.5) },
           fuss: { l: V(0.13, FY, 0.3), r: V(-0.13, FY, -0.22) }, zehen: { l: 0, r: 20 }, kniePol: seiten((s, sg) => V(sg * 0.1, 0, 1)) },
-        props(g, z) { z.griff.position.copy(g.hand.r); seil(z.seil, V(-0.42, 0.25, -0.75), g.hand.r); } };
+        props(g, z) { z.griff.position.copy(g.hand.r); seil(z.seil, V(-0.42, 0.25, -0.75), g.hand.r); z.dkTurm[0].zieh(V(-0.42, 0.25, -0.75).distanceTo(g.hand.r)); } };
     },
     blick: V(0, 0.95, 0), abstand: 3.2, kameraRicht: V(1, 0.2, 0.15)
   };
@@ -3444,19 +4142,20 @@ export function trizeps(o = {}) {
   const band = art === 'ueberkopf' && last === 'band', kabelKopf = art === 'ueberkopf' && last === 'kabel';
   const turmX = o.einarmig ? -0.22 : 0;   // einarmig: Rolle über der arbeitenden Hand, das Kabel läuft vor dem Arm herunter, nicht quer vor der Brust
   // Überkopf am Kabel: Seil von der mittelhohen Rolle hinter dem Rücken; von der tiefen Rolle liefe es beim gestreckten Arm durch den Kopf
-  const ANKER_KOPF = V(0, 1.05, -0.62);
+  const ANKER_KOPF = V(0, 2.0, -0.9);
   return {
     ablaufT: art === 'ueberkopf' && last === 'kurzhantel' ? 1 : 0,
     aufbau(ger) {
       const z = {};
       if (art === 'pushdown' && last === 'band') { bandPfosten(ger, V(0, 2.0, 0.42)); z.band_l = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.012, ger.mBand); z.griff_l = ger.griff(); z.griff_r = ger.griff(); }
-      else if (art === 'pushdown' && o.seil) { ger.turm(V(0, 0, 0.66)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); }
-      else if (art === 'pushdown') { ger.turm(V(turmX, 0, 0.66)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff = ger.griff(o.einarmig ? 0 : 0.5); }
-      if (art === 'ueberkopf') { if (last === 'kabel') { ger.turm(V(0, 0, -0.67)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); } else if (band) { z.seil = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand); } else { z.kh_l = ger.kurzhantel(KELCH_MASS.innen.schwer); } }
+      else if (art === 'pushdown' && o.seil) { r3_setze(z, r3_turm(ger, V(0, 2.0, 0.55), V(0, 0, 1), V(1, 0.25, 0.55), 'KABELZUG', 'TRIZEPS')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.knoten = r3_knoten(ger); }   // R3: DK-Kabelturm, Öse oben wie bisher auf 2 m
+      else if (art === 'pushdown') { r3_setze(z, r3_turm(ger, V(turmX, 2.0, 0.55), V(0, 0, 1), V(1, 0.25, 0.55), 'KABELZUG', 'TRIZEPS')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff = ger.griff(o.einarmig ? 0 : 0.5); }
+      if (art === 'ueberkopf') { if (last === 'kabel') { r3_setze(z, r3_turm(ger, ANKER_KOPF, V(0, 0, -1), V(1, 0.25, 0.55), 'KABELZUG', 'TRIZEPS')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.knoten = r3_knoten(ger); } else if (band) { z.seil = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand); } else { z.kh_l = ger.kurzhantel(KELCH_MASS.innen.schwer); } }
       if (art === 'kickback') { ger.bank(-0.17, 1.1, 0.4, 0).position.x = 0.14;   // Bank reicht vom Fuß des Stützbeins bis unter die Stützhand
         z.kh_l = ger.kurzhantel(); }   // Bank unter der Stützseite, rechts ist Platz für Standbein und Hantel
       if (art === 'dips' && o.assistiert) assistBauen(ger, z, 'dips');
       else if (art === 'dips') dipBarrenBauen(ger);
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -3537,11 +4236,12 @@ export function trizeps(o = {}) {
         pose,
         props(g, z) {
           const mitte = o.einarmig ? g.hand.r.clone() : g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5);
-          if (z.strang_l) { const a = kabelKopf ? ANKER_KOPF : V(0, 2.0, 0.55), knoten = mitte.clone().add(a.clone().sub(mitte).normalize().multiplyScalar(kabelKopf ? 0.22 : 0.16)); seil(z.seil, a, knoten); seil(z.strang_l, knoten, g.hand.l); seil(z.strang_r, knoten, g.hand.r); }
+          if (z.strang_l) { const a = kabelKopf ? ANKER_KOPF : V(0, 2.0, 0.55), knoten = mitte.clone().add(a.clone().sub(mitte).normalize().multiplyScalar(kabelKopf ? 0.22 : 0.16)); seil(z.seil, a, knoten); seil(z.strang_l, knoten, g.hand.l); seil(z.strang_r, knoten, g.hand.r); z.knoten.position.copy(knoten); z.dkTurm[0].zieh(a.distanceTo(knoten)); }
           if (z.griff) {
             const anker = V(turmX, 2.0, 0.55);
             if (o.einarmig) z.griff.position.copy(mitte); else kabelstangeAn(z.griff, g, anker);
             seil(z.seil, anker, mitte.clone().add(anker.clone().sub(mitte).normalize().multiplyScalar(o.einarmig ? 0 : 0.03)));
+            z.dkTurm[0].zieh(anker.distanceTo(mitte) - (o.einarmig ? 0 : 0.03));
           }
           if (z.band_l) for (const [s, sg] of [['l', 1], ['r', -1]]) { z['griff_' + s].position.copy(g.hand[s]); bandKette(z, 'band_' + s, umDenKoerper(g, V(sg * 0.04, 2.0, 0.42), g.hand[s], 0.012, g.R.vor)); }
           if (band) bandKette(z, 'seil', umDenKoerper(g, bandAmFuss(g, 'r', -1), mitte, 0.03, g.R.vor.clone().negate()));
@@ -3610,8 +4310,10 @@ const RS45_HUEFTE = V(0, 1.04, 0.12), RS45_BEIN = V(0, Math.SQRT1_2, Math.SQRT1_
 //   | plank_knie | body_saw | rollout_stehend | reverse_crunch | knieheben_haengend | hollow_rock | bauchmaschine | rueckenstrecker_maschine ; pallof: last band ; rollout: last langhantel
 // Neu: situp | vup | fahrrad | schultertippen | mountain | lsitz | negativ_crunch ; seitstuetz + heben (Hüfte senken und heben)
 // Ablauf davor (wirkt über animation()): standVersatz
+// Neu (G10-N2): fersenrutschen | beinheben_einbeinig (Rückenlage ohne Gerät, ein Bein arbeitet, eigene Funktion rumpfLiegend)
 export function rumpfuebung(o = {}) {
   const art = o.art || 'plank';
+  if (art === 'fersenrutschen' || art === 'beinheben_einbeinig') return rumpfLiegend(art);
   if (['situp', 'vup', 'fahrrad', 'schultertippen', 'mountain', 'lsitz', 'negativ_crunch'].includes(art)) return rumpfNeu(art);
   if (['plank_knie', 'body_saw', 'rollout_stehend', 'reverse_crunch', 'knieheben_haengend', 'hollow_rock', 'bauchmaschine', 'rueckenstrecker_maschine'].includes(art)) return rumpfMehr(art);
   const band = art === 'pallof' && o.last === 'band';
@@ -3623,12 +4325,13 @@ export function rumpfuebung(o = {}) {
       // Sanfte Rückenstreckung: flaches Kissen unter Bauch und Becken, zusammengelegtes Handtuch unter der Stirn (so steht es im Text)
       if (art === 'rueckenstrecker_sanft') { ger.box(0.46, 0.05, 0.44, V(0, 0.025, 0.24), ger.mAkzent); ger.box(0.24, 0.03, 0.2, V(0, 0.015, -0.47), ger.mAkzent); }
       if (band) { ger.box(0.08, 1.4, 0.08, V(-0.9, 0.7, 0.2), ger.mRahmen); z.seil = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand); z.griff = ger.griff(); z.griff.visible = false; }
-      else if (art === 'pallof') { ger.turm(V(-0.9, 0, 0.2)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff = ger.griff(); }
+      else if (art === 'pallof') { r3_setze(z, r3_turm(ger, V(-0.9, 1.33, 0.2), V(-1, 0, 0), V(1, 0.45, 0.3), 'KABELZUG', 'RUMPF')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff = ger.griff(); }   // R3: DK-Kabelturm seitlich, Öse auf Brusthöhe
       // Kabelcrunch: kniend vor dem Turm (Blick zur oberen Rolle), Seilgriff mit Knoten vor dem Gesicht, je ein Ende neben dem Kopf
-      else if (art === 'kabelcrunch') { ger.turm(V(0, 0, KC_TURM_Z)); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); }
+      else if (art === 'kabelcrunch') { r3_setze(z, r3_turm(ger, V(0, 2.0, KC_TURM_Z - 0.07), V(0, 0, 1), V(1, 0.45, 0.3), 'KABELZUG', 'BAUCH')); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.strang_l = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.strang_r = ger.stab(V(), V(0, 1, 0), 0.014, ger.mSeil); z.knoten = r3_knoten(ger); }   // R3: DK-Kabelturm vor der knienden Figur
       if (art === 'rollout' && o.last === 'langhantel') z.lh = ger.langhantel();
       else if (art === 'rollout') { z.rad = ger.zyl(0.1, 0.08, ger.mScheibe, 24); z.rad.rotation.z = Math.PI / 2; }
       if (art === 'rueckenstrecker') { const f = RS45_HUEFTE.clone().addScaledVector(RS45_BEIN, -BEIN * 0.998), bk = RS45_HUEFTE.clone().addScaledVector(RS45_BEIN, 0.02); hyperBauen(ger, f, bk, RS45_BEIN); }
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -3769,7 +4472,7 @@ export function rumpfuebung(o = {}) {
         const nah = k.brust.clone().add(V(0, -0.1, 0.2)), weit = k.brust.clone().add(V(0, -0.1, 0.642));   // Griff 20 cm vor der Brust: das Kabel streift sie nicht (1.11.). Vorn fast gestreckt: Ellbogen unter 10°
         const hand = seiten((s, sg) => mv(nah, weit, t).add(V(sg * 0.035, 0, 0)));
         return { pose: Object.assign({ becken, rumpf: r, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.5, -1, 0)), kniePol: seiten((s, sg) => V(sg * 0.2, 0, 1)) }, stehFuesse(band ? 0.14 : 0.2)),   // Band: hüftbreit (bis 5.11. 0,89× Schulter)
-          props(g, z) { const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5); z.griff.position.copy(m); z.griff.userData.frei = null; z.griff.quaternion.setFromUnitVectors(V(1, 0, 0), g.hand.l.clone().sub(g.hand.r).normalize()); const a = V(-0.9, 1.33, 0.2);   /* Rolle auf Brusthöhe, vor der Körperebene: das Kabel läuft waagerecht vor der Brust vorbei */ const d = m.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(m).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); } };
+          props(g, z) { const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5); z.griff.position.copy(m); z.griff.userData.frei = null; z.griff.quaternion.setFromUnitVectors(V(1, 0, 0), g.hand.l.clone().sub(g.hand.r).normalize()); const a = V(-0.9, 1.33, 0.2);   /* Rolle auf Brusthöhe, vor der Körperebene: das Kabel läuft waagerecht vor der Brust vorbei */ const d = m.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(m).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); if (z.dkTurm) z.dkTurm[0].zieh(l); } };
       }
       if (art === 'kabelcrunch') {
         // Wie im Lehrbuch (Strengthlog, ExRx): kniend mit Blick zum Kabelturm, Seilenden neben dem Kopf, die Hüfte bleibt stehen, der Rumpf rollt ein,
@@ -3781,8 +4484,8 @@ export function rumpfuebung(o = {}) {
         return { pose: { becken, rumpf: r, wirbel: w, kopf: { neigung: 20 }, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.3, -1, 1)), fuss: seiten((s, sg) => V(sg * 0.15, 0.1, -0.42)), kniePol: seiten(() => V(0, -1, 0.4)), fussRicht: seiten(() => V(0, -0.3, -1)) },
           props(g, z) {
             const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5), a = V(0, 2.0, KC_TURM_Z - 0.07);
-            const knoten = m.clone().add(a.clone().sub(m).normalize().multiplyScalar(0.35));   // Knoten vor dem Gesicht, nicht im Kopf
-            seil(z.seil, a, knoten); seil(z.strang_l, knoten, g.hand.l); seil(z.strang_r, knoten, g.hand.r);
+            const knoten = m.clone().add(a.clone().sub(m).normalize().multiplyScalar(0.6));   // Knoten vor dem Gesicht, nicht im Kopf (R3: 60 cm vor den Händen, die Seilenden laufen außen am Kopf vorbei: so bleibt der Saunahut sichtbar)
+            seil(z.seil, a, knoten); for (const [sd, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'strang_' + sd, [knoten, g.hand[sd].clone().addScaledVector(g.R.links, sg * 0.10).addScaledVector(g.R.vor, 0.08), g.hand[sd]]); z.knoten.position.copy(knoten); z.dkTurm[0].zieh(a.distanceTo(knoten));
           } };
       }
       if (art === 'rueckenstrecker') {
@@ -3812,9 +4515,10 @@ export function tragen(o = {}) {
       if (art === 'kellner') { z.kb = ger.kettlebell(); return z; }
       if (art === 'frontal' || art === 'seitbeugen') { z.kh_l = art === 'frontal' ? kopfRund(ger.kurzhantel()) : ger.kurzhantel(); return z; }
       if (o.last === 'langhantel' || o.last === 'multipresse') z.lh = ger.langhantel();
-      else if (o.last === 'kabel') { ger.turm(V(0, 0, 0.6)); z.griff = ger.griff(0.6); z.seil = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); }   // Kabelstange, lang genug für den schulterbreiten Griff (bis 5.11. endete der Griff vor den Händen)
+      else if (o.last === 'kabel') { r3_setze(z, r3_turm(ger, V(0, 0.15, 0.55), V(0, 0, 1), V(1, 0.3, 0.6), 'KABELZUG', 'NACKEN')); z.griff = ger.griff(0.6); z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); }   // R3: DK-Kabelturm vor der Figur   // Kabelstange, lang genug für den schulterbreiten Griff (bis 5.11. endete der Griff vor den Händen)
       else khAufbauen(ger, z, art !== 'suitcase');
       if (o.last === 'multipresse') schienenAufbauen(ger, z);
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t, z) {
@@ -3829,7 +4533,7 @@ export function tragen(o = {}) {
         if (vorn) vorDenBeinen(pose, 0.018);
         return { pose,
           props(g, z) {
-            if (z.griff) { const a = V(0, 0.15, 0.55); kabelstangeAn(z.griff, g, a); seil(z.seil, a, z.griff.position.clone().add(a.clone().sub(z.griff.position).normalize().multiplyScalar(0.03))); }
+            if (z.griff) { const a = V(0, 0.15, 0.55); kabelstangeAn(z.griff, g, a); seil(z.seil, a, z.griff.position.clone().add(a.clone().sub(z.griff.position).normalize().multiplyScalar(0.03))); z.dkTurm[0].zieh(a.distanceTo(z.griff.position) - 0.03); }
             else if (z.lh) { stangeAn(z.lh, g); schienenAn(z); } else kurzhantelnAn(z, g, 'hammer');
           } };
       }
@@ -3901,22 +4605,27 @@ export function kabelstand(o = {}) {
   const bandFly = art === 'crossover' && last === 'band', flyArt = FLY[bandFly ? 'band' : art] || null, bein = ['kickback_bein', 'abduktion_bein', 'adduktion_bein'].includes(art);
   const anker = flyArt ? flyArt.anker : { facepull: V(0, 1.58, 1.1), kickback_bein: V(0, 0.15, 0.7), abduktion_bein: V(0.75, 0.15, 0.4), adduktion_bein: V(-0.7, 0.15, 0.25), woodchop: V(0.8, 1.9, 0.2), holzhacker_quer: V(0.85, 1.33, 0.6), ueberzug: last === 'band' ? V(0, 2.1, 1.1) : V(0, 1.95, 1.2) }[art];
   const griffTurm = art === 'abduktion_bein' ? V(0.653, 1.2, 0.348) : art === 'adduktion_bein' ? V(-0.597, 1.2, 0.213) : null;
+  // R3: Kamerarichtung vorab (der Stapel des DK-Kabelturms steht zur Kamera hin offen) und Muskelgruppe auf dem Typenschild
+  const kamR = (art === 'abduktion_bein' && last === 'kabel') || art === 'holzhacker_quer' ? V(-0.55, 0.3, 1) : flyArt ? V(0.45, 0.25, 1) : art === 'kickback_bein' && last === 'kabel' ? V(1, 0.3, 0.2) : art === 'facepull' || art === 'ueberzug' ? V(1, 0.3, 0.35) : V(0.9, 0.3, 0.7);
+  const turmGruppe = { facepull: 'SCHULTERN', kickback_bein: 'GESÄSS', abduktion_bein: 'HÜFTE', adduktion_bein: 'HÜFTE', woodchop: 'RUMPF', holzhacker_quer: 'RUMPF', ueberzug: 'RÜCKEN' }[art] || 'BRUST';
   return {
     aufbau(ger) {
       const z = {};
       if (kbMaschine) { const becken = V(0, 0.975, -0.08); kickbackMaschineBauen(ger, z, becken, { neigung: 55 }, becken.clone().add(V(-0.095, -0.02, 0)), BEIN * 0.965); return z; }
       if (last === 'stuhl') { stuhlKabel(ger, 0.5, 0); return z; }
-      if (last === 'kabel') { if (flyArt) { ger.turm(V(anker.x, 0, anker.z)); ger.turm(V(-anker.x, 0, anker.z)); } else ger.turm(V(anker.x, 0, anker.z)); }
+      if (last === 'kabel') { if (flyArt) { z.dkTurm = [kabelturmDK(ger, 1, anker), kabelturmDK(ger, -1, anker)]; z.stapel_l = z.dkTurm[0].block; z.stapel_r = z.dkTurm[1].block; } else r3_setze(z, r3_turm(ger, anker, anker.x === 0 ? V(0, 0, anker.z > 0 ? 1 : -1) : V(anker.x, 0, anker.z), kamR, 'KABELZUG', turmGruppe, art === 'ueberzug' ? { hMax: 0.65 } : {})); }   // Fliegende: DK-Kabelturm mit Stapel und Seil; R3: alle übrigen Kabelzüge ebenso (Stapel hinter der Öse, vom Trainierenden weg)
       if (bandFly) for (const sx of [-1, 1]) { ger.box(0.07, 1.5, 0.07, V(sx * anker.x, 0.75, anker.z - 0.04), ger.mRahmen); ger.box(0.3, 0.03, 0.3, V(sx * anker.x, 0.015, anker.z - 0.04), ger.mRahmen); }   // zwei Pfosten hinter der Figur: das Band läuft außen an Arm und Brust vorbei
       else if (last === 'band') bandPfosten(ger, anker);
-      if (griffTurm && last === 'kabel') haltegriff(ger, griffTurm, anker);
-      if (art === 'kickback_bein') { griffRohr(ger, V(-0.22, 1.22, 0.6), V(0.22, 1.22, 0.6), ger.gruppe, 0.8); ger.vierkant(V(0, 1.22, 0.6), V(0, 1.22, 0.66), 0.03); }   // Haltestange am Turm: abstützen
-      const dicke = last === 'band' ? 0.012 : 0.006, m = last === 'band' ? ger.mBand : ger.mKabel;
+      if (griffTurm && last === 'kabel') { griffRohr(ger, griffTurm.clone().add(V(0, -0.13, 0)), griffTurm.clone().add(V(0, 0.13, 0))); for (const dy of [-0.13, 0.13]) r3_halter(ger, z.dkTurm[0], griffTurm.clone().add(V(0, dy, 0))); }   // R3: Haltegriff mit Haltern an der Flanke der Säule (das Seil an der Öse bleibt frei)
+      if (art === 'kickback_bein') { if (z.dkTurm) { griffRohr(ger, V(-0.26, 1.22, 0.6), V(0.26, 1.22, 0.6), ger.gruppe, 0.8); for (const sx of [-1, 1]) { ger.vierkant(V(sx * 0.26, 0.05, 0.6), V(sx * 0.26, 1.22, 0.6), 0.04); ger.vierkant(V(sx * 0.26, 0.03, 0.6), z.dkTurm[0].an(0.17, 0.03).setX(sx * 0.1), 0.05); } } else { griffRohr(ger, V(-0.22, 1.22, 0.6), V(0.22, 1.22, 0.6), ger.gruppe, 0.8); ger.vierkant(V(0, 1.22, 0.6), V(0, 1.22, 0.66), 0.03); } }   // R3: Haltestange auf zwei Füßen vor dem Turm (das Seil läuft in der Mitte an der Stange vorbei, die Hände halten sie mit Abstand zu den Füßen)   // Haltestange am Turm: abstützen
+      const dicke = last === 'band' ? 0.012 : flyArt ? 0.006 : 0.004, m = last === 'band' ? ger.mBand : ger.mKabel;   // R3: Seil am DK-Turm 8 mm
       z.seil_l = ger.stab(V(), V(0, 1, 0), dicke, m);
       if (flyArt || (art === 'ueberzug' && last === 'band')) { z.seil_r = ger.stab(V(), V(0, 1, 0), dicke, m); z.griff_l = ger.griff(); z.griff_r = ger.griff(); }
       if (art === 'ueberzug' && last === 'kabel') z.griff = ger.griff(0.5);
       if (art === 'woodchop' || art === 'holzhacker_quer') z.griff = ger.griff(0.22);   // kurze Stange für beide Hände, Kabel am Ring
-      if (art === 'facepull') { const dS = last === 'band' ? 0.012 : 0.014, mS = last === 'band' ? ger.mBand : ger.mSeil; z.strang_l = ger.stab(V(), V(0, 1, 0), dS, mS); z.strang_r = ger.stab(V(), V(0, 1, 0), dS, mS); }
+      if (art === 'facepull') { const dS = last === 'band' ? 0.012 : 0.014, mS = last === 'band' ? ger.mBand : ger.mSeil; z.strang_l = ger.stab(V(), V(0, 1, 0), dS, mS); z.strang_r = ger.stab(V(), V(0, 1, 0), dS, mS); if (last === 'kabel') z.knoten = r3_knoten(ger); }
+      if (last === 'kabel' && bein) z.knoten = r3_knoten(ger);   // R3: Karabiner an der Manschette: das Kabel endet an einem Teil, nicht in der Luft
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -4002,7 +4711,7 @@ export function kabelstand(o = {}) {
         props(g, z) {
           if (z.hebel) {   // Hebel dreht mit dem Bein um die Hüftachse
             const d = g.knoechel.r.clone().sub(g.huefte.r); d.x = 0; d.normalize();
-            z.hebel.quaternion.setFromUnitVectors(V(0, -1, 0), d); z.block.heben(0.3 * t); return;
+            z.hebel.quaternion.setFromUnitVectors(V(0, -1, 0), d); z.dkSeil.stelle([Math.atan2(d.y, d.z)]); return;
           }
           if (last === 'stuhl') return;
           const ankerR = V(-anker.x, anker.y, anker.z);
@@ -4012,15 +4721,17 @@ export function kabelstand(o = {}) {
               : [['seil_l', g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5), anker]];
           if (z.griff) {   // Kabelstange: Kabel endet am Ring
             const mitte = kabelstangeAn(z.griff, g, anker);
-            ziele = [['seil_l', mitte.clone().add(anker.clone().sub(mitte).normalize().multiplyScalar(0.03)), anker]];
+            ziele = [['seil_l', V(0, 0.03, 0).applyQuaternion(z.griff.quaternion).add(mitte), anker]];   // R3: Kabel endet am Drehring der Stange (3 cm über der Mitte), so streift es die Gummikappen nicht
           }
           if (art === 'facepull') {
             // Seil mit zwei Enden: Knoten 22 cm vor den Händen, vor dem Gesicht bleibt er mindestens 20 cm vor dem Kopf
             const mitte = ziele[0][1], k0 = mitte.clone().add(anker.clone().sub(mitte).normalize().multiplyScalar(0.22)), ueber = g.kopf.clone().addScaledVector(g.R.vor, 0.2).sub(k0).dot(g.R.vor), knoten = ueber > 0 ? k0.addScaledVector(g.R.vor, ueber) : k0;
-            ziele = [['seil_l', knoten, anker]];
+            ziele = [['seil_l', knoten, anker]]; if (z.knoten) z.knoten.position.copy(knoten);
             for (const [s, sg] of [['l', 1], ['r', -1]]) bandKette(z, 'strang_' + s, umDenKoerper(g, knoten, g.hand[s], 0.01, g.R.links.clone().multiplyScalar(sg)));
           }
+          if (z.knoten && bein) z.knoten.position.copy(ziele[0][1]);
           for (const [n, ziel, a] of ziele) { const d = ziel.clone().sub(a), l = d.length(); z[n].position.copy(a).add(ziel).multiplyScalar(0.5); z[n].quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z[n].scale.set(1, l, 1); }
+          if (z.dkTurm) { if (flyArt) { z.dkTurm[0].stelle([g.hand.l.distanceTo(anker)]); z.dkTurm[1].stelle([g.hand.r.distanceTo(ankerR)]); } else z.dkTurm[0].zieh(ziele[0][1].distanceTo(ziele[0][2])); }   // DK Line: Seil im Turm, der Stapel hebt sich mit der Seillänge
         }
       };
     },
@@ -4180,7 +4891,7 @@ function dipMaschine() {
   const h0 = (s, sg) => startHand(s, sg), h1 = (s, sg) => k.schulter[s].clone().add(V(sg * 0.1, -1, 0.02).normalize().multiplyScalar(ARM * 0.9995));
   const C = bogenMitte(h0('l', 1), h1('l', 1), { z: becken.z - 0.5 });
   return {
-    aufbau(ger) { const z = {}; drueckmaschineBauen(ger, z, becken, r, C, 'laengs'); return z; },
+    aufbau(ger) { const z = {}; drueckmaschineBauen(ger, z, becken, r, C, 'laengs', { titel: 'DIP-MASCHINE', untertitel: 'TRIZEPS', dir: -1, rN: 0.28, dth: 0.46 }); return z; },
     pose(t) {
       const hand = seiten((s, sg) => bogenHand(h0(s, sg), h1(s, sg), C, t));
       return { pose: { becken, rumpf: r, hand, handflaeche: seiten((s, sg) => V(-sg, 0, 0)), ellbogenPol: seiten((s, sg) => V(sg * 0.3, 0, -1)), fuss: seiten((s, sg) => V(sg * 0.2, FY, 0.42)), kniePol: seiten((s, sg) => V(sg * 0.2, 1, 1)) },
@@ -4389,7 +5100,7 @@ function rumpfMehr(art) {
         : seiten((s, sg) => gekreuzt(k, sg));   // Arme vor der Brust gekreuzt
       return { pose: { becken, rumpf: r, wirbel: w, kopf: { neigung: bauch ? 15 : -5 }, hand, handflaeche: bauch ? seiten((s, sg) => k.R.links.clone().multiplyScalar(-sg)) : seiten(() => k.R.vor.clone().negate()),
           ellbogenPol: seiten((s, sg) => bauch ? V(sg * 0.4, -1, 0.5) : gekreuztPol(k, sg)), fuss: seiten((s, sg) => V(sg * 0.13, bauch ? FY : 0.08 + FY, bauch ? 0.36 : 0.42)), kniePol: seiten((s, sg) => V(sg * 0.2, 1, 1)) },
-        props(g, z) { z.rm.hebel.quaternion.copy(hebelQ); z.block.heben(0.22 * t); } };
+        props(g, z) { z.rm.hebel.quaternion.copy(hebelQ); z.rm.dk.stelle([Math.PI / 2 - hebelW]); } };   // DK Line: Hebelwinkel (von +z nach +y) bewegt Nocke, Seil und Stapel
     },
     blick: V(0, 0.6, 0), abstand: 3.4, kameraRicht: V(1, 0.4, 0.3),
     dauer: art === 'plank_knie' ? STATISCH : art === 'hollow_rock' ? [0.9, 0.1, 0.9, 0.1] : art === 'body_saw' ? [1.2, 0.2, 1.2, 0.2] : undefined
@@ -4686,12 +5397,13 @@ export function schulterzug(o = {}) {
       const z = {};
       if (art === 'reverse_butterfly') butterflyBauen(ger, z, V(0, 0.56, -0.12), { neigung: 6 }, -1);
       if (art === 'pull_apart') z.band = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand);
-      if (art === 'kabel_reverse_fly') { ger.turm(V(0.85, 0, 0.55)); ger.turm(V(-0.85, 0, 0.55)); z.seil_l = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.seil_r = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); }
-      if (art === 'aussenrotation' && o.last === 'kabel') { ger.turm(V(0.8, 0, AR_ANKER.z + 0.02)); z.band = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff = ger.griff(); }
+      if (art === 'kabel_reverse_fly') { r3_setze(z, r3_turm(ger, V(-0.85, 1.45, 0.5), V(-1, 0, 0), V(0.5, 0.35, 1), 'KABELZUG', 'SCHULTERN'), r3_turm(ger, V(0.85, 1.45, 0.5), V(1, 0, 0), V(0.5, 0.35, 1), 'KABELZUG', 'SCHULTERN')); z.seil_l = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.seil_r = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); }   // R3: zwei DK-Kabeltürme (Öse jeweils auf der Seite der Hand, Seile kreuzen vorn)
+      if (art === 'aussenrotation' && o.last === 'kabel') { r3_setze(z, r3_turm(ger, AR_ANKER.clone(), V(1, 0, 0), V(0.5, 0.35, 1), 'KABELZUG', 'SCHULTERN')); z.band = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff = ger.griff(); }   // R3: DK-Kabelturm seitlich, Öse = Ansatz des Bands
       else if (art === 'aussenrotation') { ger.box(0.08, 1.3, 0.08, V(0.8, 0.65, AR_ANKER.z), ger.mRahmen); z.band = ger.stab(V(), V(0, 1, 0), 0.014, ger.mBand); }
       // Zusammengerolltes Handtuch zwischen Oberarm und Rippen auf Ellbogenhöhe
       if (art === 'aussenrotation') { const rolle = ger.teil(new THREE.CylinderGeometry(0.02, 0.02, 0.22, 18), handtuchStoff(), V(-0.16, 1.2, 0.075)); rolle.rotation.x = Math.PI / 2; }
       if (art === 'yt_bauchlage') { ger.matte(); ger.teil(rundGeo(0.26, 0.05, 0.2, 0.02, 3), handtuchStoff(), V(0, 0.03, -0.5)); }   // Handtuch unter der Stirn
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -4721,7 +5433,7 @@ export function schulterzug(o = {}) {
         const handR = genau(ell.clone().addScaledVector(ua, UNTERARM));
         // Daumen oben, Handfläche zur Körpermitte: der Unterarm bleibt neutral (bis 5.11. zeigte die Handfläche nach unten, der Unterarm war 114° verdreht)
         return { pose: Object.assign({ becken, rumpf: r, hand: { r: handR, l: becken.clone().add(V(0.17, 0.05, 0.06)) }, handflaeche: { r: oa.clone().negate().cross(ua) }, ellbogenPol: { r: ell.clone().sub(k.schulter.r.clone().lerp(handR, 0.5)), l: V(1, 0, -0.5) } }, stehFuesse(0.15)),
-          props(g, z) { bandKette(z, 'band', umDenKoerper(g, AR_ANKER, g.hand.r, 0.012, g.R.vor)); if (z.griff) { z.griff.position.copy(g.hand.r); z.griff.quaternion.setFromUnitVectors(V(1, 0, 0), V(0, 1, 0)); } } };
+          props(g, z) { const weg = umDenKoerper(g, AR_ANKER, g.hand.r, 0.012, g.R.vor); bandKette(z, 'band', weg); if (z.dkTurm) z.dkTurm[0].zieh(r3_laenge(weg)); if (z.griff) { z.griff.position.copy(g.hand.r); z.griff.quaternion.setFromUnitVectors(V(1, 0, 0), V(0, 1, 0)); } } };
       }
       const sitzt = art === 'reverse_butterfly';
       const becken = sitzt ? V(0, 0.56, -0.12) : V(0, 0.975, 0);
@@ -4733,7 +5445,7 @@ export function schulterzug(o = {}) {
         props(g, z) {
           if (z.bf) butterflyStellen(z, g, t);
           if (z.band) bandKette(z, 'band', umDenKoerper(g, g.hand.l, g.hand.r, 0.012, g.R.vor));   // vor der Brust, nicht durch sie
-          if (z.seil_l) { seil(z.seil_l, V(-0.85, 1.45, 0.5), g.hand.l); seil(z.seil_r, V(0.85, 1.45, 0.5), g.hand.r); }
+          if (z.seil_l) { seil(z.seil_l, V(-0.85, 1.45, 0.5), g.hand.l); seil(z.seil_r, V(0.85, 1.45, 0.5), g.hand.r); if (z.dkTurm) { z.dkTurm[0].zieh(V(-0.85, 1.45, 0.5).distanceTo(g.hand.l)); z.dkTurm[1].zieh(V(0.85, 1.45, 0.5).distanceTo(g.hand.r)); } }
         } };
     },
     blick: V(0, 1.1, 0), abstand: 3.4, kameraRicht: art === 'yt_bauchlage' ? V(1, 0.7, 0.4) : V(0.5, 0.35, art === 'reverse_butterfly' ? -1 : 1), dauer: art === 'yt_bauchlage' ? [2.0, 0.3, 2.4, 0.4] : undefined
@@ -4756,11 +5468,12 @@ export function brustmaschine(o = {}) {
   return {
     aufbau(ger) {
       const z = {};
-      if (art === 'presse') drueckmaschineBauen(ger, z, BM_BECKEN, BM_RUMPF, BM_C, 'senkrecht');
-      else if (sitzt) butterflyBauen(ger, z, BM_BECKEN, BM_RUMPF, 1); else if (kabel) { ger.turm(V(0.85, 0, -0.75)); ger.turm(V(-0.85, 0, -0.75)); z.band_l = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.band_r = ger.stab(V(), V(0, 1, 0), 0.006, ger.mKabel); z.griff_l = ger.griff(); z.griff_r = ger.griff(); }
+      if (art === 'presse') drueckmaschineBauen(ger, z, BM_BECKEN, BM_RUMPF, BM_C, 'senkrecht', { titel: 'BRUSTPRESSE', untertitel: 'BRUST', dir: 1, rN: 0.30, dth: 0.4 });
+      else if (sitzt) butterflyBauen(ger, z, BM_BECKEN, BM_RUMPF, 1); else if (kabel) { r3_setze(z, r3_turm(ger, V(0.8, BAND_PFOSTEN.y, -0.72), V(0.7, 0, -0.7), V(0.9, 0.35, 0.8), 'KABELZUG', 'BRUST'), r3_turm(ger, V(-0.8, BAND_PFOSTEN.y, -0.72), V(-0.7, 0, -0.7), V(0.9, 0.35, 0.8), 'KABELZUG', 'BRUST')); z.band_l = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.band_r = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.griff_l = ger.griff(); z.griff_r = ger.griff(); }   // R3: zwei DK-Kabeltürme hinter dem Körper
       // Band: an zwei Pfosten hinter dem Körper (wie zwei Rack-Streben) knapp unter Brusthöhe, so läuft es unter den Armen nach vorn statt
       // durch Oberarm und Schulter (bis 31.10.: ein Pfosten in der Mitte, Band 5 cm im Oberarm)
       else { for (const sx of [-1, 1]) ger.box(0.06, 1.5, 0.06, V(sx * BAND_PFOSTEN.x, 0.75, BAND_PFOSTEN.z - 0.04), ger.mRahmen); z.band_l = ger.stab(V(), V(0, 1, 0), 0.013, ger.mBand); z.band_r = ger.stab(V(), V(0, 1, 0), 0.013, ger.mBand); }
+      if (z.dkTurm) r3_vorlauf(this, z);
       return z;
     },
     pose(t) {
@@ -4797,7 +5510,7 @@ export function brustmaschine(o = {}) {
           if (z.dm) drueckmaschineStellen(z, g, t);
           if (z.bf) butterflyStellen(z, g, t);
           for (const [s, sg] of [['l', 1], ['r', -1]]) {
-            if (z['band_' + s]) bandKette(z, 'band_' + s, umDenKoerper(g, kabel ? V(sg * 0.8, BAND_PFOSTEN.y, -0.72) : BAND_PFOSTEN.clone().setX(sg * BAND_PFOSTEN.x), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg).addScaledVector(g.R.oben, 0.5).normalize()));
+            if (z['band_' + s]) { const weg = umDenKoerper(g, kabel ? V(sg * 0.8, BAND_PFOSTEN.y, -0.72) : BAND_PFOSTEN.clone().setX(sg * BAND_PFOSTEN.x), g.hand[s], 0.012, g.R.links.clone().multiplyScalar(sg).addScaledVector(g.R.oben, 0.5).normalize()); bandKette(z, 'band_' + s, weg); if (z.dkTurm) z.dkTurm[sg > 0 ? 0 : 1].zieh(r3_laenge(weg)); }
             if (kabel) { z['griff_' + s].position.copy(g.hand[s]); z['griff_' + s].quaternion.setFromUnitVectors(V(1, 0, 0), V(0, 1, 0)); }
           }
         } };
@@ -4811,8 +5524,10 @@ export function brustmaschine(o = {}) {
 /* =================================================================== */
 
 // Sprünge: art kniebeuge (Sprungkniebeuge) | box (Box Jump) | ausfallschritt (Beinwechsel in der Luft)
+// Neu (G10-N2): hampelmann | hohe_knie (Cardio ohne Gerät, eigene Funktion sprungCardio); hohe_knie hat die Option tempo: marsch (Standard) | lauf
 export function sprung(o = {}) {
   const art = o.art || 'kniebeuge';
+  if (art === 'hampelmann' || art === 'hohe_knie') return sprungCardio(art, o);
   const BOX = 0.5, BOXZ = 0.56;   // Kasten so weit vorn, dass die Knie in der Ausholbewegung frei sind
   const fx = art === 'box' ? 0.14 : 0.21;   // Sprungkniebeuge: Füße schulterbreit (bis 5.11. 0,61×)
   const hTief = art === 'box' ? 0.56 : 0.625, nTief = art === 'box' ? 32 : 24;   // Sprungkniebeuge: halbe Kniebeuge, Knie etwa 85°, Rumpf etwa 25° (bis 5.11. Knie 100°, Rumpf 38°)
@@ -4925,8 +5640,211 @@ export function bauchbank(o = {}) {
   };
 }
 
+/* =================================================================== */
+/* G10-N2 (09.11.2026): Rückenlage ohne Gerät (Reha) und Cardio ohne Gerät  */
+/* =================================================================== */
+
+// Bein in der Längsebene als Winkel: Der Knöchel liegt D vor der Hüfte (+z) und h über (+) oder unter (−) ihr, das Knie zeigt nach oben.
+// Ergebnis für beinAus: Hüftwinkel a (Oberschenkel über der Waagerechten) und Kniebeugung k, beide in Grad. So sind Knie und Hüfte genau die Zahlen, die im Text stehen
+function liegeBeinZiel(D, h) {
+  const L1 = MASS.oberschenkel, L2 = MASS.unterschenkel, d = Math.min(Math.hypot(D, h), (L1 + L2) * 0.999);
+  const alpha = Math.acos((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)), knie = Math.PI - Math.acos((L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2));
+  return { a: (Math.atan2(h, D) + alpha) / RAD, k: knie / RAD };
+}
+// Rückenlage auf der Matte, das linke Bein (zur Kamera hin) arbeitet, eine Wiederholung = hin, halten, zurück, kurze Pause (dauer).
+// fersenrutschen: Ferse gleitet am Boden zum Po, Knie bis genau 90° (nach einer OP ist die Beugung anfangs oft darauf begrenzt, mehr zeigt die App nie).
+// beinheben_einbeinig: das andere Bein steht aufgestellt, das gestreckte Bein hebt bis die Oberschenkel auf gleicher Höhe liegen (Lende bleibt flach, Knie bleibt gestreckt)
+function rumpfLiegend(art) {
+  const fersen = art === 'fersenrutschen', L1 = MASS.oberschenkel, L2 = MASS.unterschenkel;
+  const becken = V(0, 0.12, 0.25), r = { basis: LIEGEND, neigung: 0 }, k0 = rumpf(becken, r), RB = rumpfRahmen(r);
+  const huefte = (s) => hueftGelenk(becken, RB, s);
+  const lang = (s) => beinAus(huefte(s), 0, 4, BEIN_AUS, BEIN_HOCH);   // gestreckt auf der Matte: Knöchel 9 cm hoch, die Ferse liegt auf
+  const D0 = lang('l').fuss.z - huefte('l').z, h0 = lang('l').fuss.y - huefte('l').y;
+  const stuetz = liegeBeinZiel(0.56, FY - becken.y);   // aufgestelltes Bein: Fuß flach, 56 cm vor der Hüfte (Hüfte rund 45°, Knie rund 100°)
+  return {
+    aufbau(ger) { ger.matte(); return {}; },
+    pose(t) {
+      const w = glatt(t), hand = seiten((s, sg) => armNeben(k0.schulter[s], sg)), bein = {};
+      if (fersen) {
+        // Der Knöchel gleitet auf gleicher Höhe zum Po; die Winkel folgen daraus. Ende: Knie 90° (Abstand Hüfte–Knöchel = Wurzel aus Oberschenkel² + Unterschenkel²)
+        const D1 = Math.sqrt(L1 * L1 + L2 * L2 - h0 * h0), z = liegeBeinZiel(mix(D0, D1, w), h0);
+        bein.l = beinAus(huefte('l'), z.a, z.k, BEIN_AUS, BEIN_HOCH); bein.r = lang('r');
+      } else {
+        bein.l = beinAus(huefte('l'), mix(0, stuetz.a, w), mix(4, 3, w), BEIN_AUS, BEIN_HOCH);
+        bein.r = beinAus(huefte('r'), stuetz.a, stuetz.k, BEIN_AUS, BEIN_HOCH);
+      }
+      // Füße: liegend zeigen die Zehen leicht nach oben (der Boden begrenzt es), das gehobene Bein zieht die Fußspitze zum Körper (p < 0), das aufgestellte steht flach
+      const fuss = { l: fersen ? V(0, 0.45, 0.89) : bein.l.fr(mix(60, -5, w)), r: fersen ? V(0, 0.45, 0.89) : V(-0.1, 0, 1) };
+      return { pose: { becken, rumpf: r, hand, flach: seiten(() => V(0, 1, 0)), ellbogenPol: seiten((s, sg) => V(sg, 1, 0)), fuss: seiten((s) => bein[s].fuss), kniePol: seiten((s) => bein[s].pol), fussRicht: fuss } };
+    },
+    blick: V(0, 0.45, 0.1), abstand: 3.5, kameraRicht: V(1, 0.45, 0.3),
+    dauer: fersen ? [2, 0.5, 2, 0.5] : [2, 1.5, 2, 0.5], gleichmaessig: true
+  };
+}
+
+// Cardio ohne Gerät (Stand auf dem Boden). hampelmann: t = 0 Füße zusammen und Arme unten, t = 1 Füße weit auseinander und Arme über dem Kopf; dazwischen ein kleiner Sprung,
+// die Landung ist weich (Knie 20°, auf dem Ballen). hohe_knie: t = 0 linkes Knie oben, t = 1 rechtes Knie oben (Spiegelbild), Arme gegengleich; tempo marsch (Standard, immer ein Fuß am Boden) | lauf (kurze Flugphase, schneller)
+function sprungCardio(art, o) {
+  const hampel = art === 'hampelmann', lauf = !hampel && o.tempo === 'lauf', L1 = MASS.oberschenkel, L2 = MASS.unterschenkel;
+  const huefteHoch = (knie, dx) => Math.sqrt(L1 * L1 + L2 * L2 + 2 * L1 * L2 * Math.cos(knie * RAD) - dx * dx);   // Hüftgelenk über dem Knöchel bei dieser Kniebeugung und seitlichem Versatz
+  const sinus = (u) => Math.sin(Math.PI * Math.max(0, Math.min(1, u)));
+  return {
+    aufbau() { return {}; },
+    pose(t) {
+      if (hampel) {
+        // Flug von t = 0,2 bis 0,8 (rund 0,24 s bei 0,4 s je Richtung, 5,5 cm Höhe); der Knöchel bleibt dabei unter 0,2 m, sonst springt der Fuß (figur.js FUSS_LUFT). Arme starten etwas früher als die Beine
+        const q = Math.max(0, Math.min(1, (t - 0.2) / 0.6)), luft = Math.sin(Math.PI * q), wb = glatt(q), wa = glatt(t / 0.9);
+        const spur = mix(0.075, 0.38, wb), knie = mix(20, 6, luft), zeh = mix(12, 30, luft), ay = zehenHoehe(zeh) + 0.055 * luft;
+        const becken = V(0, ay + huefteHoch(knie, Math.abs(spur - MASS.hueftBreite)) + 0.02, 0), r = { neigung: mix(6, 3, luft) }, k = rumpf(becken, r);
+        // Arme gestreckt in der Körperebene: 5° (hängen) bis 185° (über dem Kopf, die Hände rund 30 cm auseinander)
+        const aw = mix(5, 185, wa) * RAD, A = ARM * 0.996;
+        const hand = seiten((s, sg) => k.schulter[s].clone().add(V(sg * Math.sin(aw) * A, -Math.cos(aw) * A, 0)));
+        // Handflächen: hängend zum Körper, in der Waagerechten nach unten, oben nach vorn (der Oberarm dreht sich beim Heben nach außen); ohne Angabe klappte die Hand in der Waagerechten um (6 cm Sprung)
+        const nachVorn = Math.max(0, Math.min(1, (aw / RAD - 90) / 90));
+        const flaeche = seiten((s, sg) => (aw <= Math.PI / 2 ? V(-sg * Math.cos(aw), -Math.sin(aw), 0) : V(0, -1, 0).lerp(V(0, 0, 1), nachVorn)));
+        return { pose: { becken, rumpf: r, hand, handflaeche: flaeche, ellbogenPol: seiten((s, sg) => V(sg * 0.3, 0, -1)), fuss: seiten((s, sg) => V(sg * spur, ay, 0)), zehen: seiten(() => zeh),
+          kniePol: seiten((s, sg) => V(sg * mix(0.15, 0.6, wb), 0, 1)), fussRicht: seiten((s, sg) => V(sg * mix(0.12, 0.5, wb), 0, 1)) } };
+      }
+      // Hohe Knie: Das aufsetzende Bein sinkt in der ersten Hälfte, das andere steigt in der zweiten; in der Mitte stehen kurz beide am Boden (Lauf: beide kurz in der Luft)
+      const pause = lauf ? 0.35 : 0.45, hebL = 1 - glatt(t / pause), hebR = glatt((t - (1 - pause)) / pause), pw = glatt(t);
+      const flug = lauf ? 0.035 * sinus((t - 0.35) / 0.3) : 0, kS = 10 + 6 * Math.sin(Math.PI * t) ** 2;   // Standbein federt von 10° auf 16°
+      const ay = FY + flug, becken = V(0, ay + huefteHoch(kS, 0.015) + 0.02, 0), r = { neigung: 3 }, k = rumpf(becken, r), RB = rumpfRahmen(r);
+      const bein = (s, sg, heb) => {
+        const hg = hueftGelenk(becken, RB, s), unten = V(sg * 0.11, ay, 0);
+        // Ganz oben: Oberschenkel rund 88° nach vorn, Knie 95°, der Fuß hängt locker (Zehen nach unten). Der Knöchel läuft vom Boden dorthin, das Knie folgt aus den Beinlängen
+        const oben = beinAus(hg, 88, 95, V(0, -1, 0), V(0, 0, 1));
+        return { fuss: mv(unten, oben.fuss, heb), pol: V(sg * 0.1, 0.4, 1), fr: mv(V(sg * 0.1, 0, 1), oben.fr(45), heb).normalize() };
+      };
+      const b = { l: bein('l', 1, hebL), r: bein('r', -1, hebR) };
+      // Arme im rechten Winkel, schwingen gegengleich zu den Beinen wie beim Laufen (rechtes Knie hoch: linker Arm vorn)
+      const hand = seiten((s, sg) => { const f = mix(s === 'l' ? -35 : 35, s === 'l' ? 35 : -35, pw) * RAD; return k.schulter[s].clone().add(V(-sg * 0.02, -Math.cos(f) * MASS.oberarm + Math.sin(f) * UNTERARM, Math.sin(f) * MASS.oberarm + Math.cos(f) * UNTERARM)); });
+      return { pose: { becken, rumpf: r, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.2, -1, -1)), fuss: seiten((s) => b[s].fuss), kniePol: seiten((s) => b[s].pol), fussRicht: seiten((s) => b[s].fr) } };
+    },
+    blick: V(0, 0.9, 0.2), abstand: 3.8, kameraRicht: hampel ? V(0.5, 0.25, 1) : V(1, 0.3, 0.45),
+    dauer: hampel ? [0.4, 0.1, 0.4, 0.1] : lauf ? [0.3, 0, 0.3, 0] : [0.5, 0, 0.5, 0], gleichmaessig: true
+  };
+}
+
+/* G10-N1 BEGINN */
+/* =================================================================== */
+/* Dehnungen (Halteübungen) und Schulterpendeln (G10-N1, 9.11.2026)      */
+/* =================================================================== */
+
+// Eine Schleife 0 → 1 → 0 (t = 0 und t = 1 sind gleich): Ausatmen, die Dehnung gibt ein Stück nach, dann wieder ein Stück zurück
+const dehnAtem = (t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t);
+// Wand nur als Fläche zur Figur hin (wie beim Wand-Liegestütz: von der anderen Seite sieht man durch sie hindurch auf Hände und Ellbogen), dazu ein Hauch Glas für die Rückseite
+function dehnWand(ger, geo, pos) {
+  const w = ger.teil(geo, ger.mRahmen, pos); w.rotation.y = Math.PI;
+  const glas = ger.teil(geo, new THREE.MeshBasicMaterial({ color: 0x9aa4b2, transparent: true, opacity: 0.1, depthWrite: false }), pos);
+  glas.castShadow = false; glas.receiveShadow = false; glas.userData.keinTeil = true;
+}
+// Offene Tür: Wand mit 80-cm-Öffnung (Fläche zur Figur hin bei z = zv), davor Zarge aus zwei Pfosten und Kopfbalken wie bei rudern tuerrahmen.
+// Die Wand besteht aus drei getrennten Flächen (links, rechts, über der Tür): die Schutzhülle misst jedes Teil als Quader, eine Wand mit Loch gälte als volle Fläche quer durch die Figur
+function tuerOffen(ger, zv) {
+  dehnWand(ger, new THREE.PlaneGeometry(0.9, 2.5), V(-0.85, 1.25, zv));
+  dehnWand(ger, new THREE.PlaneGeometry(0.9, 2.5), V(0.85, 1.25, zv));
+  dehnWand(ger, new THREE.PlaneGeometry(0.8, 0.45), V(0, 2.275, zv));
+  for (const sx of [-1, 1]) ger.box(0.06, 2.07, 0.1, V(sx * 0.43, 1.035, zv + 0.05), ger.mRahmen);   // Zarge hinter der Wandfläche (von vorn sichtbar), nichts steht vor der Wand
+  ger.box(0.92, 0.06, 0.1, V(0, 2.08, zv + 0.05), ger.mRahmen);
+}
+
+// Hüftbeuger-Dehnung im halben Kniestand (Matte): das hintere (rechte) Knie liegt unter der Hüfte, der Oberschenkel steht bis 12° hinter der Senkrechten; vorn steht der linke Fuß, Oberschenkel waagerecht,
+// Schienbein senkrecht (Knie 90° über dem Knöchel). Das Becken ist nach hinten gekippt, die Wirbelsäule gleicht aus: Brustkorb senkrecht, unterer Rücken flach. Hände an den Hüften
+const HB_KNIE = V(-0.095, 0.075, -0.22), HB_EXT = 11.25;
+function dehnHueftbeuger(t) {
+  const e = dehnAtem(t), ext = mix(HB_EXT - 1.25, HB_EXT + 1.25, e) * RAD, kipp = mix(10, 13, e);
+  const r = { neigung: -kipp }, w = { beuge: kipp }, RB = rumpfRahmen(r);
+  const hueR = HB_KNIE.clone().add(V(0, Math.cos(ext), Math.sin(ext)).multiplyScalar(MASS.oberschenkel));
+  const becken = hueR.clone().addScaledVector(RB.links, MASS.hueftBreite).addScaledVector(RB.oben, 0.02);
+  // Der vordere Knöchel steht fest (er rutscht nicht auf der Matte): dort, wo das Schienbein senkrecht unter dem waagerechten Oberschenkel steht, wenn die Hüfte in der Mitte der Schleife ist
+  const e0 = HB_EXT * RAD, vorn = V(0.095, HB_KNIE.y + MASS.oberschenkel * Math.cos(e0) - MASS.unterschenkel, HB_KNIE.z + MASS.oberschenkel * (Math.sin(e0) + 1));
+  // Hinten liegt der Unterschenkel fast waagerecht auf der Matte (Fußrücken unten, wie beim Latzug im Halbkniestand)
+  const hinten = HB_KNIE.clone().add(V(-0.005, Math.sin(3 * RAD), -Math.cos(3 * RAD)).multiplyScalar(MASS.unterschenkel * 0.998));
+  const hand = seiten((s, sg) => hueftGelenk(becken, RB, s).add(V(sg * 0.075, 0.095, -0.03)));
+  return { pose: { becken, rumpf: r, wirbel: w, kopf: { neigung: 0 }, hand, flach: seiten((s, sg) => V(sg, 0, 0.1)), ellbogenPol: seiten((s, sg) => V(sg, 0.1, -0.5)),
+      fuss: { l: vorn, r: hinten }, kniePol: { l: V(0.05, 1, 0.9), r: V(0, -1, 0.3) }, fussRicht: { l: V(0.08, 0, 1), r: V(0, -0.3, -1) }, zehen: { l: 0, r: -60 } },
+    props(g) { fingerStellen(g, () => V(0, -0.5, 0.85)); } };
+}
+
+// Brustdehnung am Türrahmen: der rechte Ellbogen liegt am Rahmen (Oberarm waagerecht, Unterarm senkrecht, flache Hand am Rahmen) und bleibt dort; die Schulter schiebt sich an ihm vorbei nach vorn
+// (bis 3,5°) und der Brustkorb dreht sich bis 13° vom Arm weg. Der linke Arm hängt. Linker Fuß einen kleinen Schritt durch die Tür, rechter dahinter
+const DB_ZT = 0.3;
+function dehnBrustStellung(e) {
+  const phi = mix(1, 3.5, e) * RAD, drop = 8 * RAD, r = { neigung: 8, drehung: mix(10, 13, e) };
+  const E = V(-0.51, 1.36, DB_ZT - 0.085);   // Ellbogen: 8,5 cm vor der Wand (die Haut des Oberarms reicht rund 10 cm über die Knochenlinie hinaus) und bleibt dort; der Unterarm legt sich nach oben an die Wand
+  const S = E.clone().add(V(Math.cos(phi) * Math.cos(drop), Math.sin(drop), Math.sin(phi) * Math.cos(drop)).multiplyScalar(MASS.oberarm));
+  return { r, E, S, becken: S.clone().sub(rumpf(V(), r).schulter.r) };
+}
+function dehnBrust(t) {
+  const { r, E, S, becken } = dehnBrustStellung(dehnAtem(t)), mitte = dehnBrustStellung(0.5).becken;
+  const W = E.clone().add(V(0, 1, 0.204).normalize().multiplyScalar(MASS.unterarm * 0.9995));   // Handgelenk 3 cm vor der Wand: Unterarm fast senkrecht, oben 11° zur Wand hin
+  return { pose: { becken, rumpf: r, kopf: { neigung: 0 }, hand: { r: W }, flach: { r: V(0, 0, -1) }, ellbogenPol: { r: E.clone().sub(S) },
+      fuss: { l: V(mitte.x + 0.1, FY, mitte.z + 0.22), r: V(mitte.x - 0.1, FY, mitte.z - 0.2) }, kniePol: seiten((s, sg) => V(sg * 0.05, 0, 1)), fussRicht: seiten((s, sg) => V(sg * 0.05, 0, 1)) },
+    props(g) { fingerStellen(g, () => V(0, 1, 0.1)); } };
+}
+
+// Wadendehnung an der Wand: der Körper ist eine gerade Linie von der hinteren (rechten) Ferse, 23,6–24,4° aus der Senkrechten; die Hände liegen auf Brusthöhe an der Wand, die Arme sind leicht gebeugt.
+// Das hintere Bein ist gestreckt, die Ferse bleibt am Boden und der Fuß zeigt nach vorn; das vordere Knie ist gebeugt
+const DW_Z = 0.95;
+function dehnWade(t) {
+  const e = dehnAtem(t), a = mix(23.6, 24.4, e) * RAD, r = { neigung: a / RAD }, RB = rumpfRahmen(r);
+  const hinten = V(-0.1, FY, -0.15), hueR = hinten.clone().add(V(0, Math.cos(a), Math.sin(a)).multiplyScalar(BEIN * 0.9993));
+  const becken = hueR.clone().addScaledVector(RB.links, MASS.hueftBreite).addScaledVector(RB.oben, 0.02);
+  return { pose: { becken, rumpf: r, kopf: { neigung: -14 }, hand: seiten((s, sg) => V(sg * 0.215, 1.28, DW_Z - 0.012)), flach: seiten(() => V(0, 0, -1)), ellbogenPol: seiten((s, sg) => V(sg * 0.5, -1, -0.7)),
+      fuss: { l: V(0.1, FY, 0.5), r: hinten }, kniePol: seiten((s, sg) => V(sg * 0.05, 0, 1)), fussRicht: seiten((s, sg) => V(sg * 0.04, 0, 1)) },
+    props(g) { fingerStellen(g, (s, sg) => V(sg * 0.25, 1, 0)); } };
+}
+
+// Dehnungen (Halteübungen; Schleife von 4 s mit Atem und kleinem Nachgeben, kein Wippen; wie lange gehalten wird, steht in den Daten). art: hueftbeuger (halber Kniestand auf der Matte, rechtes Knie hinten)
+//   | brust_tuerrahmen (rechter Unterarm am Türrahmen, linker Fuß durch die Tür) | wade_wand (Hände an der Wand, rechtes Bein hinten gestreckt)
+export function dehnung(o = {}) {
+  const art = ['brust_tuerrahmen', 'wade_wand'].includes(o.art) ? o.art : 'hueftbeuger';
+  const stellung = { hueftbeuger: dehnHueftbeuger, brust_tuerrahmen: dehnBrust, wade_wand: dehnWade }[art];
+  // Kamera bei der Tür auf der Wandseite, an der die Figur steht (sie kommt im Ablauf von der Kameraseite herein: von der Gegenseite liefe sie durch die Wand)
+  const ansicht = { hueftbeuger: [V(0, 0.55, 0), 3.0, V(-1, 0.25, 0.35)], brust_tuerrahmen: [V(0, 1.05, 0.2), 3.4, V(-1, 0.25, -0.2)], wade_wand: [V(0, 0.8, 0.4), 3.4, V(-1, 0.25, -0.3)] }[art];
+  return {
+    aufbau(ger) {
+      if (art === 'hueftbeuger') ger.matte();
+      else if (art === 'brust_tuerrahmen') tuerOffen(ger, DB_ZT);
+      else dehnWand(ger, new THREE.PlaneGeometry(1.6, 2.4), V(0, 1.2, DW_Z));
+      return {};
+    },
+    pose: stellung,
+    blick: ansicht[0], abstand: ansicht[1], kameraRicht: ansicht[2],
+    // Eine Schleife in 4 s, gleichmäßig (die Vorlage bremst selbst); der Atem folgt der Dehnung (nur ein Drittel des vollen Atemhubs, ruhig)
+    dauer: [4, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.3 * dehnAtem(t)
+  };
+}
+
+// Schulterpendeln (Codman): vorgebeugt am Tisch, die linke Hand stützt flach auf der Platte, der rechte Arm hängt locker und kreist (Ø 20 cm, ein Kreis in 2 s).
+// Der Arm wird nicht geführt: das Becken wippt in kleinen Kreisen (Knie federn, Füße bleiben), die Hand folgt der Schulter mit Verzug wie ein Pendel (0,15 Umlauf)
+export function pendeln(o = {}) {
+  const TISCH = 0.75, TX = 0.4, TZ = 0.8;
+  return {
+    aufbau(ger) {
+      // Tisch: Platte 90 × 60 cm, Oberkante 75 cm; er beginnt links von der pendelnden Hand
+      ger.box(0.9, 0.04, 0.6, V(TX, TISCH - 0.02, TZ), ger.mRahmen);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) ger.box(0.05, TISCH - 0.04, 0.05, V(TX + sx * 0.4, (TISCH - 0.04) / 2, TZ + sz * 0.25), ger.mRahmen);
+      return {};
+    },
+    pose(t) {
+      const w = 2 * Math.PI * t, r = { neigung: 62 };
+      const becken = V(0, 0.955, -0.07).add(V(0.025 * Math.cos(w), 0, 0.025 * Math.sin(w)));
+      const k = rumpf(becken, r), S = k.schulter.r, lag = w - 0.15 * 2 * Math.PI, R = 0.085, L = ARM * 0.995;
+      const hand = { l: V(0.205, TISCH + 0.03, 0.72), r: V(S.x + R * Math.cos(lag), S.y - Math.sqrt(L * L - R * R), S.z + R * Math.sin(lag)) };
+      return { pose: { becken, rumpf: r, kopf: { neigung: -25 }, hand, flach: { l: V(0, 1, 0) }, ellbogenPol: { l: V(0.6, -0.3, -0.7), r: V(0.3, 0, -1) },
+          fuss: seiten((s, sg) => V(sg * 0.12, FY, 0)), kniePol: seiten((s, sg) => V(sg * 0.08, 0.1, 1)), fussRicht: seiten((s, sg) => V(sg * 0.2, 0, 1)) },
+        props(g) { fingerStellen(g, (s, sg) => V(sg * 0.25, 0, 1)); } };
+    },
+    blick: V(0, 0.8, 0.35), abstand: 3.3, kameraRicht: V(-1, 0.3, 0.25),
+    // Gleichmäßige Schleife ohne Halt: ein Kreis in 2 s
+    dauer: [2, 0, 0, 0], gleichmaessig: true
+  };
+}
+/* G10-N1 ENDE */
+
 export const VORLAGEN = { kniebeuge, kreuzheben, ausfallschritt, hueftheben, wadenheben, beinmaschine, bankdruecken, liegestuetz, schulterdruecken, schulterheben, rudern, klimmzug, curl, trizeps, rumpfuebung, tragen, kabelstand, swing, kniestand, seitlage,
-  einbeinkniebeuge, sonderkniebeuge, bandgang, beincurl, seitstuetz, schulterzug, brustmaschine, sprung, vierfuessler, bauchbank };
+  einbeinkniebeuge, sonderkniebeuge, bandgang, beincurl, seitstuetz, schulterzug, brustmaschine, sprung, vierfuessler, bauchbank, dehnung, pendeln };
 // Schulterdrücken und Schrägbank: Führung durch die Stange oben (gestreckt über dem Schultergelenk); flaches Bankdrücken: zwischen Brustpunkt
 // und Lockout (Schrägbank mit 'mitte' führte die Stange beim Hinlegen weiter durch den Rücken)
 for (const n of ['kniebeuge', 'ausfallschritt', 'hueftheben', 'wadenheben', 'bankdruecken', 'schulterdruecken', 'rudern', 'tragen']) VORLAGEN[n] = smithFuehren(VORLAGEN[n], n === 'bankdruecken' ? (o) => (o.neigung > 0 ? 'oben' : 'mitte') : n === 'schulterdruecken' ? 'oben' : null);
@@ -4946,6 +5864,7 @@ export function animation(eintrag) {
   if (o.einstiegVorgebeugt) a.einstiegVorgebeugt = true;
   if (o.ablaufBand) a.ablaufEigen = (h) => bandVomBoden(h, o.ablaufBand);
   genauUeberR0(a);
+  a.schluessel = eintrag.vorlage + ':' + JSON.stringify(o);   // Schlüssel für gerechnete Hut-Lagen (figur.js HUT_TABELLE)
   return a;
 }
 // Geht das Ziel einer Hand in der Bewegung über R0 (Oberarm + Unterarm) hinweg, gilt es genau: figur.js streckt Arme mit Zielen knapp

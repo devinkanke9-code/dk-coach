@@ -542,6 +542,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function frei(p, w) {
     if (aktiv != null && stationen[aktiv].statisch) stationen[aktiv].statisch.visible = true;
     aktiv = null; a.uebung = null; a.intro = null; a.geraete.leeren(); a.figur.markiere([]);
+    a.figur.hutFest = null; a.figur.hutKorr = null;   // zwischen den Stationen sitzt der Hut wieder auf dem Kopf
     if (a.figur.hut) { a.figur.hut.visible = !a.figur.ohneHut; if (a.figur.haarAnzeige) a.figur.haarAnzeige(); }
     F.set(p.x, 0, p.z); H = zielH = w; legeHalle(F, 0); spielerRing.visible = true; if (namensTafel) namensTafel.visible = true;
   }

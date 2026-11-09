@@ -189,11 +189,13 @@
     });
     var we = wiedereinstiegDaten(W, k), weGrenze = null;
     if (we && we.stufe && we.regionen.length) {
-      var s = we.stufe;
-      weGrenze = { stufe: s, regionen: we.regionen, muskeln: {}, posVerboten: arr(s.pos_verboten), nurStabil: !!s.nur_stabil, beineMax: 2, armeMax: 2, griffMax: 2,
+      var s = we.stufe, weTechnik = (W.wiedereinstieg && W.wiedereinstieg.technik) || {};
+      arr(weTechnik.muster_immer_gesperrt).forEach(function (m) { meiden[m] = 'Wiedereinstieg'; });
+      weGrenze = { stufe: s, regionen: we.regionen, muskeln: {}, dehnenGesperrt: {}, posVerboten: arr(s.pos_verboten), nurStabil: !!s.nur_stabil, beineMax: 2, armeMax: 2, griffMax: 2,
         rumpfNurMaschine: !!s.muskeln_sperren && we.regionen.some(function (r) { return r.rumpf_nur_maschine; }) };
       we.regionen.forEach(function (r) {
         arr(r.gelenke).forEach(function (g) { if (g in lim && s.gelenk_max != null) lim[g] = Math.min(lim[g], s.gelenk_max); });
+        if (weTechnik.dehnen_an_der_stelle_gesperrt) arr(r.muskeln_gesperrt).forEach(function (m) { weGrenze.dehnenGesperrt[m] = r.name; });
         if (s.muskeln_sperren) {
           arr(r.muskeln_gesperrt).forEach(function (m) { weGrenze.muskeln[m] = r.name; });
           arr(r.muster_gesperrt).forEach(function (m) { meiden[m] = r.name; });
@@ -250,6 +252,7 @@
       if (bel > ctx.grenzen.gelenkLimit[g]) gruende.push('Gelenk ' + g);
     });
     if (ctx.grenzen.musterMeiden[ex.muster]) gruende.push('Muster gesperrt');
+    if (ex.muster === 'reha_basis' && !ctx.grenzen.we) gruende.push('Reha nur im Plan Wiedereinstieg');
     if (ctx.ausschluss[ex.id]) gruende.push('Kunde mag sie nicht');
     if (ctx.level <= 1 && ex.technik_anspruch >= 3) gruende.push('Technik zu schwer');
     var we = ctx.grenzen.we;
@@ -264,6 +267,7 @@
         if (we.nurStabil && pos.pos !== 'sitzend' && pos.pos !== 'liegend') gruende.push('Wiedereinstieg: nicht stabil');
       }
       if (arr(ex.muskel_primaer).concat(arr(ex.muskel_sekundaer)).some(function (m) { return we.muskeln[m]; })) gruende.push('Wiedereinstieg: Stelle ruht');
+      if (ex.muster === 'dehnen' && arr(ex.muskel_primaer).concat(arr(ex.muskel_sekundaer)).some(function (m) { return we.dehnenGesperrt[m]; })) gruende.push('Wiedereinstieg: Stelle nicht dehnen');
       if (ex.technik_anspruch >= 3) gruende.push('Wiedereinstieg: Technik zu schwer');
       if (we.rumpfNurMaschine && /^rumpf/.test(ex.muster) && arr(ex.ausruestung).indexOf('maschine') < 0) gruende.push('Wiedereinstieg: Rumpf nur an der Maschine');
     }
@@ -494,6 +498,11 @@
     var R = W.regeln && W.regeln.intensitaet && (W.regeln.intensitaet[k.ziel] || W.regeln.intensitaet.fitness_allgemein);
     return grenzen.wdh || (R && ((R.wdh_nach_level && R.wdh_nach_level[String(k.level)]) || R.wdh)) || null;
   }
+  // Reha, Dehnen, Cardio: keine Kraftübungen, Regeln stehen in regeln_training.json unter bewegungsformen
+  function bewegungsform(W, ex) {
+    var b = W.regeln && W.regeln.bewegungsformen;
+    return (ex && b && b.formen && b.formen[ex.muster]) || null;
+  }
   function intensitaet(W, k, grenzen, ex) {
     var R = W.regeln.intensitaet[k.ziel] || W.regeln.intensitaet.fitness_allgemein;
     if (!R) throw new Error('Wissensbasis: keine Intensitätsregeln für Ziel ' + k.ziel);
@@ -506,6 +515,8 @@
     var rir = (R.rir && (R.rir[lvl] || R.rir[k.level])) || [2, 3];
     rir = [Math.max(rir[0], grenzen.rirMin), Math.max(rir[1], grenzen.rirMin)];
     var pause = (R.pause_sek && (R.pause_sek[ex.rolle === 'grund' ? 'grund' : 'isolation'])) || [60, 120];
+    var form = bewegungsform(W, ex);
+    if (form && ex.wdh_bereich) return { wdh: ex.wdh_bereich.slice(), einheit: ex.einheit || 'wdh', rir: form.ohne_rir ? null : rir, pause: (form.pause_sek || pause).slice() };   // Reha, Dehnen, Cardio: Dosis aus der Übung
     return { wdh: [lo, hi], einheit: ex.einheit || 'wdh', rir: rir, pause: pause };
   }
 
@@ -1154,6 +1165,7 @@
     arr(tage).forEach(function (tag) {
       arr(tag.uebungen).forEach(function (u) {
         var ex = W.index[u.id];
+        if (bewegungsform(W, ex)) return;   // Reha, Dehnen, Cardio zählen nicht als Trainingsvolumen
         arr(ex ? ex.muskel_primaer : u.muskeln).forEach(function (m) { ist[m] = (ist[m] || 0) + u.saetze; });
         arr(ex && ex.muskel_sekundaer).forEach(function (m) { ist[m] = (ist[m] || 0) + u.saetze * 0.5; });
       });
@@ -1209,7 +1221,7 @@
         wdh = [lo, hi];
       }
     }
-    var max = satzGrenze(W, ctx), soll = Math.round(+u.saetze) || 3;
+    var form = bewegungsform(W, ex), max = satzGrenze(W, ctx), soll = Math.round(+u.saetze) || (form && form.saetze) || 3;
     if (soll > max) hinweis = (hinweis ? hinweis + ' ' : '') + 'Höchstens ' + max + ' Sätze.';
     var r = { id: eigen ? (/^eigen_/.test(u.id || '') ? u.id : 'eigen_' + Math.random().toString(36).slice(2, 9)) : ex.id,
       name: eigen ? (String(u.name || '').trim().slice(0, 80) || 'Eigene Übung') : ex.name,
@@ -1304,7 +1316,7 @@
     horizontal_druecken: 'Drücken horizontal', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern',
     vertikal_ziehen: 'Ziehen von oben', isolation_arme: 'Arme', isolation_schulter: 'Schulter isoliert',
     isolation_beine: 'Beine isoliert', rumpf_anti_extension: 'Rumpf (Anti-Extension)', rumpf_anti_rotation: 'Rumpf (Anti-Rotation)',
-    rumpf_flexion: 'Bauch', tragen: 'Tragen', wade: 'Waden' };
+    rumpf_flexion: 'Bauch', tragen: 'Tragen', wade: 'Waden', reha_basis: 'Reha-Grundlagen', dehnen: 'Dehnen', cardio: 'Cardio' };
   function muskelLesbar(m) { return MUSKEL_NAME[m] || m; }
   function musterLesbar(m) { return MUSTER_NAME[m] || m; }
   function typNameLesbar(t) {
