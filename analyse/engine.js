@@ -493,6 +493,50 @@
     }).sort(function (x, y) { return (rang(y) + punkte(y, ctx, slot)) - (rang(x) + punkte(x, ctx, slot)); });
   }
 
+  /* Wechsel und Tausch in der Kunden-App (09.11.2026, Devin: „jede Woche … eine neue Übung“, „gibt es diese Maschine nicht, sollen wir die ändern?“).
+   * Die App kennt die Gesundheitsdaten nicht. Darum steht hier beim Bau des Links fest, was sie überhaupt anbieten darf: je Übung sichere Ersatzübungen mit eigener Dosis (a),
+   * die ersten rt davon wechseln wochenweise. Alles läuft durch uebungErlaubt, wie beim Erstellen. Keine KI: Die Übungen wählt immer der Generator. */
+  function wechselDaten(W, kundeIn, plan) {
+    var R = W.regeln.wochen_wechsel, c = kontext(W, kundeIn), g = c.grenzen;
+    var beschwerden = Object.keys(g.musterAnpassen).length > 0, fest = !!g.we || beschwerden;   // nach OP und bei Beschwerden wechselt nichts von selbst
+    var imPlan = {};
+    arr(plan.tage).forEach(function (t) { arr(t.uebungen).forEach(function (u) { imPlan[u.id] = true; }); });
+    function eintrag(e) {
+      var it = intensitaet(W, c.kunde, g, e), o = { i: e.id, w: it.wdh, r: it.rir, p: it.pause };
+      if (it.einheit === 'sek') o.e = 'sek';
+      if (e.einseitig) o.j = 1;
+      return o;
+    }
+    function geraete(e) { return arr(e.ausruestung).slice().sort().join('+'); }
+    var tage = arr(plan.tage).map(function (t) {
+      var imTag = {}, rotiert = {};
+      arr(t.uebungen).forEach(function (u) { imTag[u.id] = true; });
+      return arr(t.uebungen).map(function (u) {
+        var ex = W.index[u.id];
+        if (!ex) return null;   // eigene Übung von Devin: dafür gibt es keine sicheren Ersatzübungen aus der Datenbank
+        var prim = arr(ex.muskel_primaer)[0];
+        var gleich = function (e) { return arr(e.muskel_primaer).indexOf(prim) >= 0; };
+        var alle = alternativen(W, c, ex).filter(function (e) { return !imTag[e.id]; });
+        var pool = fest || ex.rolle === 'grund' ? [] : alle.filter(function (e) {
+          return e.muster === ex.muster && gleich(e) && e.rolle !== 'grund' && !imPlan[e.id] && !rotiert[e.id] && (eintrag(e).e === 'sek') === (u.einheit === 'sek');
+        }).slice(0, R.zusatz_pool_max);
+        pool.forEach(function (e) { rotiert[e.id] = true; });
+        // Fehlt ein Gerät, helfen vor allem Übungen mit anderen Geräten: erst je Gerätekombination eine, dann auffüllen
+        var liste = pool.slice(), gesehen = {}, reihe = alle.filter(gleich).concat(alle.filter(function (e) { return !gleich(e); }));
+        gesehen[geraete(ex)] = true;
+        liste.forEach(function (e) { gesehen[geraete(e)] = true; });
+        reihe.forEach(function (e) { if (liste.length < R.tausch_max && !gesehen[geraete(e)]) { gesehen[geraete(e)] = true; liste.push(e); } });
+        reihe.forEach(function (e) { if (liste.length < R.tausch_max && liste.indexOf(e) < 0) liste.push(e); });
+        if (!liste.length) return null;
+        var o = { a: liste.map(eintrag) };
+        if (pool.length) o.rt = pool.length;
+        return o;
+      });
+    });
+    var fokus = g.we ? [] : arr(R.fokus).filter(function (f) { return !beschwerden || f.auch_bei_beschwerden; }).map(function (f) { return f.text; });
+    return { fokus: fokus, tage: tage };
+  }
+
   /* ---------- 4. Belastung ---------- */
   function zielWdh(W, k, grenzen) {
     var R = W.regeln && W.regeln.intensitaet && (W.regeln.intensitaet[k.ziel] || W.regeln.intensitaet.fitness_allgemein);
@@ -1359,6 +1403,7 @@
     erstellePlan: erstellePlan,
     kontext: kontext,
     alternativen: function (W, kunde, id) { return alternativen(W, kontext(W, kunde), W.index[id]); },
+    wechselDaten: wechselDaten,
     pruefeUebung: function (W, kunde, id) { return uebungErlaubt(W.index[id], kontext(W, kunde)); },
     intensitaet: function (W, kunde, id) { var c = kontext(W, kunde); return intensitaet(W, c.kunde, c.grenzen, W.index[id]); },
     pruefeQualitaet: pruefeQualitaet,

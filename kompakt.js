@@ -147,6 +147,15 @@
           if (u.j) o.j = 1;
           if (u.x) o.x = text(u.x, 400);
           if (u.nm) o.nm = text(u.nm, 160);
+          if (Array.isArray(u.a)) {   // sichere Ersatzübungen aus der Trainer-Seite (engine.js → wechselDaten)
+            var ers = u.a.slice(0, 8).filter(function (x) { return x && typeof x === 'object' && typeof x.i === 'string' && idOk(x.i); }).map(function (x) {
+              var e = { i: x.i, w: zahlen(x.w, 0, 1000), r: zahlen(x.r, -1, 20), p: zahlen(x.p, 0, 3600) };
+              if (x.e === 'sek') e.e = 'sek';
+              if (x.j) e.j = 1;
+              return e;
+            });
+            if (ers.length) { o.a = ers; var rt = Math.min(ers.length, Math.round(zahl(u.rt, 0, 8) || 0)); if (rt) o.rt = rt; }
+          }
           return o;
         }) };
         if (t.a && typeof t.a === 'object') tag.a = { d: zahl(t.a.d, 0, 120), u: liste(t.a.u, 30).filter(Array.isArray).map(function (x) { return [text(x[0], 200), text(x[1], 120)]; }) };
@@ -158,6 +167,7 @@
     };
     if (idOk(p.id)) aus.id = p.id;
     if (datum(p.importiert)) aus.importiert = datum(p.importiert);
+    if (Array.isArray(p.wf)) { var wf = texte(p.wf, 8, 200); if (wf.length) aus.wf = wf; }
     return aus;
   }
 

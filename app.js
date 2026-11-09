@@ -191,13 +191,13 @@ const S = { ansicht: 'heute', plan: null, tagWahl: null };
 function aktiverPlan() {
   const plaene = speicher.lies('dk_plaene', {});
   const id = speicher.lies('dk_aktiv', null);
-  if (plaene[id]) return plaene[id];
+  if (plaene[id]) return mitWechsel(plaene[id]);
   if (id && konten()[id]) return null;   // eingeloggt, aber noch ohne Plan (Analyse oder Warten)
-  return Object.values(plaene)[0] || null;
+  return mitWechsel(Object.values(plaene)[0] || null);
 }
 function uebung(u) {
   const d = UEBUNGEN[u.i] || { n: u.nm || u.i, m: [], t: [], f: [], v: [] };
-  return { id: u.i, name: u.nm || d.n || u.i, saetze: u.s, wdh: u.w, rir: u.r, pause: u.p || [], einheit: u.e || d.e, einseitig: !!u.j, notiz: u.x, d };
+  return { id: u.i, name: u.nm || d.n || u.i, saetze: u.s, wdh: u.w, rir: u.r, pause: u.p || [], einheit: u.e || d.e, einseitig: !!u.j, notiz: u.x, d, tausch: u.z || null };
 }
 const istSek = (u) => u.einheit === 'sek';
 const dosis = (u) => bereich(u.wdh, istSek(u) ? 'sek' : '') + (istSek(u) ? '' : ' Wdh');
@@ -207,6 +207,49 @@ const anzeigeName = (u) => u.name + (u.einseitig ? ' (je Seite)' : '');
 function aktuelleWoche(p) {
   const start = new Date(p.importiert || isoHeute());
   return Math.max(0, Math.floor((Date.now() - start.getTime()) / 6048e5));
+}
+/* Wechsel und Tausch (09.11.2026, Devin: „jede Woche … eine neue Übung“, „gibt es diese Maschine nicht, sollen wir die ändern?“, nur für eingeloggte Kunden).
+ * Die Liste a kommt aus der Trainer-Seite und ist dort gegen Level, Geräte, Beschwerden und Gesundheits-Check geprüft: Die App wählt nur daraus, sie prüft selbst nichts.
+ * Das Gespeicherte bleibt der Plan von Devin, hier entsteht bei jedem Lesen die Fassung dieser Woche. z merkt sich das Original. Ein Tausch gilt bis zum nächsten Plan (p.d). */
+const tauschKey = (p) => 'dk_tausch_' + p.id;
+function tauschLaden(p) { const t = speicher.lies(tauschKey(p), null); return t && t.d === p.d && t.m ? t.m : {}; }
+function mitWechsel(p) {
+  if (!p || p.id === 'beispiel' || !konten()[p.id] || !p.t.some((t) => t.u.some((u) => u.a))) return p;
+  const w = aktuelleWoche(p), pins = tauschLaden(p), wf = p.wf || [];
+  return Object.assign({}, p, { fokus: wf.length ? wf[w % wf.length] : '', t: p.t.map((t, ti) => {
+    const wahl = t.u.map((roh) => {
+      const m = pins[ti + '|' + roh.i];
+      if (!m) return null;
+      return m === roh.i ? { behalten: true } : (roh.a || []).find((a) => a.i === m && UEBUNGEN[a.i]) || null;
+    });
+    const fest = new Set(wahl.filter((x) => x && x.i).map((x) => x.i));
+    return Object.assign({}, t, { u: t.u.map((roh, ui) => {
+      let neu = wahl[ui] && wahl[ui].i ? wahl[ui] : null, art = neu ? 'tausch' : '';
+      if (!wahl[ui] && roh.rt) {
+        const pool = [null].concat(roh.a.slice(0, roh.rt)), kand = pool[w % pool.length];
+        if (kand && UEBUNGEN[kand.i] && !fest.has(kand.i)) { neu = kand; art = 'neu'; }
+      }
+      const z = { ti, orig: roh, art };
+      return neu ? Object.assign({}, roh, { e: undefined, j: undefined }, neu, { x: art === 'neu' ? 'Neu diese Woche' : 'Von dir getauscht', z }) : Object.assign({}, roh, { z });
+    }) });
+  }) });
+}
+// Was der Kunde statt dieser Übung nehmen darf: die Liste aus dem Plan, ohne was an dem Tag schon dran ist. Ist gerade nicht das Original dran, steht es oben
+function tauschOptionen(u) {
+  const z = u.tausch, p = aktiverPlan();
+  if (!z || !p || !p.t[z.ti]) return [];
+  const hier = new Set(p.t[z.ti].u.map((x) => x.i)), liste = (z.orig.a || []).filter((a) => UEBUNGEN[a.i] && !hier.has(a.i));
+  return z.art && UEBUNGEN[z.orig.i] ? [{ i: z.orig.i, orig: true }].concat(liste) : liste;
+}
+// Gilt für jeden Tag mit derselben Übung, an dem der Ersatz erlaubt und noch nicht dran ist
+function tauschen(z, neuId) {
+  const p = aktiverPlan(), m = Object.assign({}, tauschLaden(p));
+  p.t.forEach((t, ti) => t.u.forEach((x) => {
+    if (!x.z || x.z.orig.i !== z.orig.i) return;
+    const erlaubt = neuId === z.orig.i || (x.z.orig.a || []).some((a) => a.i === neuId);
+    if (erlaubt && !t.u.some((y) => y !== x && y.i === neuId)) m[ti + '|' + x.z.orig.i] = neuId;
+  }));
+  speicher.schreib(tauschKey(p), { d: p.d, m });
 }
 const istEntlastung = (p) => (p.w || [])[aktuelleWoche(p)] === 'd';
 // In der Entlastungswoche halb so viele Sätze (mindestens 1)
@@ -705,6 +748,7 @@ function trainingsKarte(p, ti, istHeute) {
     h('div', { class: 'aktionen' }, startKnopf(p, ti, istHeute ? 'Training starten' : 'Diese Einheit starten'), h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, ti), text: 'Ins Gym gehen' })),
     aufwaermen(t),
     istHeute ? h('p', { class: 'klein' + (alle ? '' : ' leise'), role: 'status', text: alle ? 'Alles erledigt. Stark, bis zum nächsten Training!' : erledigt.length + ' von ' + t.u.length + ' Übungen erledigt' }) : null,
+    p.fokus && t.u.some((roh) => roh.z && !roh.z.art && !istSek(uebung(roh))) ? h('p', { class: 'notiz', text: 'Fokus diese Woche: ' + p.fokus }) : null,
     h('div', { class: 'ueb-liste' }, t.u.map((roh, ui) => {
       const u = uebung(roh), fertig = erledigt.indexOf(ui) >= 0;
       return h('div', { class: 'ueb-karte mit3d' + (fertig ? ' fertig' : '') + (istHeute ? '' : ' ohne-haken') },
@@ -965,6 +1009,14 @@ window.addEventListener('popstate', () => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') schliesseBlatt(); });
 document.addEventListener('touchstart', () => {}, { passive: true });   // iOS: sonst greift :active (Antipp-Effekt) nicht
 
+function tauschBlatt(u) {
+  oeffneBlatt('Gerät nicht da?', 'Sollen wir ' + u.name + ' ändern? Das hier passt sicher zu deinem Plan.', [
+    h('div', { class: 'stapel' }, tauschOptionen(u).map((a) => {
+      const d = UEBUNGEN[a.i];
+      return h('button', { class: 'eintrag', type: 'button', onclick: () => { tauschen(u.tausch, a.i); schliesseBlatt(); toast('Getauscht: ' + d.n); zeichne(); } },
+        h('b', { text: d.n + (a.orig ? ' (wie im Plan)' : '') }), h('span', { class: 'leise klein', text: (d.m || []).map((m) => MUSKEL[m] || m).join(', ') }));
+    }))]);
+}
 function oeffneUebung(u, ti) {
   const d = u.d, p = S.plan;
   const b = buehne({ lade3d, fotoGross });
@@ -977,7 +1029,8 @@ function oeffneUebung(u, ti) {
       u.rir ? h('span', { class: 'chip', text: 'Reserve ' + bereich(u.rir) + ' Wdh' }) : null, u.pause.length ? h('span', { class: 'chip', text: pauseText(u) + ' Pause' }) : null) : null,
     u.notiz ? h('p', { class: 'notiz', text: u.notiz }) : null,
     abschnitt('So geht’s', d.t), abschnitt('Typische Fehler', d.f),
-    d.v && d.v.length ? h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Vorsicht' }), h('p', { text: d.v.join(' ') })) : null
+    d.v && d.v.length ? h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Vorsicht' }), h('p', { text: d.v.join(' ') })) : null,
+    !(LAUF && LAUF.phase !== 'fertig') && tauschOptionen(u).length ? h('button', { class: 'knopf', type: 'button', onclick: () => tauschBlatt(u), text: 'Gerät nicht da? Tauschen' }) : null
   ], () => b.weg());
   b.zeige(d);
 }
@@ -1119,15 +1172,31 @@ function startKnopf(p, ti, text) {
   if (LAUF && LAUF.phase !== 'fertig') return h('button', { class: 'knopf haupt', type: 'button', onclick: () => (LAUF.gym ? raumStarten(aktiverPlan(), LAUF.tagNr - 1) : timerZeigen()), text: 'Training läuft · fortsetzen' });
   return h('button', { class: 'knopf haupt', type: 'button', onclick: () => laufStarten(p, ti), text: text || 'Training starten' });
 }
+// Eine Übung für den Trainingslauf. tg: was im Plan stand, wenn der Kunde getauscht hat (steht im Text an Devin)
+function laufEintrag(p, roh) {
+  const u = uebung(roh), pz = u.pause, z = u.tausch, fokus = p.fokus && z && !z.art && !istSek(u) ? p.fokus : '';
+  const e = { id: u.id, name: anzeigeName(u), saetze: Math.max(1, +satzZahl(p, u) || 1), dosis: dosis(u), sek: istSek(u),
+    rir: u.rir ? bereich(u.rir) : '', pauseMin: pz.length ? auf15(pz[0]) : 60, pauseMax: pz.length ? auf15(pz[pz.length - 1]) : 90,
+    tipp: fokus || (u.d.t || [])[0] || '', vorsicht: (u.d.v || [])[0] || '', log: [] };
+  if (z && z.art === 'tausch') e.tg = (UEBUNGEN[z.orig.i] || {}).n || z.orig.i;
+  return e;
+}
+// Tausch mitten im Training: nur solange die Übung noch keinen Satz hat. Im 3D-Gym nicht, dort steht die Station schon
+function laufSlot() {
+  if (TM.gym || aktUe().log.length) return null;
+  const p = aktiverPlan(), roh = p && p.id === LAUF.plan && (p.t[LAUF.tagNr - 1] || { u: [] }).u[LAUF.ue];
+  return roh && roh.z ? uebung(roh) : null;
+}
+function laufTauschen(u, neuId) {
+  tauschen(u.tausch, neuId);
+  const p = aktiverPlan();
+  LAUF.uebungen[LAUF.ue] = laufEintrag(p, p.t[LAUF.tagNr - 1].u[LAUF.ue]);
+  LAUF.seit = Date.now(); TM.tausch = false; laufSichern(); toast('Getauscht: ' + UEBUNGEN[neuId].n); timerZeigen();
+}
 function laufStarten(p, ti, gym) {
   const jetzt = Date.now(), t = p.t[ti];
   LAUF = { v: 1, plan: p.id, kunde: p.n || '', tagNr: ti + 1, tagName: t.n, start: jetzt, ue: 0, satz: 0, phase: 'satz', seit: jetzt, pauseZiel: 0,
-    uebungen: t.u.map((roh) => {
-      const u = uebung(roh), pz = u.pause;
-      return { id: u.id, name: anzeigeName(u), saetze: Math.max(1, +satzZahl(p, u) || 1), dosis: dosis(u), sek: istSek(u),
-        rir: u.rir ? bereich(u.rir) : '', pauseMin: pz.length ? auf15(pz[0]) : 60, pauseMax: pz.length ? auf15(pz[pz.length - 1]) : 90,
-        tipp: (u.d.t || [])[0] || '', vorsicht: (u.d.v || [])[0] || '', log: [] };
-    }) };
+    uebungen: t.u.map((roh) => laufEintrag(p, roh)) };
   TM.frage = false;
   if (gym) { LAUF.gym = true; LAUF.phase = 'frei'; }
   laufSichern(); piep(1); wach(true); if (!gym) timerZeigen();
@@ -1135,6 +1204,7 @@ function laufStarten(p, ti, gym) {
 const aktUe = () => LAUF.uebungen[LAUF.ue];
 const letzterSatz = () => LAUF.ue === LAUF.uebungen.length - 1 && LAUF.satz === aktUe().saetze - 1;
 function satzFertig() {
+  TM.tausch = false;
   const u = aktUe(), jetzt = Date.now(), vor = u.log[u.log.length - 1];
   u.log.push({ s: LAUF.seit, e: jetzt, kg: vor ? vor.kg : '', wdh: '' });
   LAUF.bonus = null;
@@ -1171,7 +1241,7 @@ const zahlOderNull = (x) => x === '' || x == null || isNaN(+x) ? null : +x;
 function ergebnis(status) {
   const ende = Date.now(), alle = [];
   LAUF.uebungen.forEach((u) => u.log.forEach((s) => alle.push(s)));
-  const ue = LAUF.uebungen.filter((u) => u.log.length).map((u) => ({ n: u.name, sek: u.sek ? 1 : 0, z: u.log.map((s) => {
+  const ue = LAUF.uebungen.filter((u) => u.log.length).map((u) => ({ n: u.name, sek: u.sek ? 1 : 0, tg: u.tg || undefined, z: u.log.map((s) => {
     const i = alle.indexOf(s), nach = alle[i + 1];
     const pz = nach ? nach.s - s.e : (s === alle[alle.length - 1] && LAUF.phase === 'satz' ? LAUF.seit - s.e : null);
     return [zahlOderNull(s.kg), zahlOderNull(s.wdh), Math.round((s.e - s.s) / 1000), pz != null ? Math.round(pz / 1000) : null];
@@ -1219,7 +1289,7 @@ function laufAlsText(r) {
   const z = ['DK Training · ' + (r.k || 'Kunde') + ' · T' + r.t + ' ' + r.tn, datumZeit(r.s),
     'Dauer ' + mmss(laufDauer(r)) + ' · ' + saetzeGesamt(r) + ' Sätze' + (r.st === 'abgebrochen' ? ' · vorzeitig beendet' : ''), ''];
   r.u.forEach((u) => {
-    z.push(u.n);
+    z.push(u.n + (u.tg ? ' (vom Kunden getauscht, im Plan stand ' + u.tg + ')' : ''));
     u.z.forEach((s, i) => z.push('  ' + (i + 1) + '. ' + (s[0] != null ? s[0] + ' kg' : '–') + ' × ' + (s[1] != null ? s[1] + (u.sek ? ' s' : '') : '–') +
       ' · Satz ' + mmss(s[2]) + (s[3] != null ? ' · Pause ' + mmss(s[3]) : '')));
   });
@@ -1394,6 +1464,11 @@ function timerLaeuft() {
     if (u.tipp) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Technik ' }), u.tipp));
     if (u.vorsicht) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Vorsicht ' }), u.vorsicht));
     teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: satzFertig, text: 'Satz fertig' }));
+    const slot = laufSlot(), wahl = slot ? tauschOptionen(slot) : [];
+    if (wahl.length && !TM.tausch) teile.push(h('button', { class: 'knopf', type: 'button', onclick: () => { TM.tausch = true; timerZeigen(); const x = TM.el && TM.el.querySelector('.tm-tausch'); if (x) x.scrollIntoView({ block: 'center' }); }, text: 'Gerät nicht da? Tauschen' }));
+    if (wahl.length && TM.tausch) teile.push(h('div', { class: 'tm-karte tm-tausch' }, h('p', { text: 'Sollen wir ' + u.name + ' ändern? Das hier passt sicher zu deinem Plan.' }),
+      h('div', { class: 'stapel' }, wahl.map((a) => h('button', { class: 'knopf', type: 'button', onclick: () => laufTauschen(slot, a.i), text: UEBUNGEN[a.i].n + (a.orig ? ' (wie im Plan)' : '') }))),
+      h('button', { class: 'knopf text', type: 'button', onclick: () => { TM.tausch = false; timerZeigen(); }, text: 'Doch nicht' })));
     if (info.length) teile.push(h('div', { class: 'tm-karte' }, info));
   }
   if (TM.frage) teile.push(h('div', { class: 'tm-frage' }, h('p', { text: 'Training jetzt beenden? Die fertigen Sätze bleiben gespeichert.' }),
