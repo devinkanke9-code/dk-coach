@@ -238,7 +238,7 @@ export function gelenke(pose) {
     for (const p of [becken, brust, nacken, kopf, schulter.l, schulter.r, huefte.l, huefte.r, schulterBasis.l, schulterBasis.r]) p.sub(sink);
     for (const d of Object.values(schulterDreh)) d.punkt.sub(sink);
   }
-  const out = { drehGlatt: !!pose.drehGlatt, atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
+  const out = { drehGlatt: !!pose.drehGlatt, flachFinger: pose.flachFinger || null, atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -504,7 +504,7 @@ export function gelenke(pose) {
         const h = Math.hypot(sohle.x, sohle.z) || 1e-6, neu = Math.sqrt(Math.max(0, 1 - y * y));
         sohle.set(sohle.x / h * neu, y, sohle.z / h * neu);
       }
-      if (ky > FUSS_LUFT) {
+      if (ky > FUSS_LUFT || (pose.fussLuft && pose.fussLuft[s])) {
         const schien = out.knie[s].clone().sub(out.knoechel[s]);
         schien.sub(sohle.clone().multiplyScalar(schien.dot(sohle)));
         if (schien.lengthSq() > 1e-6) {
@@ -513,7 +513,7 @@ export function gelenke(pose) {
           // Das gilt nur für einen Fuß, der in der Bewegung den Boden berührt (pose.fussBoden, setzt animation()): ein Fuß, der die ganze Zeit schwebt (Skater Squat, hinten), behält seine Lage.
           // Liegen beide genau gegenüber (Bauchlage), geht der Weg immer seitlich nach außen herum (sonst entschied der Zufall die Richtung)
           const luft = schien.normalize(), p = oben.clone().addScaledVector(sohle, -oben.dot(sohle)), pl = p.length();   // p = Bodenspann senkrecht zur Fußrichtung
-          const k = pl > 0.05 && pose.fussBoden && pose.fussBoden[s] ? glaettung((Math.acos(grenze(p.dot(luft) / pl, -1, 1)) - 15 * RAD) / (25 * RAD)) : 0, w = k * glaettung((ky - FUSS_LUFT) / 0.1) + (1 - k);
+          const k = pl > 0.05 && pose.fussBoden && pose.fussBoden[s] ? glaettung((Math.acos(grenze(p.dot(luft) / pl, -1, 1)) - 15 * RAD) / (25 * RAD)) : 0, w = pose.fussLuft && pose.fussLuft[s] ? 1 : k * glaettung((ky - FUSS_LUFT) / 0.1) + (1 - k);   // G14: pose.fussLuft (Bodenfuß in Bauchlage/Vierfüßler schon in der Lage nach dem Schienbein, nichts schaltet um)
           if (w >= 1) oben = luft;
           else if (w > 0) {
             const gegen = glaettung((-p.dot(luft) / pl - 0.5) / 0.5), aussen = V(sg, 0, 0).addScaledVector(sohle, -sohle.x * sg), roh = oben.clone().multiplyScalar(1 - w).addScaledVector(luft, w);
@@ -1920,15 +1920,16 @@ const HUT_TABELLE = {
   "bankdruecken:{\"last\":\"kurzhanteln\",\"art\":\"boden\"}": [1135736629,"k",0.02,-20,5],   // kurzhantel_bodendruecken
   "bankdruecken:{\"last\":\"kurzhanteln\",\"art\":\"ueberzug\"}": [1877601975,"f",0.2598,0,-0.2117],   // kurzhantel_pullover
   "liegestuetz:{\"art\":\"pike\"}": [1376107265,"f",0.15,0.005,0.703],   // pike_liegestuetz
-  "liegestuetz:{\"art\":\"pike_erhoeht\"}": [2311034122,"f",-0.1139,0.005,0.8028],   // pike_liegestuetz_erhoeht
+  "liegestuetz:{\"art\":\"pike_erhoeht\"}": [3332854442,"f",-0.1139,0.005,0.8028],   // pike_liegestuetz_erhoeht
   "liegestuetz:{\"art\":\"handstand_liegestuetz\",\"standVersatz\":[0,0,0.2]}": [1498109701,"f",0.3818,0,0.4963],   // handstand_liegestuetz_wand
   "schulterheben:{\"art\":\"reverse_fly\",\"last\":\"kurzhanteln\",\"brustgestuetzt\":true}": [3330278024,"w"],   // kurzhantel_reverse_flys
   "seitlage:{\"art\":\"aussenrotation\"}": [559470834,"f",-0.4162,0,-0.4617],   // aussenrotation_seitlage
   "klimmzug:{\"art\":\"bauchlage\"}": [1708099186,"f",0.6928,0,-0.004],   // bauchlage_latzug_handtuch
-  "klimmzug:{\"art\":\"band\"}": [4186672823,"w"],   // klimmzug_band_assistiert
+  "klimmzug:{\"art\":\"band\"}": [934808306,"w"],   // klimmzug_band_assistiert
   "schulterzug:{\"art\":\"yt_bauchlage\"}": [3824009075,"f",-0.1139,0.005,-0.8395],   // bauchlage_ytw
   "schulterheben:{\"art\":\"ytw\",\"last\":\"kurzhanteln\",\"brustgestuetzt\":true}": [4471134,"w"],   // schraegbank_y_heben
   "curl:{\"art\":\"maschine\"}": [2002889630,"k",0.005,-20,0],   // bizeps_maschine
+  "trizeps:{\"art\":\"ueberkopf\",\"last\":\"band\"}": [1475702653,"w"],   // band_trizeps_ueberkopf
   "trizeps:{\"art\":\"ueberkopf\",\"last\":\"kurzhantel\"}": [1147531078,"w"],   // kurzhantel_trizeps_ueberkopf
   "bankdruecken:{\"last\":\"sz\",\"art\":\"stirn\"}": [3773521702,"f",0.2598,0,-0.2117],   // sz_stirndruecken
   "hueftheben:{\"art\":\"bridge\",\"last\":\"keine\"}": [3303964930,"f",0.44,0,-0.4476],   // glute_bridge
@@ -1940,7 +1941,7 @@ const HUT_TABELLE = {
   "rumpfuebung:{\"art\":\"crunch\"}": [1277412281,"f",-0.27,0.005,-0.8437],   // crunch
   "rumpfuebung:{\"art\":\"kabelcrunch\"}": [436834289,"w"],   // kabelcrunch
   "bankdruecken:{\"last\":\"multipresse\",\"sitzVersatz\":0.18}": [2041677642,"k",0.03,-15,0],   // smith_bankdruecken
-  "schulterdruecken:{\"art\":\"arnold\",\"sitzend\":true}": [3618523537,"w"],   // arnold_press
+  "schulterdruecken:{\"art\":\"arnold\",\"sitzend\":true}": [4057445773,"w"],   // arnold_press
   "kniebeuge:{\"ablaufBand\":\"schlinge\",\"last\":\"band\"}": [967925057,"w"],   // kniebeuge_band
   "hueftheben:{\"art\":\"einbeinig\"}": [2514020345,"f",0.44,0,-0.4476],   // glute_bridge_einbeinig
   "hueftheben:{\"art\":\"marsch\"}": [3031906644,"f",0.44,0,-0.4541],   // glute_bridge_marsch

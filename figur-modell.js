@@ -1769,7 +1769,7 @@ export class FigurModell {
       const flach = g.flach && g.flach[s], haelt = !flach && g.haelt && g.haelt[s];
       if (flach) {
         const n = flach.clone().normalize(), inFlaeche = (v) => v.clone().sub(n.clone().multiplyScalar(v.dot(n)));
-        fing = [inFlaeche(fing), inFlaeche(R.oben), inFlaeche(R.vor)].find((v) => v.length() > 0.3) || senkrecht(Z, n);
+        fing = [...(g.flachFinger && g.flachFinger[s] ? [inFlaeche(g.flachFinger[s].clone())] : []), inFlaeche(fing), inFlaeche(R.oben), inFlaeche(R.vor)].find((v) => v.length() > 0.3) || senkrecht(Z, n);   // G14: flachFinger
         fing.normalize(); handRuecken = n;
       }
       const hand = abbilden(new THREE.Matrix4(), P(S + 'Hand'), ru.finger, senkrecht(ru.ruecken, ru.finger), wrist, fing, senkrecht(handRuecken, fing, ruecken));
