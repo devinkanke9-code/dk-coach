@@ -441,7 +441,11 @@ function startseite() {
       START3D ? h('div', { class: 'st-buehne' }, START3D.el) : null),
     h('section', { class: 'st-block st-frei st-breit' },
       text('Dein Gym. In 3D.', 'Von Gerät zu Gerät. Am Ende wartet die Tür.', [zweit('Gym betreten', gymZeigen)]),
-      h('figure', { class: 'st-bild' }, startBild('gym', 'Das Gym von oben: Geräte, Weg und Figur', 1000, 845))),
+      h('figure', { class: 'st-bild' }, startBild('gym', 'Das Gym mit Meerblick: Weg, Figur und die Tür zum PR-Raum', 1000, 845))),
+    // Zweites Gym-Bild (10.11.2026, Devin: „das Bild ändern zu den aktuellsten Stand und noch ein Bild machen“): die Waage im Eingang mit Meerblick
+    h('section', { class: 'st-block st-frei st-breit' },
+      text('Steig auf die Waage.', 'Sie zeigt dein Level. Jede Station bringt Punkte.'),
+      h('figure', { class: 'st-bild' }, startBild('waage', 'Die Waage im Eingang zeigt das Level, dahinter das Meer', 1000, 845))),
     h('section', { class: 'st-block' },
       text('Jede Übung. Zum Drehen.', 'Coach DK zeigt, worauf es ankommt.', [zweit('Übung ansehen', uebungZeigen)]),
       h('figure', { class: 'st-bild' }, startBild('uebung', 'Die Figur trainiert an der Beinpresse', 1000, 1250),
