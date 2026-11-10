@@ -144,7 +144,7 @@
   function einschraenkungen(W, k, gruppen, scr) {
     scr = scr || { beschwerden: [], zusatz: [], rirMin: 0 };
     var lim = {}; GELENKE.forEach(function (g) { lim[g] = 2; });
-    var meiden = {}, anpassen = {}, hinweise = [], arzt = [];
+    var meiden = {}, anpassen = {}, hinweise = [], arzt = [], idsMeiden = {};   // idsMeiden: einzelne Übungen, die eine Zielgruppe nicht bekommt (seit G15)
     var faktor = 1, rirMin = 0, levelMax = 5, wdh = null, pflichtFreigabe = [];
 
     function gelenke(obj) {
@@ -184,6 +184,7 @@
       if (wdh && wdh[0] > wdh[1]) wdh = [wdh[1], wdh[1]];
       gelenke(z.gelenke);
       arr(z.muster_meiden).forEach(function (m) { meiden[m] = z.name; });
+      arr(z.uebungen_meiden_ids).forEach(function (id) { idsMeiden[id] = z.name; });
       hinweise = hinweise.concat(arr(z.plan_hinweise));
       if (z.arzt_freigabe === 'pflicht' && !k.arzt_freigabe) pflichtFreigabe.push(z.name);
     });
@@ -217,7 +218,7 @@
       if (s.level_max != null) levelMax = Math.min(levelMax, s.level_max);
       if (s.wdh) { wdh = wdh ? [Math.max(wdh[0], s.wdh[0]), Math.min(wdh[1], s.wdh[1])] : s.wdh.slice(); if (wdh[0] > wdh[1]) wdh = [wdh[1], wdh[1]]; }
     }
-    return { pflichtFreigabe: pflichtFreigabe, gelenkLimit: lim, musterMeiden: meiden, musterAnpassen: anpassen, hinweise: hinweise, arzt: arzt,
+    return { pflichtFreigabe: pflichtFreigabe, gelenkLimit: lim, musterMeiden: meiden, idsMeiden: idsMeiden, musterAnpassen: anpassen, hinweise: hinweise, arzt: arzt,
       volumenFaktor: faktor, rirMin: rirMin, levelMax: levelMax, wdh: wdh, we: weGrenze };
   }
 
@@ -253,6 +254,8 @@
     });
     if (ctx.grenzen.musterMeiden[ex.muster]) gruende.push('Muster gesperrt');
     if (ex.muster === 'reha_basis' && !ctx.grenzen.we) gruende.push('Reha nur im Plan Wiedereinstieg');
+    if (ex.muster === 'reha_basis' && ctx.grenzen.we && arr(ex.reha_fuer).length && !ctx.grenzen.we.regionen.some(function (r) { return arr(ex.reha_fuer).indexOf(r.id) >= 0; })) gruende.push('Reha für eine andere Stelle');
+    if (ctx.grenzen.idsMeiden && ctx.grenzen.idsMeiden[ex.id]) gruende.push('Nicht bei ' + ctx.grenzen.idsMeiden[ex.id]);
     if (ctx.ausschluss[ex.id]) gruende.push('Kunde mag sie nicht');
     if (ctx.level <= 1 && ex.technik_anspruch >= 3) gruende.push('Technik zu schwer');
     var we = ctx.grenzen.we;
@@ -1369,7 +1372,7 @@
     horizontal_druecken: 'Drücken horizontal', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern',
     vertikal_ziehen: 'Ziehen von oben', isolation_arme: 'Arme', isolation_schulter: 'Schulter isoliert',
     isolation_beine: 'Beine isoliert', rumpf_anti_extension: 'Rumpf (Anti-Extension)', rumpf_anti_rotation: 'Rumpf (Anti-Rotation)',
-    rumpf_flexion: 'Bauch', tragen: 'Tragen', wade: 'Waden', reha_basis: 'Reha-Grundlagen', dehnen: 'Dehnen', cardio: 'Cardio' };
+    rumpf_flexion: 'Bauch', tragen: 'Tragen', wade: 'Waden', reha_basis: 'Reha-Grundlagen', dehnen: 'Dehnen', cardio: 'Cardio', aufwaermen: 'Aufwärmen' };
   function muskelLesbar(m) { return MUSKEL_NAME[m] || m; }
   function musterLesbar(m) { return MUSTER_NAME[m] || m; }
   function typNameLesbar(t) {

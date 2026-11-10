@@ -4324,9 +4324,11 @@ const RS45_HUEFTE = V(0, 1.04, 0.12), RS45_BEIN = V(0, Math.SQRT1_2, Math.SQRT1_
 // Neu: situp | vup | fahrrad | schultertippen | mountain | lsitz | negativ_crunch ; seitstuetz + heben (Hüfte senken und heben)
 // Ablauf davor (wirkt über animation()): standVersatz
 // Neu (G10-N2): fersenrutschen | beinheben_einbeinig (Rückenlage ohne Gerät, ein Bein arbeitet, eigene Funktion rumpfLiegend)
+// Neu (G15-A): atmung | quad_set | sprunggelenk (Rückenlage ohne Gerät: Bauchatmung, Oberschenkel anspannen mit Handtuchrolle, Sprunggelenk-Pumpen; eigene Funktion liegeG15)
 export function rumpfuebung(o = {}) {
   const art = o.art || 'plank';
   if (art === 'fersenrutschen' || art === 'beinheben_einbeinig') return rumpfLiegend(art);
+  if (art === 'atmung' || art === 'quad_set' || art === 'sprunggelenk') return liegeG15(art);
   if (['situp', 'vup', 'fahrrad', 'schultertippen', 'mountain', 'lsitz', 'negativ_crunch'].includes(art)) return rumpfNeu(art);
   if (['plank_knie', 'body_saw', 'rollout_stehend', 'reverse_crunch', 'knieheben_haengend', 'hollow_rock', 'bauchmaschine', 'rueckenstrecker_maschine'].includes(art)) return rumpfMehr(art);
   const band = art === 'pallof' && o.last === 'band';
@@ -5546,9 +5548,11 @@ export function brustmaschine(o = {}) {
 
 // Sprünge: art kniebeuge (Sprungkniebeuge) | box (Box Jump) | ausfallschritt (Beinwechsel in der Luft)
 // Neu (G10-N2): hampelmann | hohe_knie (Cardio ohne Gerät, eigene Funktion sprungCardio); hohe_knie hat die Option tempo: marsch (Standard) | lauf
+// Neu (G15-A): seitschritt (Seitschritte mit Armheben, kein Sprung) | gehen (locker auf der Stelle gehen zum Abkühlen), eigene Funktion standG15
 export function sprung(o = {}) {
   const art = o.art || 'kniebeuge';
   if (art === 'hampelmann' || art === 'hohe_knie') return sprungCardio(art, o);
+  if (art === 'seitschritt' || art === 'gehen') return standG15(art);
   const BOX = 0.5, BOXZ = 0.56;   // Kasten so weit vorn, dass die Knie in der Ausholbewegung frei sind
   const fx = art === 'box' ? 0.14 : 0.21;   // Sprungkniebeuge: Füße schulterbreit (bis 5.11. 0,61×)
   const hTief = art === 'box' ? 0.56 : 0.625, nTief = art === 'box' ? 32 : 24;   // Sprungkniebeuge: halbe Kniebeuge, Knie etwa 85°, Rumpf etwa 25° (bis 5.11. Knie 100°, Rumpf 38°)
@@ -5601,8 +5605,10 @@ export function sprung(o = {}) {
 }
 
 // Vierfüßlerstand (Kopf nach -z, Knie unter der Hüfte, Arme lang unter den Schultern): art fire_hydrant | donkey_kick (rechtes Bein arbeitet) | baer (Knie schweben knapp über dem Boden)
+// Neu (G15-A): katze_kuh (Rücken rund und sanft durchhängen im Atemrhythmus, eigene Funktion katzeKuh)
 export function vierfuessler(o = {}) {
   const art = o.art || 'fire_hydrant';
+  if (art === 'katze_kuh') return katzeKuh();
   return {
     aufbau(ger) { ger.matte(); return {}; },
     pose(t) {
@@ -5818,7 +5824,9 @@ function dehnWade(t) {
 
 // Dehnungen (Halteübungen; Schleife von 4 s mit Atem und kleinem Nachgeben, kein Wippen; wie lange gehalten wird, steht in den Daten). art: hueftbeuger (halber Kniestand auf der Matte, rechtes Knie hinten)
 //   | brust_tuerrahmen (rechter Unterarm am Türrahmen, linker Fuß durch die Tür) | wade_wand (Hände an der Wand, rechtes Bein hinten gestreckt)
+// Neu (G15-A): kindshaltung | schulter_quer (Arm quer vor der Brust im Stand) | beinbeuger_liegend (Rückenlage, Handtuch um den Fuß), eigene Funktion dehnungG15
 export function dehnung(o = {}) {
+  if (['kindshaltung', 'schulter_quer', 'beinbeuger_liegend'].includes(o.art)) return dehnungG15(o.art);
   const art = ['brust_tuerrahmen', 'wade_wand'].includes(o.art) ? o.art : 'hueftbeuger';
   const stellung = { hueftbeuger: dehnHueftbeuger, brust_tuerrahmen: dehnBrust, wade_wand: dehnWade }[art];
   // Kamera bei der Tür auf der Wandseite, an der die Figur steht (sie kommt im Ablauf von der Kameraseite herein: von der Gegenseite liefe sie durch die Wand)
@@ -5839,7 +5847,9 @@ export function dehnung(o = {}) {
 
 // Schulterpendeln (Codman): vorgebeugt am Tisch, die linke Hand stützt flach auf der Platte, der rechte Arm hängt locker und kreist (Ø 20 cm, ein Kreis in 2 s).
 // Der Arm wird nicht geführt: das Becken wippt in kleinen Kreisen (Knie federn, Füße bleiben), die Hand folgt der Schulter mit Verzug wie ein Pendel (0,15 Umlauf)
+// Neu (G15-A): art tischrutschen (Tischrutschen für die Schulter im Sitzen am Tisch, eigene Funktion tischRutschen)
 export function pendeln(o = {}) {
+  if (o.art === 'tischrutschen') return tischRutschen();
   const TISCH = 0.75, TX = 0.4, TZ = 0.8;
   return {
     aufbau(ger) {
@@ -5863,6 +5873,274 @@ export function pendeln(o = {}) {
   };
 }
 /* G10-N1 ENDE */
+
+/* G15-A BEGINN */
+/* =================================================================== */
+/* G15 Stufe 1 (10.11.2026): Aufwärmen, Abkühlen, Dehnen, Reha ohne Gerät */
+/* =================================================================== */
+
+// Halteschleife über t = 0 … 1 (t = 0 und t = 1 gleich): bis a hinein, bis b halten, bis c zurück, danach Pause
+const g15Halte = (t, a, b, c) => (t < a ? glatt(t / a) : t < b ? 1 : t < c ? 1 - glatt((t - b) / (c - b)) : 0);
+// n ruhige Wellen über die Schleife (0 → 1 → 0), z. B. Atemzüge für belastung
+const g15Welle = (t, n = 1) => 0.5 - 0.5 * Math.cos(2 * Math.PI * n * t);
+// Arme über dem Kopf mit fest aufgestützten Händen (Kindshaltung): figur.js hebt dann den Schultergürtel und schiebt dafür den ganzen Körper weg von den Händen (gelenke, „sinkt stattdessen
+// der Körper“). Hier wird das Becken vorab um genau diesen Weg zurückgesetzt, damit Hüfte und Knie dort bleiben, wo die Vorlage sie haben will (drei Durchgänge reichen auf unter 1 mm)
+function g15OhneSinken(pose) {
+  const ziel = pose.becken.clone();
+  for (let i = 0; i < 3; i++) pose.becken.add(ziel.clone().sub(gelenke(pose).becken));
+  return pose;
+}
+// Handtuch-Strang (gedreht, wie man ein Handtuch zum Ziehen hält): Zylinder, Länge über seil()
+// Er gibt nach wie ein Band (biegsam): die Hand richtet sich nicht nach ihm, sonst kippt sie zwischen den beiden Strängen in der Faust hin und her
+const g15Strang = (ger, r = 0.011) => { const m = handtuchStoff(); m.userData.biegsam = true; return ger.teil(new THREE.CylinderGeometry(r, r, 1, 10), m); };
+// Fuß in Rückenlage mit der Ferse auf der Matte: Die Zehen zeigen grad aus der Senkrechten, + zum Kopf (zum Schienbein gezogen), − vom Kopf weg (gestreckt).
+// Der Boden würde den Fuß sonst auf rund 30° über der Waagerechten begrenzen (figur.js, Fuß am Boden); darum liegt die Sohle in einer eigenen Ebene (fussFlaeche = Fußrücken).
+// aussen: der Fuß kippt locker etwas nach außen (Grad), wie im Liegen üblich
+function g15FussLiegend(grad, sg, aussen = 8) {
+  const w = grad * RAD, q = new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), -sg * aussen * RAD);
+  return { richt: V(0, Math.cos(w), -Math.sin(w)).applyQuaternion(q), flaeche: V(0, -Math.sin(w), -Math.cos(w)).applyQuaternion(q) };
+}
+
+// Rückenlage auf der Matte (G15). art atmung: Knie aufgestellt, linke Hand auf dem Bauch, rechte auf dem unteren Brustkorb; beim Einatmen hebt der Bauch die linke Hand (3,2 s), langes Ausatmen (4,8 s).
+//   quad_set: linkes Bein gestreckt, eine kleine Handtuchrolle liegt unter dem Knie, rechtes Bein aufgestellt. Der Oberschenkel spannt an: das Knie drückt 7 mm in die Rolle (sie gibt nach) und streckt sich um 4°,
+//     die Ferse hebt sich dabei rund 1,5 cm, die Fußspitze zieht zur Decke (45°); 1 s anspannen, 4 s halten (weiteratmen), 1 s lösen, 3 s Pause.
+//   sprunggelenk: linkes Bein gestreckt, Ferse auf der Matte, rechtes aufgestellt. Der Fuß zieht 2 s zum Schienbein (18°), hält 1 s, streckt 2 s weg (45°), hält 1 s; Knie und Bein bleiben ruhig
+function liegeG15(art) {
+  const becken = V(0, 0.12, 0.25), r = { basis: LIEGEND, neigung: 0 }, k0 = rumpf(becken, r), RB = rumpfRahmen(r);
+  const huefte = (s) => hueftGelenk(becken, RB, s), stuetz = liegeBeinZiel(0.56, FY - becken.y);
+  const auf = (s) => beinAus(huefte(s), stuetz.a, stuetz.k, BEIN_AUS, BEIN_HOCH);
+  const neben = { hand: seiten((s, sg) => armNeben(k0.schulter[s], sg)), flach: seiten(() => V(0, 1, 0)), ellbogenPol: seiten((s, sg) => V(sg, 1, 0)) };
+  const beine = (bein, fr, fl) => ({ fuss: seiten((s) => bein[s].fuss), kniePol: seiten((s) => bein[s].pol), fussRicht: fr, fussFlaeche: fl });
+  if (art === 'atmung') {
+    const ein = (t) => (t < 0.4 ? glatt(t / 0.4) : 1 - glatt((t - 0.4) / 0.6));   // 0 ausgeatmet, 1 eingeatmet
+    return {
+      aufbau(ger) { ger.matte(); return {}; },
+      pose(t) {
+        const e = ein(t), bein = { l: auf('l'), r: auf('r') };
+        // Hände flach (Handrücken nach oben, Finger quer zur anderen Seite): die Mitte der linken Hand liegt auf dem Bauchnabel, die der rechten auf dem unteren Brustkorb; Handgelenk 7 cm daneben
+        const hand = { l: G15_BAUCH.clone().add(V(0, 0.01 * e, 0)), r: G15_RIPPEN.clone().add(V(0, 0.003 * e, 0)) };
+        return { pose: Object.assign({ becken, rumpf: r, hand, flach: seiten(() => V(0, 1, 0)), ellbogenPol: seiten((s, sg) => V(sg, -1, 0.3)) }, beine(bein, seiten((s, sg) => V(sg * 0.1, 0, 1)))),
+          props(g) { fingerStellen(g, (s, sg) => V(-sg, 0, s === 'l' ? -0.15 : -0.25)); } };
+      },
+      blick: V(0, 0.3, 0.1), abstand: 3.3, kameraRicht: V(1, 0.75, 0.3),
+      // Eine Schleife = ein Atemzug (8 s). Atem: die Brust bleibt fast ruhig (nur ein Drittel des Atemhubs), der Mund öffnet sich beim Ausatmen leicht
+      dauer: [8, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.35 * (1 - ein(t))
+    };
+  }
+  if (art === 'quad_set') {
+    // Knie auf der Rolle: Gelenk G15_KNIE über dem Rollenscheitel (Kniekehle liegt auf), Ferse auf der Matte (Knöchel 8,9 cm hoch) → Hüftwinkel a0 und Kniebeugung k0.
+    // Angespannt: das Knie sinkt 7 mm (die Rolle gibt nach) und streckt sich um 4°, die Ferse hebt sich dadurch (rund 1,5 cm). Ganz gestreckt geht nicht: figur.js hält das Knie knapp gebeugt
+    const an = (t) => g15Halte(t, 1 / 9, 5 / 9, 6 / 9), hl = huefte('l'), zKnie = hl.z + MASS.oberschenkel, kh0 = 0.005 + 2 * G15_ROLLE + G15_KNIE;
+    const a0 = Math.asin((kh0 - hl.y) / MASS.oberschenkel) / RAD, k0 = a0 - Math.asin((0.089 - kh0) / MASS.unterschenkel) / RAD, a1 = Math.asin((kh0 - 0.007 - hl.y) / MASS.oberschenkel) / RAD, k1 = k0 - 4;
+    return {
+      aufbau(ger) {
+        // Kleine Handtuchrolle (Ø 5 cm, 24 cm breit) quer unter dem linken Knie, liegt auf der Matte
+        ger.matte();
+        const rolle = ger.teil(new THREE.CylinderGeometry(G15_ROLLE, G15_ROLLE, 0.24, 24).rotateZ(Math.PI / 2), handtuchStoff(), V(hl.x + 0.01, 0.005 + G15_ROLLE, zKnie));
+        return { rolle };
+      },
+      pose(t) {
+        const k = an(t), bein = { l: beinAus(hl, mix(a0, a1, k), mix(k0, k1, k), BEIN_AUS, BEIN_HOCH), r: auf('r') };
+        const fl = g15FussLiegend(mix(-40, 5, k), 1);
+        return { pose: Object.assign({ becken, rumpf: r }, neben, beine(bein, { l: fl.richt, r: V(-0.1, 0, 1) }, { l: fl.flaeche })),
+          props(g, z) { const q = 1 - 0.1 * k; z.rolle.scale.y = q; z.rolle.position.y = 0.005 + G15_ROLLE * q; } };   // die Rolle gibt unter dem Knie 7 mm nach
+      },
+      blick: V(0, 0.3, 0.4), abstand: 3.3, kameraRicht: V(1, 0.35, 0.15),
+      dauer: [9, 0, 0, 0], gleichmaessig: true,
+      // Spannung im Takt (anspannen, halten, lösen), dazu zwei ruhige Atemzüge je Wiederholung: nichts wird angehalten
+      belastung: (t) => 0.15 + 0.55 * an(t) + 0.2 * g15Welle(t, 2)
+    };
+  }
+  // sprunggelenk
+  const grad = (t) => (t < 1 / 3 ? mix(-45, 18, glatt(3 * t)) : t < 0.5 ? 18 : t < 5 / 6 ? mix(18, -45, glatt(3 * (t - 0.5))) : -45);
+  return {
+    aufbau(ger) { ger.matte(); return {}; },
+    pose(t) {
+      const bein = { l: beinAus(huefte('l'), 0, 4, BEIN_AUS, BEIN_HOCH), r: auf('r') }, fl = g15FussLiegend(grad(t), 1);
+      return { pose: Object.assign({ becken, rumpf: r }, neben, beine(bein, { l: fl.richt, r: V(-0.1, 0, 1) }, { l: fl.flaeche })) };
+    },
+    blick: V(0, 0.3, 0.5), abstand: 3.3, kameraRicht: V(1, 0.3, 0.1),
+    dauer: [6, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.25 * g15Welle(t, 1)
+  };
+}
+const G15_BAUCH = V(0.07, 0.318, 0.13), G15_RIPPEN = V(-0.09, 0.358, -0.04), G15_ROLLE = 0.025, G15_KNIE = 0.09;   // Rolle Ø 5 cm; Kniegelenk 9 cm über der Kniekehle (gemessen)
+
+// Stand ohne Gerät (G15). art seitschritt: t = 0 Füße zusammen, Arme hängen; der rechte Fuß tritt zur Seite, dann der linke (Füße rund 72 cm auseinander), die gestreckten Arme gehen
+//   seitlich über den Kopf; zurück wieder erst rechts, dann links. Immer ein Fuß am Boden, kein Sprung, Knie leicht gebeugt, Becken verlagert sich über den Standfuß.
+//   gehen: lockeres Gehen auf der Stelle zum Abkühlen: t = 0 linker Fuß oben, t = 1 rechter; die Ferse hebt sich höchstens eine Handbreit, der Fuß setzt über den Ballen auf, Arme schwingen locker mit
+function standG15(art) {
+  const L1 = MASS.oberschenkel, L2 = MASS.unterschenkel;
+  const huefteHoch = (knie, dx) => Math.sqrt(L1 * L1 + L2 * L2 + 2 * L1 * L2 * Math.cos(knie * RAD) - dx * dx);
+  if (art === 'seitschritt') {
+    const ZU = 0.075, AUF = 0.36, HUB = 0.045;
+    return {
+      aufbau() { return {}; },
+      pose(t, zst) {
+        // Reihenfolge: hin erst rechts (t 0,05–0,5), dann links (0,5–0,95); zurück (zst.runter, t läuft 1 → 0) wieder erst rechts
+        const runter = !!(zst && zst.runter), uR = runter ? (1 - t - 0.05) / 0.45 : (t - 0.05) / 0.45, uL = runter ? (1 - t - 0.5) / 0.45 : (t - 0.5) / 0.45;
+        const wR = runter ? 1 - glatt(uR) : glatt(uR), wL = runter ? 1 - glatt(uL) : glatt(uL), hR = Math.sin(Math.PI * Math.max(0, Math.min(1, uR))), hL = Math.sin(Math.PI * Math.max(0, Math.min(1, uL)));
+        const fuss = { l: V(mix(ZU, AUF, wL), FY + HUB * hL, 0), r: V(-mix(ZU, AUF, wR), FY + HUB * hR, 0) };
+        // Becken über den Standfuß: beim Schritt rechts nach links, beim Schritt links nach rechts (3 cm). Höhe: so hoch, wie beide Beine mit 12° im Knie reichen (das gehobene Bein reicht weiter)
+        const bx = 0.03 * hR - 0.03 * hL + (fuss.l.x + fuss.r.x) / 2;
+        const by = 0.02 + Math.min(fuss.l.y + huefteHoch(12, Math.abs(fuss.l.x - bx - MASS.hueftBreite)), fuss.r.y + huefteHoch(12, Math.abs(fuss.r.x - bx + MASS.hueftBreite)));
+        const becken = V(bx, by, 0), rr = { neigung: 3 }, k = rumpf(becken, rr);
+        // Arme gestreckt in der Körperebene: 5° (hängen) bis 180° (über dem Kopf), gleichmäßig über den ganzen Weg
+        const aw = mix(5, 180, glatt(t)) * RAD, A = ARM * 0.996;
+        const hand = seiten((s, sg) => k.schulter[s].clone().add(V(sg * Math.sin(aw) * A, -Math.cos(aw) * A, 0)));
+        const nachVorn = Math.max(0, Math.min(1, (aw / RAD - 90) / 90));
+        const flaeche = seiten((s, sg) => (aw <= Math.PI / 2 ? V(-sg * Math.cos(aw), -Math.sin(aw), 0) : V(0, -1, 0).lerp(V(0, 0, 1), nachVorn)));
+        const breit = (s) => (Math.abs(fuss[s].x) - ZU) / (AUF - ZU);
+        return { pose: { becken, rumpf: rr, kopf: { neigung: 0 }, hand, handflaeche: flaeche, ellbogenPol: seiten((s, sg) => V(sg * 0.3, 0, -1)), fuss, zehen: { l: 8 * hL, r: 8 * hR },
+          kniePol: seiten((s, sg) => V(sg * mix(0.15, 0.45, breit(s)), 0, 1)), fussRicht: seiten((s, sg) => V(sg * mix(0.15, 0.35, breit(s)), 0, 1)) } };
+      },
+      blick: V(0, 0.9, 0.2), abstand: 3.8, kameraRicht: V(0.35, 0.25, 1),
+      // Ein Schritt rund 1 s: hin 2 s (rechts, links), zurück 2 s
+      dauer: [2, 0.15, 2, 0.15], gleichmaessig: true
+    };
+  }
+  // gehen: wie der Marsch auf der Stelle (sprung hohe_knie), aber klein und langsam
+  return {
+    aufbau() { return {}; },
+    pose(t) {
+      const pause = 0.4, hebL = 1 - glatt(t / pause), hebR = glatt((t - (1 - pause)) / pause), pw = glatt(t);
+      const kS = 6 + 3 * Math.sin(Math.PI * t) ** 2, sw = 0.012 * (hebR - hebL);   // Standknie 6–9°, das Becken geht 1,2 cm über den Standfuß
+      const becken = V(sw, FY + 0.02 + huefteHoch(kS, 0.015), 0), rr = { neigung: 2 }, k = rumpf(becken, rr), RB = rumpfRahmen(rr);
+      const bein = (s, sg, heb) => {
+        const hg = hueftGelenk(becken, RB, s), unten = V(sg * 0.11, FY, 0.01);
+        // Ganz oben: Oberschenkel 20° nach vorn, Knie 42°, der Fuß fast rechtwinklig zum Schienbein (Zehen 17° nach unten, so lösen sie sich vom Boden; stärker gestreckt hielte figur.js
+        // die Zehen am Boden und die Figur stünde auf den Zehen): Ferse rund 8 cm, Zehen knapp 2 cm über dem Boden
+        const oben = beinAus(hg, 20, 42, V(0, -1, 0), V(0, 0, 1)), w = glatt(heb);
+        return { fuss: mv(unten, oben.fuss, w), pol: V(sg * 0.1, 0.2, 1), fr: mv(V(sg * 0.12, 0, 1), oben.fr(-5), w).normalize() };
+      };
+      const b = { l: bein('l', 1, hebL), r: bein('r', -1, hebR) };
+      // Arme hängen locker (Ellbogen leicht gebeugt) und schwingen klein gegengleich zu den Beinen (±14°)
+      const hand = seiten((s, sg) => { const f = mix(s === 'l' ? -14 : 14, s === 'l' ? 14 : -14, pw) * RAD; return k.schulter[s].clone().add(V(sg * 0.03, -Math.cos(f) * MASS.oberarm - Math.cos(f + 0.3) * UNTERARM, Math.sin(f) * MASS.oberarm + Math.sin(f + 0.3) * UNTERARM)); });
+      return { pose: { becken, rumpf: rr, kopf: { neigung: 0 }, hand, handflaeche: seiten((s, sg) => V(-sg, 0, 0)), ellbogenPol: seiten((s, sg) => V(sg * 0.2, 0, -1)), fuss: seiten((s) => b[s].fuss), kniePol: seiten((s) => b[s].pol), fussRicht: seiten((s) => b[s].fr) } };
+    },
+    blick: V(0, 0.9, 0.2), abstand: 3.8, kameraRicht: V(1, 0.3, 0.5),
+    // Ein Schritt pro Sekunde
+    dauer: [1, 0, 1, 0], gleichmaessig: true
+  };
+}
+
+// Katze-Kuh im Vierfüßlerstand (Kopf nach -z wie vierfuessler): Hände unter den Schultern, Knie unter der Hüfte, beides bleibt fest am Boden, die Arme bleiben gestreckt.
+// t = 0 Katze (Becken 15° nach hinten gekippt, Rücken rund, Kinn zur Brust), t = 0,5 Kuh (Becken 15° nach vorn, Rücken hängt sanft durch, Nacken lang). Das Becken dreht um die Hüftgelenke,
+// die Biegung der Wirbelsäule wird je Bild so gewählt, dass die Schultern auf ihrer Höhe bleiben. Eine Schleife 6 s: ausatmen in die Katze, einatmen in die Kuh
+function katzeKuh() {
+  const bY = 0.53, n0 = -Math.asin((0.045 + STUETZ * 0.9975 - bY) / (MASS.rumpf - 0.03)) / RAD, B0 = V(0, bY, -0.3), RB0 = rumpfRahmen({ basis: BAUCHLAGE, neigung: n0 });
+  const H = B0.clone().addScaledVector(RB0.oben, -0.02), k0 = rumpf(B0, { basis: BAUCHLAGE, neigung: n0 }), S0 = k0.schulter.l.clone().add(k0.schulter.r).multiplyScalar(0.5);
+  const lage = (kipp, beuge) => { const r = { basis: BAUCHLAGE, neigung: n0 + kipp }, becken = H.clone().addScaledVector(rumpfRahmen(r).oben, 0.02), w = { beuge }; return { r, becken, w, k: rumpf(becken, r, w) }; };
+  // Biegung, bei der die Schultermitte so hoch steht wie im neutralen Vierfüßlerstand (Halbierung)
+  const beugeFuer = (kipp) => { let a = -60, b = 60; for (let i = 0; i < 30; i++) { const m = (a + b) / 2, k = lage(kipp, m).k, y = (k.schulter.l.y + k.schulter.r.y) / 2; if (y > S0.y) a = m; else b = m; } return (a + b) / 2; };
+  const KIPP = 15, L = (sg, f) => k0.R.links.clone().multiplyScalar(sg * f);
+  const hand = seiten((s, sg) => V(0, 0.045, k0.schulter[s].z).add(L(sg, MASS.schulterBreite)));
+  const knie = (sg) => V(0, 0.065, -0.3).add(L(sg, 0.1));
+  return {
+    aufbau(ger) { ger.matte(); return {}; },
+    pose(t) {
+      const c = g15Welle(t, 1), kipp = mix(-KIPP, KIPP, c), l = lage(kipp, beugeFuer(kipp));   // c = 0 Katze, 1 Kuh
+      return { pose: { becken: l.becken, rumpf: l.r, wirbel: l.w, kopf: { neigung: mix(22, 6, c) }, hand, flach: seiten(() => V(0, 1, 0)), ellbogenPol: seiten(() => V(0, 1, 0.2)),
+        fuss: seiten((s, sg) => knie(sg).add(V(0, 0.04, MASS.unterschenkel * 0.96))), kniePol: seiten(() => V(0, -1, -0.2)), fussRicht: seiten(() => V(0, -0.2, 1)) } };
+    },
+    blick: V(0, 0.35, -0.3), abstand: 3.2, kameraRicht: V(-1, 0.3, 0.3),
+    dauer: [6, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.4 * (1 - g15Welle(t, 1))
+  };
+}
+
+// Dehnungen (G15, Halteübungen wie dehnung: Schleife 4 s mit Atem, die Dehnung gibt beim Ausatmen ein kleines Stück nach, kein Wippen)
+// kindshaltung: Knie hüftbreit auf der Matte, große Zehen berühren sich, das Gesäß sinkt Richtung Fersen, der Oberkörper liegt rund auf den Oberschenkeln, Arme lang nach vorn, Stirn zur Matte
+function dehnKind(t) {
+  const e = dehnAtem(t), knie = seitenBauch((s, sg) => V(sg * 0.115, 0.065, 0.02)), beta = mix(40, 38, e) * RAD;   // Knie innen 40° → 38°: das Gesäß sinkt 1 cm
+  const H = V(0, 0.065, 0.02).add(V(0, Math.sin(beta), Math.cos(beta)).multiplyScalar(MASS.oberschenkel));
+  const r = { basis: BAUCHLAGE, neigung: G15_KIND.kipp }, becken = H.clone().addScaledVector(rumpfRahmen(r).oben, 0.02), w = { beuge: G15_KIND.beuge }, k = rumpf(becken, r, w);
+  const hand = seitenBauch((s, sg) => V(k.schulter[s].x + sg * 0.03, 0.045, G15_KIND.hand));
+  return { pose: g15OhneSinken({ becken, rumpf: r, wirbel: w, kopf: { neigung: G15_KIND.kopf - 4 * e }, hand, flach: seiten(() => V(0, 1, 0)), ellbogenPol: seitenBauch((s, sg) => V(sg * 0.6, 1, 0)),
+      fuss: seitenBauch((s, sg) => V(sg * 0.055, 0.065 + 0.04, 0.02 + MASS.unterschenkel * 0.996)), kniePol: seitenBauch((s, sg) => V(sg * 0.1, -0.5, -1)), fussRicht: seitenBauch((s, sg) => V(-sg * 0.12, -0.2, 1)) }),
+    props(g) { fingerStellen(g, () => V(0, 0, -1)); } };
+}
+const G15_KIND = { kipp: -8, beuge: 30, kopf: 35, hand: -0.69 };
+// schulter_quer: Stand, der rechte Arm liegt gestreckt auf Schulterhöhe quer vor der Brust, die linke Hand zieht ihn über dem Ellbogen heran (Schulter bleibt unten, Oberkörper nach vorn)
+function dehnSchulterQuer(t) {
+  const e = dehnAtem(t), becken = V(0, 0.975, 0), r = { neigung: 2 }, k = rumpf(becken, r), S = k.schulter.r;
+  const phi = mix(44, 49, e) * RAD, d = V(Math.sin(phi), -0.02, Math.cos(phi)).normalize();   // quer vor der Brust: 44° → 49° über die Mitte hinaus
+  const handR = S.clone().addScaledVector(d, ARM * 0.995), aussen = V(Math.cos(phi), 0, -Math.sin(phi)).negate();   // aussen: vom Körper weg (vor dem Arm)
+  const griff = S.clone().addScaledVector(d, 0.235).addScaledVector(aussen, 0.035).add(V(0, -0.01, 0));   // linke Hand liegt vorn am Oberarm, eine Handbreit über dem Ellbogen
+  return { pose: Object.assign({ becken, rumpf: r, kopf: { neigung: 0 }, hand: { r: handR, l: griff }, handflaeche: { r: V(Math.cos(phi), 0, -Math.sin(phi)), l: aussen.clone().negate() },
+      ellbogenPol: { r: V(0, -1, -0.2), l: V(0.6, -1, -0.3) } }, stehFuesse(0.13)) };
+}
+// beinbeuger_liegend: Rückenlage, das rechte Bein liegt lang, das linke ist gehoben (Oberschenkel 80° → 83°), das Knie so weit gestreckt wie angenehm (24° → 20°), ein Handtuch liegt um den
+// Fußballen und beide Hände ziehen an den Enden; Becken und Kopf bleiben auf der Matte
+function dehnBeinbeuger(t) {
+  const e = dehnAtem(t), becken = V(0, 0.12, 0.25), r = { basis: LIEGEND, neigung: 0 }, k0 = rumpf(becken, r), RB = rumpfRahmen(r);
+  const bl = beinAus(hueftGelenk(becken, RB, 'l'), mix(80, 83, e), mix(24, 20, e), BEIN_AUS, BEIN_HOCH), br = beinAus(hueftGelenk(becken, RB, 'r'), 0, 4, BEIN_AUS, BEIN_HOCH);
+  // Wo das Handtuch am Fuß liegt (Ballen, wie figur.js ihn rechnet), dorthin greifen die Hände an den beiden Strängen, Arme leicht gebeugt
+  const sohle = bl.fr(8).normalize(), knieP = hueftGelenk(becken, RB, 'l').addScaledVector(V(0, Math.sin(mix(80, 83, e) * RAD), Math.cos(mix(80, 83, e) * RAD)), MASS.oberschenkel);
+  const oben = knieP.clone().sub(bl.fuss); oben.addScaledVector(sohle, -oben.dot(sohle)).normalize();
+  const ballen = bl.fuss.clone().addScaledVector(sohle, MASS.fussLaenge * BALLEN).addScaledVector(oben, -MASS.fussHoehe * 0.6), quer = sohle.clone().cross(oben).normalize();
+  const hand = seiten((s, sg) => { const P = ballen.clone().addScaledVector(quer, sg * 0.07), S = k0.schulter[s]; return S.clone().addScaledVector(P.sub(S).normalize(), ARM * 0.86); });
+  return { pose: { becken, rumpf: r, hand, handflaeche: seiten((s, sg) => V(-sg * 0.4, -0.2, -1)), ellbogenPol: seiten((s, sg) => V(sg, -0.6, 0)), fuss: { l: bl.fuss, r: br.fuss }, kniePol: { l: bl.pol, r: br.pol }, fussRicht: { l: sohle, r: V(-0.25, 0.45, 0.89) } },
+    props(g, z) {
+      // Handtuch: ein Stück liegt quer unter dem Ballen, von seinen Enden geht je ein Strang in die Faust, das freie Ende hängt aus der Faust
+      const n = g.sohleN.l, s = g.zehe.l.clone().sub(g.ferse.l).normalize(), q = s.clone().cross(n).normalize(), P = g.ballen.l.clone().addScaledVector(n, -0.008);
+      const T = z.teile; T.sohle.position.copy(P); T.sohle.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(q, n, s));
+      for (const [k, sg] of [['l', 1], ['r', -1]]) {
+        const ende = P.clone().addScaledVector(q, sg * 0.065).addScaledVector(n, 0.012);
+        seil(T[k], ende, g.hand[k]); seil(T['ende_' + k], g.hand[k], g.hand[k].clone().add(V(0, -0.16, 0.03)));
+      }
+    } };
+}
+
+// Familie der G15-Dehnungen (wird aus dehnung aufgerufen): Matte (Kindshaltung, Beinbeuger), Handtuch beim Beinbeuger; Schleife 4 s, Atem folgt der Dehnung (ein Drittel des Atemhubs)
+function dehnungG15(art) {
+  const stellung = { kindshaltung: dehnKind, schulter_quer: dehnSchulterQuer, beinbeuger_liegend: dehnBeinbeuger }[art];
+  const kamera = { kindshaltung: V(1, 0.35, 0.15), schulter_quer: V(0.45, 0.25, 1), beinbeuger_liegend: V(1, 0.35, 0.3) }[art];
+  return {
+    aufbau(ger) {
+      if (art !== 'schulter_quer') ger.matte();
+      if (art !== 'beinbeuger_liegend') return {};
+      // Alle Teile des Handtuchs in einer Gruppe z.tuch: der Ablauf davor zeigt es erst, wenn die Figur es in der Hand hat (einleitung.js, Handtuch hängt nicht in der Luft)
+      const tuch = new THREE.Group(), teile = { sohle: ger.box(0.13, 0.012, 0.09, V(), handtuchStoff()) };
+      for (const k of ['l', 'r']) { teile[k] = g15Strang(ger); teile['ende_' + k] = g15Strang(ger); }
+      ger.gruppe.add(tuch); for (const o of Object.values(teile)) tuch.add(o);
+      return { tuch, teile };
+    },
+    pose: stellung,
+    blick: V(0, 0.5, 0), abstand: 3.3, kameraRicht: kamera,
+    dauer: [4, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.3 * dehnAtem(t)
+  };
+}
+
+// Tischrutschen für die Schulter (G15, art tischrutschen der Vorlage pendeln): Sitz auf einem Stuhl seitlich am Tisch (Platte 69 cm, rechts neben dem Stuhl), der rechte Unterarm liegt auf dem Tisch,
+// die Hand flach auf einem Handtuch, der Ellbogen gebeugt neben dem Körper. Die Hand gleitet 3 s geradeaus nach vorn, bis der Arm fast gestreckt ist, der Oberkörper neigt sich dabei aus der Hüfte 17° mit
+// (Rücken gerade, Schulter unten); 1,5 s halten, 3 s zurück, 1 s Pause. Die linke Hand liegt auf dem Oberschenkel. Der Tisch steht neben den Beinen, nicht über ihnen: so kommt die Figur im Ablauf davor
+// zum Stuhl und setzt sich, ohne durch die Platte zu gehen (vor dem Stuhl wäre zwischen Stuhl und Tischkante kein Platz zum Stehen)
+const TR_TISCH = 0.69, TR_INNEN = -0.235, TR_BECKEN = V(0, STUHL_SITZ + 0.115, -0.1), TR_X = -0.3;
+function tischRutschen() {
+  const weg = (t) => g15Halte(t, 3 / 8.5, 4.5 / 8.5, 7.5 / 8.5), y = TR_TISCH + 0.008 + 0.036;
+  const vorne = (() => { const S = rumpf(TR_BECKEN, { neigung: 17 }).schulter.r, d = STUETZ * 0.985; return S.z + Math.sqrt(d * d - (S.y - y) ** 2 - (S.x - TR_X) ** 2); })();
+  return {
+    aufbau(ger) {
+      stuhlBauen(ger, 0, TR_BECKEN.z - 0.2);
+      // Tisch 55 × 90 cm, die Innenkante 3,5 cm rechts neben dem Stuhl; Beine an den Ecken
+      const mx = TR_INNEN - 0.275, mz = 0.25;
+      ger.box(0.55, 0.04, 0.9, V(mx, TR_TISCH - 0.02, mz), ger.mRahmen);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) ger.box(0.045, TR_TISCH - 0.04, 0.045, V(mx + sx * 0.235, (TR_TISCH - 0.04) / 2, mz + sz * 0.41), ger.mRahmen);
+      return { unterlage: ger.box(0.2, 0.008, 0.22, V(TR_X, TR_TISCH + 0.004, 0.25), handtuchStoff()) };   // Handtuch auf dem Tisch (nicht z.tuch: es liegt schon da, wenn die Figur kommt)
+    },
+    pose(t) {
+      const w = weg(t), r = { neigung: mix(2, 17, w) }, k = rumpf(TR_BECKEN, r);
+      const knieL = V(MASS.hueftBreite + 0.03, 0.6, TR_BECKEN.z + 0.3);   // linke Hand flach auf dem Oberschenkel, rutscht mit dem Oberkörper ein Stück zum Knie
+      const hand = { r: V(TR_X, y, mix(0.2, vorne, w)), l: knieL.clone().add(V(0, 0, 0.1 * w)) };
+      return { pose: { becken: TR_BECKEN, rumpf: r, kopf: { neigung: mix(4, -6, w) }, hand, flach: { r: V(0, 1, 0), l: V(0.2, 1, 0) }, ellbogenPol: { r: V(-0.4, -1, -0.5), l: V(0.6, -0.4, -1) },
+          fuss: seiten((s, sg) => V(sg * 0.12, FY, TR_BECKEN.z + 0.47)), kniePol: seiten((s, sg) => V(sg * 0.12, 0.3, 1)), fussRicht: seiten((s, sg) => V(sg * 0.12, 0, 1)) },
+        props(g, z) { fingerStellen(g, (s, sg) => V(sg * 0.1, 0, 1)); z.unterlage.position.set(g.handMitte.r.x, TR_TISCH + 0.004, g.handMitte.r.z); } };
+    },
+    blick: V(-0.2, 0.8, 0.2), abstand: 3.3, kameraRicht: V(-1, 0.45, 0.55),
+    standVersatz: V(0, 0, 0.1),   // Ablauf davor: 10 cm weiter vorn ankommen, sonst streift der rechte Fuß beim Hinsetzen das vordere Stuhlbein
+    dauer: [8.5, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.3 * g15Welle(t, 2)
+  };
+}
+/* G15-A ENDE */
 
 export const VORLAGEN = { kniebeuge, kreuzheben, ausfallschritt, hueftheben, wadenheben, beinmaschine, bankdruecken, liegestuetz, schulterdruecken, schulterheben, rudern, klimmzug, curl, trizeps, rumpfuebung, tragen, kabelstand, swing, kniestand, seitlage,
   einbeinkniebeuge, sonderkniebeuge, bandgang, beincurl, seitstuetz, schulterzug, brustmaschine, sprung, vierfuessler, bauchbank, dehnung, pendeln };

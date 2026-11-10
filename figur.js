@@ -1950,6 +1950,8 @@ const HUT_TABELLE = {
   "rumpfuebung:{\"art\":\"beinheben_liegend\"}": [3255266673,"f",0.54,0,-0.4113],   // beinheben_liegend
   "rumpfuebung:{\"art\":\"fahrrad\"}": [1110709954,"f",-0.22,0.005,-0.7293],   // fahrrad_crunch
   "rumpfuebung:{\"art\":\"rueckenstrecker_sanft\"}": [3606420050,"f",0.5216,0,-0.2746],   // rueckenstrecker_bauchlage_sanft
+  "vierfuessler:{\"art\":\"katze_kuh\"}": [2345238602,"k",0,-5,0],   // katze_kuh
+  "dehnung:{\"art\":\"kindshaltung\"}": [1624679753,"f",0.5216,0,-0.1081],   // kindshaltung
 };
 // --- ENDE HUT_TABELLE ---
 
