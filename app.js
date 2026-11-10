@@ -273,10 +273,17 @@ function erledigtSetzen(p, ti, ui, an) {
   speicher.schreib(erledigtKey(p, ti), l);
   zeichne();
 }
+// Feinschliff (10.11.2026): Die Haken dieser Woche bleiben liegen, damit die Wochenkarte auf „Heute“ zeigt, welche Tage geschafft sind. Abhaken selbst geht weiter nur heute.
+// Datum je Wochentag von Montag bis heute, in der Form von datumHeute()
+function wochenDaten(heute) {
+  const t = new Date(), aus = [];
+  for (let i = 0; i <= heute; i++) { const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (heute - i)); aus.push(d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate()); }
+  return aus;
+}
 function altesAbhakenWeg() {
   try {
-    const weg = [], heute = '_' + datumHeute() + '_';
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^dk_erledigt_/.test(k) && k.indexOf(heute) < 0) weg.push(k); }
+    const weg = [], bleibt = wochenDaten(heuteIndex()).map((d) => '_' + d + '_');
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^dk_erledigt_/.test(k) && !bleibt.some((x) => k.indexOf(x) >= 0)) weg.push(k); }
     weg.forEach((k) => localStorage.removeItem(k));
   } catch (e) {}
 }
@@ -692,18 +699,25 @@ function beispiel() {
 }
 
 /* ---------- Kopf jeder Ansicht ---------- */
-function kopf(unter) {
+// Feinschliff (10.11.2026): Gruß nach Tageszeit; die kleine Zeile (Datum oder Plan) steht über der Überschrift; Plan und Rang haben einen eigenen Titel
+function gruss(n) {
+  const std = new Date().getHours();
+  const g = std >= 5 && std < 11 ? 'Guten Morgen' : std >= 18 ? 'Guten Abend' : 'Hi';
+  if (!n) return g === 'Hi' ? 'Dein Training' : g;
+  return g === 'Hi' ? 'Hi ' + n : g + ', ' + n;
+}
+function kopf(unter, titel) {
   const n = vorname(S.plan.n);
   // Ein Plan ohne Konto kam über einen alten Link ohne Code: Den kann jeder bauen, also sagt die App das auch
   const ohneCode = S.plan.id !== 'beispiel' && !konten()[S.plan.id];
-  return h('div', { class: 'plan-kopf' }, h('h1', { text: n ? 'Hi ' + n : 'Dein Training' }), unter ? h('p', { class: 'leise', text: unter }) : null,
+  return h('div', { class: 'plan-kopf gruss' }, unter ? h('p', { class: 'leise klein', text: unter }) : null, h('h1', { text: titel || gruss(n) }),
     ohneCode ? h('p', { class: 'meldung klein', text: 'Dieser Plan kam über einen Link ohne Code. Frag Devin, ob er wirklich von ihm ist.' }) : null);
 }
 
 const charakterLink = () => h('a', { class: 'knopf charakter-knopf', href: 'charakter/kunde.html', text: 'Mein Charakter' });
 /* ---------- Heute: Wochenleiste, Training des Tages, Übungen abhaken ---------- */
 let OHNE_3D = false;   // Der PR-Raum hat nicht geladen: Die Rang-Seite zeigt dann das Formular
-function ansichtRang() { return Rang.ansicht({ h, kopf, lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
+function ansichtRang() { return Rang.ansicht({ h, kopf: () => kopf('', 'Dein Rang'), lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
 function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
@@ -719,25 +733,80 @@ function ansichtHeute() {
     return teile;
   }
   if (S.tagWahl == null) S.tagWahl = heute;
-  teile.push(wochenleiste(p, heute));
-  teile.push(h('button', { class: 'knopf text klein', type: 'button', onclick: () => { geh('plan'); setTimeout(() => { const el = $('#trainingstage'); if (el) el.scrollIntoView({ block: 'start' }); }, 0); }, text: 'Trainingstage ändern' }));
+  teile.push(wochenKarte(p, heute));
   const ti = tagFuer(p, S.tagWahl);
   teile.push(ti >= 0 ? trainingsKarte(p, ti, S.tagWahl === heute) : ruhetagKarte(p, S.tagWahl, heute));
+  teile.push(tippKarte(p, ti >= 0 ? ti : (naechstesTraining(p, S.tagWahl) || { ti: -1 }).ti));
   teile.push(verlaufBlock());
-  const w = aktuelleWoche(p), ph = PHASE[(p.w || [])[w]];
-  if (ph) teile.push(h('p', { class: 'leise klein', text: 'Woche ' + (w + 1) + ' von ' + p.w.length + ' · ' + ph[1] + ': ' + ph[2] + (ph[0] === 'deload' ? ' (halb so viele Sätze)' : '') }));
-  else if (p.w && w >= p.w.length) teile.push(h('p', { class: 'meldung klein', text: 'Dein Plan ist durch. Sprich mit Devin über den nächsten.' }));
+  const w = aktuelleWoche(p), ph = PHASE[(p.w || [])[w]];   // die Zeile „Woche x von y“ steht jetzt in der Wochenkarte
+  if (!ph && p.w && w >= p.w.length) teile.push(h('p', { class: 'meldung klein', text: 'Dein Plan ist durch. Sprich mit Devin über den nächsten.' }));
   teile.push(installKarte());
   return teile;
 }
-function wochenleiste(p, heute) {
+/* Feinschliff (10.11.2026, Devin: „wie eine App, die man täglich benutzen kann und es nächsten Tag benutzen will“):
+ * Die Woche ist eine Karte: Tage mit Datum, geschaffte Tage mit Haken, darunter der Stand der Woche und die Serie. */
+// Welche Tage dieser Woche sind geschafft? Ein Training bis zum Ende (Spielstand) oder alle Übungen des Tages abgehakt. Gelesen wird nur, nichts geschrieben.
+function wocheErledigt(p, heute) {
+  const stand = speicher.lies(Spiel.SCHLUESSEL, null), liste = stand && Array.isArray(stand.einheitenListe) ? stand.einheitenListe : [];
+  return wochenDaten(heute).map((d) => {
+    const vorn = p.id + '|' + d + '|';
+    if (liste.some((x) => typeof x === 'string' && x.indexOf(vorn) === 0)) return true;
+    return p.t.some((t, ti) => { const l = speicher.lies('dk_erledigt_' + p.id + '_' + d + '_' + ti, null); return Array.isArray(l) && t.u.length > 0 && l.length >= t.u.length; });
+  });
+}
+function naechstesTraining(p, wt) {
+  for (let i = 1; i <= 7; i++) { const ti = tagFuer(p, (wt + i) % 7); if (ti >= 0) return { wt: (wt + i) % 7, ti }; }
+  return null;
+}
+function wochenleiste(p, heute, fertig) {
+  const jetzt = new Date(), nr = (i) => new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate() - (heute - i)).getDate();
   return h('div', { class: 'wochenleiste', role: 'group', 'aria-label': 'Wochentage' }, WOCHENTAGE.map((w, i) => {
-    const ti = tagFuer(p, i);
-    return h('button', { type: 'button', class: 'wt' + (i === S.tagWahl ? ' an' : '') + (i === heute ? ' heute' : '') + (ti >= 0 ? ' training' : ''),
-      'aria-pressed': i === S.tagWahl ? 'true' : 'false', 'aria-label': w + (i === heute ? ' (heute)' : '') + (ti >= 0 ? ': Training ' + (ti + 1) + ', ' + p.t[ti].n : ': Ruhetag'),
+    const ti = tagFuer(p, i), ok = !!(fertig && fertig[i]);
+    return h('button', { type: 'button', class: 'wt' + (i === S.tagWahl ? ' an' : '') + (i === heute ? ' heute' : '') + (i < heute ? ' vorbei' : '') + (ti >= 0 ? ' training' : '') + (ok ? ' fertig' : ''),
+      'aria-pressed': i === S.tagWahl ? 'true' : 'false', 'aria-label': w + (i === heute ? ' (heute)' : '') + (ti >= 0 ? ': Training ' + (ti + 1) + ', ' + p.t[ti].n : ': Ruhetag') + (ok ? ', erledigt' : ''),
       onclick: () => { S.tagWahl = i; zeichne(); } },
-      h('span', { text: w.slice(0, 2) }), h('b', { text: ti >= 0 ? '•' : '\u00a0' }));
+      h('span', { text: w.slice(0, 2) }), h('span', { class: 'wt-nr', text: String(nr(i)) }), h('b', { text: ok ? '✓' : ti >= 0 ? '•' : '\u00a0' }));
   }));
+}
+function wochenKarte(p, heute) {
+  const fertig = wocheErledigt(p, heute), ziel = planTage(p), n = Math.min(ziel, fertig.filter(Boolean).length), offen = ziel - n;
+  const w = aktuelleWoche(p), ph = PHASE[(p.w || [])[w]];
+  const st = p.id === 'beispiel' ? null : Spiel.status(), serie = st && st.serieWochen > 0 ? st.serieWochen : 0;
+  return h('section', { class: 'block woche-karte' },
+    h('div', { class: 'woche-kopf' }, h('h2', { text: 'Diese Woche' }),
+      h('button', { class: 'knopf text klein', type: 'button', onclick: () => { geh('plan'); setTimeout(() => { const el = $('#trainingstage'); if (el) el.scrollIntoView({ block: 'start' }); }, 0); }, text: 'Tage ändern' }),
+      ph ? h('p', { class: 'leise klein', text: 'Woche ' + (w + 1) + ' von ' + p.w.length + ' · ' + ph[1] + ': ' + ph[2] + (ph[0] === 'deload' ? ' (halb so viele Sätze)' : '') }) : null),
+    wochenleiste(p, heute, fertig),
+    // Der Ring füllt sich mit jedem Training der Woche und wird grün, wenn alle geschafft sind
+    h('div', { class: 'woche-stand' + (offen > 0 ? '' : ' voll'), role: 'status' },
+      h('span', { class: 'woche-ring', style: '--p:' + (ziel ? Math.round(n / ziel * 100) : 0), 'aria-hidden': 'true' }, h('b', { text: offen > 0 ? n + '/' + ziel : '✓' })),
+      h('span', { class: 'woche-text' },
+        h('b', { text: offen > 0 ? 'Noch ' + offen + (offen === 1 ? ' Training' : ' Trainings') + ' diese Woche' : (ziel === 1 ? 'Training geschafft' : 'Alle ' + ziel + ' Trainings geschafft') }),
+        serie ? h('small', { text: 'Serie: ' + serie + (serie === 1 ? ' Woche' : ' Wochen') }) : null)));
+}
+// Balken über der Übungsliste; ist alles abgehakt, steht dabei, wann es weitergeht
+function fortschritt(p, t, n, alle) {
+  const nx = alle ? naechstesTraining(p, heuteIndex()) : null;
+  return h('div', { class: 'fortschritt' + (alle ? ' voll' : ''), role: 'status' },
+    h('div', { class: 'fortschritt-balken', 'aria-hidden': 'true' }, h('i', { style: 'width:' + (t.u.length ? Math.round(Math.min(1, n / t.u.length) * 100) : 0) + '%' })),
+    h('p', { class: 'klein' + (alle ? '' : ' leise'), text: alle ? 'Alles erledigt. Stark, bis zum nächsten Training!' : n + ' von ' + t.u.length + ' Übungen erledigt' }),
+    nx ? h('p', { class: 'klein leise', text: 'Nächstes Training: ' + WOCHENTAGE[nx.wt] + ' · ' + p.t[nx.ti].n }) : null);
+}
+// Jeden Tag ein anderer Technik-Punkt zu einer Übung aus dem gezeigten Training. Der Text kommt wörtlich aus den geprüften Übungsdaten („So geht’s“), hier wird nichts erfunden.
+function tippKarte(p, ti) {
+  const t = p.t[ti];
+  if (!t) return null;
+  const punkte = (u) => (Array.isArray(u.d.t) ? u.d.t.filter((x) => typeof x === 'string' && x.trim()) : []);
+  const mit = t.u.map((roh) => uebung(roh)).filter((u) => punkte(u).length);
+  if (!mit.length) return null;
+  const d = new Date(), tag = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
+  const u = mit[tag % mit.length], alle = punkte(u), kurz = alle.filter((x) => x.length <= 150), wahl = kurz.length ? kurz : alle;
+  const satz = wahl[Math.floor(tag / mit.length) % wahl.length].trim();
+  return h('section', { class: 'block tagestipp' },
+    h('div', { class: 'tipp-text' }, h('small', { text: 'Technik-Tipp des Tages' }),
+      h('button', { class: 'ueb-name', type: 'button', 'aria-haspopup': 'dialog', onclick: () => oeffneUebung(u, ti), text: anzeigeName(u) }),
+      h('p', { text: /[.!?…]$/.test(satz) ? satz : satz + '.' })),
+    mini3d(u));
 }
 function mini3d(u) {
   return h('button', { class: 'mini3d' + (u.d.a ? '' : ' ohne'), type: 'button', 'aria-label': anzeigeName(u) + ' in 3D ansehen', 'data-vorschau': u.d.a ? u.id : '',
@@ -751,7 +820,7 @@ function trainingsKarte(p, ti, istHeute) {
     !istHeute ? h('p', { class: 'leise klein', text: WOCHENTAGE[S.tagWahl] + ' · Vorschau' }) : null,
     h('div', { class: 'aktionen' }, startKnopf(p, ti, istHeute ? 'Training starten' : 'Diese Einheit starten'), h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, ti), text: 'Ins Gym gehen' })),
     aufwaermen(t),
-    istHeute ? h('p', { class: 'klein' + (alle ? '' : ' leise'), role: 'status', text: alle ? 'Alles erledigt. Stark, bis zum nächsten Training!' : erledigt.length + ' von ' + t.u.length + ' Übungen erledigt' }) : null,
+    istHeute ? fortschritt(p, t, erledigt.length, alle) : null,
     p.fokus && t.u.some((roh) => roh.z && !roh.z.art && !istSek(uebung(roh))) ? h('p', { class: 'notiz', text: 'Fokus diese Woche: ' + p.fokus }) : null,
     h('div', { class: 'ueb-liste' }, t.u.map((roh, ui) => {
       const u = uebung(roh), fertig = erledigt.indexOf(ui) >= 0;
@@ -769,13 +838,13 @@ function aufwaermen(t) {
     h('ul', { class: 'klein' }, t.a.u.map(([n, x]) => h('li', { text: n + (x ? ' — ' + x : '') })))) : null;
 }
 function ruhetagKarte(p, wt, heute) {
-  let naechster = null;
-  for (let i = 1; i <= 7 && !naechster; i++) { const ti = tagFuer(p, (wt + i) % 7); if (ti >= 0) naechster = { wt: (wt + i) % 7, ti }; }
-  return h('section', { class: 'block heute' },
-    h('h3', { text: wt === heute ? 'Heute ist Ruhetag' : WOCHENTAGE[wt] + ': Ruhetag' }),
+  const naechster = naechstesTraining(p, wt);
+  return h('section', { class: 'block heute ruhetag' },
+    h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: wt === heute ? 'Heute' : WOCHENTAGE[wt] }), h('h3', { text: 'Ruhetag' })),
     h('p', { class: 'leise klein', text: 'Erholung gehört zum Training. Schlaf gut, iss genug, beweg dich locker.' }),
-    naechster ? h('p', null, 'Nächstes Training: ', h('b', { text: WOCHENTAGE[naechster.wt] + ' · Training ' + (naechster.ti + 1) + ' · ' + p.t[naechster.ti].n })) : null,
-    naechster ? h('button', { class: 'knopf', type: 'button', onclick: () => { S.tagWahl = naechster.wt; zeichne(); }, text: 'Training ansehen' }) : null);
+    naechster ? h('div', { class: 'naechstes' },
+      h('span', null, h('small', { text: 'Nächstes Training · ' + WOCHENTAGE[naechster.wt] }), h('b', { text: p.t[naechster.ti].n })),
+      h('button', { class: 'knopf klein', type: 'button', 'aria-label': 'Nächstes Training ansehen', onclick: () => { S.tagWahl = naechster.wt; zeichne(); }, text: 'Ansehen' })) : null);
 }
 // Große Muskeln an zwei Tagen direkt hintereinander? Dann ein Tipp (wie in der Trainer-Seite)
 const GROSSE_MUSKELN = ['brust', 'lat', 'oberer_ruecken', 'quadrizeps', 'beinbeuger', 'gesaess'];
@@ -831,7 +900,7 @@ function trainingstageBlock(p) {
 /* ---------- Plan ---------- */
 function ansichtPlan() {
   const p = S.plan, jetzt = aktuelleWoche(p);
-  const teile = [kopf([ZIEL[p.z] || p.z, p.l ? 'Level ' + p.l : '', p.s].filter(Boolean).join(' · '))];
+  const teile = [kopf([ZIEL[p.z] || p.z, p.l ? 'Level ' + p.l : '', p.s].filter(Boolean).join(' · '), 'Dein Plan')];
   if (p.ki) teile.push(h('section', { class: 'block' }, h('h2', { text: 'Vom Coach' }), h('p', { class: 'ki-text', text: p.ki })));
   p.t.forEach((t, ti) => teile.push(tagBlock(p, t, ti)));
   if ((p.w && p.w.length) || p.pr || p.dl) teile.push(h('section', { class: 'block' }, h('h2', { text: 'Wochen' }),

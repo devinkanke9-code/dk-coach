@@ -91,6 +91,65 @@ body { font-size: 18px; letter-spacing: 0; text-rendering: optimizeLegibility; -
 .knopf.klein { font-size: 15px; }
 nav.leiste button { font-size: 13px; letter-spacing: 0; }
 @media (min-width: 1024px) { .st-block h1 { letter-spacing: -.025em; } .st-block h2 { letter-spacing: -.02em; } }
+/* Feinschliff (10.11.2026, Devin: „professionell Design … wie eine App, die man täglich benutzen kann und es nächsten Tag benutzen will“).
+   Nur Kunden-App. Kopf mit Gruß, Wochenkarte, Fortschritt, ruhige Übungszeilen, Technik-Tipp, Ruhetag, Plan-Werte in vier Spalten. Farben nur aus den Farbwelten. */
+.plan-kopf.gruss { gap: 2px; }
+.plan-kopf.gruss h1 { text-wrap: balance; }
+.plan-kopf.gruss .meldung { margin-top: 10px; }
+.woche-karte { gap: 14px; }
+.woche-kopf { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; }
+.woche-kopf p { grid-column: 1 / -1; text-wrap: pretty; }
+.woche-kopf .knopf { margin-right: -8px; }
+.woche-karte .wochenleiste .wt { min-height: 70px; background: none; border-color: transparent; box-shadow: none; }
+.woche-karte .wochenleiste .wt.heute { border-color: var(--akzent); }
+.woche-karte .wochenleiste .wt.an { background: var(--knopf-voll); border-color: transparent; }
+.woche-karte .wochenleiste .wt.an.kg-zieht { box-shadow: 0 16px 34px -12px rgba(0, 0, 0, .55); }
+.woche-karte .wt .wt-nr { font-size: 17px; font-weight: 600; line-height: 1.15; color: var(--text); font-variant-numeric: tabular-nums; }
+.woche-karte .wt.vorbei .wt-nr { color: var(--text2); font-weight: 500; }
+.woche-karte .wt.an .wt-nr { color: inherit; }
+.woche-karte .wt.fertig b { color: var(--gut); }
+.woche-karte .wt.an.fertig b { color: var(--auf-voll); }
+.woche-stand { display: flex; align-items: center; gap: 12px; }
+.woche-ring { position: relative; flex: 0 0 auto; width: 46px; height: 46px; display: grid; place-items: center; }
+.woche-ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(var(--akzent-hell) calc(var(--p, 0) * 1%), color-mix(in srgb, currentColor 14%, transparent) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px)); }
+.woche-ring b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.woche-stand.voll .woche-ring::before { background: var(--gut); }
+.woche-stand.voll .woche-ring b { font-size: 19px; color: var(--gut); }
+.woche-text { display: grid; gap: 1px; min-width: 0; }
+.woche-text b { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.woche-text small { font-size: 14px; color: var(--text2); }
+.fortschritt { display: grid; gap: 8px; }
+.fortschritt-balken { height: 6px; border-radius: 99px; background: color-mix(in srgb, currentColor 14%, transparent); overflow: hidden; }
+.fortschritt-balken i { display: block; height: 100%; border-radius: inherit; background: var(--knopf-voll); }
+.fortschritt.voll .fortschritt-balken i { background: var(--gut); }
+.block.heute .ueb-liste { gap: 0; }
+.block.heute .ueb-karte { background: none; border: 0; border-top: 1px solid var(--linie); border-radius: 0; padding: 12px 0; }
+.block.heute .ueb-karte:last-child { padding-bottom: 0; }
+.block.heute .ueb-name { font-size: 17px; line-height: 1.25; }
+.block.heute .ueb-name::after { color: var(--text2); }
+.block.heute .ueb-dosis { color: var(--text2); }
+.block.heute .ueb-dosis b { color: var(--text); }
+.block.heute .mini3d { width: 48px; height: 48px; border-radius: 12px; }
+.block.tagestipp { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 14px; }
+.tipp-text { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.tipp-text small { font-size: 14px; font-weight: 600; color: var(--akzent-hell); }
+.tipp-text p { font-size: 16px; line-height: 1.4; color: var(--text2); text-wrap: pretty; }
+.naechstes { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--reihe); border: 1px solid var(--rand-weich); }
+.naechstes > span { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.naechstes small { font-size: 13px; color: var(--text2); }
+.naechstes b { font-weight: 600; }
+.rang-kurz-ziel { font-size: 13px; font-weight: 400; color: var(--text2); }
+.block > ul:not([class]), #trainingstage > ul { margin: 0; padding-left: 20px; }
+#trainingstage .optionen { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; max-width: 440px; }
+#trainingstage .optionen span { display: grid; place-items: center; padding: 0; min-height: 44px; font-size: 15px; }
+@media (max-width: 520px) {
+  table.ueb tr { display: grid; grid-template-columns: .7fr 1fr 1fr 1.3fr; gap: 6px 10px; padding: 12px 0; }
+  table.ueb td:first-child { grid-column: 1 / -1; padding-bottom: 0; }
+  table.ueb td.z { display: grid; gap: 1px; font-size: 16px; font-weight: 600; white-space: nowrap; }
+  table.ueb td.z::before { content: attr(data-l); font-size: 12px; font-weight: 400; color: var(--text2); }
+}
 </style>
 </head>
 <body>

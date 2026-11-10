@@ -13,12 +13,13 @@ export function wappen(h, nr, gross) { return h('div', { class: 'rang-wappen t' 
 const balken = (h, anteil) => h('div', { class: 'rang-balken', 'aria-hidden': 'true' }, h('i', { style: 'width:' + Math.round(Math.max(0, Math.min(1, anteil)) * 100) + '%' }));
 const punkteWort = (n) => n + (n === 1 ? ' Punkt' : ' Punkte');
 
-// Kleine Karte auf „Heute“: tippen öffnet die Rang-Seite
+// Kleine Karte auf „Heute“: tippen öffnet die Rang-Seite. Feinschliff (10.11.2026): darunter steht, wie viel bis zum nächsten Rang fehlt
 export function kurzKarte(c) {
   const h = c.h, st = Spiel.status();
   return h('button', { class: 'rang-kurz', type: 'button', onclick: c.oeffnen, 'aria-label': 'Rang ' + st.level + ', ' + st.titel + ', ' + punkteWort(st.punkte) },
     wappen(h, st.level),
-    h('span', { class: 'rang-kurz-text' }, h('b', { text: st.titel }), balken(h, st.anteil)),
+    h('span', { class: 'rang-kurz-text' }, h('b', { text: st.titel }), balken(h, st.anteil),
+      st.naechstes ? h('small', { class: 'rang-kurz-ziel', text: 'Noch ' + punkteWort(st.naechstes.fehlt) + ' bis „' + st.naechstes.titel + '“' }) : null),
     h('span', { class: 'rang-kurz-pkt', text: String(st.punkte) }));
 }
 
