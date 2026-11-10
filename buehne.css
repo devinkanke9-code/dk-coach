@@ -387,3 +387,87 @@ body.start .kopf-innen { max-width: 1024px; }
 @media (prefers-reduced-motion: reduce) { .med { animation: none; } .med .rang-strahlen { animation: none; } }
 .raum-pr-knopf { position: absolute; z-index: 2; right: 12px; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); min-height: 44px; padding: 0 18px; border-radius: 22px; font: inherit; font-size: 14px; font-weight: 600; color: var(--text, inherit); background: var(--glas-dicht); border: 1px solid var(--glas-rand); cursor: pointer; transition: opacity .25s; }
 .raum.faehrt .raum-pr-knopf, .raum.an-station .raum-pr-knopf { opacity: 0; pointer-events: none; }
+/* Spiegel: Posen-Karte (09.11.2026) */
+.raum-pose-weiter { width: 100%; min-height: 52px; margin-top: 10px; border: 0; border-radius: 18px; cursor: pointer; background: var(--knopf-voll); color: var(--auf-voll); font-size: 17px; font-weight: 800; }
+.raum-pose-weiter:active { transform: scale(1.02); }
+/* Posen (Waage und Spiegel): fünf Knöpfe, darunter der Name der Pose */
+.raum-pose-reihe { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.raum-pose-chip { display: grid; gap: 1px; justify-items: center; padding: 7px 2px; border: 0; border-radius: 14px; cursor: pointer; background: var(--knopf-grund); color: inherit; font: inherit; }
+.raum-pose-chip b { font-size: 17px; font-weight: 800; }
+.raum-pose-chip small { font-size: 11px; color: var(--text2); line-height: 1.15; }
+.raum-pose-chip.jetzt { background: var(--akzent-verlauf); color: var(--auf-voll); }
+.raum-pose-chip.jetzt small { color: inherit; }
+.raum-pose-name { margin: 8px 0 0; text-align: center; font-size: 16px; font-weight: 700; color: var(--akzent-hell); }
+@media (max-height: 740px) {   /* kurze Bildschirme: Karte kompakter, damit die Figur über der Karte bleibt */
+  .raum-ziel { display: none; }
+  .raum-status-werte { margin-top: 6px; } .raum-status-werte div { padding: 5px 4px; } .raum-status-werte b { font-size: 19px; }
+  .raum-pose-reihe { margin-top: 6px; } .raum-pose-chip { padding: 5px 2px; } .raum-pose-name { margin-top: 5px; font-size: 15px; }
+}
+
+/* Schalter Tag und Nacht (09.11.2026) */
+.raum-zeit { position: absolute; z-index: 2; right: 14px; top: calc(136px + env(safe-area-inset-top, 0px)); width: 44px; height: 44px; padding: 0; border-radius: 50%; font: inherit; font-size: 22px; line-height: 1; color: var(--text, inherit); background: var(--glas-dicht); border: 1px solid var(--glas-rand); cursor: pointer; display: grid; place-items: center; transition: opacity .25s, transform .2s; }
+.raum-zeit:active { transform: scale(.94); }
+.raum.faehrt .raum-zeit { opacity: 0; pointer-events: none; }
+
+/* Kamera-Joystick (09.11.2026) */
+.raum-kamstick { position: absolute; z-index: 2; right: 14px; bottom: calc(176px + env(safe-area-inset-bottom, 0px)); width: 88px; height: 88px; border-radius: 50%; display: grid; place-items: center; touch-action: none; cursor: grab; background: var(--glas); border: 1px solid var(--glas-rand); transition: opacity .25s; }
+.raum-kamstick::before { content: 'Kamera'; position: absolute; top: -17px; left: 0; right: 0; text-align: center; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); pointer-events: none; }
+.raum-kamstick i { width: 38px; height: 38px; border-radius: 50%; background: var(--knopf-voll, var(--akzent-verlauf)); pointer-events: none; transition: transform .12s linear; opacity: .92; }
+.raum.faehrt .raum-kamstick, .raum.an-station .raum-kamstick { opacity: 0; pointer-events: none; }
+
+/* ---------- Live-Gym (10.11.2026, nach Devins Vorlage): Anzeige wie im Spiel. Plan oben links, DK-Schild oben rechts, runde Karte unten links, Tasten unten rechts (PC); am Handy die zwei Knüppel unten ---------- */
+.raum.live { --live-glas: rgba(14, 14, 18, .72); --live-rand: rgba(232, 196, 104, .28); --live-gold: #F7DE93; --live-text: #F5F1E7; --live-text2: #B9B2A2; color: var(--live-text); }
+.raum.live .raum-kopf { left: auto; right: 16px; top: calc(100px + env(safe-area-inset-top, 0px)); display: block; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.raum.live .raum-kopftext, .raum.live .raum-punkte { display: none; }
+.raum.live .raum-zu { width: 40px; height: 40px; background: var(--live-glas); color: var(--live-text); border: 1px solid var(--live-rand); }
+.raum.live .raum-zeit { right: 64px; top: calc(100px + env(safe-area-inset-top, 0px)); width: 40px; height: 40px; font-size: 19px; background: var(--live-glas); color: var(--live-text); border-color: var(--live-rand); }
+.raum.live .raum-tipp { top: auto; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); background: var(--live-glas); color: var(--live-text); border: 1px solid var(--live-rand); }
+.live-plan { position: absolute; z-index: 3; left: 16px; top: calc(14px + env(safe-area-inset-top, 0px)); width: 268px; max-width: calc(100% - 150px); border-radius: 14px; background: var(--live-glas); border: 1px solid var(--live-rand);
+  backdrop-filter: blur(14px) saturate(150%); -webkit-backdrop-filter: blur(14px) saturate(150%); box-shadow: 0 12px 30px -14px rgba(0, 0, 0, .8); overflow: hidden; transition: opacity .3s; }
+.live-plan-kopf { width: 100%; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 10px 14px 9px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-bottom: 1px solid rgba(232, 196, 104, .16); }
+.live-plan-kopf svg { width: 32px; height: 32px; color: var(--live-gold); }
+.live-plan-titel { display: grid; gap: 1px; min-width: 0; }
+.live-plan-titel b { font-size: 15px; font-weight: 700; letter-spacing: -.005em; }
+.live-plan-titel small { font-size: 14px; font-weight: 600; color: var(--live-text); opacity: .92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-plan-pfeil { font-style: normal; font-size: 22px; color: var(--live-text2); transition: transform .25s; }
+.live-plan.zu .live-plan-pfeil { transform: rotate(90deg); }
+.live-plan-liste { list-style: none; margin: 0; padding: 6px 14px 10px; display: grid; gap: 2px; }
+.live-plan.zu .live-plan-liste { display: none; }
+.live-plan-liste li { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; min-height: 26px; font-size: 13.5px; color: var(--live-text); }
+.live-plan-liste li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, .22); }
+.live-plan-liste li em { font-style: normal; font-size: 12.5px; color: var(--live-text2); font-variant-numeric: tabular-nums; }
+.live-haken { width: 15px; height: 15px; border-radius: 50%; border: 1.6px solid rgba(245, 241, 231, .75); box-sizing: border-box; display: grid; place-items: center; }
+.live-plan-liste li.jetzt span { color: var(--live-gold); font-weight: 600; }
+.live-plan-liste li.jetzt .live-haken { border-color: var(--live-gold); box-shadow: 0 0 8px rgba(247, 222, 147, .55); }
+.live-plan-liste li.fertig span, .live-plan-liste li.fertig em { opacity: .55; text-decoration: line-through; text-decoration-color: rgba(245, 241, 231, .45); }
+.live-plan-liste li.fertig .live-haken { background: var(--live-gold); border-color: var(--live-gold); }
+.live-plan-liste li.fertig .live-haken::after { content: ''; width: 6px; height: 3px; border: solid #17130A; border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
+.live-schild { position: absolute; z-index: 3; right: 16px; top: calc(14px + env(safe-area-inset-top, 0px)); width: 148px; height: 76px; border-radius: 12px; background: rgba(10, 10, 13, .78); border: 1px solid var(--live-rand); display: grid; place-items: center; pointer-events: none; box-shadow: 0 12px 30px -14px rgba(0, 0, 0, .8); }
+.live-schild canvas { width: 120px; height: 60px; }
+.live-karte { position: absolute; z-index: 3; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: 150px; height: 150px; border-radius: 50%; pointer-events: none; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .9); }
+.live-tasten { position: absolute; z-index: 3; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; padding: 8px 12px; border-radius: 12px; background: var(--live-glas); border: 1px solid var(--live-rand); font-size: 12.5px; color: var(--live-text); pointer-events: none; }
+.live-tasten span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.live-tasten kbd { font: 600 11px/1 inherit; font-family: inherit; min-width: 20px; padding: 5px 6px; border-radius: 6px; border: 1px solid rgba(245, 241, 231, .55); text-align: center; color: var(--live-text); }
+.raum.live.an-station .live-karte, .raum.live.an-station .live-tasten, .raum.live.an-station .live-plan { opacity: 0; pointer-events: none; }
+.raum.live .raum-kamstick::before { color: var(--live-text2); }
+/* PC: keine Knüppel, der große Knopf steht unten in der Mitte */
+@media (hover: hover) and (pointer: fine) {
+  .raum.live .raum-stick, .raum.live .raum-kamstick { display: none; }
+  .raum.live .raum-unten { justify-content: center; left: 190px; right: 190px; }
+  .raum.live .raum-weiter { max-width: 100%; }
+}
+/* Handy und Tablet: Knüppel unten, Karte kleiner über dem linken Knüppel, keine Tasten */
+@media (pointer: coarse), (hover: none) {
+  .live-tasten { display: none; }
+  .live-plan { width: 212px; left: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); }
+  .live-plan-kopf { grid-template-columns: 26px 1fr auto; padding: 8px 10px 7px 9px; gap: 8px; }
+  .live-plan-kopf svg { width: 24px; height: 24px; }
+  .live-plan-titel b { font-size: 13.5px; } .live-plan-titel small { font-size: 12.5px; }
+  .live-plan-liste { padding: 4px 10px 8px; } .live-plan-liste li { min-height: 22px; font-size: 12.5px; gap: 8px; } .live-plan-liste li em { font-size: 11.5px; }
+  .live-schild { right: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); width: 104px; height: 54px; } .live-schild canvas { width: 88px; height: 44px; }
+  .raum.live .raum-kopf { right: 10px; top: calc(72px + env(safe-area-inset-top, 0px)); }
+  .raum.live .raum-zeit { right: 58px; top: calc(72px + env(safe-area-inset-top, 0px)); }
+  .live-karte { left: 14px; width: 96px; height: 96px; bottom: calc(134px + env(safe-area-inset-bottom, 0px)); }
+  .raum.live .raum-tipp { bottom: calc(240px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (pointer: coarse), (hover: none) { .raum.live .raum-tipp { bottom: calc(290px + env(safe-area-inset-bottom, 0px)); } }
