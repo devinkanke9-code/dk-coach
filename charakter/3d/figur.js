@@ -1952,6 +1952,8 @@ const HUT_TABELLE = {
   "rumpfuebung:{\"art\":\"rueckenstrecker_sanft\"}": [3606420050,"f",0.5216,0,-0.2746],   // rueckenstrecker_bauchlage_sanft
   "vierfuessler:{\"art\":\"katze_kuh\"}": [2345238602,"k",0,-5,0],   // katze_kuh
   "dehnung:{\"art\":\"kindshaltung\"}": [1624679753,"f",0.5216,0,-0.1081],   // kindshaltung
+  "liegestuetz:{\"art\":\"raupe\"}": [3371163649,"k",0,-10,0],   // inchworm_raupe
+  "vierfuessler:{\"art\":\"bws_drehung\"}": [3367114156,"f",-0.311,0,-1.0314],   // bws_drehung_vierfuessler
 };
 // --- ENDE HUT_TABELLE ---
 
