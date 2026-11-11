@@ -279,11 +279,12 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
 
 // pr (optional): Die Halle ist der PR-Raum. { rang, titel, level, ausgang }, die Übungen tragen scheiben und wert. prTuer (optional): Im Gym steht die Tür zum PR-Raum, der Aufruf kommt, wenn die Figur durch ist. abTuer: Die Figur kommt gerade aus dem PR-Raum zurück.
 export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status, pr, prTuer, abTuer, test }) {   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
-  const LIVE = !pr;   // Live-Gym: Look der Vorlage, frei laufen (WASD, Maus, zwei Knüppel), Anzeige wie im Spiel; der PR-Raum bleibt, wie er ist
-  const LOOK = document.documentElement.dataset.look, GOLD = LIVE || LOOK === 'gold', P = LIVE ? FARBEN_LIVE : GOLD ? FARBEN_GOLD : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;
+  const LIVE = !pr;   // Live-Gym: frei laufen (WASD, Maus, zwei Knüppel), Anzeige wie im Spiel, Einrichtung der Vorlage
+  const LOOKL = true;   // Look der Vorlage (Farben, Marmor mit Spiegelung, Glasdach, Schein, Qualitätsstufen) seit 10.11. nachts auch im PR-Raum; dort bleiben orangenes Licht, Gummiplatten und Scheiben
+  const LOOK = document.documentElement.dataset.look, GOLD = LOOKL || LOOK === 'gold', P = LOOKL ? FARBEN_LIVE : GOLD ? FARBEN_GOLD : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;
   let zeitWahl = null; try { zeitWahl = localStorage.getItem('dk_gym_zeit'); } catch (e) {}
   const nativNacht = GOLD, zeitNacht = zeitWahl === 'nacht' || (zeitWahl !== 'tag' && nativNacht);   // Tag oder Nacht: ohne Wahl gilt die Farbwelt (Schwarz-Gold ist Nacht)
-  const TAGP = nativNacht ? (LIVE ? AUSSEN_ABEND : AUSSEN_TAG) : P, NACHTP = nativNacht ? P : AUSSEN_NACHT;   // die Farben für draußen bei Tag und bei Nacht (Live-Gym: der helle Stand ist der Abend)
+  const TAGP = nativNacht ? (LOOKL ? AUSSEN_ABEND : AUSSEN_TAG) : P, NACHTP = nativNacht ? P : AUSSEN_NACHT;   // die Farben für draußen bei Tag und bei Nacht (Live-Gym: der helle Stand ist der Abend)
   // Oberfläche
   const wurzel = el('div', 'raum'); wurzel.setAttribute('role', 'dialog'); wurzel.setAttribute('aria-modal', 'true'); wurzel.setAttribute('aria-label', pr ? 'PR-Raum' : 'Trainingsraum');
   const bild = el('canvas', 'raum-bild'); bild.setAttribute('aria-label', 'Begehbares Gym mit den Geräten des Tages, von oben');
@@ -335,7 +336,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   a.kamera.near = 0.1; a.kamera.far = 1200; a.kamera.fov = sichtOben(); a.kamera.updateProjectionMatrix();
   const szene = a.szene;
   for (const o of szene.children) if (o.isMesh && /Circle|Ring/.test(o.geometry.type)) o.visible = false;   // Boden und Ring der Bühne: hier nicht
-  if (GOLD && !LIVE) { const lila = new THREE.DirectionalLight(0x9b6cff, spieler ? 0.5 : 1.5); lila.position.set(-1, 5, -2.5); szene.add(lila); }
+  if (GOLD && !LOOKL) { const lila = new THREE.DirectionalLight(0x9b6cff, spieler ? 0.5 : 1.5); lila.position.set(-1, 5, -2.5); szene.add(lila); }
   if (LIVE) { const warm = new THREE.DirectionalLight(0xffc27a, 1.1); warm.position.set(-2, 5, -3); szene.add(warm); }   // Live-Gym: warmes Licht von den goldenen LED
   const lichter = szene.children.filter((o) => o.isDirectionalLight);
   let kameraLicht = null;   // eigener Charakter: warmes Licht aus Richtung der Kamera, so stimmt der Hautton von jeder Seite
@@ -369,7 +370,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   // Farben für Schattierungen kommen als „#RRGGBB“ und gehen ungewandelt in die Schattierer (wie bei wegA und wegB)
   const rgb = (h) => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
   // Himmel: eine große Kugel um alles, im Bildraum „Welt“ (nicht in der Halle), dreht aber mit der Halle mit (legeHalle), so bleibt die Sonne am selben Platz
-  const himmelU = { oben: { value: rgb(P.himmelOben) }, horizont: { value: rgb(P.himmelHorizont) }, sonne: { value: rgb(P.sonne) }, sonneRicht: { value: (LIVE ? V(0.82, 0.075, -0.45) : V(0.78, 0.3, 0.55)).normalize() }, mondRicht: { value: (LIVE ? V(0.76, 0.17, -0.5) : V(0.78, 0.155, 0.5)).normalize() }, nacht: { value: 0 }, abend: { value: LIVE ? 1 : 0 } };   // Live-Gym: tiefe Abendsonne vorn rechts, durch die Glasfront zu sehen
+  const himmelU = { oben: { value: rgb(P.himmelOben) }, horizont: { value: rgb(P.himmelHorizont) }, sonne: { value: rgb(P.sonne) }, sonneRicht: { value: (LOOKL ? V(0.82, 0.075, -0.45) : V(0.78, 0.3, 0.55)).normalize() }, mondRicht: { value: (LOOKL ? V(0.76, 0.17, -0.5) : V(0.78, 0.155, 0.5)).normalize() }, nacht: { value: 0 }, abend: { value: LOOKL ? 1 : 0 } };   // Live-Gym: tiefe Abendsonne vorn rechts, durch die Glasfront zu sehen
   const himmel = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), new THREE.ShaderMaterial({ uniforms: himmelU, side: THREE.BackSide, depthWrite: false, fog: false,
     vertexShader: 'varying vec3 vR; void main(){ vR = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `varying vec3 vR; uniform vec3 oben, horizont, sonne, sonneRicht, mondRicht; uniform float nacht, abend;
@@ -445,7 +446,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   /* Live-Gym: polierter schwarzer Marmor mit goldenen und hellen Adern in großen Platten (1,25 m), der die Halle spiegelt (Spiegelrechnung wie die Spiegelwand, unscharf wie echter Stein, am flachen Blick stärker).
      Ein Bild deckt 4 × 4 Platten (5 m), die Adern laufen über die Fugen; die Fugen rechnet der Schattierer. Der Spiegel wird je nach Qualitätsstufe kleiner oder abgeschaltet (dann bleibt der Glanz der Platten). */
   let bodenSp = null, bodenOpt = null;
-  if (LIVE) {
+  if (LOOKL) {
     const GR = matchMedia('(pointer: coarse)').matches ? 1024 : 2048;
     const marmor = new THREE.CanvasTexture(zeichne(GR, GR, (x, b, h) => {
       x.fillStyle = '#0b0b0d'; x.fillRect(0, 0, b, h);
@@ -576,10 +577,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     for (const m of [wandKasten(-BREITE / 2 - WAND_D / 2, -TUER_B / 2, z0, z1, 0, WAND, innen), wandKasten(TUER_B / 2, BREITE / 2 + WAND_D / 2, z0, z1, 0, WAND, innen), wandKasten(-TUER_B / 2, TUER_B / 2, z0, z1, TUER_H, WAND, innen)]) { raum.add(m); liste.push(m); }
   }
   // Flachdach mit Rand; die Unterseite des Quaders ist die Decke
-  const fassM = grund(0xffffff, { map: fassadeT }), dachM = grund(0xffffff, { map: dachT }), deckeM = grund(0xffffff, LIVE ? { map: deckeT, transparent: true, opacity: 0.96, depthWrite: false } : { map: deckeT });   // Live-Gym: Glasdach, nachts fast schwarz, am Abend sieht man den Himmel
+  const fassM = grund(0xffffff, { map: fassadeT }), dachM = grund(0xffffff, { map: dachT }), deckeM = grund(0xffffff, LOOKL ? { map: deckeT, transparent: true, opacity: 0.96, depthWrite: false } : { map: deckeT });   // Live-Gym: Glasdach, nachts fast schwarz, am Abend sieht man den Himmel
   const dachPlatte = new THREE.Mesh(new THREE.BoxGeometry(BREITE + 2 * WAND_D, 0.35, LAENGE + 2 * WAND_D), [fassM, fassM, dachM, deckeM, fassM, fassM]);
   dachPlatte.position.set(0, WAND + 0.175, zMitte); raum.add(dachPlatte);
-  if (LIVE) {   // Glasdach: dunkle Träger quer und längs, die LED-Schienen sitzen darunter
+  if (LOOKL) {   // Glasdach: dunkle Träger quer und längs, die LED-Schienen sitzen darunter
     const balkenM = grund(0x0b0b0e), bh = 0.16, by = WAND - 0.09 + bh / 2;
     for (let z = zAnfang - FACH / 2; z > zEnde; z -= FACH) { const b = new THREE.Mesh(new THREE.BoxGeometry(BREITE, bh, 0.26), balkenM); b.position.set(0, by, z); raum.add(b); }
     for (const x of [...SCHIENEN_X, ...SCHIENEN_X.map((v) => -v)]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, bh, LAENGE), balkenM); b.position.set(x, by + 0.002, zMitte); raum.add(b); }
@@ -1792,8 +1793,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     meerU.lichtC.value.copy(himmelU.sonne.value).multiplyScalar((TAGP.lichtStark || 1) * (1 - z) + (NACHTP.lichtStark || 0.8) * z);
     szene.fog.color.copy(nebelZ[0]).lerp(nebelZ[1], z); glasM.color.copy(glasTonZ[0]).lerp(glasTonZ[1], z);
     palmen.material.color.copy(tonWeiss).lerp(tonPalme, z); for (const m of holzMats) m.color.copy(tonWeiss).lerp(tonHolz, z);
-    if (LIVE) deckeM.opacity = 0.18 + 0.8 * z;
-    ledM.color.copy(ledBasis).multiplyScalar((LIVE ? 0.6 : 1) * (0.55 + 0.45 * z)); scheinM.opacity = P.haloStark * (0.45 + 0.55 * z); scheinML.opacity = scheinM.opacity;
+    if (LOOKL) deckeM.opacity = 0.18 + 0.8 * z;
+    ledM.color.copy(ledBasis).multiplyScalar((LOOKL ? 0.6 : 1) * (0.55 + 0.45 * z)); scheinM.opacity = P.haloStark * (0.45 + 0.55 * z); scheinML.opacity = scheinM.opacity;
     lampeKegelU.nacht.value = z; lampeGlowU.deckkraft.value = 0.95 * z; lampeFleckM.opacity = 0.38 * z; lampeInnenM.color.copy(lampeFarbe).multiplyScalar(0.4 + 0.6 * z);
     lichter.forEach((l, i) => { l.intensity = lichtBasis[i] * (1 - 0.3 * (z - (nativNacht ? 1 : 0))); });   // bei Nacht etwas weniger Licht auf der Figur (in Schwarz-Gold ist es schon abgestimmt)
   }
@@ -1867,7 +1868,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
 
   /* ---------- Live-Gym: Qualität (Ziel 60 Bilder pro Sekunde, so scharf wie das Gerät schafft). Start am PC Stufe 4, am Handy Stufe 3; fällt der Schnitt über 1,5 s unter etwa 53 Bilder,
      geht es eine Stufe runter (erst Schärfe, dann Bodenspiegel, zuletzt der Schein). Hoch geht es nicht von selbst: Bei 60 Hz sieht man Reserven nicht an den Bildabständen. ---------- */
-  const leuchten = LIVE ? leuchtenBauen(THREE) : null, DPR = window.devicePixelRatio || 1, FEIN = matchMedia('(pointer: fine)').matches;
+  const leuchten = LOOKL ? leuchtenBauen(THREE) : null, DPR = window.devicePixelRatio || 1, FEIN = matchMedia('(pointer: fine)').matches;
   const QS = [{ pr: 1, boden: 0, schein: false }, { pr: 1.25, boden: 0, schein: true }, { pr: 1.5, boden: 0.3, schein: true }, { pr: 2, boden: 0.4, schein: true }, { pr: 2.5, boden: 0.5, schein: true }, { pr: 3, boden: 0.5, schein: true }];
   let qStufe = FEIN ? 4 : 3, qSumme = 0, qN = 0, qFest = false;
   const qAnwenden = () => {
@@ -1881,13 +1882,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const mittel = qSumme / qN * 1000; qSumme = 0; qN = 0;
     if (mittel > 18.8 && qStufe > 0) { qStufe--; qAnwenden(); }
   };
-  if (LIVE) { qAnwenden(); a.beiBild = () => leuchten.zeichne(a.renderer); }
+  if (LOOKL) { qAnwenden(); a.beiBild = () => leuchten.zeichne(a.renderer); }
 
   a.kameraFolgt = (dt) => {
     zeit += dt;
     if (liveKarte) liveKarte(dt);
     if (!STILL) boote.forEach((g, i) => { g.position.y = -0.45 + Math.sin(zeit * 0.7 + i * 1.7) * 0.07; g.rotation.z = Math.sin(zeit * 0.55 + i) * 0.025; g.rotation.x = Math.sin(zeit * 0.43 + i * 2.1) * 0.02; });
-    if (LIVE) { qMessen(dt); leuchten.stark = 0.45 + 0.27 * zn; leuchten.schwelle = 0.93 - 0.21 * zn; }   // nachts mehr Schein, am Abend weniger (der helle Himmel soll nicht verschwimmen)
+    if (LOOKL) { qMessen(dt); leuchten.stark = 0.45 + 0.27 * zn; leuchten.schwelle = 0.93 - 0.21 * zn; }   // nachts mehr Schein, am Abend weniger (der helle Himmel soll nicht verschwimmen)
     // Figur: läuft oder steht (an der Station übernimmt die Ansicht)
     if (aktiv == null) {
       let bewegt = 0;
@@ -2029,7 +2030,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       prT.glutMat.color.setScalar(0.3 + 0.7 * glatt(prT.auf));
     }
     if (waage && !waageAktiv) waage.schild.material.opacity = klemme((Math.hypot(K.pos.x - waage.pos.x, K.pos.z - waage.pos.z) - 4.2) / 2.6, 0, 1);   // das Schild verblasst, wenn die Kamera nah ist (sonst verdeckt es die Figur)
-    lichtSaeule.material.opacity = (LIVE ? 0.3 : 1) * (0.4 + 0.25 * puls) * klemme((Math.hypot(K.pos.x - lichtSaeule.position.x, K.pos.z - lichtSaeule.position.z) - (STATION_R - 0.4)) / 1.2, 0, 1);   // steht die Kamera in der Lichtsäule, blendet sie aus (sonst liegt ein Schleier über dem Bild)
+    lichtSaeule.material.opacity = (LOOKL ? 0.3 : 1) * (0.4 + 0.25 * puls) * klemme((Math.hypot(K.pos.x - lichtSaeule.position.x, K.pos.z - lichtSaeule.position.z) - (STATION_R - 0.4)) / 1.2, 0, 1);   // steht die Kamera in der Lichtsäule, blendet sie aus (sonst liegt ein Schleier über dem Bild)
     spielerRing.material.opacity = 0.5 + 0.4 * puls;
     if (n == null) { tuerOffen = Math.min(1, tuerOffen + dt / 1.6); rahmenM.opacity = 0.6 + 0.4 * puls; }
     const k = glatt(tuerOffen); fluegelL.position.x = -TUER_B / 4 - k * (TUER_B / 2 + 0.05); fluegelR.position.x = TUER_B / 4 + k * (TUER_B / 2 + 0.05);

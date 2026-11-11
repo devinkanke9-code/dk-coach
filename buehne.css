@@ -471,3 +471,18 @@ body.start .kopf-innen { max-width: 1024px; }
   .raum.live .raum-tipp { bottom: calc(240px + env(safe-area-inset-bottom, 0px)); }
 }
 @media (pointer: coarse), (hover: none) { .raum.live .raum-tipp { bottom: calc(290px + env(safe-area-inset-bottom, 0px)); } }
+/* Live-Gym, Feinschliff (10.11.2026 nachts): keine Scrollleiste der Seite hinter dem Gym; schmales PC-Fenster: Plan, Schild und Knöpfe kompakt, die Tasten-Leiste nur, wenn Platz ist */
+html:has(.raum), html:has(.raum) body { overflow: hidden; }
+@media (hover: hover) and (pointer: fine) and (max-width: 1100px) {
+  .live-plan { width: 220px; left: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); }
+  .live-plan-kopf { grid-template-columns: 26px 1fr auto; padding: 8px 10px 7px 9px; gap: 8px; } .live-plan-kopf svg { width: 24px; height: 24px; }
+  .live-plan-titel b { font-size: 13.5px; } .live-plan-titel small { font-size: 12.5px; }
+  .live-plan-liste { padding: 4px 10px 8px; } .live-plan-liste li { min-height: 22px; font-size: 12.5px; gap: 8px; } .live-plan-liste li em { font-size: 11.5px; }
+  .live-schild { right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); width: 104px; height: 54px; } .live-schild canvas { width: 88px; height: 44px; }
+  .raum.live .raum-kopf { right: 12px; top: calc(74px + env(safe-area-inset-top, 0px)); }
+  .raum.live .raum-zeit { right: 60px; top: calc(74px + env(safe-area-inset-top, 0px)); }
+  .live-karte { width: 116px; height: 116px; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .raum.live .raum-unten { left: 140px; right: 12px; justify-content: flex-end; }
+  .live-tasten { display: none; }
+}
+@media (hover: hover) and (pointer: fine) and (max-width: 520px) { .live-plan { width: calc(100% - 140px); } .raum.live .raum-unten { left: 12px; bottom: calc(140px + env(safe-area-inset-bottom, 0px)); justify-content: center; } }
