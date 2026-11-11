@@ -1,7 +1,7 @@
 // DK Coach — Bewegungsvorlagen für die 3D-Figur.
 // Jede Vorlage ist eine Funktion (optionen) → Animation { aufbau(geraete), pose(t), blick, abstand, kameraRicht, dauer }.
 // t läuft von 0 (Start der Bewegung, z. B. unten bei der Kniebeuge) bis 1 (Endposition, z. B. oben).
-import { THREE, V, RAD, MASS, SOHLE, BALLEN, HAND_ULNAR, kniescheibe, rumpfRahmen, wirbelRahmen, wirbelBogen, rumpfRing, rumpfPunkt, rundGeo, scheibenGeo, ik, gelenke, KELCH_MASS, kelchGriff, hakenGriff, griffBei } from './figur.js';
+import { THREE, V, RAD, MASS, SOHLE, BALLEN, HAND_ULNAR, kniescheibe, koerperTiefe, rumpfRahmen, wirbelRahmen, wirbelBogen, rumpfRing, rumpfPunkt, rundGeo, scheibenGeo, ik, gelenke, KELCH_MASS, kelchGriff, hakenGriff, griffBei } from './figur.js';
 export { KELCH_MASS };
 
 const FY = 0.07;                                  // Knöchelhöhe, Fuß steht auf dem Boden
@@ -80,6 +80,7 @@ function kurzhantelnAn(z, g, griff = 'quer') {
 function faustAchse(g, s) { return g.handAchse[s].clone().cross(g.handRuecken[s]).normalize(); }
 function khHalten(z, g, s, kh, achse) {
   (z.griffAchse = z.griffAchse || {})[s] = achse.isVector3 ? achse.clone().normalize() : achse;
+  z.griffAchse['kh_' + s] = (kh && kh.userData.kopfR) || 0.068;   // G18: Kopfradius der Hantel in dieser Hand (gelenke() hält die Köpfe aus Oberschenkeln und Rumpf)
   const fa = faustAchse(g, s);
   hantelAn(kh, g.hand[s], achse.isVector3 && fa.dot(achse) < 0 ? fa.negate() : fa);
 }
@@ -1262,7 +1263,9 @@ function dkBoden(ger, xs, zr, zv, zm = zr, zq = zv) {   // zq: vorderer Querholm
 }
 // Sitz auf Rundrohr-Säule mit Rastbolzen (Polsterfläche wie bei sitzSaeule: mitte = Mitte der Sitzfläche, Oberkante)
 function sitzSaeuleDK(ger, mitte, w = 0.42, l = 0.42, neigung = 0) {
-  ger.polsterGeformt(w, 0.09, l, mitte.clone().sub(V(0, 0.045, 0)), quer(-neigung));
+  // G18 (11.11., Devin Regel 2): Das Gesäß liegt nur 0,3-0,5 cm im Polster, die Oberschenkel (Knie tiefer als die Hüfte) aber 1,7-2,7 cm: das Polster neigt sich vorn um 3° mehr nach unten, gedreht um die Hinterkante (hinten bleibt es, wo es war)
+  const kipp = 3, hinten = mitte.clone().add(V(0, -0.045, 0)).add(V(0, 0, -l / 2).applyQuaternion(quer(-neigung))), polsterMitte = hinten.clone().add(V(0, 0, l / 2).applyQuaternion(quer(kipp - neigung)));
+  ger.polsterGeformt(w, 0.09, l, polsterMitte, quer(kipp - neigung));
   ger.holm(V(mitte.x, 0.05, mitte.z), V(mitte.x, mitte.y - 0.125, mitte.z), 0.07);   // obere Kappe liegt unter dem Polster an
   maschTeil(ger.gruppe, dkZyl(0.012, 0.07, 10), ger.mMetall, mitte.x + 0.07, mitte.y - 0.25, mitte.z).rotation.z = Math.PI / 2;
   maschTeil(ger.gruppe, new THREE.SphereGeometry(0.022, 14, 10), ger.mDKGold, mitte.x + 0.11, mitte.y - 0.25, mitte.z);
@@ -4846,8 +4849,8 @@ export function seitlage(o = {}) {
       if (art === 'clamshell') {
         // Hüfte 45°, Knie 90°, Füße aufeinander in Verlängerung des Rückens (bis 5.11. Knie 135°, Fersen am Gesäß); das obere Knie öffnet, die Füße bleiben zusammen
         fuss = { l: gebeugt('l', 45, 90, 0.19), r: gebeugt('r', 45, 90, 0.085) };
-        liegt('l', -20); liegt('r', -20);
         kpol.l = vor.clone().addScaledVector(oben, mix(0, 1.0, t));
+        liegt('l', -20, kpol.l); liegt('r', -20);   // G18 (Regel 1): der obere Fuß dreht mit dem sich öffnenden Knie (bis 11.11. nach dem geschlossenen Knie gerechnet: bis 35° gegen das Schienbein verdreht)
       } else if (art === 'seitlage_adduktion') {
         // Oberes Bein steht gebeugt vor dem Körper, das untere, gestreckte Bein hebt sich (bis 5.11. Knie 29° gebeugt, Fuß lang)
         fuss = { l: becken.clone().add(V(-0.35, -0.12, 0.38)) };
@@ -6554,12 +6557,32 @@ function fussAmBoden(a) {
   const pose0 = a.pose;
   // G14: Bodenfuß in Bauchlage/Vierfüßler schon am Boden in der Lage nach dem Schienbein (pose.fussLuft, figur.js), nur diese Übungen: Bird Dog, Mountain Climber, Donkey Kick, Beincurl mit Band
   const luftFuesse = ['rumpfuebung:{"art":"birddog"}', 'rumpfuebung:{"art":"mountain"}', 'vierfuessler:{"art":"donkey_kick"}', 'beincurl:{"art":"band"}'], luft = { l: true, r: true };
-  const auf = luftFuesse.includes(a.schluessel) ? null : zehenAufstellen(pose0);
-  a.pose = function (t, z) { const e = pose0.call(this, t, z); if (e && e.pose) { e.pose.fussBoden = boden; if (luftFuesse.includes(a.schluessel)) e.pose.fussLuft = luft; if (auf) e.pose.zehenAuf = auf; } return e; };
+  const auf = luftFuesse.includes(a.schluessel) ? null : zehenAufstellen(pose0), haut = handAufHaut(pose0);
+  a.pose = function (t, z) { const e = pose0.call(this, t, z); if (e && e.pose) { e.pose.fussBoden = boden; if (luftFuesse.includes(a.schluessel)) e.pose.fussLuft = luft; if (auf) e.pose.zehenAuf = auf; if (haut) e.pose.handHaut = haut; } return e; };
 }
 // G17 (10.11., Devin: Regel 1 „Füße“): Liegt ein Bein irgendwann mit der Kniescheibe zum Boden, das Schienbein fast waagerecht und der Knöchel unter 20 cm (Knien, Vierfüßler,
 // Bauchlage, Stütz), müssen die Zehen aufgestellt sein: Fußspitze nach unten und zum Knie hin (wie Liegestütz) oder Fersenhub der Vorlage ab 15°. Legt die Vorlage den Fuß dort anders
 // (flach nach hinten = um 180° verdreht, auf den Spann, Spitze vom Knie weg), bekommt dieses Bein für die ganze Übung pose.zehenAuf (figur.js richtet den Fuß dann am Schienbein aus)
+// G18 (11.11., Devin Regel 2 „nichts geht durch den Körper“): Liegt eine freie Hand die ganze Übung am Körper (Hand auf der Hüfte, auf dem Oberschenkel, auf dem Bauch: die Faustmitte ist in
+// jedem Bild höchstens 7 cm vor der Haut von Rumpf oder Oberschenkel und bewegt sich gegen das Becken um höchstens 13 cm), bekommt diese Hand für die ganze Übung pose.handHaut:
+// haltErkennen (figur.js) legt sie dann in jedem Bild flach auf die Haut. Hände, die am Körper nur vorbeischwingen, etwas halten (Hantel, Griff, feste Stange, Kelchgriff) oder am Boden liegen (auch unter dem Rücken), bleiben, wie sie sind
+function handAufHaut(pose0) {
+  const ja = { l: true, r: true }, lo = { l: null, r: null }, hi = { l: null, r: null };
+  try {
+    for (let i = 0; i <= 24; i++) {
+      const e = pose0(i / 24, {}), p = e && e.pose; if (!p || !p.hand) return null;
+      const g = gelenke(p);
+      for (const s of ['l', 'r']) {
+        if (!ja[s]) continue;
+        if (!p.hand[s] || (p.fest && p.fest[s]) || (p.kelch && p.kelch[s]) || p.haken || (p.griffAchse && p.griffAchse[s]) || g.handgelenk[s].y < 0.15 || !koerperTiefe(g, g.hand[s], 0.07, true)) { ja[s] = false; continue; }
+        const d = g.hand[s].clone().sub(g.becken), q = V(d.dot(g.RB.links), d.dot(g.RB.oben), d.dot(g.RB.vor));
+        lo[s] = lo[s] ? lo[s].min(q) : q.clone(); hi[s] = hi[s] ? hi[s].max(q) : q.clone();
+      }
+    }
+  } catch (err) { return null; }
+  for (const s of ['l', 'r']) if (ja[s] && hi[s].clone().sub(lo[s]).length() > 0.13) ja[s] = false;
+  return ja.l || ja.r ? ja : null;
+}
 function zehenAufstellen(pose0) {
   const auf = { l: false, r: false }, boden = { l: Infinity, r: Infinity };
   try {

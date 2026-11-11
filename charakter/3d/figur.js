@@ -91,6 +91,87 @@ export function ausDemRumpf(p, becken, nacken, R, RB, r = FAUST_RAD) {
   p.addScaledVector(li, nx - x).addScaledVector(vo, nz - z);
   return true;
 }
+// G18 (11.11., Devin Regel 2 Runde 2): Körper-Hülle aus der echten Haut für Hand, Unterarm, Faust und Kurzhantel (werkzeug/polar-fit.mjs, stehende Figur): Rumpf (u 0 = Becken … 1 = Nacken)
+// und Oberschenkel (u 0 = Hüftgelenk … 1 = Knie, Gesäß unten mit drin). Je Höhe u: Mitte mx (außen bzw. links), mz (vorn) und in 16 Richtungen (22,5°, von außen/links nach vorn) der Abstand der Haut von der Mitte (m)
+const HUELLE_RUMPF = [[-0.05,0,0.014,0.145,0.164,0.146,0.122,0.124,0.122,0.146,0.164,0.145,0.147,0.143,0.14,0.124,0.14,0.143,0.147],[0.0333,0,0.015,0.153,0.164,0.154,0.129,0.125,0.129,0.154,0.164,0.153,0.139,0.144,0.14,0.125,0.14,0.144,0.139],[0.1167,0,0.026,0.154,0.157,0.151,0.131,0.126,0.131,0.151,0.157,0.154,0.141,0.145,0.141,0.126,0.141,0.145,0.141],[0.2,0,0.041,0.152,0.154,0.139,0.118,0.113,0.118,0.139,0.154,0.152,0.143,0.136,0.126,0.113,0.126,0.136,0.143],[0.2833,0,0.062,0.148,0.143,0.112,0.105,0.101,0.105,0.112,0.143,0.148,0.147,0.139,0.121,0.102,0.118,0.139,0.147],[0.3667,0,0.059,0.147,0.145,0.133,0.124,0.116,0.124,0.133,0.145,0.147,0.155,0.156,0.141,0.116,0.136,0.156,0.155],[0.45,0,0.05,0.171,0.164,0.162,0.147,0.136,0.147,0.162,0.164,0.171,0.191,0.186,0.165,0.136,0.158,0.186,0.191],[0.5333,0,0.047,0.198,0.177,0.175,0.161,0.147,0.161,0.175,0.177,0.198,0.227,0.222,0.193,0.148,0.171,0.222,0.227],[0.6167,0,0.042,0.215,0.203,0.194,0.166,0.149,0.166,0.194,0.203,0.215,0.239,0.233,0.202,0.151,0.171,0.233,0.239],[0.7,0,0.039,0.218,0.204,0.198,0.169,0.147,0.169,0.198,0.204,0.218,0.238,0.231,0.199,0.149,0.172,0.231,0.238],[0.7833,0,0.032,0.195,0.168,0.183,0.158,0.14,0.158,0.183,0.168,0.195,0.222,0.219,0.187,0.142,0.166,0.219,0.222],[0.8667,0,0.02,0.182,0.163,0.163,0.142,0.119,0.142,0.163,0.163,0.182,0.202,0.203,0.174,0.123,0.145,0.203,0.202],[0.95,-0.005,0.013,0.144,0.148,0.139,0.115,0.092,0.112,0.133,0.139,0.144,0.149,0.148,0.124,0.098,0.113,0.146,0.158],[1.0333,0,0.033,0.123,0.089,0.069,0.074,0.088,0.074,0.069,0.089,0.123,0.135,0.125,0.107,0.088,0.104,0.125,0.135]];
+const HUELLE_BEIN = [[-0.1,-0.008,-0.018,0.05,0.07,0.1,0.11,0.055,0.027,0.014,0.007,0.003,0.053,0.102,0.103,0.096,0.083,0.067,0.051],[0,-0.01,-0.003,0.065,0.082,0.107,0.111,0.112,0.056,0.028,0.014,0.007,0.056,0.105,0.116,0.112,0.099,0.081,0.063],[0.1,-0.013,0.002,0.08,0.097,0.11,0.11,0.113,0.132,0.131,0.065,0.08,0.094,0.104,0.117,0.115,0.101,0.082,0.077],[0.2,-0.014,0.013,0.092,0.102,0.106,0.103,0.106,0.113,0.117,0.104,0.092,0.099,0.106,0.108,0.106,0.101,0.099,0.095],[0.3,-0.013,0.011,0.098,0.105,0.107,0.106,0.108,0.114,0.115,0.108,0.098,0.099,0.107,0.11,0.108,0.109,0.108,0.103],[0.4,-0.012,0.008,0.1,0.107,0.109,0.109,0.109,0.11,0.116,0.11,0.099,0.096,0.105,0.108,0.109,0.112,0.11,0.106],[0.5,-0.011,0.006,0.1,0.108,0.11,0.11,0.108,0.102,0.112,0.107,0.099,0.091,0.099,0.105,0.108,0.113,0.109,0.105],[0.6,-0.007,0.003,0.095,0.103,0.108,0.107,0.106,0.102,0.1,0.099,0.095,0.09,0.094,0.101,0.106,0.109,0.104,0.1],[0.7,-0.003,0.001,0.088,0.095,0.104,0.104,0.103,0.096,0.093,0.089,0.088,0.084,0.085,0.096,0.103,0.106,0.101,0.093],[0.8,0,-0.001,0.079,0.088,0.096,0.095,0.094,0.089,0.087,0.082,0.08,0.076,0.079,0.085,0.094,0.099,0.096,0.082],[0.9,0.001,-0.004,0.072,0.075,0.083,0.085,0.082,0.082,0.085,0.074,0.072,0.069,0.069,0.076,0.082,0.088,0.087,0.078],[1,0.003,-0.009,0.063,0.064,0.07,0.079,0.082,0.08,0.068,0.063,0.063,0.061,0.062,0.07,0.082,0.081,0.077,0.073]];
+// Formen der Hülle für die Gelenke g (gelenke()): { O, ax, L, tab, rahmen(u) -> [aussen/links, vorn] }
+export function huellFormen(g, mitRumpf, mitBeinen = true) {
+  const f = [];
+  if (mitRumpf) {
+    const ax = g.nacken.clone().sub(g.becken), L = ax.length();
+    if (L > 1e-4) { ax.divideScalar(L); f.push({ O: g.becken, ax, L, tab: HUELLE_RUMPF, rahmen: (u) => { const w = glaettung((u - 0.4) / 0.2), li = g.RB.links.clone().lerp(g.R.links, w), vo = g.RB.vor.clone().lerp(g.R.vor, w); li.addScaledVector(ax, -li.dot(ax)).normalize(); vo.addScaledVector(ax, -vo.dot(ax)).addScaledVector(li, -vo.dot(li)).normalize(); return [li, vo]; } }); }
+  }
+  for (const [s, sg] of mitBeinen ? [['l', 1], ['r', -1]] : []) {
+    if (!g.knie[s] || !g.huefte[s]) continue;
+    const ax = g.knie[s].clone().sub(g.huefte[s]), L = ax.length(); if (L < 1e-4) continue; ax.divideScalar(L);
+    const bl = g.knoechel[s].clone().sub(g.huefte[s]).normalize(), kn = g.knie[s].clone().sub(g.huefte[s]); kn.addScaledVector(bl, -kn.dot(bl));
+    let vo = kn.length() > 0.01 ? kn : g.zehe[s] && g.ferse[s] ? g.zehe[s].clone().sub(g.ferse[s]) : g.R.vor.clone();
+    vo = vo.clone().addScaledVector(ax, -vo.dot(ax)); if (vo.lengthSq() < 1e-8) vo = g.R.vor.clone().addScaledVector(ax, -g.R.vor.dot(ax)); vo.normalize();
+    const aus = ax.clone().cross(vo).multiplyScalar(-sg).normalize();
+    f.push({ O: g.huefte[s], ax, L, tab: HUELLE_BEIN, rahmen: () => [aus, vo] });
+  }
+  return f;
+}
+// Lage von p zu einer Form (plus r): null außerhalb der Höhe; sonst e (< 1 = innen), d (Verschiebung auf die Hülle plus r, vom Mittelpunkt aus), n (Außennormale), tiefe (innen: |d|, sonst 0)
+const H_NA = 16, H_DPHI = 2 * Math.PI / H_NA;
+function formLage(F, p, r) {
+  const d0 = p.clone().sub(F.O), u = d0.dot(F.ax) / F.L, T = F.tab;
+  if (u < T[0][0] || u > T[T.length - 1][0]) return null;
+  let i = 0; while (i < T.length - 2 && u > T[i + 1][0]) i++;
+  const A = T[i], B = T[i + 1], k = (u - A[0]) / (B[0] - A[0]), w = (j) => A[j] + (B[j] - A[j]) * k, [li, vo] = F.rahmen(u);
+  const x = d0.dot(li) - w(1), z = d0.dot(vo) - w(2), rho = Math.hypot(x, z);
+  let phi = Math.atan2(z, x); if (phi < 0) phi += 2 * Math.PI;
+  const fa = phi / H_DPHI, a0 = Math.floor(fa) % H_NA, a1 = (a0 + 1) % H_NA, ka = fa - Math.floor(fa), R0 = w(3 + a0), R1 = w(3 + a1), Rr = R0 + (R1 - R0) * ka + r;
+  const er = rho > 1e-6 ? li.clone().multiplyScalar(x / rho).addScaledVector(vo, z / rho) : vo.clone(), et = li.clone().multiplyScalar(-er.dot(vo)).addScaledVector(vo, er.dot(li));
+  const n = er.clone().addScaledVector(et, -((R1 - R0) / H_DPHI) / Math.max(Rr, 0.02)).normalize(), e = (rho / Math.max(Rr, 1e-4)) ** 2;
+  return { e, d: er.clone().multiplyScalar(Rr - rho), n, tiefe: e < 1 ? Rr - rho : 0, F, u };
+}
+// Tiefste Lage von p (plus r) in der Hülle (Oberschenkel, mit Rumpf auf Wunsch): { tiefe, d, n, F } oder null (überall draußen)
+export function koerperTiefe(g, p, r, mitRumpf = true, mitBeinen = true) {
+  let best = null;
+  for (const F of huellFormen(g, mitRumpf, mitBeinen)) { const h = formLage(F, p, r); if (h && h.e < 1 && (!best || h.tiefe > best.tiefe)) best = h; }
+  return best;
+}
+// Freie Hand, die in Oberschenkel oder Rumpf steckt (Hand auf der Hüfte, auf dem Oberschenkel): Handfläche liegt flach auf der Haut. Die Mitte der Handfläche bleibt, wo die Vorlage sie
+// hinlegt, nur auf der Haut; der Handrücken zeigt von ihr weg, die Finger liegen in der Fläche (Richtung wie zuvor). setze(W, n): Handgelenk W, Normale n. false = steckt nicht drin
+const HAND_HALB = 0.012, HAND_GELENK = 0.048;   // halbe Dicke von Fingern und Handfläche; Handgelenk über der Haut (m; flache Hand im Modell: Handfläche 4,4-4,9 cm unter dem Handgelenk, gemessen)
+function handAnHaut(g, s, setze) {
+  const W0 = g.handgelenk[s], fl = g.flach[s], nk = (fl ? fl : g.handRuecken[s]).clone().normalize();
+  let ak = g.handFinger[s].clone(); if (fl) { ak.addScaledVector(nk, -ak.dot(nk)); if (ak.lengthSq() < 1e-6) ak = g.R.oben.clone().addScaledVector(nk, -g.R.oben.dot(nk)); } ak.normalize();
+  // Auflage: die Mitte der Hand bleibt, wo die Vorlage sie hinlegt (Faustmitte; flach: 5 cm vor dem Handgelenk), nur auf der Haut. Die Ebene der Hand folgt der Haut unter ihr
+  // (Normalen an Handballen, Mitte, Fingern und beiden Rändern gemittelt, zweimal), dann sinkt bzw. hebt sich die Hand entlang der Normale, bis sie die Haut gerade berührt
+  const formen = huellFormen(g, true), P = fl ? W0.clone().addScaledVector(ak, 0.05) : g.hand[s].clone();
+  // Haut als weiche Mischung aller Formen (an der Hüfte treffen Rumpf und Oberschenkel zusammen): Gewicht nach dem Abstand zur nächsten Form (5 cm), an den Enden einer Form weich auslaufend.
+  // So springt die Hand nicht, wenn eine andere Form die nächste wird. Ergebnis: Verschiebung auf die Haut d, Normale n, Abstand sd (+ draußen)
+  const haut = (q, r = 0) => {
+    const L = []; let smin = Infinity;
+    for (const F of formen) { const h = formLage(F, q, r); if (!h) continue; const T = F.tab, rand = glaettung((h.u - T[0][0]) / 0.06) * glaettung((T[T.length - 1][0] - h.u) / 0.06); h.sd = (h.e < 1 ? -h.tiefe : h.d.length()); h.se = h.sd + (1 - rand) * 0.05; h.rand = rand; L.push(h); smin = Math.min(smin, h.se); }
+    const d = V(), n = V(); let ws = 0, sd = 0;
+    for (const h of L) { const w = h.rand * glaettung(1 - (h.se - smin) / 0.05); if (w <= 0) continue; d.addScaledVector(h.d, w); n.addScaledVector(h.n, w); sd += h.sd * w; ws += w; }
+    return ws > 1e-6 && n.lengthSq() > 1e-10 ? { d: d.divideScalar(ws), n: n.normalize(), sd: sd / ws } : null;
+  };
+  const h0 = haut(P); if (!h0) return false;
+  const C = P.clone().add(h0.d), n = h0.n.clone();
+  const inEbene = (v) => { const w = v.clone().addScaledVector(n, -v.dot(n)), fb = g.R.oben.clone().negate().addScaledVector(n, g.R.oben.dot(n)); w.addScaledVector(fb, 1 - glaettung(w.length() / 0.4)); return w.lengthSq() > 1e-10 ? w.normalize() : fb.normalize(); };   // Finger in der Fläche; zeigen sie fast senkrecht zur Haut, weich Richtung Füße
+  // Richtung der Finger: wie der Unterarm (Ellbogen → Handgelenk), dazu etwas Richtung Füße (der Unterarm kommt oft fast senkrecht auf die Haut: allein drehten die Finger dann schnell; die Fingerrichtung der freien Hand sprang bis 55°)
+  const vRef = g.handgelenk[s].clone().sub(g.ellbogen[s]).normalize().addScaledVector(g.R.oben, -0.6);
+  let t = inEbene(vRef);
+  for (let k = 0; k < 2; k++) { const m = V(), qq = t.clone().cross(n); for (const [x, y] of [[-0.04, 0], [0, 0], [0.05, 0], [0.08, 0], [0.02, 0.04], [0.02, -0.04]]) { const h = haut(C.clone().addScaledVector(t, x).addScaledVector(qq, y)); if (h) m.add(h.n); } if (m.lengthSq() > 1e-8) n.copy(m.normalize()); t = inEbene(vRef); }
+  const W = C.clone().addScaledVector(n, HAND_GELENK).addScaledVector(t, -0.06);
+  // Proben der flachen Hand: Handgelenk (2,5 cm) und Handfläche/Finger in der Fläche; Abstand zur Haut mit Vorzeichen (+ draußen). Die Hand rückt um den kleinsten Abstand an die Haut heran (bzw. heraus)
+  const abstand = (q, r) => { const h = haut(q, r); return !h ? 1 : h.sd; };
+  for (let k = 0; k < 4; k++) {
+    let dmin = abstand(W, 0.025);
+    const qq = t.clone().cross(n);
+    for (const [x, y] of [[0.02, 0], [0.06, 0], [0.1, 0], [0.14, 0], [0.06, 0.05], [0.06, -0.05], [0.12, 0.05], [0.12, -0.05], [0.12, 0.09], [0.12, -0.09]]) dmin = Math.min(dmin, abstand(W.clone().addScaledVector(n, -(HAND_GELENK - HAND_HALB)).addScaledVector(t, x).addScaledVector(qq, y), HAND_HALB));
+    if (Math.abs(dmin) < 0.002 || dmin > 0.5) break;
+    W.addScaledVector(n, -dmin * (dmin < 0 ? 1.1 : 1));
+  }
+  g.flachFinger = Object.assign({}, g.flachFinger, { [s]: t });   // die Finger liegen genau so in der Fläche, wie oben geprüft (figur-modell.js: flachFinger)
+  setze(W, n);
+  return true;
+}
 // G17: Lage des Unterschenkels: ks = wohin die Kniescheibe zeigt (senkrecht zum Schienbein), schien = Knie → Knöchel (Einheitsvektoren); null, wenn nicht bestimmbar
 export function kniescheibe(huefte, knie, knoechel, kpol) {
   const schien = knoechel.clone().sub(knie).normalize(), bl = knoechel.clone().sub(huefte).normalize();
@@ -264,7 +345,7 @@ export function gelenke(pose) {
     for (const p of [becken, brust, nacken, kopf, schulter.l, schulter.r, huefte.l, huefte.r, schulterBasis.l, schulterBasis.r]) p.sub(sink);
     for (const d of Object.values(schulterDreh)) d.punkt.sub(sink);
   }
-  const out = { drehGlatt: !!pose.drehGlatt, flachFinger: pose.flachFinger || null, atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
+  const out = { handHaut: pose.handHaut || null, drehGlatt: !!pose.drehGlatt, flachFinger: pose.flachFinger || null, atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen
@@ -376,7 +457,7 @@ export function gelenke(pose) {
       return { n, ak, nk };
     };
     const faust = (r) => r.ak.clone().multiplyScalar(m.griff).sub(r.nk.clone().multiplyScalar(m.griffTief));
-    const flach = (pose.flach && pose.flach[s]) || (hz.y < HAND_BODEN && !(pose.greift && pose.greift[s]) ? V(0, 1, 0) : null);
+    let flach = (pose.flach && pose.flach[s]) || (hz.y < HAND_BODEN && !(pose.greift && pose.greift[s]) ? V(0, 1, 0) : null);   // G18: let (handAnHaut legt eine freie Hand nachträglich flach an die Haut)
     let arm;
     // Hand flach am Boden: Handgelenk mindestens so hoch, wie Hand und Unterarm dick sind (sonst taucht der Daumen in den Boden)
     if (flach && !(pose.flach && pose.flach[s]) && hz.y < 0.045) hz.y = 0.045;
@@ -472,6 +553,9 @@ export function gelenke(pose) {
       griffIst = griffAchse; griffAnteil = Math.max(anteil, griffVor ? griffVor.anteil : 0); knickAchse = null;
       arm = armLegen(ziel); eintragen();
     };
+    // G18: Hand nachträglich versetzen (Ende von gelenke(): Faust und Kurzhantel aus dem Oberschenkel) und freie Hand flach an die Haut legen (haltErkennen)
+    (out.versetzen = out.versetzen || {})[s] = (dv) => { if (flach) return; hz.add(dv); out.handZiel[s] = hz; arm = armLegen(hz); eintragen(); };
+    (out.anlegen = out.anlegen || {})[s] = () => handAnHaut(out, s, (W, n) => { flach = n; hz.copy(W); out.handZiel[s] = hz; arm = ik(schulter[s], W, m.oberarm, m.unterarm, polImGelenk(W, m.unterarm, polFuer(W))); eintragen(); });
     // Beine: Knie zeigt nach vorn (leicht außen)
     let fz = (pose.fuss && pose.fuss[s]) || huefte[s].clone().add(V(0.02 * sg, -(m.oberschenkel + m.unterschenkel), 0));
     if (sinkN && !pose.fussBleibt && fz.y > FUSS_LUFT + 0.1) fz = fz.clone().sub(sink);   // hängt der Körper, gehen die Füße in der Luft mit (nicht auf der Box: fussBleibt)
@@ -574,6 +658,34 @@ export function gelenke(pose) {
     out.ballen[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(m.fussLaenge * BALLEN)).sub(oben.clone().multiplyScalar(m.fussHoehe * 0.6));
     out.ferse[s] = out.knoechel[s].clone().add(sohle.clone().multiplyScalar(-m.fussLaenge * 0.25)).sub(oben.clone().multiplyScalar(m.fussHoehe * 0.6));
   }
+  // G18 (11.11., Devin Regel 2 „nichts geht durch den Körper“, Runde 2): die Faust bleibt aus den Oberschenkeln heraus (Faustmitte mindestens 3,5 cm vor der Haut; Rumpf: ausDemRumpf), eine Kurzhantel
+  // in der Hand (Köpfe, khHalten) aus Oberschenkeln und Rumpf. Die Hand rückt dafür auf kürzestem Weg nach außen, die Hantel geht mit (nicht an einer festen Stange, nicht flach, nicht im Kelchgriff)
+  // Liegen beide Fäuste dicht beieinander (unter 20 cm: Kettlebell, Seil, enger Griff), halten sie dasselbe: dann rücken beide um dieselbe Strecke (Mittel beider, ohne den Anteil quer zwischen den Fäusten: zwischen den Beinen bzw. vor dem Bauch geht es nur nach vorn), sonst verzöge sich das Gerät
+  const frei = (s) => out.versetzen && out.versetzen[s] && !out.flach[s] && !(pose.fest && pose.fest[s]) && !(pose.kelch && pose.kelch[s]) && !pose.haken && pose.hand && pose.hand[s];
+  const sperre = (s, paar) => {
+    const kopfR = pose.griffAchse && pose.griffAchse['kh_' + s], fa = out.handAchse[s].clone().cross(out.handRuecken[s]).normalize();   // Achse der Faust (Zeigefinger … kleiner Finger)
+    let best = paar ? null : koerperTiefe(out, out.hand[s], FAUST_RAD - 0.005, false);   // Faust gegen die Oberschenkel nur einzeln (ein Paar zwischen den Beinen, z. B. Kettlebell-Swing, sprang sonst)
+    if (!paar) for (const x of [-0.035, 0.035]) { const h = koerperTiefe(out, out.hand[s].clone().addScaledVector(fa, x), 0.028, false); if (h && (!best || h.tiefe > best.tiefe)) best = h; }   // die Faust ist breit: Knöchel von Zeige- und kleinem Finger
+    if (kopfR) { for (const x of [-0.165, -0.09, 0.09, 0.165]) { const h = koerperTiefe(out, out.hand[s].clone().addScaledVector(fa, x), kopfR * 0.88, true); if (h && (!best || h.tiefe > best.tiefe)) best = h; } }
+    // Unterarm (Rudern am Ende, Kabel-Seitheben am Start, Arme vor der Brust; nicht bei einem Paar wie Seil oder Kettlebell: dort kam der Oberarm beim Curl nach vorn): nur am Rumpf bis zur Brust (weich bis u 0,8-0,9) und nur mit dem Ellbogen unter der Schulter (weich über 8 cm; Hände hinter dem Kopf und zwischen den Beinen sprangen sonst) und nur bei leichtem Eintauchen (voll bis 2,5 cm, ab 5 cm nicht mehr: so tief hilft das Verschieben der Hand nicht).
+    // Punkte auf der Linie Ellbogen → Handgelenk mit der Dicke des Unterarms (2,8-3,8 cm); die Hand rückt so weit, dass der Punkt draußen liegt (ein Punkt bei Anteil f wandert etwa f-mal so weit wie die Hand;
+    // gerechnet mit f ab 0,6, damit nahe am Ellbogen nichts springt)
+    const wE = glaettung(-out.ellbogen[s].clone().sub(out.schulter[s]).dot(R.oben) / 0.08);   // weich: voll ab 8 cm unter der Schulter
+    if (wE > 0 && !paar) for (const [f, r] of [[0.3, 0.038], [0.6, 0.033], [0.85, 0.028]]) { const h = koerperTiefe(out, out.ellbogen[s].clone().lerp(out.handgelenk[s], f), r, true, false); const w = h ? wE * glaettung((0.9 - h.u) / 0.1) * glaettung((0.05 - h.tiefe) / 0.025) / Math.max(f, 0.6) : 0; if (h && w > 0 && (!best || h.tiefe * w > best.tiefe)) { h.d.multiplyScalar(w); h.tiefe *= w; h.unterarm = true; best = h; } }
+    if (!best || best.tiefe < 0.001) return null;
+    // Faust und Hantel nur zur Seite hin (Hand neben dem Oberschenkel: Farmer Walk, einarmiges Trizepsdrücken, Hand auf dem Knie); liegt sie vor dem Oberschenkel (Ende von Trizepsdrücken, Curl unten),
+    // brächte das Verschieben den Oberarm nach vorn (Form-Regeln: Oberarm senkrecht, Ellbogen unten gestreckt): dort bleibt sie (weich zwischen 60 und 85 % seitlich)
+    if (!best.unterarm) { const w = glaettung((Math.abs(best.n.dot(R.links)) - 0.6) / 0.25) * glaettung((0.03 - weg[s]) / 0.01); if (w <= 0) return null; best.d.multiplyScalar(w); best.tiefe *= w; }   // insgesamt höchstens rund 3 cm (sonst spreizt der Arm sichtbar ab: Seil-Hammercurl)
+    return best;
+  };
+  const weg = { l: 0, r: 0 };   // wie weit die Faust schon gerückt ist
+  for (let it = 0; it < 4; it++) {
+    const zusammen = frei('l') && frei('r') && out.hand.l.distanceTo(out.hand.r) < 0.2;
+    const b = { l: frei('l') ? sperre('l', zusammen) : null, r: frei('r') ? sperre('r', zusammen) : null };
+    if (!b.l && !b.r) break;
+    if (zusammen) { const d = b.l && b.r ? b.l.d.clone().add(b.r.d).multiplyScalar(0.5) : (b.l || b.r).d.clone(); const quer = out.hand.l.clone().sub(out.hand.r); if (quer.lengthSq() > 1e-6) d.addScaledVector(quer.normalize(), -d.dot(quer)); d.multiplyScalar(1.05).clampLength(0, 0.05); if (d.length() < 0.001) break; out.versetzen.l(d.clone()); out.versetzen.r(d); }
+    else for (const s of ['l', 'r']) if (b[s]) { const d = b[s].d.multiplyScalar(1.05).clampLength(0, 0.05); if (!b[s].unterarm) weg[s] += d.length(); out.versetzen[s](d); }   // höchstens 5 cm je Schritt
+  }
   return out;
 }
 
@@ -605,6 +717,8 @@ export function haltErkennen(g, z, festeStangen = [], gruppe = null) {
     if (!griff && haelt) griff = griffFinden(teile, p);
     // pose.faust: Hand ohne Griff zur Faust geschlossen (Arme verschränkt), wie um eine dünne Stange
     g.haelt[s] = haelt ? (griff && griff.r) || GRIFF_R : g.faust && g.faust[s] ? 0.006 : false;
+    // G18: freie Hand, die die ganze Übung am Körper liegt (pose.handHaut, bewegungen.js handAufHaut) und nichts hält: liegt in jedem Bild flach auf der Haut (handAnHaut)
+    if (!g.haelt[s] && g.handHaut && g.handHaut[s] && g.anlegen && g.anlegen[s]) g.anlegen[s]();
   }
 }
 // Griff an einem Punkt: dünner Zylinder (Gummi über Chrom), dessen Achse durch die Faust läuft; von mehreren der, dessen Oberfläche der
@@ -1974,15 +2088,15 @@ const HUT_TABELLE = {
   "klimmzug:{\"art\":\"band\"}": [934808306,"w"],   // klimmzug_band_assistiert
   "schulterzug:{\"art\":\"yt_bauchlage\"}": [2099688707,"f",-0.1139,0.005,-0.8395],   // bauchlage_ytw
   "schulterheben:{\"art\":\"ytw\",\"last\":\"kurzhanteln\",\"brustgestuetzt\":true}": [4471134,"w"],   // schraegbank_y_heben
-  "curl:{\"art\":\"maschine\"}": [2002889630,"k",0.005,-20,0],   // bizeps_maschine
+  "curl:{\"art\":\"maschine\"}": [1688689836,"k",0.005,-20,0],   // bizeps_maschine
   "trizeps:{\"art\":\"ueberkopf\",\"last\":\"band\"}": [1475702653,"w"],   // band_trizeps_ueberkopf
   "trizeps:{\"art\":\"ueberkopf\",\"last\":\"kurzhantel\"}": [1147531078,"w"],   // kurzhantel_trizeps_ueberkopf
   "bankdruecken:{\"last\":\"sz\",\"art\":\"stirn\"}": [3773521702,"f",0.2598,0,-0.2117],   // sz_stirndruecken
   "hueftheben:{\"art\":\"bridge\",\"last\":\"keine\"}": [3303964930,"f",0.44,0,-0.4476],   // glute_bridge
   "beincurl:{\"art\":\"gleiten\"}": [3474866505,"f",0.44,0,-0.652],   // beincurl_handtuch
-  "seitlage:{\"art\":\"seitlage_adduktion\"}": [1498468854,"f",-0.368,0,-0.2817],   // adduktion_seitlage
-  "seitlage:{\"art\":\"clamshell\"}": [3512238665,"f",-0.368,0,-0.2817],   // clamshell
-  "seitlage:{\"art\":\"seitlage_abduktion\"}": [1273737999,"f",-0.368,0,-0.2817],   // seitlage_abduktion
+  "seitlage:{\"art\":\"seitlage_adduktion\"}": [454996078,"f",-0.368,0,-0.2817],   // adduktion_seitlage
+  "seitlage:{\"art\":\"clamshell\"}": [4065748141,"f",-0.368,0,-0.2817],   // clamshell
+  "seitlage:{\"art\":\"seitlage_abduktion\"}": [2969650617,"f",-0.368,0,-0.2817],   // seitlage_abduktion
   "wadenheben:{\"art\":\"maschine\"}": [936001070,"k",0.02,0,10],   // wadenheben_maschine
   "rumpfuebung:{\"art\":\"crunch\"}": [1277412281,"f",-0.27,0.005,-0.8437],   // crunch
   "rumpfuebung:{\"art\":\"kabelcrunch\"}": [1793548631,"w"],   // kabelcrunch
