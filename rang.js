@@ -26,6 +26,7 @@ export function kurzKarte(c) {
 // Großer Moment beim Aufstieg: legt sich über alles, tippen schließt
 export function aufstiegZeigen(h, a, lade3d) {
   if (!a || !a.titel) return;
+  try { if (window.DKGefuehl) window.DKGefuehl.spiel('aufstieg'); } catch (e) { /* Töne und Vibration (10.11.2026): Fanfare und Applaus */ }
   if (lade3d && Medaille.hatMedaille(a.level)) { const l = Spiel.LEVEL[a.level - 1]; Medaille.zeigen({ h, lade3d, nr: a.level, titel: a.titel, ab: l ? l.ab : 0, neu: true }); return; }
   const alt = document.querySelector('.rang-auf'); if (alt) alt.remove();
   const el = h('div', { class: 'rang-auf', role: 'dialog', 'aria-label': 'Neuer Rang: ' + a.titel, onclick: () => el.remove() },

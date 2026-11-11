@@ -963,6 +963,17 @@ function installKarte(immer) {
       : ios ? liste('', iphone) : android ? liste('', andro) : [liste('iPhone', iphone), liste('Android', andro)],
     !immer ? h('button', { class: 'knopf klein', type: 'button', onclick: () => { speicher.schreib('dk_install_weg', true); zeichne(); }, text: 'Erledigt, ausblenden' }) : null);
 }
+// Töne und Vibration (10.11.2026): an- und ausschalten, nur auf diesem Handy
+function gefuehlBlock() {
+  const G = window.DKGefuehl;
+  if (!G) return null;
+  const schalter = (titel, an, setzen) => h('button', { class: 'knopf klein', type: 'button', 'aria-pressed': String(an), onclick: () => { setzen(!an); zeichne(); }, text: titel + ': ' + (an ? 'an' : 'aus') });
+  return h('section', { class: 'block' }, h('h2', { text: 'Töne und Vibration' }),
+    h('p', { class: 'leise klein', text: 'Ein leises Klicken bei jedem Knopf, ein Ton nach jedem Satz, Klatschen und Applaus, wenn dein Training geschafft ist. Steht dein Handy auf lautlos, bleibt es still.' }),
+    G.iphoneKlopfen ? h('p', { class: 'leise klein', text: 'Auf dem iPhone spürst du ab iOS 18 ein kurzes Klopfen, wenn du etwas antippst.' }) : null,
+    h('div', { class: 'reihe' }, schalter('Töne', G.ton(), G.setzeTon), schalter('Vibration', G.vibration(), G.setzeVibration),
+      h('button', { class: 'knopf klein', type: 'button', onclick: () => G.spiel('geschafft'), text: 'Probe: Training geschafft' })));
+}
 function ansichtInfo() {
   const p = S.plan, ko = aktivesKonto(), mitZugang = ko && ko.id === p.id;
   const plaene = Object.values(speicher.lies('dk_plaene', {}));
@@ -974,6 +985,7 @@ function ansichtInfo() {
       einfuegenBlock('Neuen Link einfügen'),
       h('button', { class: 'knopf klein', type: 'button', onclick: abmelden, text: 'Abmelden' })) : null,
     installKarte(true),
+    gefuehlBlock(),
     h('section', { class: 'block' }, h('h2', { text: 'Begriffe' }),
       h('p', { class: 'klein', text: 'Reserve (RIR): Wiederholungen, die du am Ende des Satzes noch schaffen würdest. RIR 2 heißt: aufhören, wenn noch zwei gehen würden.' }),
       h('p', { class: 'klein', text: 'Pause: Zeit zwischen zwei Sätzen. Im Training läuft sie als Ring und geht danach von selbst weiter.' }),
@@ -1121,7 +1133,10 @@ function mmss(sek) {
 }
 const datumZeit = (ms) => new Date(ms).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 let AUDIO = null;
+// Töne und Vibration (10.11.2026): Töne und Klopfen aus gefuehl.js; fehlt die Datei, bleibt das alte Piepen
+const gefuehl = (name) => { try { if (window.DKGefuehl) window.DKGefuehl.spiel(name); } catch (e) { /* nichts */ } };
 function piep(n) {
+  if (window.DKGefuehl) { gefuehl(n === 1 ? 'start' : 'weiter'); return; }
   try {
     AUDIO = AUDIO || new (window.AudioContext || window.webkitAudioContext)();
     for (let i = 0; i < (n || 2); i++) {
@@ -1202,6 +1217,7 @@ function gymStationFertig() {
   if (p && p.id === LAUF.plan && tagFuer(p, heuteIndex()) === LAUF.tagNr - 1) erledigtSetzen(p, LAUF.tagNr - 1, i, true);
   const bonus = spielStation(p, i);   // { plus, levelAuf } oder nichts; der Raum zeigt es an
   if (GYM && GYM.raum) GYM.raum.stationFertig(i, bonus);
+  gefuehl('station');
 }
 /* Spielstand (spiel.js): Jede Zeile fängt Fehler ab, das Training läuft immer weiter. Zählen tut es, wenn der Plan zum laufenden Training gehört;
    nachholen an einem anderen Wochentag gibt also auch Punkte (nur die Haken oben gelten allein am Plantag). Datum und Trainingstag wie in erledigtKey. */
@@ -1294,6 +1310,7 @@ function satzFertig() {
   }
   LAUF.seit = jetzt;
   laufSichern(); timerZeigen();
+  gefuehl(!LAUF.gym && u.log.length >= u.saetze ? 'station' : 'satz');
   const f = document.getElementById('tm-wdh');
   if (f) setTimeout(() => { try { f.focus({ preventScroll: true }); } catch (e) {} }, 60);
 }
@@ -1346,6 +1363,7 @@ function laufBeenden(status) {
   LAUF.neuePR = spielBestleistung();
   LAUF.phase = 'fertig'; LAUF.ergebnis = r; TM.frage = false;
   laufSichern(); wach(false); timerZeigen();
+  if (status === 'fertig') { gefuehl('geschafft'); if (LAUF.neuePR && LAUF.neuePR.length) gefuehl('bestleistung'); }
 }
 function laufSchliessen() {
   LAUF = null; laufSichern(); wach(false);
