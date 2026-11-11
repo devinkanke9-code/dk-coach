@@ -1,7 +1,7 @@
 // DK Coach — Bewegungsvorlagen für die 3D-Figur.
 // Jede Vorlage ist eine Funktion (optionen) → Animation { aufbau(geraete), pose(t), blick, abstand, kameraRicht, dauer }.
 // t läuft von 0 (Start der Bewegung, z. B. unten bei der Kniebeuge) bis 1 (Endposition, z. B. oben).
-import { THREE, V, RAD, MASS, SOHLE, BALLEN, HAND_ULNAR, rumpfRahmen, wirbelRahmen, wirbelBogen, rumpfRing, rumpfPunkt, rundGeo, scheibenGeo, ik, gelenke, KELCH_MASS, kelchGriff, hakenGriff, griffBei } from './figur.js';
+import { THREE, V, RAD, MASS, SOHLE, BALLEN, HAND_ULNAR, kniescheibe, rumpfRahmen, wirbelRahmen, wirbelBogen, rumpfRing, rumpfPunkt, rundGeo, scheibenGeo, ik, gelenke, KELCH_MASS, kelchGriff, hakenGriff, griffBei } from './figur.js';
 export { KELCH_MASS };
 
 const FY = 0.07;                                  // Knöchelhöhe, Fuß steht auf dem Boden
@@ -475,9 +475,10 @@ export function kniebeuge(o = {}) {
       // Goblet: Die Hantel hängt senkrecht vor der Brust, der obere Kopf liegt an der Brust, die Hände halten ihn von unten (kelchGriff)
       let kelch = null;
       if (last === 'goblet') {
-        const gr = kelchGriff(k.brust.clone().addScaledVector(k.R.vor, GOBLET.vor).addScaledVector(k.R.oben, GOBLET.hoch).add(V(0, -0.128, 0)), V(0, 1, 0), k.R.vor);
+        // G17 (Regel 2): Hantel 3,5 cm weiter vorn, Ellbogen weiter außen (bis 10.11. gingen Hantelkopf 2 cm und Unterarme bis 6 cm in die Brust)
+        const gr = kelchGriff(k.brust.clone().addScaledVector(k.R.vor, GOBLET.vor + 0.035).addScaledVector(k.R.oben, GOBLET.hoch).add(V(0, -0.128, 0)), V(0, 1, 0), k.R.vor);
         hand.l = gr.hand.l; hand.r = gr.hand.r; kelch = gr.kelch;
-        for (const [s, sg] of [['l', 1], ['r', -1]]) epol[s] = V(sg * GOBLET.polAussen, -1, GOBLET.polVor);
+        for (const [s, sg] of [['l', 1], ['r', -1]]) epol[s] = V(sg * (GOBLET.polAussen + 0.8), -1, GOBLET.polVor);
       }
       if (last === 'haengend') { const gr = hakenGriff(V(0, hand.l.y - HAENGEN, hand.l.z), V(0, 1, 0), k.R.vor, k.R.links); hand.l = gr.hand.l; hand.r = gr.hand.r; kelch = gr.kelch; }
       const flaecheDa = Object.keys(flaeche).length > 0;
@@ -4488,9 +4489,9 @@ export function rumpfuebung(o = {}) {
       }
       if (art === 'pallof') {
         const becken = V(0, 0.965, 0); const r = { neigung: 0 }; const k = rumpf(becken, r);   // Knie 15° statt 26°
-        const nah = k.brust.clone().add(V(0, -0.1, 0.2)), weit = k.brust.clone().add(V(0, -0.1, 0.642));   // Griff 20 cm vor der Brust: das Kabel streift sie nicht (1.11.). Vorn fast gestreckt: Ellbogen unter 10°
+        const nah = k.brust.clone().add(V(0, -0.1, 0.28)), weit = k.brust.clone().add(V(0, -0.1, 0.642));   // G17: nah 28 statt 20 cm vor der Brust, Ellbogen weiter außen (bis 10.11. gingen die Unterarme bis 8 cm in die Brust)   // Griff 20 cm vor der Brust: das Kabel streift sie nicht (1.11.). Vorn fast gestreckt: Ellbogen unter 10°
         const hand = seiten((s, sg) => mv(nah, weit, t).add(V(sg * 0.035, 0, 0)));
-        return { pose: Object.assign({ becken, rumpf: r, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.5, -1, 0)), kniePol: seiten((s, sg) => V(sg * 0.2, 0, 1)) }, stehFuesse(band ? 0.14 : 0.2)),   // Band: hüftbreit (bis 5.11. 0,89× Schulter)
+        return { pose: Object.assign({ becken, rumpf: r, hand, ellbogenPol: seiten((s, sg) => V(sg * 0.9, -1, 0)), kniePol: seiten((s, sg) => V(sg * 0.2, 0, 1)) }, stehFuesse(band ? 0.14 : 0.2)),   // Band: hüftbreit (bis 5.11. 0,89× Schulter)
           props(g, z) { const m = g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5); z.griff.position.copy(m); z.griff.userData.frei = null; z.griff.quaternion.setFromUnitVectors(V(1, 0, 0), g.hand.l.clone().sub(g.hand.r).normalize()); const a = V(-0.9, 1.33, 0.2);   /* Rolle auf Brusthöhe, vor der Körperebene: das Kabel läuft waagerecht vor der Brust vorbei */ const d = m.clone().sub(a), l = d.length(); z.seil.position.copy(a).add(m).multiplyScalar(0.5); z.seil.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); z.seil.scale.set(1, l, 1); if (z.dkTurm) z.dkTurm[0].zieh(l); } };
       }
       if (art === 'kabelcrunch') {
@@ -4787,7 +4788,7 @@ export function kniestand(o = {}) {
       if (ghd) { ghdBauen(ger, V(0, 0.07 + hy, 0), -MASS.unterschenkel * 0.99, 0.12 + hy); return {}; }   // GHD-Gerät: Kniepolster vorn, Fußplatte mit Rollen hinten
       ger.matte();
       // Polster liegt oben auf der Achillessehne (hält die Fersen unten), zwei Stützen außen; bis 31.10. stand es hinter den Füßen, 3,6 cm darin
-      if (art === 'nordic') { ger.box(0.5, 0.1, 0.1, V(0, 0.21, -0.39), ger.mPolster); for (const sx of [-1, 1]) ger.box(0.05, 0.21, 0.05, V(sx * 0.28, 0.105, -0.39), ger.mRahmen); }
+      if (art === 'nordic') { ger.box(0.5, 0.1, 0.1, V(0, 0.285, -0.39), ger.mPolster); for (const sx of [-1, 1]) ger.box(0.05, 0.285, 0.05, V(sx * 0.28, 0.1425, -0.39), ger.mRahmen); }   // G17: Polster 7,5 cm höher, die Zehen sind jetzt aufgestellt (Knöchel höher, bis 10.11. lag der Fuß verdreht flach)
       return {};
     },
     pose(t) {
@@ -6532,8 +6533,8 @@ export function animation(eintrag) {
   if (o.einstiegVorgebeugt) a.einstiegVorgebeugt = true;
   if (o.ablaufBand) a.ablaufEigen = (h) => bandVomBoden(h, o.ablaufBand);
   genauUeberR0(a);
-  fussAmBoden(a);
-  a.schluessel = eintrag.vorlage + ':' + JSON.stringify(o);   // Schlüssel für gerechnete Hut-Lagen (figur.js HUT_TABELLE)
+  a.schluessel = eintrag.vorlage + ':' + JSON.stringify(o);
+  fussAmBoden(a);   // Schlüssel für gerechnete Hut-Lagen (figur.js HUT_TABELLE)
   return a;
 }
 // Geht das Ziel einer Hand in der Bewegung über R0 (Oberarm + Unterarm) hinweg, gilt es genau: figur.js streckt Arme mit Zielen knapp
@@ -6553,7 +6554,31 @@ function fussAmBoden(a) {
   const pose0 = a.pose;
   // G14: Bodenfuß in Bauchlage/Vierfüßler schon am Boden in der Lage nach dem Schienbein (pose.fussLuft, figur.js), nur diese Übungen: Bird Dog, Mountain Climber, Donkey Kick, Beincurl mit Band
   const luftFuesse = ['rumpfuebung:{"art":"birddog"}', 'rumpfuebung:{"art":"mountain"}', 'vierfuessler:{"art":"donkey_kick"}', 'beincurl:{"art":"band"}'], luft = { l: true, r: true };
-  a.pose = function (t, z) { const e = pose0.call(this, t, z); if (e && e.pose) { e.pose.fussBoden = boden; if (luftFuesse.includes(a.schluessel)) e.pose.fussLuft = luft; } return e; };
+  const auf = luftFuesse.includes(a.schluessel) ? null : zehenAufstellen(pose0);
+  a.pose = function (t, z) { const e = pose0.call(this, t, z); if (e && e.pose) { e.pose.fussBoden = boden; if (luftFuesse.includes(a.schluessel)) e.pose.fussLuft = luft; if (auf) e.pose.zehenAuf = auf; } return e; };
+}
+// G17 (10.11., Devin: Regel 1 „Füße“): Liegt ein Bein irgendwann mit der Kniescheibe zum Boden, das Schienbein fast waagerecht und der Knöchel unter 20 cm (Knien, Vierfüßler,
+// Bauchlage, Stütz), müssen die Zehen aufgestellt sein: Fußspitze nach unten und zum Knie hin (wie Liegestütz) oder Fersenhub der Vorlage ab 15°. Legt die Vorlage den Fuß dort anders
+// (flach nach hinten = um 180° verdreht, auf den Spann, Spitze vom Knie weg), bekommt dieses Bein für die ganze Übung pose.zehenAuf (figur.js richtet den Fuß dann am Schienbein aus)
+function zehenAufstellen(pose0) {
+  const auf = { l: false, r: false }, boden = { l: Infinity, r: Infinity };
+  try {
+    for (let i = 0; i <= 50; i++) {
+      const e = pose0(i / 50, {}), p = e && e.pose; if (!p || !p.fuss) continue;
+      const g = gelenke(p);
+      for (const s of ['l', 'r']) {
+        if (p.fuss[s]) boden[s] = Math.min(boden[s], p.fuss[s].y);
+        const spann = p.fussFlaeche && p.fussFlaeche[s] && p.fussFlaeche[s].y < 0;   // Fläche nach unten = Spann auf dem Boden
+        if (!p.fuss[s] || (p.fussFlaeche && p.fussFlaeche[s] && !spann) || g.knoechel[s].y > 0.2) continue;
+        const kp = (p.kniePol && p.kniePol[s]) || V(s === 'l' ? 0.15 : -0.15, 0, 1), lage = kniescheibe(g.huefte[s], g.knie[s], g.knoechel[s], kp);
+        if (!lage || lage.ks.y > -0.5 || Math.abs(lage.schien.y) > 0.6) continue;
+        const kh = V(-lage.schien.x, 0, -lage.schien.z); if (kh.lengthSq() < 1e-6) continue; kh.normalize();
+        const f0 = ((p.fussRicht && p.fussRicht[s]) || V(s === 'l' ? 0.18 : -0.18, 0, 1)).clone().normalize(), zumKnie = f0.x * kh.x + f0.z * kh.z > -0.05;
+        if (spann || !(zumKnie && (-f0.y > Math.sin(20 * RAD) || (p.zehen && p.zehen[s] >= 15)))) auf[s] = true;
+      }
+    }
+  } catch (err) { return null; }
+  return auf.l || auf.r ? Object.assign(auf, { boden }) : null;   // boden: tiefstes Fußziel der Vorlage (figur.js: Fuß abgehoben?)
 }
 function genauUeberR0(a) {
   const R0 = MASS.oberarm + MASS.unterarm, unter = { l: false, r: false }, ueber = { l: false, r: false };

@@ -1,5 +1,5 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = '86bb2ea0c5';
+const VERSION = 'fd11304cb7';
 const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'raum.js', 'spiel.js', 'bestleistung.js', 'rang.js', 'medaille.js', 'pr-raum.js', 'relief-athlet.png', 'stil.css',
   'schriften/schriften.css', 'schriften/figtree.woff2', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
   'koerper.bin', 'koerper-haut.jpg', 'koerper-haut-n.jpg', 'koerper-haar.jpg', 'koerper-augen.jpg'];

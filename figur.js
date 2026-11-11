@@ -73,6 +73,32 @@ export function ik(A, Z, a, b, pol) {
 
 // Weich 0…1 und eine ruhige Welle −1…1 aus zwei Sinus ohne gemeinsamen Takt (Atem und kleine Bewegungen)
 const glaettung = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+// G17 (10.11., Devin Regel 2: „nichts geht durch den Körper“, Hitbox um den Körper): Rumpf-Hülle aus der echten Haut gemessen (werkzeug/huelle-fit.mjs, stehende Figur).
+// Je Höhe u (0 = Becken, 1 = Nacken) eine Ellipse im Rahmen (unten Becken, oben Brustkorb): Halbachse seitlich a, vorn/hinten b, Mitte mz nach vorn (m), je 1 cm kleiner als die Haut
+const RUMPF_HUELLE = [[0, 0.141, 0.113, 0.013], [0.17, 0.142, 0.107, 0.036], [0.33, 0.134, 0.093, 0.064], [0.5, 0.184, 0.133, 0.048], [0.67, 0.213, 0.139, 0.039], [0.83, 0.163, 0.121, 0.025], [1, 0.132, 0.083, 0.028]];
+export const FAUST_RAD = 0.04;   // halbe Dicke der Faust (m): so weit bleibt die Faustmitte mindestens vor der Hülle
+// Liegt p (Faustmitte) in der Rumpf-Hülle plus r? Dann auf die Hülle plus r schieben (in der Ebene der Ellipse, vom Mittelpunkt weg). true = geschoben
+export function ausDemRumpf(p, becken, nacken, R, RB, r = FAUST_RAD) {
+  const ax = nacken.clone().sub(becken), L = ax.length(); if (L < 1e-4) return false; ax.divideScalar(L);
+  const d = p.clone().sub(becken), u = d.dot(ax) / L; if (u < 0 || u > 1) return false;
+  let i = 0; while (i < RUMPF_HUELLE.length - 2 && u > RUMPF_HUELLE[i + 1][0]) i++;
+  const A = RUMPF_HUELLE[i], B = RUMPF_HUELLE[i + 1], k = (u - A[0]) / (B[0] - A[0]), a = A[1] + (B[1] - A[1]) * k + r, b = A[2] + (B[2] - A[2]) * k + r, mz = A[3] + (B[3] - A[3]) * k;
+  const w = glaettung((u - 0.4) / 0.2), li = RB.links.clone().lerp(R.links, w), vo = RB.vor.clone().lerp(R.vor, w);
+  li.addScaledVector(ax, -li.dot(ax)).normalize(); vo.addScaledVector(ax, -vo.dot(ax)).addScaledVector(li, -vo.dot(li)).normalize();
+  const x = d.dot(li), z = d.dot(vo) - mz, e = (x / a) ** 2 + (z / b) ** 2;
+  if (e >= 1) return false;
+  const sk = e > 1e-8 ? 1 / Math.sqrt(e) : 0, nx = e > 1e-8 ? x * sk : 0, nz = e > 1e-8 ? z * sk : b;   // liegt er genau in der Mitte: nach vorn
+  p.addScaledVector(li, nx - x).addScaledVector(vo, nz - z);
+  return true;
+}
+// G17: Lage des Unterschenkels: ks = wohin die Kniescheibe zeigt (senkrecht zum Schienbein), schien = Knie → Knöchel (Einheitsvektoren); null, wenn nicht bestimmbar
+export function kniescheibe(huefte, knie, knoechel, kpol) {
+  const schien = knoechel.clone().sub(knie).normalize(), bl = knoechel.clone().sub(huefte).normalize();
+  let ks = knie.clone().sub(huefte); ks.addScaledVector(bl, -ks.dot(bl));
+  if (ks.length() < 0.01) ks = kpol.clone();
+  ks.addScaledVector(schien, -ks.dot(schien));
+  return ks.lengthSq() > 1e-8 ? { ks: ks.normalize(), schien } : null;
+}
 const welle = (z, f, p) => 0.65 * Math.sin(z * f + p) + 0.35 * Math.sin(z * f * 1.73 + p * 2.3);
 const grenze = (v, a, b) => Math.max(a, Math.min(b, v));
 // Pol am (fast) gestreckten Arm oder Bein (G13, 9.11.): Liegt Ellbogen oder Knie fast auf der Linie Wurzel–Ziel, schrumpft der Anteil des Pols senkrecht zu dieser Linie gegen null (viele Vorlagen setzen
@@ -433,6 +459,8 @@ export function gelenke(pose) {
         const dNeu = Math.sqrt(m.oberarm ** 2 + L * L - 2 * m.oberarm * L * cosW);
         if (w > 0) hz.sub(schulter[s]).multiplyScalar(1 + (dNeu / d - 1) * w * w * (3 - 2 * w)).add(schulter[s]);
       }
+      // G17 Regel 2: die Faust bleibt vor der Rumpf-Hülle (nicht an einer festen Stange: dort hält die Hand die Stange)
+      if (!(pose.fest && pose.fest[s])) ausDemRumpf(hz, becken, nacken, R, RB);
       out.handZiel[s] = hz;
       arm = armLegen(hz);
     }
@@ -452,29 +480,44 @@ export function gelenke(pose) {
     // Fuß so weit kippt. Und das Sprunggelenk beugt sich höchstens 40° (Winkel Schienbein–Fuß 130°): liegt das Schienbein flach, kippt
     // der Fuß weiter auf die Zehen (bis 75°) und der Knöchel geht mit hoch. Sonst klappt der Fuß flach unter das Schienbein
     const kpol = (pose.kniePol && pose.kniePol[s]) || V(0.15 * sg, 0, 1);
-    const fr0 = pose.fussRicht && pose.fussRicht[s] && pose.fussRicht[s].clone().normalize();
+    // G17 (10.11., Devin: „Zehen aufgestellt wie ein Mensch, nie verdreht oder flach durchgedrückt“): pose.zehenAuf[s] (setzt animation(), bewegungen.js zehenAufstellen) für ein Bein,
+    // das mit der Kniescheibe zum Boden liegt (Knien, Vierfüßler, Bauchlage, Stütz), dessen Fuß die Vorlage aber flach nach hinten, auf den Spann oder mit der Spitze vom Knie weg legte.
+    // Dann zeigt die Fußspitze zur Kniescheibe hin und etwas zum Knie (wie beim Liegestütz): am Boden stehen Ballen und Zehen, die Ferse ist oben; hebt sich das Bein (Superman, Fire Hydrant),
+    // bleibt der Fuß so am Schienbein (nicht verdreht). Steht das Schienbein fast senkrecht, gilt weich wieder die Richtung der Vorlage
+    // Eine Fläche mit Normale nach unten (Spann liegt auf dem Boden: Knieliegestütz, Bauchlage) gilt für so ein Bein nicht mehr
+    const ffl = pose.fussFlaeche && pose.fussFlaeche[s] && !(pose.zehenAuf && pose.zehenAuf[s] && pose.fussFlaeche[s].y < 0) ? pose.fussFlaeche[s] : null;
+    let frP = pose.fussRicht && pose.fussRicht[s];
+    if (pose.zehenAuf && pose.zehenAuf[s] && !ffl) {
+      const b0 = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), lage = kniescheibe(huefte[s], b0.mitte, b0.ende, kpol);
+      const w = lage ? glaettung((0.85 - Math.abs(lage.schien.y)) / 0.15) : 0;
+      if (w > 0) frP = (frP || V(0.18 * sg, 0, 1)).clone().normalize().multiplyScalar(1 - w).addScaledVector(lage.ks.clone().addScaledVector(lage.schien, -0.25).normalize(), w);
+    }
+    const fr0 = frP && frP.clone().normalize();
+    // G17: hebt die Vorlage den Fuß eines solchen Beins vom Boden ab (Fire Hydrant, Superman), lösen sich die aufgestellten Zehen weich (über 7 cm), statt am Boden zu kleben
+    const abgeh = pose.zehenAuf && pose.zehenAuf[s] && pose.zehenAuf.boden && pose.fuss && pose.fuss[s] ? glaettung((pose.fuss[s].y - pose.zehenAuf.boden[s] - 0.03) / 0.07) : 0;
     let zehenNeig = 0;
-    if (pose.fuss && pose.fuss[s] && fz.y < FUSS_LUFT && !(pose.fussFlaeche && pose.fussFlaeche[s])) {
+    if (pose.fuss && pose.fuss[s] && fz.y < FUSS_LUFT && !ffl) {
       const neig = Math.max(fr0 ? Math.asin(Math.max(-1, Math.min(1, -fr0.y))) : 0, ((pose.zehen && pose.zehen[s]) || 0) * RAD);
       const vor = fr0 || V(0, 0, 1), hochFuer = (n) => m.fussHoehe * 0.6 + 0.02 + Math.sin(n) * m.fussLaenge * BALLEN;
       const s0 = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), schien0 = s0.ende.clone().sub(s0.mitte).normalize();
       if (neig > 20 * RAD && vor.dot(schien0) < 0.5) {
         zehenNeig = Math.min(65 * RAD, neig);
-        if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(hochFuer(zehenNeig));
+        if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(fz.y + (hochFuer(zehenNeig) - fz.y) * (1 - abgeh));
         const schien = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), sd = schien.ende.clone().sub(schien.mitte).normalize();
         const hor = V(vor.x, 0, vor.z).normalize(), a = sd.dot(hor), b2 = -sd.y, Rr = Math.hypot(a, b2), grenz = Math.cos(130 * RAD);
         let phi = Math.atan2(b2, a); if (phi < 0) phi += 2 * Math.PI;
         if (Rr > Math.abs(grenz) && a * Math.cos(zehenNeig) + b2 * Math.sin(zehenNeig) < grenz) {
           zehenNeig = Math.min(75 * RAD, Math.max(zehenNeig, phi - Math.acos(grenz / Rr)));
-          if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(hochFuer(zehenNeig));
+          if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(fz.y + (hochFuer(zehenNeig) - fz.y) * (1 - abgeh));
         }
+        zehenNeig *= 1 - abgeh;
       }
     }
     // Beine, die gestreckt bleiben sollen (Liegestütz, Stütz): Kippt der Fuß auf die Zehen, steigt der Knöchel, das Bein würde kürzer und das Knie knickte durch. pose.beinGerade hält es gestreckt, der Knöchel rückt dafür ein Stück weiter weg
     if (pose.beinGerade) { const d = fz.clone().sub(huefte[s]), L = (m.oberschenkel + m.unterschenkel) * 0.998; if (d.length() < L) fz = huefte[s].clone().add(d.setLength(L)); }
     out.fussZiel[s] = fz;
     const bein = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol);
-    const fehlt = pose.fussFlaeche && pose.fussFlaeche[s] || fz.y < FUSS_LUFT ? bein.ende.distanceTo(fz) : 1;
+    const fehlt = ffl || fz.y < FUSS_LUFT ? bein.ende.distanceTo(fz) : 1;
     if (fehlt > 1e-4 && fehlt < 0.03) { const d = fz.clone().sub(bein.ende); bein.mitte = bein.mitte.clone().addScaledVector(d, m.oberschenkel / (m.oberschenkel + m.unterschenkel)); bein.ende = fz.clone(); }   // die leichte Beugung bleibt
     out.knie[s] = bein.mitte; out.knoechel[s] = bein.ende;
     // Fuß: Richtung (Standard: nach vorn, leicht außen), Fersenhub in Grad.
@@ -482,9 +525,9 @@ export function gelenke(pose) {
     // in dieser Fläche, die Zehen zeigen dorthin, wohin fussRicht in ihr zeigt, und der Fuß kann nicht seitlich wegrollen.
     // Ohne Fläche wie bisher: am Boden kippt der Fuß um den Knöchel; in der Luft (Beinstrecker, Hängen) liegt die Sohle auf der Seite,
     // die vom Schienbein weg zeigt.
-    const flaeche = pose.fussFlaeche && pose.fussFlaeche[s] ? pose.fussFlaeche[s].clone().normalize() : null;
+    const flaeche = ffl ? ffl.clone().normalize() : null;
     const hub = zehenNeig > 0 ? Math.max(((pose.zehen && pose.zehen[s]) || 0) * RAD, zehenNeig) : ((pose.zehen && pose.zehen[s]) || 0) * RAD;
-    let fr = ((pose.fussRicht && pose.fussRicht[s]) || V(0.18 * sg, 0, 1)).clone();
+    let fr = (frP || V(0.18 * sg, 0, 1)).clone();
     let oben = V(0, 1, 0);
     if (flaeche) {
       fr.sub(flaeche.clone().multiplyScalar(fr.dot(flaeche)));
@@ -504,7 +547,10 @@ export function gelenke(pose) {
         const h = Math.hypot(sohle.x, sohle.z) || 1e-6, neu = Math.sqrt(Math.max(0, 1 - y * y));
         sohle.set(sohle.x / h * neu, y, sohle.z / h * neu);
       }
-      if (ky > FUSS_LUFT || (pose.fussLuft && pose.fussLuft[s])) {
+      // G17: Liegt das Bein auf der Seite (Seitstütz, Copenhagen, Seitlage: Kniescheibe und Schienbein fast waagerecht), liegt der Fuß mit der Außenkante am Boden und dreht mit dem Schienbein (bis 10.11. lag er flach, um 75-90° gegen das Knie verdreht)
+      const lgS = kniescheibe(huefte[s], out.knie[s], out.knoechel[s], kpol), seitW = lgS && !(pose.fussLuft && pose.fussLuft[s]) ? glaettung((0.75 - Math.abs(lgS.ks.y)) / 0.25) * glaettung((0.55 - Math.abs(lgS.schien.y)) / 0.2) : 0;
+      const luftZweig = ky > FUSS_LUFT || (pose.fussLuft && pose.fussLuft[s]) || abgeh > 0;
+      if (luftZweig || seitW > 0) {
         const schien = out.knie[s].clone().sub(out.knoechel[s]);
         schien.sub(sohle.clone().multiplyScalar(schien.dot(sohle)));
         if (schien.lengthSq() > 1e-6) {
@@ -513,7 +559,7 @@ export function gelenke(pose) {
           // Das gilt nur für einen Fuß, der in der Bewegung den Boden berührt (pose.fussBoden, setzt animation()): ein Fuß, der die ganze Zeit schwebt (Skater Squat, hinten), behält seine Lage.
           // Liegen beide genau gegenüber (Bauchlage), geht der Weg immer seitlich nach außen herum (sonst entschied der Zufall die Richtung)
           const luft = schien.normalize(), p = oben.clone().addScaledVector(sohle, -oben.dot(sohle)), pl = p.length();   // p = Bodenspann senkrecht zur Fußrichtung
-          const k = pl > 0.05 && pose.fussBoden && pose.fussBoden[s] ? glaettung((Math.acos(grenze(p.dot(luft) / pl, -1, 1)) - 15 * RAD) / (25 * RAD)) : 0, w = pose.fussLuft && pose.fussLuft[s] ? 1 : k * glaettung((ky - FUSS_LUFT) / 0.1) + (1 - k);   // G14: pose.fussLuft (Bodenfuß in Bauchlage/Vierfüßler schon in der Lage nach dem Schienbein, nichts schaltet um)
+          const k = pl > 0.05 && pose.fussBoden && pose.fussBoden[s] ? glaettung((Math.acos(grenze(p.dot(luft) / pl, -1, 1)) - 15 * RAD) / (25 * RAD)) : 0, w0 = pose.fussLuft && pose.fussLuft[s] ? 1 : pose.zehenAuf && pose.zehenAuf[s] ? Math.max(glaettung((ky - FUSS_LUFT) / 0.1), abgeh) : k * glaettung((ky - FUSS_LUFT) / 0.1) + (1 - k), w = Math.max(luftZweig ? w0 : 0, seitW);   // G17: aufgestellte Zehen strecken sich beim Abheben weich (10 cm)   // G14: pose.fussLuft (Bodenfuß in Bauchlage/Vierfüßler schon in der Lage nach dem Schienbein, nichts schaltet um)
           if (w >= 1) oben = luft;
           else if (w > 0) {
             const gegen = glaettung((-p.dot(luft) / pl - 0.5) / 0.5), aussen = V(sg, 0, 0).addScaledVector(sohle, -sohle.x * sg), roh = oben.clone().multiplyScalar(1 - w).addScaledVector(luft, w);
@@ -1924,9 +1970,9 @@ const HUT_TABELLE = {
   "liegestuetz:{\"art\":\"handstand_liegestuetz\",\"standVersatz\":[0,0,0.2]}": [1498109701,"f",0.3818,0,0.4963],   // handstand_liegestuetz_wand
   "schulterheben:{\"art\":\"reverse_fly\",\"last\":\"kurzhanteln\",\"brustgestuetzt\":true}": [3330278024,"w"],   // kurzhantel_reverse_flys
   "seitlage:{\"art\":\"aussenrotation\"}": [559470834,"f",-0.4162,0,-0.4617],   // aussenrotation_seitlage
-  "klimmzug:{\"art\":\"bauchlage\"}": [1708099186,"f",0.6928,0,-0.004],   // bauchlage_latzug_handtuch
+  "klimmzug:{\"art\":\"bauchlage\"}": [2246033730,"f",0.6928,0,-0.004],   // bauchlage_latzug_handtuch
   "klimmzug:{\"art\":\"band\"}": [934808306,"w"],   // klimmzug_band_assistiert
-  "schulterzug:{\"art\":\"yt_bauchlage\"}": [3824009075,"f",-0.1139,0.005,-0.8395],   // bauchlage_ytw
+  "schulterzug:{\"art\":\"yt_bauchlage\"}": [2099688707,"f",-0.1139,0.005,-0.8395],   // bauchlage_ytw
   "schulterheben:{\"art\":\"ytw\",\"last\":\"kurzhanteln\",\"brustgestuetzt\":true}": [4471134,"w"],   // schraegbank_y_heben
   "curl:{\"art\":\"maschine\"}": [2002889630,"k",0.005,-20,0],   // bizeps_maschine
   "trizeps:{\"art\":\"ueberkopf\",\"last\":\"band\"}": [1475702653,"w"],   // band_trizeps_ueberkopf
@@ -1939,7 +1985,7 @@ const HUT_TABELLE = {
   "seitlage:{\"art\":\"seitlage_abduktion\"}": [1273737999,"f",-0.368,0,-0.2817],   // seitlage_abduktion
   "wadenheben:{\"art\":\"maschine\"}": [936001070,"k",0.02,0,10],   // wadenheben_maschine
   "rumpfuebung:{\"art\":\"crunch\"}": [1277412281,"f",-0.27,0.005,-0.8437],   // crunch
-  "rumpfuebung:{\"art\":\"kabelcrunch\"}": [436834289,"w"],   // kabelcrunch
+  "rumpfuebung:{\"art\":\"kabelcrunch\"}": [1793548631,"w"],   // kabelcrunch
   "bankdruecken:{\"last\":\"multipresse\",\"sitzVersatz\":0.18}": [2041677642,"k",0.03,-15,0],   // smith_bankdruecken
   "schulterdruecken:{\"art\":\"arnold\",\"sitzend\":true}": [4057445773,"w"],   // arnold_press
   "kniebeuge:{\"ablaufBand\":\"schlinge\",\"last\":\"band\"}": [967925057,"w"],   // kniebeuge_band
@@ -1949,11 +1995,11 @@ const HUT_TABELLE = {
   "curl:{\"art\":\"spider\",\"last\":\"kurzhanteln\"}": [402511550,"w"],   // spider_curl
   "rumpfuebung:{\"art\":\"beinheben_liegend\"}": [3255266673,"f",0.54,0,-0.4113],   // beinheben_liegend
   "rumpfuebung:{\"art\":\"fahrrad\"}": [1110709954,"f",-0.22,0.005,-0.7293],   // fahrrad_crunch
-  "rumpfuebung:{\"art\":\"rueckenstrecker_sanft\"}": [3606420050,"f",0.5216,0,-0.2746],   // rueckenstrecker_bauchlage_sanft
-  "vierfuessler:{\"art\":\"katze_kuh\"}": [2345238602,"k",0,-5,0],   // katze_kuh
-  "dehnung:{\"art\":\"kindshaltung\"}": [1624679753,"f",0.5216,0,-0.1081],   // kindshaltung
+  "rumpfuebung:{\"art\":\"rueckenstrecker_sanft\"}": [3900636414,"f",0.5216,0,-0.2746],   // rueckenstrecker_bauchlage_sanft
+  "vierfuessler:{\"art\":\"katze_kuh\"}": [29056410,"k",0,-5,0],   // katze_kuh
+  "dehnung:{\"art\":\"kindshaltung\"}": [494420750,"f",0.5216,0,-0.1081],   // kindshaltung
   "liegestuetz:{\"art\":\"raupe\"}": [3371163649,"k",0,-10,0],   // inchworm_raupe
-  "vierfuessler:{\"art\":\"bws_drehung\"}": [3367114156,"f",-0.311,0,-1.0314],   // bws_drehung_vierfuessler
+  "vierfuessler:{\"art\":\"bws_drehung\"}": [3767515088,"f",-0.311,0,-1.0314],   // bws_drehung_vierfuessler
 };
 // --- ENDE HUT_TABELLE ---
 
