@@ -1176,9 +1176,43 @@ function prRaumOeffnen(zurueck) {
     starte: (wie) => raumLaden({ ...wie, lade3d }, S.plan) })
     .then((r) => { if (PR) PR.raum = r; }, () => { PR = null; OHNE_3D = true; toast('Der PR-Raum lädt gerade nicht. Du kannst hier eintragen.'); if (zurueck) zurueck(); else { if (history.state && history.state.training) { ZURUECK_LEISE = true; history.back(); } zeichne(); } });
 }
+// Offenes Training (11.11.2026): Auf diesem Handy ist noch ein Training offen (anderes Konto oder anderer Trainingstag). Statt nur einer Meldung sagt ein Blatt,
+// welches es ist, und bietet an: fortsetzen (nur gleicher Plan), beenden und dann ins Gym, oder abbrechen. Gemachte Sätze bleiben im Verlauf.
+function laufVerwerfen() {
+  if (!LAUF) return;
+  if (LAUF.phase !== 'fertig' && LAUF.uebungen.some((u) => u.log.length)) {
+    const r = ergebnis('abgebrochen');
+    speicher.schreib(VERLAUF_KEY, [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40));
+  }
+  LAUF = null; laufSichern(); wach(false);
+  if (TM.buehne) { TM.buehne.weg(); TM.buehne = null; TM.gezeigt = null; }
+  if (TM.el) { TM.el.remove(); TM.el = null; }
+}
+// Erst wenn das Blatt seinen Verlaufseintrag zurückgegeben hat, das Nächste öffnen (sonst nimmt der Zurück-Schritt das Gym gleich wieder mit)
+function nachDemBlatt(tun) {
+  let fertig = false;
+  const los = () => { if (fertig) return; fertig = true; window.removeEventListener('popstate', los); setTimeout(tun, 0); };
+  window.addEventListener('popstate', los); setTimeout(los, 600);
+}
+function altesTraining(p, ti) {
+  if (!LAUF || !p) return;
+  const eigen = LAUF.plan === p.id, saetze = LAUF.uebungen.reduce((n, u) => n + u.log.length, 0);
+  const text = '„' + (LAUF.tagName || 'Training') + '“' + (!eigen && LAUF.kunde ? ' von ' + LAUF.kunde : '') + ', angefangen ' + datumZeit(LAUF.start) + ', '
+    + (saetze ? saetze + (saetze === 1 ? ' Satz' : ' Sätze') + ' gemacht.' : 'noch kein Satz gemacht.');
+  const knopf = (klasse, titel, tun) => h('button', { class: 'knopf ' + klasse, type: 'button', text: titel, onclick: () => { schliesseBlatt(true); if (tun) nachDemBlatt(tun); } });
+  oeffneBlatt('Noch ein Training offen', 'Auf diesem Handy', [
+    h('p', { text }),
+    h('p', { class: 'leise klein', text: eigen ? 'Du kannst es fortsetzen oder beenden. Beendest du es, bleiben deine gemachten Sätze im Verlauf.'
+      : 'Es gehört zu einem anderen Konto auf diesem Handy. Beendest du es, bleiben die gemachten Sätze im Verlauf.' }),
+    h('div', { class: 'stapel' },
+      eigen ? knopf('haupt', 'Altes Training fortsetzen', () => { if (!LAUF) return; if (LAUF.gym) raumStarten(p, LAUF.tagNr - 1); else timerZeigen(); }) : null,
+      knopf(eigen ? '' : 'haupt', 'Altes Training beenden, dann ins Gym', () => { laufVerwerfen(); zeichne(); raumStarten(p, ti); }),
+      knopf('', 'Abbrechen', null))
+  ]);
+}
 function raumStarten(p, ti, abTuer) {
   if (GYM || !p) return;
-  if (LAUF && LAUF.phase !== 'fertig' && (LAUF.plan !== p.id || LAUF.tagNr !== ti + 1)) { toast('Da läuft noch ein anderes Training.'); return; }
+  if (LAUF && LAUF.phase !== 'fertig' && (LAUF.plan !== p.id || LAUF.tagNr !== ti + 1)) { altesTraining(p, ti); return; }
   if (!LAUF || LAUF.phase === 'fertig') laufStarten(p, ti, true);
   LAUF.gym = true; LAUF.phase = 'frei'; laufSichern(); wach(true);
   if (TM.buehne) { TM.buehne.weg(); TM.buehne = null; TM.gezeigt = null; }
@@ -1258,7 +1292,7 @@ function gymZu(geschafft) {
   zeichne();
 }
 function startKnopf(p, ti, text) {
-  if (LAUF && LAUF.phase !== 'fertig') return h('button', { class: 'knopf haupt', type: 'button', onclick: () => (LAUF.gym ? raumStarten(aktiverPlan(), LAUF.tagNr - 1) : timerZeigen()), text: 'Training läuft · fortsetzen' });
+  if (LAUF && LAUF.phase !== 'fertig') return h('button', { class: 'knopf haupt', type: 'button', onclick: () => { const ap = aktiverPlan(); if (!LAUF.gym) timerZeigen(); else if (ap && LAUF.plan === ap.id) raumStarten(ap, LAUF.tagNr - 1); else altesTraining(p, ti); }, text: 'Training läuft · fortsetzen' });
   return h('button', { class: 'knopf haupt', type: 'button', onclick: () => laufStarten(p, ti), text: text || 'Training starten' });
 }
 // Eine Übung für den Trainingslauf. tg: was im Plan stand, wenn der Kunde getauscht hat (steht im Text an Devin)
