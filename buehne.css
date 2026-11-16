@@ -486,3 +486,4 @@ html:has(.raum), html:has(.raum) body { overflow: hidden; }
   .live-tasten { display: none; }
 }
 @media (hover: hover) and (pointer: fine) and (max-width: 520px) { .live-plan { width: calc(100% - 140px); } .raum.live .raum-unten { left: 12px; bottom: calc(140px + env(safe-area-inset-bottom, 0px)); justify-content: center; } }
+@media (hover: hover) and (pointer: fine) and (max-width: 1100px) { .raum.live .raum-tipp { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 300px); } }
