@@ -180,19 +180,22 @@ nav.leiste button { font-size: 13px; letter-spacing: 0; }
    Ein dünner Farbton und ein feiner Schriftschatten halten den Text lesbar. Kopf und Leiste unten bleiben weichgezeichnet, weil dort Text darunter durchläuft.
    Hauptknopf mit Glanz oben und Schein in der Akzentfarbe, die anderen Knöpfe als Glas-Pille; der Glanz liegt nur im oberen Drittel, hinter der Schrift bleibt die alte Farbe.
    Ohne glas.js, in der Farbwelt Klar, in Blättern, Training und Gym und mit „Transparenz reduzieren“ bleiben die Karten dicht wie bisher. */
-:root { --g-ton: rgba(255, 255, 255, .3); --g-ton2: rgba(255, 255, 255, .12); --g-kante: rgba(255, 255, 255, .95); --g-rand: rgba(255, 255, 255, .7); --g-tief: rgba(10, 60, 90, .14); --g-saum: rgba(255, 255, 255, .5);
-  --g-schatten: 0 26px 50px -26px rgba(10, 60, 90, .6), 0 3px 8px rgba(10, 60, 90, .1); --g-schein: rgba(10, 116, 176, .5); --g-glanz: rgba(255, 255, 255, .55); --g-schrift: 0 1px 2px rgba(255, 255, 255, .7); --g-bild: url(wellen-hell.jpg); }
-:root[data-look="gold"] { --g-ton: rgba(12, 12, 16, .4); --g-ton2: rgba(12, 12, 16, .2); --g-kante: rgba(255, 240, 205, .5); --g-rand: rgba(236, 200, 110, .3); --g-tief: rgba(0, 0, 0, .45); --g-saum: rgba(255, 236, 190, .1);
-  --g-schatten: 0 28px 54px -24px rgba(0, 0, 0, .9), 0 3px 8px rgba(0, 0, 0, .35); --g-schein: rgba(220, 180, 83, .5); --g-glanz: rgba(255, 255, 255, .12); --g-schrift: 0 1px 3px rgba(0, 0, 0, .75); --g-bild: url(wellen-dunkel.jpg); }
+:root { --g-ton: rgba(255, 255, 255, .15); --g-ton2: rgba(255, 255, 255, .03); --g-kante: rgba(255, 255, 255, .95); --g-rand: rgba(255, 255, 255, .7); --g-tief: rgba(10, 60, 90, .14); --g-saum: rgba(255, 255, 255, .62);
+  --g-schatten: 0 26px 50px -26px rgba(10, 60, 90, .6), 0 3px 8px rgba(10, 60, 90, .1); --g-schein: rgba(10, 116, 176, .5); --g-glanz: rgba(255, 255, 255, .55); --g-schrift: 0 0 3px rgba(255, 255, 255, .95), 0 1px 2px rgba(255, 255, 255, .85); --g-bild: url(wellen-hell.jpg); }
+:root[data-look="gold"] { --g-ton: rgba(12, 12, 16, .22); --g-ton2: rgba(12, 12, 16, .06); --g-kante: rgba(255, 240, 205, .5); --g-rand: rgba(236, 200, 110, .3); --g-tief: rgba(0, 0, 0, .45); --g-saum: rgba(255, 236, 190, .17);
+  --g-schatten: 0 28px 54px -24px rgba(0, 0, 0, .9), 0 3px 8px rgba(0, 0, 0, .35); --g-schein: rgba(220, 180, 83, .5); --g-glanz: rgba(255, 255, 255, .12); --g-schrift: 0 0 4px rgba(0, 0, 0, .9), 0 1px 3px rgba(0, 0, 0, .85); --g-bild: url(wellen-dunkel.jpg); }
 :root[data-look="klar"] { --g-kante: #fff; --g-rand: rgba(0, 0, 0, .07); --g-tief: rgba(0, 0, 0, .05); --g-schein: rgba(0, 113, 227, .42); --g-glanz: rgba(255, 255, 255, .6); }
 html.dk-wellen-an .g-glas { --g-r: 26px; position: relative; isolation: isolate; border: 1px solid var(--g-rand); border-radius: var(--g-r); text-shadow: var(--g-schrift);
   box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), inset 0 0 26px var(--g-saum), var(--g-schatten); }
 html.dk-wellen-an .rang-kurz.g-glas { --g-r: 20px; }
 html.dk-wellen-an .g-glas .knopf, html.dk-wellen-an .g-glas input, html.dk-wellen-an .g-glas textarea, html.dk-wellen-an .g-glas .wt, html.dk-wellen-an .g-glas .block { text-shadow: none; }
+/* Glas stärker (16.11.2026, Devin: „Noch stärker“): Vergrößerung 1,34 statt 1,16, Farbton auf den Karten halbiert, dafür kräftigerer Schriftschatten. */
 .g-linse { display: none; }
 html.dk-wellen-an .g-glas > .g-linse { display: block; position: absolute; inset: 0; z-index: -1; border-radius: inherit; -webkit-clip-path: inset(0 round var(--g-r)); clip-path: inset(0 round var(--g-r)); pointer-events: none; }
 html.dk-wellen-an .g-glas.g-fern > .g-linse { display: none; }
-.g-linse i { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; background: var(--g-bild) center / cover no-repeat; transform: scale(1.16); transform-origin: 50% 50%; }
+.g-linse i { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; background: var(--g-bild) center / cover no-repeat; transform: scale(1.34); transform-origin: 50% 50%; }
+.g-linse > i { transform: scale(2); filter: brightness(1.14) saturate(1.3); }
+.g-mitte { position: absolute; inset: 0; -webkit-clip-path: inset(8px round calc(var(--g-r) - 8px)); clip-path: inset(8px round calc(var(--g-r) - 8px)); }
 .g-linse::after { content: ""; position: absolute; inset: 0; background: linear-gradient(155deg, var(--g-ton2), var(--g-ton) 70%); }
 /* Sport (16.11.2026): Die Knopf-, Kopf- und Leisten-Regeln vom Glas gelten nicht in der Farbwelt Sport (dort eigene, ruhigere Knöpfe aus sport.css).
    :where() ändert die Spezifität nicht, in Lagune, Schwarz-Gold und Klar bleibt alles wie vorher. */

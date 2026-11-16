@@ -17,8 +17,9 @@
   }, { rootMargin: '240px 0px' }) : null;
   function linse(el) {
     if (el.classList.contains('g-glas') || (el.parentElement && el.parentElement.closest(OHNE)) || el.closest('.blatt, .tm, .raum, .st-mock, .rang-auf')) return;
-    var s = document.createElement('span'), i = document.createElement('i');
-    s.className = 'g-linse'; s.setAttribute('aria-hidden', 'true'); s.appendChild(i);
+    // Rand (stärker vergrößert, wie der dicke Rand eines Brillenglases) und Mitte (16.11.2026, Devin: „Noch stärker“)
+    var s = document.createElement('span'), rand = document.createElement('i'), mitte = document.createElement('span'), i = document.createElement('i');
+    s.className = 'g-linse'; s.setAttribute('aria-hidden', 'true'); mitte.className = 'g-mitte'; mitte.appendChild(i); s.appendChild(rand); s.appendChild(mitte);
     el.appendChild(s); el.classList.add('g-glas');
     if (sicht) sicht.observe(el);
   }
