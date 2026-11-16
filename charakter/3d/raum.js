@@ -13,13 +13,14 @@ const STILL = typeof window !== 'undefined' && window.matchMedia && matchMedia('
 // Halle und Kamera als reine Rechnung (ohne Browser): raumOeffnen baut die Halle damit, und messe-kamera.mjs prüft sie für jede Station und jeden Winkel.
 // Maße seit 07.11.2026 (Paket G1, Devin: „der Raum soll größer sein“, die Kamera ging beim Drehen durch die Wand): Breite 20 statt 12 m, Stationen 3,6 statt 3,2 m neben dem Gang,
 // Fach 6,2 statt 5,2 m, Wände 4,6 statt 3,2 m hoch und mit Decke. Die Kamera kreist an der Station mit Radius 3,7 bis 9,1 m (Handy hochkant, Median 6,4 m): Station bis Wand sind jetzt 6,25 statt 2,65 m.
-const BREITE = 20, WAND = 4.6, FACH = 6.2, SEITE_X = 3.6, STATION_R = 2.1, TUER_B = 4, TUER_H = 3.6;
+// 16.11.2026 (Devin: „das Gym komplett größer … mehr Platz, dass du dich nicht so eng fühlst … dass du direkt die Maschinen siehst“): Breite 28 statt 20 m, Decke 5,6 statt 4,6 m, Fach 8 statt 6,2 m, Geräte 5 statt 3,6 m neben dem Gang
+const BREITE = 28, WAND = 5.6, FACH = 8, SEITE_X = 5, STATION_R = 2.1, TUER_B = 4, TUER_H = 3.6;
 const WAND_D = 0.3, RAND = 0.4, ENDE_ABSTAND = 9, ORBIT_Y_MIN = 0.6, ORBIT_Y_MAX = Math.min(3.4, WAND - 0.2), FOV_MAX = 80;   // Wanddicke, Abstand der Kamera zu jeder Wand, Höhen beim Wischen, weiteste Sicht beim Heranrücken
 const FIGUR_RAND = 1.5;   // so nah an die Wand (Mitte der Wand) darf die Figur beim Laufen: Zwischen Figur und Kamera hinter ihr bleibt noch mindestens 0,95 m, die Kamera sitzt nie in der Figur
 const SCHIENEN_X = [SEITE_X - 0.6, BREITE / 2 - 3];
-const TERRASSE = 6, WAAGE_X = -6.5, WAAGE_Z = 3.0, WAAGE_R = 1.1, WAAGE_W = Math.PI / 2 - 0.3;   // Breite der Holzterrasse rund um die Halle; die Waage im Eingang (Mitte und Halbmesser der Trefferfläche)   // LED-Schienen unter der Decke (über den Stationsreihen und weiter außen), im Boden gespiegelt
-const SPIEGEL_X = -6.8, SPIEGEL_Z = -5.5, SPIEGEL_R = 1.1, SPIEGEL_W = -Math.PI / 2, SPIEGEL_LAENGE = 8;   // der Posing-Platz vor der Spiegelwand (linke Wand), die Figur schaut zur Wand
-const PR_TUER_X = 5.2, PR_TUER_Z = 3.4, PR_TUER_W = -Math.PI / 2 + 0.3;   // Tür zum PR-Raum, gegenüber der Waage (im Studio rechts, weil die Waage links steht; im Gym ohne Studio stand sie bei x −5,2 mit W = π/2 − 0,3)
+const TERRASSE = 6, WAAGE_X = -(BREITE / 2 - 3.5), WAAGE_Z = 3.0, WAAGE_R = 1.1, WAAGE_W = Math.PI / 2 - 0.3;   // Breite der Holzterrasse rund um die Halle; die Waage im Eingang (Mitte und Halbmesser der Trefferfläche)   // LED-Schienen unter der Decke (über den Stationsreihen und weiter außen), im Boden gespiegelt
+const SPIEGEL_X = -(BREITE / 2 - 3.2), SPIEGEL_Z = -5.5, SPIEGEL_R = 1.1, SPIEGEL_W = -Math.PI / 2, SPIEGEL_LAENGE = 8;   // der Posing-Platz vor der Spiegelwand (linke Wand), die Figur schaut zur Wand
+const PR_TUER_X = BREITE / 2 - 4.8, PR_TUER_Z = 3.4, PR_TUER_W = -Math.PI / 2 + 0.3;   // Tür zum PR-Raum, gegenüber der Waage (im Studio rechts, weil die Waage links steht; im Gym ohne Studio stand sie bei x −5,2 mit W = π/2 − 0,3)
 const frei = (rich, ab, von, bis) => (rich > 1e-9 ? (bis - ab) / rich : rich < -1e-9 ? (von - ab) / rich : Infinity);   // wie viele Schritte in Richtung rich man von ab aus kommt, bis die Grenze von oder bis erreicht ist
 
 // Maße der Halle für n Stationen. innen = Innenseiten der Wände, kasten = wo die Kamera sein darf (RAND Abstand zu jeder Wand, 0,2 m unter der Decke)
@@ -55,7 +56,7 @@ export function folgeKamera(h, F, kamW, kamZ, spieler, nick) {
   // Live-Gym (10.11.2026): wie in einem Spiel in dritter Person, Kamera hinter und etwas über der Figur, der Blick geht weit in die Halle (Vorlage: Figur unten in der Mitte, Horizont im oberen Drittel).
   // nick hebt den Blick (positiv: nach oben sehen, die Kamera geht dabei tiefer), bleibt stehen, bis man ihn wieder ändert
   if (spieler === 'live') {
-    const L = 6.55 * kamZ, phi = klemme(0.115 - (nick || 0) * 0.9, -0.12, 1.15), y = 1.35 + L * Math.sin(phi), hz = L * Math.cos(phi);
+    const L = 8.2 * kamZ, phi = klemme(0.17 - (nick || 0) * 0.9, -0.12, 1.15), y = 1.35 + L * Math.sin(phi), hz = L * Math.cos(phi);   // 16.11.: weiter hinten und etwas höher (Devin: „bessere POV von hinten“), die Figur ist kleiner, man sieht die Halle
     const p = kameraImRaum(h, F, { x: F.x + dx * hz, y, z: F.z + dz * hz }), vor = 4 * Math.max(0.35, p.s);
     return { pos: p, blick: { x: F.x - dx * vor, y: 1.35 - (y - 1.35) * 0.6 + (nick || 0) * 3, z: F.z - dz * vor }, s: p.s };
   }
@@ -292,7 +293,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const kopf = el('div', 'raum-kopf'), kopfT = el('b', null, titel || 'Dein Gym heute'), kopfS = el('span', 'raum-stand');
   const punkte = el('div', 'raum-punkte'); if (!pr) uebungen.forEach(() => punkte.append(el('i')));
   const kopfText = el('div', 'raum-kopftext'); kopfText.append(kopfT, kopfS); kopf.append(zu, kopfText, punkte);
-  const tipp = el('div', 'raum-tipp', pr ? 'Geh zu einem Gerät und trag deinen PR ein' : spieler ? 'Knüppel: laufen · Wischen: Kamera' + (status ? ' · Waage: Status' : '') : 'Station' + (status ? ', Waage' : '') + ' oder Spiegel antippen · Knüppel: selbst laufen');
+  const tipp = el('div', 'raum-tipp', pr ? (LOOKL ? 'Lauf in den Kreis eines Geräts und trag deinen PR ein' : 'Geh zu einem Gerät und trag deinen PR ein') : spieler ? 'Knüppel: laufen · Wischen: Kamera' + (status ? ' · Waage: Status' : '') : 'Station' + (status ? ', Waage' : '') + ' oder Spiegel antippen · Knüppel: selbst laufen');
   const stick = el('div', 'raum-stick'), stickK = el('i'); stick.append(stickK); stick.setAttribute('aria-hidden', 'true');
   const weiter = el('button', 'raum-weiter'); weiter.type = 'button';
   const unten = el('div', 'raum-unten'); unten.append(stick, weiter);
@@ -1022,11 +1023,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     finally { for (const o of versteckt) o.visible = true; szene.background = hg; szene.fog = nebel; H = altH; posAn = false; posMix = 0; R.setViewport(vp); }
     if (!leinwaende.length) return;
     const tx = leinwaende.map((c) => tex(c)), plaetze = [];
-    for (const s of [-1, 1]) { plaetze.push([s * 8.85, 2.3, zAnfang - WAND_D / 2 - 0.03, Math.PI, wandVorn]); plaetze.push([s * 8.85, 2.3, zEnde + WAND_D / 2 + 0.03, 0, wandHinten]); }
+    for (const s of [-1, 1]) { plaetze.push([s * (BREITE / 2 - 1.15), 2.3, zAnfang - WAND_D / 2 - 0.03, Math.PI, wandVorn]); plaetze.push([s * (BREITE / 2 - 1.15), 2.3, zEnde + WAND_D / 2 + 0.03, 0, wandHinten]); }
     for (let z = halle.spiegel.z - halle.spiegel.laenge / 2 - 3.2 - FACH; z > zEnde + 3; z -= 2 * FACH) if (!LIVE || Math.abs(z - LOUNGE_Z) > 1) plaetze.push([-BREITE / 2 + WAND_D / 2 + 0.03, 2.6, z, Math.PI / 2, null]);
     plaetze.forEach(([x, y, z, dreh, ziel], i) => tafel(tx[i % tx.length], 1.5, 2.25, x, y, z, dreh, ziel));
   }
-  const prT = prTuer ? { pos: V(PR_TUER_X, 0, PR_TUER_Z), r: 1.5, istTuer: true, schild: null, vorn: V(PR_TUER_X - 2.1, 0, PR_TUER_Z + 0.6), raus: Math.atan2(-2.1, 0.6) } : null;
+  const prT = prTuer ? { pos: V(PR_TUER_X, 0, PR_TUER_Z), r: 1.5, istTuer: true, schild: null, vorn: V(PR_TUER_X - 3.2, 0, PR_TUER_Z - 0.4), raus: Math.atan2(-3.2, -0.4) } : null;
   let naheTuer = false, tuerUnterwegs = false;
   if (prT) {
     const g = new THREE.Group(); g.position.copy(prT.pos); g.rotation.y = PR_TUER_W; raum.add(g); prT.gruppe = g;
@@ -1077,7 +1078,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const F = V(0, 0, zAnfang + 4), K = { pos: V(15, 16, zAnfang + 28), blick: V(-1, 2.2, zAnfang - 8), fov: sichtOben() };   // erst das Gebäude schräg von oben (Flachdach, Fassade, Glasfront zum Meer)
   let H = Math.PI, zielH = Math.PI, ph = 0, schrittL = 0, gang = null, warte = 0, nachWarte = null, hupf = 0;
   let hallenWinkel = 0, aktiv = null, kamFlug = null, modus = 'draussen', orbit = null, zeit = 0, gehX = 0, gehY = 0;
-  let kamNick = 0, kamStickX = 0, kamStickY = 0, kamStickId = null;   // Kamera-Joystick (09.11.2026): drehen und nach oben oder unten sehen
+  let kamNick = 0, kamStickX = 0, kamStickY = 0, kamStickId = null, kamHand = -1e9;   // kamHand: wann zuletzt selbst umgesehen wurde (danach dreht die Kamera eine Weile nicht von selbst)   // Kamera-Joystick (09.11.2026): drehen und nach oben oder unten sehen
   let kamW = 0, kamZ = 1, bisZiel = 0, vonZiel = 0, tuerOffen = 0, auftritt = null, nahe = null;
   let tuerEin = spieler ? 1 : 0, tuerEinZiel = tuerEin, tuerSicht = false, reach = 0, reachZiel = 0, einstiegLaeuft = !spieler;   // Eingangstür (0 zu, 1 auf), Blick von draußen auf die Tür, Hand zum Türgriff
   const legeHalle = (p, w) => {
@@ -1101,7 +1102,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         if (drin) { frei = Math.max(1.3 / L, t - 0.2 / L); break; }
       }
       if (frei < 1) { p.x = F.x + dx * frei; p.z = F.z + dz * frei; p.y = 1.35 + (p.y - 1.35) * frei + (1 - frei) * 0.9; }   // näher heran und etwas höher, so bleibt die Figur im Bild
-      return { pos: p, blick: V(k.blick.x, k.blick.y, k.blick.z), fov: hochkant() ? 66 : 50 };
+      return { pos: p, blick: V(k.blick.x, k.blick.y, k.blick.z), fov: hochkant() ? 68 : 54 };
     }
     const k = folgeKamera(halle, F, kamW, kamZ, !!spieler);   // geht nie durch eine Wand, nie über die Decke; dein Charakter ist groß im Bild
     return { pos: V(k.pos.x, k.pos.y, k.pos.z), blick: V(k.blick.x, k.blick.y + kamNick * 9, k.blick.z), fov: sichtOben() };   // kamNick hebt den Blick (Joystick der Kamera), so sieht man auch den Mond
@@ -1138,7 +1139,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (pr) {
       kopfS.textContent = pr.rang || ''; weiter.textContent = ''; vonZiel = 0; bisZiel = 1; wegU.von.value = 0;
       if (nahe != null) weiter.append(el('small', null, 'PR eintragen'), el('b', null, stationen[nahe].u.name));
-      else weiter.append(el('small', null, 'Zur Tür'), el('b', null, pr.ausgang || 'Zurück'));
+      else weiter.append(el('small', null, LOOKL ? 'Direkt zurück' : 'Zur Tür'), el('b', null, pr.ausgang || 'Zurück'));
       schildMalen(true); lichtSaeule.visible = false; rahmenM.opacity = 1;
       return;
     }
@@ -1180,6 +1181,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     kameraZu(verfolgen, 0.7);
   }
   function ankommen(i) {
+    kreisSperre = i;   // nach „Zurück“ steht die Figur im Kreis: erst nach dem Verlassen startet er wieder
     const s = stationen[i];
     F.copy(s.start); H = zielH = s.startH;
     if (s.anim) setzeAktiv(i);
@@ -1232,11 +1234,12 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     zurueckZurKarte(true);
   }
   // Die Tür steht beim Reinlaufen hinter der Figur: Der kleine Knopf schickt sie von überall hin
-  if (prT) { const b = el('button', 'raum-pr-knopf', 'PR-Raum'); b.type = 'button'; b.setAttribute('aria-label', 'Zur Tür in den PR-Raum gehen'); b.addEventListener('click', () => zurPrTuer()); wurzel.append(b); }
+  if (prT) { const b = el('button', 'raum-pr-knopf', 'PR-Raum'); b.type = 'button'; b.setAttribute('aria-label', 'Direkt in den PR-Raum'); b.addEventListener('click', () => zurPrTuer(LOOKL)); wurzel.append(b); }
   // Zur Tür gehen, durch, Blende, dann öffnet die App den PR-Raum
-  function zurPrTuer() {
+  function zurPrTuer(direkt) {   // direkt (16.11., Devin: „nicht dahin laufen zur Tür, sondern direkt teleportiert“): Knopf bringt sofort hinein; durch die Tür laufen geht weiter
     if (!prT || modus === 'draussen' || modus === 'station' || tuerUnterwegs) return;
     tuerUnterwegs = true;
+    if (direkt) { tipp.classList.add('weg'); karte.classList.remove('offen'); ende.classList.add('offen'); setTimeout(() => { schliessen(false, true); prTuer(); }, STILL ? 0 : 380); return; }
     tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
     stationen.forEach((x) => { x.schild.visible = true; });
     if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
@@ -1245,7 +1248,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     kameraZu(verfolgen, 0.7);
   }
   /* Waage: hinlaufen (antippen) oder draufgehen, dann zeigt die Karte den Spielstand. Drehen und Karte runterwischen gehen wie an einer Station. */
-  let waageAktiv = false, waageGesperrt = false, waageZeit = 0;
+  let waageAktiv = false, waageGesperrt = false, waageZeit = 0, kreisSperre = null, kreisZeit = 0;
+  // G19 (16.11., Vorgaben von 3D-Ablauf, Devin: „lass den Charakter viel natürlicher wirken“): Gehen 1,5 m/s, Joggen (Sprint, Weg zum Gerät) 2,6–2,8 m/s, Schritte aus dem zurückgelegten Weg,
+  // Anlaufen und Anhalten weich, Drehen höchstens 265 °/s, im Stand Atmen und Gewichtsverlagerung
+  let gehV = 0, gehDx = 0, gehDz = -1, vGlatt = 0; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false; const GEH = 1.5, JOGG = 2.8, FV = V(0, 0, 0);   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
   function zurWaage() {
     if (!waage || modus === 'draussen' || waageAktiv || spiegelAktiv) return;
     tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
@@ -1411,6 +1417,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function rausgehen() {
     if (!pr && offeneZahl()) { sag('Noch offen: ' + stationen.filter((s) => !s.fertig).map((s) => s.u.name).join(', ')); return; }
     karte.classList.remove('offen');
+    if (pr && LOOKL) { if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH); zeigeEnde(); return; }   // PR-Raum: direkt zurück ins Gym, ohne Weg zur Tür (16.11.)
     if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
     modusSetzen('draussen');
     lauf([...route(F, V(0, 0, zEnde + 1.6)), V(0, 0, zEnde - 7)], null);
@@ -1430,7 +1437,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }
   let sagUhr = null;
   function sag(t) { meldung.textContent = t; meldung.classList.add('offen'); clearTimeout(sagUhr); sagUhr = setTimeout(() => meldung.classList.remove('offen'), 3200); }
-  weiter.addEventListener('click', () => { if (naheTuer) return zurPrTuer(); const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else zurStation(n); });
+  weiter.addEventListener('click', () => { if (naheTuer) return zurPrTuer(LOOKL); const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else zurStation(n); });
 
   /* ---------- Antippen, Wischen, Knüppel ---------- */
   const strahl = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -1494,7 +1501,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (Math.hypot(e.clientX - finger.sx, e.clientY - finger.sy) > 8) finger.weit = true;
     if (!finger.weit) return;
     if (modus === 'station' && orbit) { orbit.w -= dx * 0.008; orbit.y = klemme(orbit.y - dy * 0.008, ORBIT_Y_MIN, ORBIT_Y_MAX); }
-    else if (modus === 'gehen' || modus === 'lauf') { kamW -= dx * 0.006; if (LIVE) kamNick = klemme(kamNick + dy * 0.004, -0.6, 1); else kamZ = klemme(kamZ + dy * 0.004, 0.55, 2.3); tipp.classList.add('weg'); }   // Live-Gym: ziehen = umsehen (Zoom mit Mausrad oder zwei Fingern)
+    else if (modus === 'gehen' || modus === 'lauf') { kamHand = performance.now(); kamW -= dx * 0.006; if (LIVE) kamNick = klemme(kamNick + dy * 0.004, -0.6, 1); else kamZ = klemme(kamZ + dy * 0.004, 0.55, 2.3); tipp.classList.add('weg'); }   // Live-Gym: ziehen = umsehen (Zoom mit Mausrad oder zwei Fingern)
   });
   const loslassen = (e) => {
     zeiger.delete(e.pointerId);
@@ -1519,7 +1526,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const stickLos = (e) => { if (e.pointerId !== stickId) return; stickId = null; gehX = gehY = 0; sprint = false; stickK.style.transform = ''; };
   stick.addEventListener('pointerup', stickLos); stick.addEventListener('pointercancel', stickLos);
   // Zweiter Joystick, rechts über dem großen Knopf: die Kamera (nur beim Gehen; an der Übung wischt man oder zoomt mit zwei Fingern)
-  const kamStick = el('div', 'raum-kamstick'), kamStickK = el('i'); kamStick.append(kamStickK); kamStick.setAttribute('aria-hidden', 'true'); wurzel.append(kamStick);
+  const kamStick = el('div', 'raum-kamstick'), kamStickK = el('i'); kamStick.append(kamStickK); kamStick.setAttribute('aria-hidden', 'true'); if (!LOOKL) wurzel.append(kamStick);   // seit 16.11. ohne Kamera-Knüppel (Devin: „nur den Beweg-Joystick“), umsehen durch Wischen über das Bild
   const kamStickSetzen = (e) => {
     const rc = kamStick.getBoundingClientRect(), mx = rc.left + rc.width / 2, my = rc.top + rc.height / 2, gr = rc.width / 2 - 12;
     let x = (e.clientX - mx) / gr, y = (e.clientY - my) / gr; const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
@@ -1545,7 +1552,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     gehX = x / l; gehY = y / l; e.preventDefault();
     if (x || y) { gang = null; tipp.classList.add('weg'); }
   };
-  if (spieler || LIVE) { window.addEventListener('keydown', tasteNeu); window.addEventListener('keyup', tasteNeu); aufraeumen = () => { window.removeEventListener('keydown', tasteNeu); window.removeEventListener('keyup', tasteNeu); }; }
+  if (spieler || LIVE || pr) { window.addEventListener('keydown', tasteNeu); window.addEventListener('keyup', tasteNeu); aufraeumen = () => { window.removeEventListener('keydown', tasteNeu); window.removeEventListener('keyup', tasteNeu); }; }
   /* ---------- Führung (04.11.2026, Devin: Striche, die „die ganze Zeit den Charakter verfolgen und ihn immer zu der nächsten Übung führen“): Vom Charakter laufen Striche über den Boden zur nächsten Station, danach zur Tür, und ziehen beim Laufen mit. Sie nehmen den Gang in der Mitte, sonst gingen sie durch fremde Geräte. ---------- */
   const STRICH_N = 240, STRICH_B = 0.2, STRICH_Y = 0.021;
   const strichPos = new Float32Array((STRICH_N + 1) * 6), strichWo = new Float32Array((STRICH_N + 1) * 4), strichIdx = [];
@@ -1843,7 +1850,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const kc = el('canvas', 'live-karte'); kc.setAttribute('aria-hidden', 'true'); wurzel.append(kc);
     const kx = kc.getContext('2d'); let kUhr = 0;
     liveKarte = (dt) => {
-      kUhr -= dt; if (kUhr > 0) return; kUhr = 1 / 15;
+      kUhr = Math.min(kUhr, 1 / 15) - Math.max(0, dt); if (kUhr > 0) return; kUhr = 1 / 15;   // ein negativer Bildabstand (erstes Bild nach dem Start) darf die Karte nicht anhalten
       const d = Math.min(2, window.devicePixelRatio || 1), cw = Math.round(kc.clientWidth * d); if (!cw) return;
       if (kc.width !== cw) { kc.width = cw; kc.height = cw; }
       const R = cw / 2, m = R / 15, co = Math.cos(kamW), si = Math.sin(kamW);
@@ -1863,7 +1870,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       kx.fillStyle = '#F5F1E7'; kx.font = '700 ' + Math.round(10 * d) + 'px ' + SCHRIFT; kx.textAlign = 'center'; kx.textBaseline = 'middle'; kx.fillText('N', R + si * (R - 11 * d), R - co * (R - 11 * d));
       kx.save(); kx.translate(R, R); kx.rotate(kamW - H + Math.PI); kx.fillStyle = '#FFFFFF'; kx.beginPath(); kx.moveTo(0, -7 * d); kx.lineTo(5 * d, 6 * d); kx.lineTo(0, 3 * d); kx.lineTo(-5 * d, 6 * d); kx.closePath(); kx.fill(); kx.restore();
     };
-    tipp.textContent = matchMedia('(pointer: coarse)').matches ? 'Linker Knüppel: laufen · rechter Knüppel: umsehen' : 'WASD: laufen · Maus ziehen: umsehen · E: am Gerät trainieren';
+    tipp.textContent = matchMedia('(pointer: coarse)').matches ? 'Knüppel: laufen · über das Bild wischen: umsehen' : 'WASD: laufen · Maus ziehen: umsehen · in den Kreis laufen: trainieren';
   }
 
   /* ---------- Live-Gym: Qualität (Ziel 60 Bilder pro Sekunde, so scharf wie das Gerät schafft). Start am PC Stufe 4, am Handy Stufe 3; fällt der Schnitt über 1,5 s unter etwa 53 Bilder,
@@ -1896,7 +1903,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       else if (nachWarte) { const f = nachWarte; nachWarte = null; f(); }
       if (aktiv == null) {
         if (gang) {
-          let rest = (STILL ? 1000 : gang.tempo || TEMPO) * dt;
+          let rest = (STILL ? 1000 : gang.tempo || (LOOKL ? 2.6 : TEMPO)) * dt;
           while (rest > 0 && gang) {
             const z = gang.punkte[gang.i], dx = z.x - F.x, dz = z.z - F.z, l = Math.hypot(dx, dz);
             if (l <= rest) {
@@ -1905,10 +1912,21 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             } else { F.x += dx / l * rest; F.z += dz / l * rest; zielH = Math.atan2(dx, dz); rest = 0; }
           }
           bewegt = gang ? (gang.tempo || TEMPO) / TEMPO : 1;
-        } else if (modus === 'gehen' && (gehX || gehY)) {
-          const sin = Math.sin(kamW), cos = Math.cos(kamW), dx = gehX * cos + gehY * sin, dz = -gehX * sin + gehY * cos, st = Math.hypot(gehX, gehY);
-          const tempo = TEMPO * (LIVE && sprint ? 1.75 : 1);
-          F.x += dx * tempo * dt; F.z += dz * tempo * dt; zielH = Math.atan2(dx, dz); bewegt = st * tempo / TEMPO;
+        } else if (modus === 'gehen' && (gehX || gehY || (LOOKL && gehV > 0.02))) {
+          const sin = Math.sin(kamW), cos = Math.cos(kamW), st = Math.hypot(gehX, gehY);
+          let dx = gehX * cos + gehY * sin, dz = -gehX * sin + gehY * cos;
+          if (LOOKL) {   // G19: Tempo steigt in rund 0,3 s, fällt in rund 0,25 s; ohne Knüppel läuft die Figur in der letzten Richtung aus
+            if (st > 0.01) { gehDx = dx / st; gehDz = dz / st; }
+            const vZiel = st > 0.01 ? Math.min(1, st) * (sprint ? JOGG : GEH) : 0;
+            gehV += (vZiel - gehV) * Math.min(1, dt * (vZiel > gehV ? 9 : 12)); if (gehV < 0.02 && !vZiel) gehV = 0;
+            F.x += gehDx * gehV * dt; F.z += gehDz * gehV * dt; zielH = Math.atan2(gehDx, gehDz); bewegt = gehV / GEH; dx = gehDx; dz = gehDz;
+          } else {
+            const tempo = TEMPO * (LIVE && sprint ? 1.75 : 1);
+            F.x += dx * tempo * dt; F.z += dz * tempo * dt; zielH = Math.atan2(dx, dz); bewegt = st * tempo / TEMPO;
+          }
+          if (LIVE && performance.now() - kamHand > 900 && !STILL) {   // 16.11. (Devin: „wenn ich mich umdrehen will, sieht das komplett komisch aus“): beim Laufen dreht die Kamera weich hinter die Figur, außer man läuft auf die Kamera zu
+            const d = winkelDiff(kamW, zielH + Math.PI); if (Math.abs(d) < 2.0) kamW += d * (1 - Math.exp(-dt * 2.2 * Math.min(1, st)));
+          }
           for (const h of hindernisse) {   // Live-Gym: nicht durch Möbel, Statuen, Pflanzen und Deko-Geräte laufen, sondern daran entlang
             if (h.box) { const r = 0.35, x0 = h.box[0] - r, x1 = h.box[1] + r, z0 = h.box[2] - r, z1 = h.box[3] + r; if (F.x > x0 && F.x < x1 && F.z > z0 && F.z < z1) { const w = [F.x - x0, x1 - F.x, F.z - z0, z1 - F.z], m = Math.min(...w); if (m === w[0]) F.x = x0; else if (m === w[1]) F.x = x1; else if (m === w[2]) F.z = z0; else F.z = z1; } }
             else { const ex = F.x - h.x, ez = F.z - h.z, l = Math.hypot(ex, ez), r = h.r + 0.35; if (l < r && l > 0.001) { F.x = h.x + ex / l * r; F.z = h.z + ez / l * r; } }
@@ -1918,13 +1936,51 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         }
       }
       if (aktiv == null) {
-        H += winkelDiff(H, zielH) * Math.min(1, dt * 11);
-        schrittL += ((bewegt ? SCHRITT * Math.max(0.55, bewegt) : 0) - schrittL) * Math.min(1, dt * 9);
+        if (LOOKL) {
+          const w = winkelDiff(H, zielH); H += klemme(w * Math.min(1, dt * 10), -4.0 * dt, 4.0 * dt);   // G19: höchstens 230 °/s, weich
+          const weg = Math.hypot(F.x - FV.x, F.z - FV.z); FV.set(F.x, 0, F.z);
+          const v = dt > 0.001 && weg < 1 ? weg / dt : 0; vGlatt += (v - vGlatt) * Math.min(1, dt * 12);
+          schrittL += ((vGlatt > 0.08 ? SCHRITT * klemme(vGlatt / GEH, 0.55, 1.65) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo: Gehen rund 125, Joggen rund 145 Schritte pro Minute
+          if (schrittL > 0.012 && weg < 1) ph += Math.PI * weg / Math.max(0.25, 2 * schrittL);   // Takt aus dem Weg: die Füße schaffen genau den Weg
+        } else {
+          H += winkelDiff(H, zielH) * Math.min(1, dt * 11);
+          schrittL += ((bewegt ? SCHRITT * Math.max(0.55, bewegt) : 0) - schrittL) * Math.min(1, dt * 9);
+        }
         const posi = V(0, 0, 0);
         const lauft = schrittL > 0.012;
-        if (lauft) ph += (TEMPO * Math.max(0.6, bewegt || 0.6) / Math.max(0.2, schrittL)) * dt;
+        if (lauft && !LOOKL) ph += (TEMPO * Math.max(0.6, bewegt || 0.6) / Math.max(0.2, schrittL)) * dt;
         const pose = lauft ? stehen(posi, H, { phase: ph, schritt: schrittL, neigung: 2 + 8 * (schrittL / SCHRITT) }) : stehen(posi, H);
-        if (!lauft) pose.becken.y += Math.sin(zeit * 1.9) * 0.004;
+        if (LOOKL && lauft && !STILL) for (const [sd, sg] of [['l', 1], ['r', -1]]) {   // G19: der Standfuß bleibt am Boden stehen, wo er aufgesetzt hat; beim Abheben gleitet er in 0,12 s in die Schwungbahn
+          const fp = pose.fuss[sd], fz = fussFest[sd];
+          if (sg * Math.cos(ph) <= 0) { if (!fz.an) { fz.an = true; fz.x = F.x + fp.x; fz.z = F.z + fp.z; } fp.x = fz.x - F.x; fp.z = fz.z - F.z; }
+          else { if (fz.an) { fz.an = false; fz.dx = fz.x - F.x - fp.x; fz.dz = fz.z - F.z - fp.z; fz.ab = 1; } if (fz.ab > 0) { fz.ab = Math.max(0, fz.ab - dt / 0.12); const k = glatt(fz.ab); fp.x += fz.dx * k; fp.z += fz.dz * k; fp.y += 0.02 * Math.sin(Math.PI * k); } }   // beim Hinübergleiten ist der Fuß schon in der Luft
+        }
+        if (LOOKL && !STILL) {   // G19: Anhalten in 0,3 s: der Fuß am Boden bleibt stehen, der Körper setzt sich über ihn, der andere Fuß tritt mit kleinem Heben daneben (letzter Schritt schließt die Füße)
+          if (lauft) { for (const sd of ['l', 'r']) fussZuletzt[sd] = { p: pose.fuss[sd].clone(), an: fussFest[sd].an, x: fussFest[sd].x, z: fussFest[sd].z }; fussAusT = 0; }
+          else {
+            if (warLauf && fussZuletzt.l) {
+              const st = fussZuletzt.l.an ? 'l' : fussZuletzt.r.an ? 'r' : null;
+              fussAus.st = st; fussAus.welt = st ? V(fussZuletzt[st].x, 0, fussZuletzt[st].z) : null; fussAus.koerper = st ? V(fussZuletzt[st].x - F.x - pose.fuss[st].x, 0, fussZuletzt[st].z - F.z - pose.fuss[st].z) : V();
+              fussAus.F0 = V(F.x, 0, F.z); fussAus.frei = st === 'l' ? 'r' : 'l'; fussAus.von = fussZuletzt[fussAus.frei].p.clone().sub(pose.fuss[fussAus.frei]).setY(0); fussAusT = 1;
+            }
+            if (fussAusT > 0) {
+              fussAusT = Math.max(0, fussAusT - dt / 0.3); const k = glatt(fussAusT), u = 1 - k;
+              if (fussAus.st) { F.x = fussAus.F0.x + fussAus.koerper.x * u; F.z = fussAus.F0.z + fussAus.koerper.z * u; const fp = pose.fuss[fussAus.st]; fp.x = fussAus.welt.x - F.x; fp.z = fussAus.welt.z - F.z; }
+              const ff = pose.fuss[fussAus.frei]; ff.x += fussAus.von.x * k; ff.z += fussAus.von.z * k; if (fussAus.von.lengthSq() > 0.0004) ff.y += 0.05 * Math.sin(Math.PI * Math.min(1, u * 1.15));
+            }
+          }
+          warLauf = lauft;
+        }
+        if (LOOKL && !STILL) {   // Kombitest G19 (Devins Regel: nichts geht durch den Körper): die Füße kreuzen nie, der freie Fuß bleibt mindestens 17 cm seitlich vom Fuß am Boden (Fußachsen gemessen ab 14 cm)
+          const Lx = Math.cos(H), Lz = -Math.sin(H), fl = pose.fuss.l, fr = pose.fuss.r, lat = (fl.x - fr.x) * Lx + (fl.z - fr.z) * Lz;
+          if (lat < 0.17) {
+            const d = 0.17 - lat, lFest = fussFest.l.an || (fussAusT > 0 && fussAus.st === 'l'), rFest = fussFest.r.an || (fussAusT > 0 && fussAus.st === 'r');
+            if (lFest && !rFest) { fr.x -= Lx * d; fr.z -= Lz * d; } else if (rFest && !lFest) { fl.x += Lx * d; fl.z += Lz * d; } else { fl.x += Lx * d / 2; fl.z += Lz * d / 2; fr.x -= Lx * d / 2; fr.z -= Lz * d / 2; }
+          }
+        }
+        if (LOOKL && !lauft) { fussFest.l.an = fussFest.r.an = false; fussFest.l.ab = fussFest.r.ab = 0; }
+        if (!lauft && LOOKL) { pose.becken.y += Math.sin(zeit * 1.5) * 0.005 + Math.sin(zeit * 0.79 + 1.3) * 0.002; }   // G19: ruhiger Atem (Periode rund 4,2 s), dazu ein langsamer zweiter Takt
+        else if (!lauft) pose.becken.y += Math.sin(zeit * 1.9) * 0.004;
         reach += (reachZiel - reach) * Math.min(1, dt * (STILL ? 100 : 7));
         if (reach > 0.02) {   // an der Tür: die rechte Hand geht zum Türgriff
           const vorn = V(Math.sin(H), 0, Math.cos(H)), rechts = V(-Math.cos(H), 0, Math.sin(H)), hz = pose.becken.clone().add(V(0, 0.1, 0)).addScaledVector(vorn, 0.58).addScaledVector(rechts, 0.14);
@@ -1949,6 +2005,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           let b = null, bd = 2.5;
           if (modus === 'gehen') for (const s of stationen) { const d = Math.hypot(F.x - s.pos.x, F.z - s.pos.z); if (d < bd) { bd = d; b = s.i; } }
           if (b !== nahe) { nahe = b; stand(); }
+        }
+        if ((LIVE || pr) && modus === 'gehen' && !gang && !tuerUnterwegs) {   // 16.11. (Devin: „wenn wir in den Kreis von den Maschinen laufen, dass wir automatisch zu Maschinen gehen“): kurz im Kreis, dann geht die Figur ans Gerät
+          let im = null; for (const s of stationen) if ((pr || !s.fertig) && Math.hypot(F.x - s.pos.x, F.z - s.pos.z) < STATION_R) { im = s.i; break; }
+          if (im == null) { kreisZeit = 0; if (kreisSperre != null && Math.hypot(F.x - stationen[kreisSperre].pos.x, F.z - stationen[kreisSperre].pos.z) > STATION_R + 0.6) kreisSperre = null; }   // gelöst erst 0,6 m außerhalb (kleines Wackeln am Rand startet nicht neu)
+          else if (im !== kreisSperre) { kreisZeit += dt; if (kreisZeit > 0.25) { kreisZeit = 0; kreisSperre = im; zurStation(im); } }
         }
         if (waage && modus === 'gehen' && !waageAktiv) {   // draufgehen: kurz auf der Waage stehen bleiben, dann kommt der Status; erst nach dem Weggehen wieder
           const d = Math.hypot(F.x - waage.pos.x, F.z - waage.pos.z);
@@ -2045,7 +2106,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   wegU.bis.value = 0;
   const ausPr = !!(abTuer && prT);   // zurück aus dem PR-Raum: Die Figur steht vor der Tür, ohne Einzug
   if (ausPr) { frei(prT.vorn, prT.raus); modusSetzen('gehen'); const z = verfolgen(); K.pos.copy(z.pos); K.blick.copy(z.blick); K.fov = z.fov; tipp.classList.add('weg'); einstiegLaeuft = false; tuerEin = tuerEinZiel = 1; }
-  else if (LIVE) { frei(V(0, 0, zStart - 3.4), Math.PI); modusSetzen('gehen'); einstiegLaeuft = false; tuerEin = tuerEinZiel = 1; const z = verfolgen(); K.pos.copy(z.pos); K.blick.copy(z.blick); K.fov = z.fov; }   // Live-Gym: man steht gleich in der Halle, hinter der Figur
+  else if (LIVE) { frei(V(0, 0, zStart - 5.2), Math.PI); modusSetzen('gehen'); einstiegLaeuft = false; tuerEin = tuerEinZiel = 1; const z = verfolgen(); K.pos.copy(z.pos); K.blick.copy(z.blick); K.fov = z.fov; }   // Live-Gym: man steht gleich in der Halle, hinter der Figur
   else { if (spieler) F.z = zAnfang + 0.3; frei(F, Math.PI); }
   a.figur.gruppe.visible = true;
   legeKamera();
@@ -2092,6 +2153,6 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const zugang = test ? { test: {   // nur für Prüfseiten (test: true): Figur und Kamera setzen, Stufe und Bildzeiten lesen
     setze(x, z, h, w, nick, zoom) { if (aktiv == null && modus === 'gehen') { F.set(x, 0, z); H = zielH = h; kamW = w; kamNick = nick || 0; if (zoom) kamZ = zoom; const k = verfolgen(); K.pos.copy(k.pos); K.blick.copy(k.blick); K.fov = k.fov; } },
     zeit(n) { znZiel = n; zn = n; zeitSetzen(n); zeitZeichen(); }, stufe: (n) => { if (n != null) { qStufe = n; qFest = true; qAnwenden(); } return { stufe: qStufe, pr: a.renderer.getPixelRatio() }; },
-    modus: () => modus, nahe: () => nahe, szene, renderer: a.renderer, F: () => ({ x: F.x, z: F.z, h: H }) } } : {};
+    modus: () => modus, nahe: () => nahe, stationen: () => stationen.map((x) => ({ x: x.pos.x, z: x.pos.z })), szene, renderer: a.renderer, F: () => ({ x: F.x, z: F.z, h: H }) } } : {};
   return { schliessen, stationFertig, zumSpiegel, scheibenSetzen, jubel, karteRunter: () => karteUnten(true), zurKarte: () => (waageAktiv ? statusZu() : spiegelAktiv ? spiegelZu() : zurueckZurKarte(false)), ...zugang };
 }

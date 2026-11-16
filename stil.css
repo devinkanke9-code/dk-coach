@@ -1012,3 +1012,22 @@ nav.leiste button.dk-druck { transform: scale(1.04); }
 .dk-rahmen { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; }
 /* Check-up 07.11.2026: Hinweis „Wischen zum Drehen“ auf der 3D-Bühne war in Klar knapp zu blass (4,46 : 1) */
 :root[data-look="klar"] .buehne .tipp { color: #4e4e54; }
+
+/* ---------- Pläne bei Schmerzen (13.11.2026): Schmerz-Skala nach dem Training (Kunden-App), „Angepasst wegen …“, Hinweis für Devin.
+   Nur Tokens der Farbwelten, gilt für Lagune, Klar und Schwarz-Gold. ---------- */
+.schmerz-skala { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 380px) { .schmerz-skala { grid-template-columns: repeat(4, minmax(0, 1fr)); } }   /* schmale Handys: Knöpfe bleiben mindestens 44 px breit */
+.schmerz-wert { appearance: none; min-height: 52px; border-radius: var(--r-knopf, 12px); border: 1.5px solid var(--linie); background: var(--anthrazit); color: var(--text);
+  font-family: var(--f-zahl); font-size: 20px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+.schmerz-wert:hover { border-color: var(--akzent); }
+.schmerz-wert.an { background: var(--akzent-verlauf); color: var(--auf-akzent); border-color: transparent; box-shadow: var(--akzent-glanz); }
+.schmerz-wert:focus-visible { outline: 3px solid var(--akzent-hell); outline-offset: 2px; }
+.schmerz-ende { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text2); }
+.schmerz-stufe { font-weight: 600; }
+.angepasst { color: var(--akzent-hell); }
+.blatt-inhalt .angepasst { color: var(--blatt-akzent); }
+.angepasst p { margin: 0; }
+.schmerz-flag { grid-column: 1; font-size: 12px; font-weight: 700; color: var(--stopp); }
+.chip.schmerz-chip { color: var(--stopp); border-color: color-mix(in srgb, var(--stopp) 60%, transparent); }
+.meldung.schmerz-warnung { border-color: var(--stopp); background: color-mix(in srgb, var(--stopp) 10%, var(--flaeche)); display: block; }
+@media (prefers-reduced-motion: reduce) { .schmerz-wert { transition: none; } }

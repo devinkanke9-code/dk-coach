@@ -2,6 +2,10 @@
  * Wird in die Trainer-Seite (app/build.js) und in Tests (Node) eingebunden. Kein Modul-Syntax, damit es überall läuft.
  * Format v1: { v, id, n, z, l, s, d, w:[e|a|d], ft:[0–6], t:[{n, m?, a?:{d, u:[[name, dosis]]}, u:[{i,s,w,r,p,e?,j?,x?,nm?}]}], pr, dl, h:[], ab:[], sh, ki }
  * ft = feste Trainingstage (0 = Montag), m = Dauer in min, a = Aufwärmen, j = je Seite. Ältere Links ohne diese Felder gehen weiter.
+ * Seit 13.11.2026 (Pläne bei Schmerzen, Schritt 6): bs = Beschwerden des Plans (Namen der Beschwerde-Arten, sonst die Beschwerden), u.b = [[Nummer in bs, Grund]]:
+ * wofür der Generator die Übung wegen einer Beschwerde angepasst hat („Angepasst wegen …“). Ist bs da, fragt die App nach dem Training nach den Schmerzen.
+ * Seit 14.11.2026 (Vorlieben): u.y = [Grund, …] „Angepasst an dich“ (Lieblingsübung, statt einer Übung, die er nicht mag). Nur Text, ändert an der Übung nichts,
+ * fragt nicht nach Schmerzen (dafür ist bs da). Ältere Apps lassen das Feld weg.
  * Seit 29.10.2026 dazu der App-Zugang (Link + Code, verschlüsselt) und die Analyse, die der Kunde zurückschickt (unten).
  */
 (function (root) {
@@ -13,7 +17,10 @@
     var phase = { einstieg: 'e', aufbau: 'a', deload: 'd' };
     var h = [].concat(p.hinweise || []);
     (p.alter_hinweise || []).forEach(function (a) { (a.texte || a.hinweise || []).forEach(function (t) { h.push(t); }); });
-    return {
+    var arten = p.beschwerde_arten || [];
+    var bs = arten.map(function (a) { return a.name || a.id; });
+    if (!bs.length) bs = ((p.kunde && p.kunde.beschwerden) || []).filter(function (b) { return b && b !== 'keine'; });
+    var aus = {
       v: 1,
       id: kundenId(kunde),
       n: kunde.name || '',
@@ -34,6 +41,9 @@
           if (u.einseitig) o.j = 1;
           if (u.notiz) o.x = u.notiz;
           if (u.eigene || u.id === 'eigene' || /^eigen/.test(u.id || '')) o.nm = u.name;
+          if (u.fuer_dich && u.fuer_dich.length) o.y = u.fuer_dich.slice(0, 2).map(function (x) { return String(x && x.grund || ''); }).filter(Boolean);
+          if (o.y && !o.y.length) delete o.y;
+          if (u.angepasst && u.angepasst.length) o.b = u.angepasst.slice(0, 4).map(function (x) { var i = -1; arten.forEach(function (a, j) { if (i < 0 && a.id === x.art) i = j; }); return [Math.max(0, i), x.grund]; });
           return o;
         }) };
       }),
@@ -45,6 +55,8 @@
       sh: p.sicherheit || '',
       ki: p.ki_text && p.ki_text.einleitung || ''
     };
+    if (bs.length) aus.bs = bs;
+    return aus;
   }
   function base64url(bytes) {
     var s = ''; for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
@@ -63,21 +75,29 @@
     var bin = atob(s), b = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b;
   }
 
-  /* ---------- App-Zugang (29.10.2026): Link + 8-stelliger Code ----------
+  /* ---------- App-Zugang (29.10.2026): Link + Code, seit 13.11.2026 mit 12 Ziffern ----------
    * Der Link trägt Name, Laufzeit und Plan verschlüsselt (#z=…), der Code ist der Schlüssel: PBKDF2 (SHA-256) → AES-GCM.
-   * Ohne Code lässt sich der Link nicht einfach lesen, 8 Ziffern kann man mit genug Rechenzeit aber durchprobieren, und bauen kann so einen Link jeder.
+   * Ohne Code lässt sich der Link nicht einfach lesen. 8 Ziffern ließen sich mit genug Rechenzeit durchprobieren, darum bekommen neue Codes 12 Ziffern
+   * (1234-5678-9012). Alte 8-stellige Codes gelten weiter: Schlüssel und Prüfsumme entstehen wie bisher nur aus den Ziffern.
    * Dasselbe Verfahren für die Analyse, die der Kunde zurückschickt (DK-Analyse:…:Ende).
    * Aufbau: 1 Byte Art (1 = deflate-raw, 0 = roh; als AAD mitgeprüft) | 16 Byte Salz | 12 Byte IV | Geheimtext */
   var APP_RUNDEN = 250000;
+  var APP_STELLEN = 12;          // neue Codes
+  var APP_STELLEN_ALT = 8;       // Codes von vor dem 13.11.2026, gehen weiter
   function zufall(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return a; }
-  function appCodeNeu() {   // 8 Ziffern, gleich verteilt (nur Bytes unter 250)
-    var s = '';
-    while (s.length < 8) { var a = zufall(16); for (var i = 0; i < a.length && s.length < 8; i++) if (a[i] < 250) s += a[i] % 10; }
-    return s.slice(0, 4) + '-' + s.slice(4);
-  }
   function appCodeNormal(c) { return String(c || '').replace(/\D/g, ''); }
-  function appCodeGueltig(c) { return appCodeNormal(c).length === 8; }
-  function appCodeAnzeige(c) { var n = appCodeNormal(c); return n.slice(0, 4) + '-' + n.slice(4, 8); }
+  function appCodeAnzeige(c) { var n = appCodeNormal(c); return n.length > 8 ? n.slice(0, 4) + '-' + n.slice(4, 8) + '-' + n.slice(8, 12) : n.slice(0, 4) + '-' + n.slice(4, 8); }
+  function appCodeNeu(vergeben) {   // 12 Ziffern, gleich verteilt (nur Bytes unter 250); vergeben: Codes, die schon ein Kunde hat (kommt keiner doppelt vor)
+    var schon = {};
+    (vergeben || []).forEach(function (c) { var n = appCodeNormal(c); if (n) schon[n] = true; });
+    for (var runde = 0; runde < 100; runde++) {
+      var s = '';
+      while (s.length < APP_STELLEN) { var a = zufall(32); for (var i = 0; i < a.length && s.length < APP_STELLEN; i++) if (a[i] < 250) s += a[i] % 10; }
+      if (!schon[s]) return appCodeAnzeige(s);
+    }
+    throw new Error('kein freier Code');
+  }
+  function appCodeGueltig(c) { var l = appCodeNormal(c).length; return l === APP_STELLEN || l === APP_STELLEN_ALT; }
   var GRENZE = 4000000;   // größer ist kein echter Plan: Ein gefälschter Link soll das Handy nicht volllaufen lassen
   function strom(bytes, Art) {   // Art = CompressionStream oder DecompressionStream
     var leser = new Blob([bytes]).stream().pipeThrough(new Art('deflate-raw')).getReader(), teile = [], n = 0;
@@ -147,6 +167,15 @@
           if (u.j) o.j = 1;
           if (u.x) o.x = text(u.x, 400);
           if (u.nm) o.nm = text(u.nm, 160);
+          if (Array.isArray(u.b)) {   // „Angepasst wegen …“: Nummer der Beschwerde in bs und Grund, nur als Text
+            var nb = Array.isArray(p.bs) ? Math.min(p.bs.length, 8) : 0;
+            var ang = u.b.slice(0, 4).filter(function (x) { return Array.isArray(x) && x[0] === Math.floor(x[0]) && x[0] >= 0 && x[0] < nb && typeof x[1] === 'string' && x[1]; }).map(function (x) { return [x[0], text(x[1], 300)]; });
+            if (ang.length) o.b = ang;
+          }
+          if (Array.isArray(u.y)) {   // „Angepasst an dich“ (14.11.2026): nur Texte
+            var y = u.y.slice(0, 2).filter(function (x) { return typeof x === 'string' && x; }).map(function (x) { return text(x, 200); }).filter(Boolean);
+            if (y.length) o.y = y;
+          }
           if (Array.isArray(u.a)) {   // sichere Ersatzübungen aus der Trainer-Seite (engine.js → wechselDaten)
             var ers = u.a.slice(0, 8).filter(function (x) { return x && typeof x === 'object' && typeof x.i === 'string' && idOk(x.i); }).map(function (x) {
               var e = { i: x.i, w: zahlen(x.w, 0, 1000), r: zahlen(x.r, -1, 20), p: zahlen(x.p, 0, 3600) };
@@ -168,6 +197,7 @@
     if (idOk(p.id)) aus.id = p.id;
     if (datum(p.importiert)) aus.importiert = datum(p.importiert);
     if (Array.isArray(p.wf)) { var wf = texte(p.wf, 8, 200); if (wf.length) aus.wf = wf; }
+    if (Array.isArray(p.bs)) { var bs = liste(p.bs, 8).map(function (x) { return typeof x === 'string' ? x.slice(0, 120) : ''; }); if (bs.some(Boolean)) aus.bs = bs; }
     return aus;
   }
 

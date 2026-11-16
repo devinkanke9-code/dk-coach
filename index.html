@@ -28,7 +28,7 @@ img { max-width: 100%; }
 .willkommen { justify-items: center; text-align: center; padding: 28px 18px; }
 .willkommen .logo { width: 72px; height: 72px; border-radius: 18px; }
 /* Code-Eingabe und Analyse (seit 29.10.2026) */
-.code-feld { width: 100%; max-width: 280px; font-size: 30px; text-align: center; letter-spacing: .14em; font-variant-numeric: tabular-nums; }
+.code-feld { width: 100%; max-width: 320px; font-size: 24px; text-align: center; letter-spacing: .08em; font-variant-numeric: tabular-nums; }   /* 12 Ziffern + 2 Striche (13.11.2026) */
 .willkommen .einfuegen, .willkommen .einfuegen textarea { width: 100%; }
 .analyse .frage { grid-template-columns: 1fr; gap: 8px; }
 .analyse .janein span { min-width: 84px; padding: 10px 0; }
@@ -39,8 +39,31 @@ img { max-width: 100%; }
 .st-ueber-text { display: grid; justify-items: center; gap: 16px; max-width: 560px; }
 .st-ueber-text .logo { width: 64px; height: 64px; border-radius: 16px; }
 .st-ueber-text p { margin: 0; font-size: 17px; line-height: 1.47; color: var(--zeile); text-wrap: pretty; }
-.st-fuss a { display: inline-block; padding: 8px 2px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.st-fuss a { display: inline-block; padding: 14px 2px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .umzug .knopf { justify-self: start; }
+/* Gesamttest 13.11.2026: Analyse-Knopf und Farbwelt oben rechts zählen 44 px hoch bzw. breit (vorher 42 und 40). Nach links nur 6 px, dort steht der andere Knopf (12 px Abstand) */
+.kopf .st-nav::before { inset: -7px -6px; }
+.look-wahl::before { inset: -8px -10px -8px -6px; }
+/* Gesamttest 13.11.2026: „Hier bist du“ im Rang lag in Klar auf dem getönten Grund bei 4,1:1, jetzt volle Textfarbe */
+.rang-leiter li.jetzt .leise { color: var(--text); }
+/* Gesamttest 13.11.2026: „Aufwärmen“ zum Aufklappen war nur 21 px hoch. Größere Trefferfläche, Aufbau fast gleich (oben 10 px tiefer, damit „Ins Gym gehen“ darüber nichts abgibt) */
+.block details > summary.klein { padding-block: 12px; margin-block: -2px -12px; }
+.tm.still .tm-in > * { animation: none; }   /* Schmerz-Skala: ein Tipp auf eine Zahl blendete die ganze Ansicht neu ein (Gesamttest 13.11.2026) */
+.aktionen { gap: 12px; }   /* Gesamttest 13.11.2026: „Training starten“ und „Ins Gym gehen“ standen 8 px auseinander, der 6-px-Rand des einen reichte über die Mitte */
+/* Nachbesserung 14.11.2026 (nur Kunden-App, buehne.css gilt auch für die Trainer-Seite):
+   Rang-Wappen: Zahl mit mindestens 4,5:1 gegen beide Enden des Verlaufs. Dunkle Metalle (1–5) weiße Zahl, das helle Ende etwas dunkler;
+   helle Metalle (6–10) dunkle Zahl, bei 9 und 10 das dunkle Ende etwas heller. „Coach DK erklärt“ 44 px hoch (vorher 42) */
+.rang-wappen.t1 { --a: #6c7585; } .rang-wappen.t2 { --a: #a06a3b; } .rang-wappen.t3 { --a: #6c747e; } .rang-wappen.t4 { --a: #5a7790; --b: #455d73; } .rang-wappen.t5 { --a: #5d7886; }
+.rang-wappen.t9 { --b: #4291dc; } .rang-wappen.t10 { --b: #e6508c; }
+.rang-wappen:is(.t6, .t7, .t8, .t9, .t10) { color: #16181d; }
+.rang-wappen:is(.t6, .t7, .t8, .t9, .t10) b { text-shadow: 0 1px 0 rgba(255, 255, 255, .35); }
+.erklaer-knopf { min-height: 44px; }
+/* Live-Gym (Nachbesserung 14.11.2026): Bis 520 px lag „PR-Raum“ unten rechts auf dem großen Knopf und dem Hilfetext (mit Maus), bei 320 px
+   mit Touch berührte er den großen Knopf, sobald der Übungsname dreizeilig wird. Jetzt oben rechts unter Mond und Schließen, neben dem Plan ist Platz.
+   Mit Maus steht der Hilfetext über dem großen Knopf statt auf ihm und der runden Karte; ab 1101 px steht der große Knopf über der Tasten-Leiste */
+@media (max-width: 520px) { .raum.live .raum-pr-knopf { top: calc(124px + env(safe-area-inset-top, 0px)); bottom: auto; } }
+@media (hover: hover) and (pointer: fine) and (max-width: 520px) { .raum.live .raum-tipp { bottom: calc(232px + env(safe-area-inset-bottom, 0px)); } }
+@media (hover: hover) and (pointer: fine) and (min-width: 1101px) { .raum.live .raum-unten { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); } .raum.live .raum-tipp { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); } }
 body.start .umzug { grid-column: 1 / -1; margin: 12px 12px 0; }
 /* Wie eine App (07.11.2026, Devin: „dass du nichts markieren kannst“, „dass man nicht reinzoomen kann“): kein Markieren außer in Feldern, kein Doppeltipp-Zoom */
 html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -53,9 +76,9 @@ html :where(button, a[href], [role=button], label, summary):where(.knopf, .eb-kn
 body.start .code-leiste { grid-column: 1 / -1; margin: 12px 12px 0; }   /* wie die Karte „Neue Adresse“: Abstand zum Rand, auf dem PC über beide Spalten */
 .code-leiste .lbl { font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
 .code-leiste .leise { margin: 0; }
-.code-reihe { display: flex; gap: 12px; align-items: stretch; margin-top: 4px; }
-.code-reihe .code-feld { flex: 1 1 auto; min-width: 0; font-size: 20px; letter-spacing: .08em; text-align: center; font-variant-numeric: tabular-nums; }
-.code-reihe .knopf { flex: none; }
+.code-reihe { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; margin-top: 4px; }   /* sehr schmal: Knopf rutscht unter das Feld, der Code bleibt ganz sichtbar */
+.code-reihe .code-feld { flex: 1 0 calc(14ch + 40px); min-width: 0; font-size: 17px; letter-spacing: .02em; padding-left: 10px; padding-right: 10px; text-align: center; font-variant-numeric: tabular-nums; }
+.code-reihe .knopf { flex: 1 0 auto; }
 .code-leiste [role="status"]:empty { display: none; }
 /* PC und MacBook (07.11.2026, Devin: „auf dem PC … schön aussieht … Schrift schöner … schöne Effekte“): ab 1024 px ein ruhiger Rahmen bis 1280 px,
    große Überschriften mit enger Laufweite, größere Zeilen, Code-Leiste mittig. Effekte: Karten heben sich unter der Maus, die große Überschrift glänzt sanft. */
@@ -150,6 +173,40 @@ nav.leiste button { font-size: 13px; letter-spacing: 0; }
   table.ueb td.z { display: grid; gap: 1px; font-size: 16px; font-weight: 600; white-space: nowrap; }
   table.ueb td.z::before { content: attr(data-l); font-size: 12px; font-weight: 400; color: var(--text2); }
 }
+/* Glas (16.11.2026, Devin: „Glow-Glass-Effekt wie bei Apple … dass die Buttons auch richtig geil aussehen“; dann: „dass man komplett durchgucken kann …
+   nicht verschwommen … wie bei einer Brille … ein bisschen verschoben … er vergrößert“). Nur Kunden-App.
+   Karten sind klares Glas: glas.js legt in jede Karte das Wellenbild der Seite, scharf und leicht vergrößert (wie durch eine Brille), mit heller Kante und Schatten.
+   Ein dünner Farbton und ein feiner Schriftschatten halten den Text lesbar. Kopf und Leiste unten bleiben weichgezeichnet, weil dort Text darunter durchläuft.
+   Hauptknopf mit Glanz oben und Schein in der Akzentfarbe, die anderen Knöpfe als Glas-Pille; der Glanz liegt nur im oberen Drittel, hinter der Schrift bleibt die alte Farbe.
+   Ohne glas.js, in der Farbwelt Klar, in Blättern, Training und Gym und mit „Transparenz reduzieren“ bleiben die Karten dicht wie bisher. */
+:root { --g-ton: rgba(255, 255, 255, .3); --g-ton2: rgba(255, 255, 255, .12); --g-kante: rgba(255, 255, 255, .95); --g-rand: rgba(255, 255, 255, .7); --g-tief: rgba(10, 60, 90, .14); --g-saum: rgba(255, 255, 255, .5);
+  --g-schatten: 0 26px 50px -26px rgba(10, 60, 90, .6), 0 3px 8px rgba(10, 60, 90, .1); --g-schein: rgba(10, 116, 176, .5); --g-glanz: rgba(255, 255, 255, .55); --g-schrift: 0 1px 2px rgba(255, 255, 255, .7); --g-bild: url(wellen-hell.jpg); }
+:root[data-look="gold"] { --g-ton: rgba(12, 12, 16, .4); --g-ton2: rgba(12, 12, 16, .2); --g-kante: rgba(255, 240, 205, .5); --g-rand: rgba(236, 200, 110, .3); --g-tief: rgba(0, 0, 0, .45); --g-saum: rgba(255, 236, 190, .1);
+  --g-schatten: 0 28px 54px -24px rgba(0, 0, 0, .9), 0 3px 8px rgba(0, 0, 0, .35); --g-schein: rgba(220, 180, 83, .5); --g-glanz: rgba(255, 255, 255, .12); --g-schrift: 0 1px 3px rgba(0, 0, 0, .75); --g-bild: url(wellen-dunkel.jpg); }
+:root[data-look="klar"] { --g-kante: #fff; --g-rand: rgba(0, 0, 0, .07); --g-tief: rgba(0, 0, 0, .05); --g-schein: rgba(0, 113, 227, .42); --g-glanz: rgba(255, 255, 255, .6); }
+html.dk-wellen-an .g-glas { --g-r: 26px; position: relative; isolation: isolate; border: 1px solid var(--g-rand); border-radius: var(--g-r); text-shadow: var(--g-schrift);
+  box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), inset 0 0 26px var(--g-saum), var(--g-schatten); }
+html.dk-wellen-an .rang-kurz.g-glas { --g-r: 20px; }
+html.dk-wellen-an .g-glas .knopf, html.dk-wellen-an .g-glas input, html.dk-wellen-an .g-glas textarea, html.dk-wellen-an .g-glas .wt, html.dk-wellen-an .g-glas .block { text-shadow: none; }
+.g-linse { display: none; }
+html.dk-wellen-an .g-glas > .g-linse { display: block; position: absolute; inset: 0; z-index: -1; border-radius: inherit; -webkit-clip-path: inset(0 round var(--g-r)); clip-path: inset(0 round var(--g-r)); pointer-events: none; }
+html.dk-wellen-an .g-glas.g-fern > .g-linse { display: none; }
+.g-linse i { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; background: var(--g-bild) center / cover no-repeat; transform: scale(1.16); transform-origin: 50% 50%; }
+.g-linse::after { content: ""; position: absolute; inset: 0; background: linear-gradient(155deg, var(--g-ton2), var(--g-ton) 70%); }
+.eintrag, .naechstes { border-color: var(--g-rand); box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 12px 26px -20px rgba(0, 0, 0, .55); }
+.kopf { box-shadow: inset 0 -1px 0 var(--g-tief), 0 10px 30px -22px rgba(0, 0, 0, .6); }
+nav.leiste { border-color: var(--g-rand); box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 18px 40px -14px rgba(0, 0, 0, .5); }
+nav.leiste button[aria-current="page"] { box-shadow: inset 0 1px 0 var(--g-kante), 0 8px 20px -10px var(--g-schein); }
+.knopf, .knopf:hover, .blatt .knopf:hover { border: 1px solid var(--g-rand); border-radius: 999px;
+  box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 8px 18px -12px rgba(0, 0, 0, .45); }
+.knopf { background: linear-gradient(180deg, var(--g-glanz), transparent 32%), var(--knopf-grund); }
+.knopf:hover, .blatt .knopf:hover { background: linear-gradient(180deg, var(--g-glanz), transparent 32%), var(--knopf-grund2); }
+.knopf.klein { border-radius: 999px; }
+.knopf.haupt, .blatt .knopf.haupt, .knopf.haupt:hover, .blatt .knopf.haupt:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 30%), var(--knopf-voll);
+  border-color: rgba(255, 255, 255, .3); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), inset 0 -2px 5px rgba(0, 0, 0, .16), 0 14px 30px -12px var(--g-schein), 0 3px 8px -3px var(--g-schein); }
+.knopf.haupt.kg-schwebt, .knopf.haupt.kg-zieht { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 20px 40px -12px var(--g-schein), 0 4px 12px -3px var(--g-schein); }
+.knopf.haupt.kg-drueckt { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 2px 8px rgba(0, 0, 0, .2), 0 6px 18px -6px var(--g-schein); }
+.knopf:disabled, .knopf[disabled] { box-shadow: none; }
 </style>
 </head>
 <body>
@@ -165,6 +222,7 @@ nav.leiste button { font-size: 13px; letter-spacing: 0; }
 <script src="kompakt.js" defer></script>
 <script src="gefuehl.js" defer></script>
 <script src="antippen.js" defer></script>
+<script src="glas.js" defer></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

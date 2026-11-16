@@ -2,7 +2,7 @@
 // Der Plan kommt im Link vom Trainer, wird auf dem Handy gespeichert und nie an einen Server geschickt.
 // Seit 29.10.2026: Link + Code (#z=…, verschlüsselt, mit Laufzeit), ohne Plan zuerst die Analyse. Alte Links (#p=…) gehen weiter.
 // Aussehen und Abläufe wie die Kunden-Ansicht der Trainer-Seite (stil.css, gleiche Bausteine), dazu die 3D-Figur (buehne.js).
-import { UEBUNGEN, STAND, ANALYSE, KONTAKT } from './daten.js';
+import { UEBUNGEN, STAND, ANALYSE, KONTAKT, SCHMERZ } from './daten.js';
 import { buehne, standbilder } from './buehne.js';
 import { erklaerPunkte, ART_NAME } from './coach.js';
 import * as Bestleistung from './bestleistung.js';
@@ -10,6 +10,9 @@ import * as Rang from './rang.js';
 import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
+// Nie in einer fremden Seite (13.11.2026): Steckt die App in einem Rahmen (iframe), zeigt sie nichts und startet nicht.
+// Sonst könnte eine fremde Seite sie unsichtbar überdecken und den Kunden Knöpfe tippen lassen. Per <meta> lässt sich frame-ancestors nicht setzen.
+if (window.top !== window.self) { document.documentElement.style.display = 'none'; throw new Error('DK Coach läuft nicht in einem fremden Rahmen'); }
 
 /* ---------- Hilfen ---------- */
 const $ = (s) => document.querySelector(s);
@@ -79,14 +82,26 @@ function dauerhaft() { try { navigator.storage && navigator.storage.persist && n
 async function linkEinlesen() {
   const z = /[#&]z=([A-Za-z0-9_-]+)/.exec(location.hash), m = /[#&]p=([A-Za-z0-9_-]+)/.exec(location.hash);
   const u = /[#&]umzug=([A-Za-z0-9_-]+)/.exec(location.hash);   // Umzug von der alten Adresse (06.11.2026)
-  if (u) { linkAusAdresse(); return schonGesehen(u[1]) ? false : umzugEinlesen(u[1]); }
+  if (u) return ohneCode(u[1], umzugEinlesen);
   if (!z && !m) return false;
+  if (!z) return ohneCode(m[1], planEinlesen);
   linkAusAdresse();
-  const teil = z ? z[1] : m[1];
-  if (schonGesehen(teil)) return false;
-  return z ? zugangEinlesen(teil) : planEinlesen(teil);
+  if (schonGesehen(z[1])) return false;
+  return zugangEinlesen(z[1]);
 }
-// Alte Links (#p=…, bis 28.10.2026): Plan offen im Link, ohne Code und ohne Laufzeit
+// Links ohne Code (#p=, #umzug=; 13.11.2026): Plan, Codes und Trainings stehen darin offen. Darum sofort aus der Adresszeile,
+// damit nichts im Verlauf, in Lesezeichen oder auf einem geteilten Bildschirm bleibt. Nur Safari auf dem iPhone behält einen
+// übernommenen Link: Sonst nimmt „Zum Home-Bildschirm“ nichts mit (die App dort hat einen eigenen Speicher, siehe oben).
+function adresseLeeren() { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
+async function ohneCode(teil, lesen) {
+  const behalten = istIos && !installiert();
+  if (!behalten) adresseLeeren();
+  const ok = schonGesehen(teil) ? null : await lesen(teil);
+  if (behalten && ok === false) adresseLeeren();
+  return !!ok;
+}
+// Alte Links (#p=…, bis 28.10.2026): Plan offen im Link, ohne Code und ohne Laufzeit. Jeder kann so einen Link bauen,
+// darum seit 13.11.2026: immer fragen (auch auf einem leeren Handy) und nie den Plan eines Zugangs mit Code ersetzen.
 async function planEinlesen(code) {
   try {
     const p = K.planSauber(await entpacke(code));
@@ -94,10 +109,11 @@ async function planEinlesen(code) {
     p.id = p.id || ('p' + Date.now().toString(36));
     const plaene = speicher.lies('dk_plaene', {});
     const alt = plaene[p.id];
-    gesehen(code);
-    // Fremder Link will einen vorhandenen Plan ersetzen: nur mit Ja. Ein neuer Stand desselben Plans geht ohne Frage
-    if (!alt && (Object.keys(plaene).length || aktivesKonto()) && !confirm('Dieser Link will deinen Plan ersetzen. Nur übernehmen, wenn er wirklich von Devin kommt.')) { toast('Link nicht übernommen.'); return false; }
+    gesehen(code);   // auch bei Nein: Der Start-Link einer Home-Bildschirm-App fragt dann nicht bei jedem Start neu
+    if (konten()[p.id]) { toast('Nicht übernommen: Für deinen Zugang kommen Pläne nur mit Code von Devin.'); return false; }
     if (alt && alt.d && p.d && alt.d > p.d) return false;   // ein älterer Link überschreibt nie einen neueren Plan
+    if (!confirm('Diesen Plan übernehmen? Er kommt ohne Code. Echte Pläne von Devin kommen heute immer mit Code. Tipp nur auf OK, wenn du sicher bist, dass der Link von Devin ist.'
+      + (alt ? ' Dein gespeicherter Plan wird dabei ersetzt.' : ''))) { toast('Plan nicht übernommen.'); return false; }
     p.importiert = alt && alt.importiert || isoHeute();
     plaene[p.id] = p;
     speicher.schreib('dk_plaene', plaene);
@@ -139,7 +155,9 @@ function anmelden(d, code, teil) {
   gesehen(teil); S.wartet = null; speicher.schreib('dk_wartet', null);
   // Link für ein anderes Konto oder mit anderem Code fürs selbe Konto: Wer schon eingeloggt ist, entscheidet selbst
   if (!alt && aktivesKonto() && !confirm('Dieser Link gehört zu einem anderen Konto' + (d.n ? ' („' + d.n.slice(0, 40) + '“)' : '') + '. Nur wechseln, wenn er wirklich von Devin kommt.')) { toast('Link nicht übernommen.'); return; }
-  if (alt && alt.code && K.appCodeNormal(alt.code) !== K.appCodeNormal(code) && !confirm('Dieser Link will den Code deines Kontos ändern. Nur weitermachen, wenn er wirklich von Devin kommt.')) { toast('Link nicht übernommen.'); return; }
+  // Neuer Code von Devin (seit 13.11.2026 bekommen alte 8-stellige Codes auf Wunsch 12 Ziffern): einmal bestätigen, danach gilt nur der neue.
+  // Ein älterer Link mit dem alten Code fragt nicht und ändert nichts (siehe t unten).
+  if (alt && alt.code && K.appCodeNormal(alt.code) !== K.appCodeNormal(code) && !(alt.t > d.t) && !confirm('Neuer Code für dein Konto. Hat Devin dir einen neuen Code geschickt? Dann tipp auf OK, ab jetzt gilt der neue Code.')) { toast('Link nicht übernommen.'); return; }
   speicher.schreib('dk_konto', d.k); speicher.schreib('dk_aktiv', d.k);   // wer sich einloggt, sieht seinen eigenen Stand
   if (alt && alt.t > d.t) return;   // älterer Link (z. B. der Start-Link vom Home-Bildschirm) überschreibt nie einen neueren Stand
   // a: 3 = nur Gesundheits-Check (die 10 Fragen kamen schon über die Seite „Analyse für dich“), 2 = Analyse in 10 Fragen, 1 = alle Fragen
@@ -163,16 +181,28 @@ function anmelden(d, code, teil) {
   S.tagWahl = null; S.ansicht = 'heute';
 }
 // Nachricht von Devin einfügen: für die App vom Home-Bildschirm, die Links aus WhatsApp nicht selbst öffnet
+// Code in Devins Nachricht: neu 12 Ziffern (1234-5678-9012), ältere 8 (1234-5678). Erst hinter „Code:“ suchen, sonst die erste passende Ziffernfolge
+function codeInText(text) {
+  const m = /Code:?\s*(\d{4}\s*-\s*\d{4}(?:\s*-\s*\d{4})?)(?!\d)/i.exec(text) || /(?:^|\D)(\d{4}\s*-\s*\d{4}(?:\s*-\s*\d{4})?)(?!\d)/.exec(text);
+  return m ? K.appCodeNormal(m[1]) : '';
+}
+// Code-Feld: nur Ziffern, Striche nach je 4 (0000-0000-0000). Liefert die Zahl der Ziffern; bei 12 ist der Code komplett, alte 8-stellige mit „Einloggen“
+function codeTippen(feld) {
+  const n = K.appCodeNormal(feld.value).slice(0, 12);
+  feld.value = (n.match(/\d{1,4}/g) || []).join('-');
+  return n.length;
+}
+const CODE_FALSCH = 'Der Code hat 12 Ziffern, zum Beispiel 4821-7730-1956. Ältere Codes haben 8.';
 async function textEinlesen(text) {
   text = String(text || '');
   const z = /[#&]z=([A-Za-z0-9_-]+)/.exec(text), p = /[#&]p=([A-Za-z0-9_-]+)/.exec(text);
   if (!z && !p) { toast('Darin ist kein Link von Devin. Kopier die ganze Nachricht.'); return; }
   if (!z) { await planEinlesen(p[1]); zeichne(); return; }
-  const c = /(\d{4})\s*-\s*(\d{4})/.exec(text.replace(z[0], ''));   // steht der Code mit in der Nachricht: gleich einloggen
+  const c = codeInText(text.replace(z[0], ''));   // steht der Code mit in der Nachricht: gleich einloggen
   if (c) {
     let d = null;
-    try { d = await K.entpacken(c[1] + c[2], z[1]); } catch (e) {}
-    if (linkDatenOk(d)) { anmelden(d, c[1] + c[2], z[1]); zeichne(); fotosVorladen(); return; }
+    try { d = await K.entpacken(c, z[1]); } catch (e) {}
+    if (linkDatenOk(d)) { anmelden(d, c, z[1]); zeichne(); fotosVorladen(); return; }
   }
   await zugangEinlesen(z[1]); zeichne(); fotosVorladen();
 }
@@ -197,7 +227,20 @@ function aktiverPlan() {
 }
 function uebung(u) {
   const d = UEBUNGEN[u.i] || { n: u.nm || u.i, m: [], t: [], f: [], v: [] };
-  return { id: u.i, name: u.nm || d.n || u.i, saetze: u.s, wdh: u.w, rir: u.r, pause: u.p || [], einheit: u.e || d.e, einseitig: !!u.j, notiz: u.x, d, tausch: u.z || null };
+  return { id: u.i, name: u.nm || d.n || u.i, saetze: u.s, wdh: u.w, rir: u.r, pause: u.p || [], einheit: u.e || d.e, einseitig: !!u.j, notiz: u.x, d, tausch: u.z || null, b: Array.isArray(u.b) ? u.b : [], y: Array.isArray(u.y) ? u.y.filter((x) => typeof x === 'string' && x) : [] };
+}
+// „Angepasst wegen …“ (13.11.2026, Pläne bei Schmerzen): wofür Devins Generator die Übung wegen einer Beschwerde angepasst hat (bs und b aus dem Link). Nur Text.
+function angepasst(p, u) { const bs = (p && p.bs) || []; return (u.b || []).map(([i, g]) => ({ name: bs[i] || 'deiner Beschwerde', grund: g })).filter((x) => x.grund); }
+function angepasstBlock(liste, kurz) {
+  if (!liste.length) return null;
+  if (kurz) return h('div', { class: 'notiz angepasst', text: 'Angepasst wegen ' + [...new Set(liste.map((x) => x.name))].join(', ') });
+  return h('div', { class: 'blatt-abschnitt angepasst' }, liste.map((x) => h('p', null, h('b', { text: 'Angepasst wegen ' + x.name + ': ' }), x.grund)));
+}
+// „Angepasst an dich“ (14.11.2026): Lieblingsübung oder Ersatz für eine Übung, die er nicht mag (y aus dem Link). Nur Text.
+function fuerDichBlock(u, kurz) {
+  if (!u.y || !u.y.length) return null;
+  const t = 'Angepasst an dich: ' + u.y.join(' ');
+  return kurz ? h('div', { class: 'notiz angepasst fuer-dich', text: t }) : h('div', { class: 'blatt-abschnitt angepasst fuer-dich' }, h('p', null, h('b', { text: 'Angepasst an dich: ' }), u.y.join(' ')));
 }
 const istSek = (u) => u.einheit === 'sek';
 const dosis = (u) => bereich(u.wdh, istSek(u) ? 'sek' : '') + (istSek(u) ? '' : ' Wdh');
@@ -230,7 +273,7 @@ function mitWechsel(p) {
         if (kand && UEBUNGEN[kand.i] && !fest.has(kand.i)) { neu = kand; art = 'neu'; }
       }
       const z = { ti, orig: roh, art };
-      return neu ? Object.assign({}, roh, { e: undefined, j: undefined }, neu, { x: art === 'neu' ? 'Neu diese Woche' : 'Von dir getauscht', z }) : Object.assign({}, roh, { z });
+      return neu ? Object.assign({}, roh, { e: undefined, j: undefined, b: undefined, y: undefined }, neu, { x: art === 'neu' ? 'Neu diese Woche' : 'Von dir getauscht', z }) : Object.assign({}, roh, { z });
     }) });
   }) });
 }
@@ -366,11 +409,12 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
   if (!KONTAKT.briefkasten) return null;
   const status = h('p', { class: 'klein', role: 'status' });
   let laeuft = false;
-  const feld = h('input', { class: 'eingabe code-feld', id: 'code-start', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '9', placeholder: '0000-0000',
+  const feld = h('input', { class: 'eingabe code-feld', id: 'code-start', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '14', placeholder: '0000-0000-0000',
     'aria-describedby': 'code-start-hilfe',
-    oninput: (e) => { const n = K.appCodeNormal(e.target.value).slice(0, 8); e.target.value = n.length > 4 ? n.slice(0, 4) + '-' + n.slice(4) : n; if (n.length === 8) los(); },
+    oninput: (e) => { if (codeTippen(e.target) === 12) los(); },
     onkeydown: (e) => { if (e.key === 'Enter') los(); } });
-  const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: 'Einloggen' });
+  const knopfText = art === 'zugang' ? 'Plan holen' : 'Einloggen';   // unter Infos ist man schon eingeloggt (Gesamttest 13.11.2026)
+  const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: knopfText });
   const TEXTE = {
     netz: 'Keine Verbindung. Bitte mit Internet nochmal versuchen.',
     unbekannt: 'Diesen Code kennt die Seite noch nicht. Hat Devin ihn gerade erst geschickt? Dann versuch es in 5 Minuten nochmal, oder öffne den Link aus seiner Nachricht.',
@@ -378,11 +422,11 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
   };
   async function los() {
     if (laeuft) return;
-    if (!K.appCodeGueltig(feld.value)) { status.textContent = 'Der Code hat 8 Ziffern, zum Beispiel 4821-7730.'; return; }
+    if (!K.appCodeGueltig(feld.value)) { status.textContent = CODE_FALSCH; return; }
     laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; status.textContent = '';
     const aus = await codeHolen(feld.value);
     if (aus === 'ok') { zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast(art === 'zugang' ? 'Fertig, dein Plan ist auf dem neuesten Stand.' : 'Fertig, du bist eingeloggt.'); return; }
-    laeuft = false; knopf.disabled = false; knopf.textContent = 'Einloggen';
+    laeuft = false; knopf.disabled = false; knopf.textContent = knopfText;
     status.textContent = TEXTE[aus] || TEXTE.netz;
     feld.select();
   }
@@ -481,13 +525,13 @@ const logo = () => h('img', { class: 'logo', src: 'icon.svg', alt: '' });
 function codeAnsicht() {
   const fehler = h('p', { class: 'klein', role: 'status' });
   let laeuft = false;
-  const feld = h('input', { class: 'eingabe code-feld', id: 'code', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '9', placeholder: '0000-0000',
-    oninput: (e) => { const n = K.appCodeNormal(e.target.value).slice(0, 8); e.target.value = n.length > 4 ? n.slice(0, 4) + '-' + n.slice(4) : n; if (n.length === 8) los(); },
+  const feld = h('input', { class: 'eingabe code-feld', id: 'code', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '14', placeholder: '0000-0000-0000',
+    oninput: (e) => { if (codeTippen(e.target) === 12) los(); },
     onkeydown: (e) => { if (e.key === 'Enter') los(); } });
   const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: 'Einloggen' });
   async function los() {
     if (laeuft) return;
-    if (!K.appCodeGueltig(feld.value)) { fehler.textContent = 'Der Code hat 8 Ziffern, zum Beispiel 4821-7730.'; return; }
+    if (!K.appCodeGueltig(feld.value)) { fehler.textContent = CODE_FALSCH; return; }
     laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; fehler.textContent = '';
     let d = null;
     try { d = await K.entpacken(feld.value, S.wartet); } catch (e) {}
@@ -830,6 +874,7 @@ function trainingsKarte(p, ti, istHeute) {
         h('button', { class: 'ueb-name', type: 'button', 'aria-haspopup': 'dialog', onclick: () => oeffneUebung(u, ti), text: anzeigeName(u) }),
         h('div', { class: 'ueb-dosis' }, h('b', { text: satzZahl(p, u) + ' × ' + dosis(u) }), u.pause.length ? h('small', { text: 'Pause ' + pauseText(u) }) : null),
         u.notiz ? h('div', { class: 'notiz', text: u.notiz }) : null,
+        angepasstBlock(angepasst(p, u), true), fuerDichBlock(u, true),
         mini3d(u));
     })));
 }
@@ -928,7 +973,7 @@ function tagBlock(p, t, ti) {
         const u = uebung(roh);
         return h('tr', null,
           h('td', null, h('button', { class: 'ueb-name', type: 'button', 'aria-haspopup': 'dialog', onclick: () => oeffneUebung(u, ti), text: anzeigeName(u) }),
-            u.notiz ? h('div', { class: 'notiz', text: u.notiz }) : null),
+            u.notiz ? h('div', { class: 'notiz', text: u.notiz }) : null, angepasstBlock(angepasst(p, u), true), fuerDichBlock(u, true)),
           h('td', { class: 'z', 'data-l': 'Sätze', text: satzZahl(p, u) }), h('td', { class: 'z', 'data-l': istSek(u) ? 'Zeit' : 'Wdh', text: bereich(u.wdh, istSek(u) ? 'sek' : '') }),
           h('td', { class: 'z', 'data-l': 'Reserve', text: bereich(u.rir) }), h('td', { class: 'z', 'data-l': 'Pause', text: u.pause.length ? pauseText(u) : '' }));
       })))),
@@ -1113,6 +1158,7 @@ function oeffneUebung(u, ti) {
       h('span', { class: 'chip', text: satzZahl(p, u) + ' Sätze' }), h('span', { class: 'chip', text: dosis(u) }),
       u.rir ? h('span', { class: 'chip', text: 'Reserve ' + bereich(u.rir) + ' Wdh' }) : null, u.pause.length ? h('span', { class: 'chip', text: pauseText(u) + ' Pause' }) : null) : null,
     u.notiz ? h('p', { class: 'notiz', text: u.notiz }) : null,
+    angepasstBlock(angepasst(p, u)), fuerDichBlock(u),
     abschnitt('So geht’s', d.t), abschnitt('Typische Fehler', d.f),
     d.v && d.v.length ? h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Vorsicht' }), h('p', { text: d.v.join(' ') })) : null,
     !(LAUF && LAUF.phase !== 'fertig') && tauschOptionen(u).length ? h('button', { class: 'knopf', type: 'button', onclick: () => tauschBlatt(u), text: 'Gerät nicht da? Tauschen' }) : null
@@ -1300,7 +1346,7 @@ function laufEintrag(p, roh) {
   const u = uebung(roh), pz = u.pause, z = u.tausch, fokus = p.fokus && z && !z.art && !istSek(u) ? p.fokus : '';
   const e = { id: u.id, name: anzeigeName(u), saetze: Math.max(1, +satzZahl(p, u) || 1), dosis: dosis(u), sek: istSek(u),
     rir: u.rir ? bereich(u.rir) : '', pauseMin: pz.length ? auf15(pz[0]) : 60, pauseMax: pz.length ? auf15(pz[pz.length - 1]) : 90,
-    tipp: fokus || (u.d.t || [])[0] || '', vorsicht: (u.d.v || [])[0] || '', log: [] };
+    tipp: fokus || (u.d.t || [])[0] || '', vorsicht: (u.d.v || [])[0] || '', angepasst: angepasst(p, u), log: [] };
   if (z && z.art === 'tausch') e.tg = (UEBUNGEN[z.orig.i] || {}).n || z.orig.i;
   return e;
 }
@@ -1319,7 +1365,7 @@ function laufTauschen(u, neuId) {
 function laufStarten(p, ti, gym) {
   const jetzt = Date.now(), t = p.t[ti];
   LAUF = { v: 1, plan: p.id, kunde: p.n || '', tagNr: ti + 1, tagName: t.n, start: jetzt, ue: 0, satz: 0, phase: 'satz', seit: jetzt, pauseZiel: 0,
-    uebungen: t.u.map((roh) => laufEintrag(p, roh)) };
+    uebungen: t.u.map((roh) => laufEintrag(p, roh)), bs: (p.bs || []).filter(Boolean).slice(0, 8) };   // bs: Plan mit Beschwerden → nach dem Training nach den Schmerzen fragen
   TM.frage = false;
   if (gym) { LAUF.gym = true; LAUF.phase = 'frei'; }
   laufSichern(); piep(1); wach(true); if (!gym) timerZeigen();
@@ -1413,6 +1459,7 @@ function zuB64(b) { let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += 
 function laufAlsText(r) {
   const z = ['DK Training · ' + (r.k || 'Kunde') + ' · T' + r.t + ' ' + r.tn, datumZeit(r.s),
     'Dauer ' + mmss(laufDauer(r)) + ' · ' + saetzeGesamt(r) + ' Sätze' + (r.st === 'abgebrochen' ? ' · vorzeitig beendet' : ''), ''];
+  if (schmerzOk(r.sz)) z.splice(3, 0, 'Schmerz heute: ' + r.sz + ' von ' + SCHMERZ.max);
   r.u.forEach((u) => {
     z.push(u.n + (u.tg ? ' (vom Kunden getauscht, im Plan stand ' + u.tg + ')' : ''));
     u.z.forEach((s, i) => z.push('  ' + (i + 1) + '. ' + (s[0] != null ? s[0] + ' kg' : '–') + ' × ' + (s[1] != null ? s[1] + (u.sek ? ' s' : '') : '–') +
@@ -1455,7 +1502,8 @@ const laufMailKnopf = (r, klasse) => h('a', { class: klasse, href: laufMailLink(
 function laufBlatt(r) {
   const knopf = h('button', { class: 'knopf', type: 'button', onclick: () => kopieren(laufAlsText(r), knopf), text: 'Text für WhatsApp kopieren' });
   oeffneBlatt('Training ' + r.t + ' · ' + r.tn, datumZeit(r.s), [h('div', { class: 'blatt-werte' }, h('span', { class: 'chip', text: 'Dauer ' + mmss(laufDauer(r)) }),
-    h('span', { class: 'chip', text: saetzeGesamt(r) + ' Sätze' }), r.st === 'abgebrochen' ? h('span', { class: 'chip', text: 'vorzeitig beendet' }) : null), laufTabelle(r), laufMailKnopf(r, 'knopf haupt'), knopf]);
+    h('span', { class: 'chip', text: saetzeGesamt(r) + ' Sätze' }), r.st === 'abgebrochen' ? h('span', { class: 'chip', text: 'vorzeitig beendet' }) : null,
+    schmerzOk(r.sz) ? h('span', { class: 'chip', text: 'Schmerz ' + r.sz + '/' + SCHMERZ.max }) : null), laufTabelle(r), laufMailKnopf(r, 'knopf haupt'), knopf]);
 }
 // Letztes Mal: aus den gespeicherten Trainings, sonst aus der alten Satz-Liste (App bis 28.10.)
 function letztesMal(u, satz) {
@@ -1521,7 +1569,7 @@ function timerZeigen() {
   const el = TM.el; el.textContent = '';
   el.append(h('div', { class: 'tm-in' }, LAUF.phase === 'fertig' ? timerFertig() : timerLaeuft()));
   const stelle = LAUF.phase + ':' + LAUF.ue + ':' + LAUF.satz;
-  if (TM.stelle !== stelle) { TM.stelle = stelle; el.scrollTop = 0; }
+  if (TM.stelle !== stelle) { TM.stelle = stelle; el.scrollTop = 0; el.classList.remove('still'); }
   timerTick();
 }
 // Die Bühne bleibt über alle Sätze dieselbe (eine 3D-Ansicht), nur die Übung wechselt
@@ -1587,6 +1635,7 @@ function timerLaeuft() {
     const vor = letztesMal(u, LAUF.satz), info = [];
     if (vor) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Letztes Mal ' }), (vor[0] != null ? String(vor[0]).replace('.', ',') + ' kg' : '–') + ' × ' + (vor[1] != null ? vor[1] + (u.sek ? ' s' : '') : '–')));
     if (u.tipp) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Technik ' }), u.tipp));
+    (u.angepasst || []).forEach((x) => info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Angepasst wegen ' + x.name + ' ' }), x.grund)));
     if (u.vorsicht) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Vorsicht ' }), u.vorsicht));
     teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: satzFertig, text: 'Satz fertig' }));
     const slot = laufSlot(), wahl = slot ? tauschOptionen(slot) : [];
@@ -1620,12 +1669,38 @@ function timerFertig() {
     h('div', { class: 'tm-sum' }, h('div', null, h('small', { text: 'Dauer' }), h('b', { text: mmss(laufDauer(r)) })),
       h('div', null, h('small', { text: 'Sätze' }), h('b', { text: String(saetzeGesamt(r)) })),
       h('div', null, h('small', { text: 'Übungen' }), h('b', { text: String(r.u.length) }))),
+    schmerzFrage(),
     h('section', { class: 'block' }, h('h2', { text: 'Training ' + r.t + ' · ' + r.tn }), laufTabelle(r)),
     h('section', { class: 'block' }, h('h2', { text: 'An Devin schicken' }),
       h('p', { class: 'leise klein', text: 'Per E-Mail geht es mit einem Tipp, deine Mail-App ist schon ausgefüllt. Oder kopier den Text für WhatsApp. Devin sieht dann deine Zeiten, Gewichte und Wiederholungen.' }),
       laufMailKnopf(r, 'knopf haupt tm-gross'), knopf, feld),
     h('button', { class: 'knopf tm-gross', type: 'button', onclick: laufSchliessen, text: 'Fertig' })
   ];
+}
+/* Schmerz nach dem Training (13.11.2026, Pläne bei Schmerzen Schritt 6): nur wenn der Plan Beschwerden hat (LAUF.bs). 11 große Knöpfe 0–10,
+ * Frage, Beschriftung und Stufen aus der Wissensbasis (daten.js → SCHMERZ). Der Wert steht als sz im Training an Devin, die Trainer-Seite wertet ihn aus. */
+const schmerzOk = (v) => !!SCHMERZ && Number.isInteger(v) && v >= SCHMERZ.min && v <= SCHMERZ.max;
+function schmerzFrage() {
+  const r = LAUF.ergebnis, sk = SCHMERZ;
+  if (!sk || !(LAUF.bs || []).length) return null;
+  const werte = []; for (let i = sk.min; i <= sk.max; i++) werte.push(i);
+  const stufe = schmerzOk(r.sz) ? sk.stufen.find((x) => r.sz <= x.bis) : null;
+  return h('section', { class: 'block schmerz' },
+    h('h2', { id: 'schmerz-frage', text: sk.frage }),
+    h('p', { class: 'leise klein', id: 'schmerz-hilfe', text: 'Tipp eine Zahl an: ' + sk.links + ', ' + sk.rechts + '. Devin sieht sie mit deinem Training.' }),
+    h('div', { class: 'schmerz-skala', role: 'group', 'aria-labelledby': 'schmerz-frage', 'aria-describedby': 'schmerz-hilfe' }, werte.map((n) =>
+      h('button', { type: 'button', class: 'schmerz-wert' + (r.sz === n ? ' an' : ''), 'aria-pressed': r.sz === n ? 'true' : 'false', 'aria-label': 'Schmerz ' + n + ' von ' + sk.max, onclick: () => schmerzSetzen(n), text: String(n) }))),
+    h('div', { class: 'schmerz-ende', 'aria-hidden': 'true' }, h('span', { text: sk.links }), h('span', { text: sk.rechts })),
+    stufe ? h('p', { class: 'schmerz-stufe', role: 'status', text: stufe.text }) : null);
+}
+function schmerzSetzen(n) {
+  if (!LAUF || !LAUF.ergebnis || !schmerzOk(n)) return;
+  const r = LAUF.ergebnis; r.sz = n;
+  if (TM.el) TM.el.classList.add('still');   // gleiche Ansicht, nur ein Knopf neu: nicht alles neu einblenden (Gesamttest 13.11.2026)
+  speicher.schreib(VERLAUF_KEY, verlaufListe().map((x) => (x.s === r.s ? Object.assign({}, x, { sz: n }) : x)));
+  laufSichern(); timerZeigen();
+  const b = TM.el && TM.el.querySelector('.schmerz-wert.an');
+  if (b) try { b.focus({ preventScroll: true }); } catch (e) { /* nichts */ }
 }
 function timerTick() {
   if (!LAUF || !TM.el || LAUF.phase === 'fertig') return;
@@ -1646,13 +1721,14 @@ function timerTick() {
 setInterval(timerTick, 250);
 
 /* ---------- Über mich und Rechtliches (06.11.2026): Text und Angaben aus kontakt.json, die Links nur, wenn es die Seiten gibt ---------- */
-const rechtlichesLinks = () => KONTAKT.rechtliches ? [' · ', h('a', { href: 'impressum/', text: 'Impressum' }), ' · ', h('a', { href: 'datenschutz/', text: 'Datenschutz' })] : null;
+const aboLinks = () => KONTAKT.abo ? [' · ', h('a', { href: 'widerruf/', text: 'Widerruf' }), ' · ', h('a', { href: 'kuendigen/', text: 'Verträge hier kündigen' })] : [];
+const rechtlichesLinks = () => KONTAKT.rechtliches ? [' · ', h('a', { href: 'impressum/', text: 'Impressum' }), ' · ', h('a', { href: 'datenschutz/', text: 'Datenschutz' })].concat(aboLinks()) : null;
 function infoUeber() {
   const u = KONTAKT.ueber_mich;   // null, solange Devins eigener Text fehlt: dann nur der Kontakt
   return h('section', { class: 'block' }, h('h2', { text: u ? 'Über mich' : 'Kontakt' }),
     u ? h('p', { class: 'klein', text: u.zeile + ' ' + u.text }) : null,
     h('p', { class: 'klein leise' }, 'Fragen? Schreib mir: ', h('span', { text: KONTAKT.mail })),
-    KONTAKT.rechtliches ? h('p', { class: 'klein' }, h('a', { href: 'impressum/', text: 'Impressum' }), ' · ', h('a', { href: 'datenschutz/', text: 'Datenschutz' })) : null);
+    KONTAKT.rechtliches ? h('p', { class: 'klein' }, h('a', { href: 'impressum/', text: 'Impressum' }), ' · ', h('a', { href: 'datenschutz/', text: 'Datenschutz' }), aboLinks()) : null);
 }
 
 /* ---------- Umzug auf die eigene Adresse (06.11.2026) ----------
@@ -1710,17 +1786,22 @@ async function umzugEinlesen(teil) {
   if (!ist(u) || u.v !== 1 || typeof u.t !== 'number' || u.t > Date.now() + 1728e5 || !ist(u.d)) { gesehen(teil); toast('Der Umzug-Link ist unvollständig. Tipp in der alten App nochmal auf den Knopf.'); return false; }
   const d = u.d, kHier = konten(), pHier = speicher.lies('dk_plaene', {});
   const leer = !Object.keys(kHier).length && !Object.keys(pHier).some((id) => id !== 'beispiel');
-  if (!leer && !confirm('Daten von der alten Adresse übernehmen? Dein Stand hier bleibt, das Neuere gewinnt.')) { toast('Nicht übernommen.'); return false; }
-  gesehen(teil);
+  // Immer fragen (13.11.2026), auch auf einem leeren Handy: Der Umzug-Link hat keinen Code, jeder könnte so einen bauen und schicken
+  gesehen(teil);   // auch bei Nein: Der Start-Link einer Home-Bildschirm-App fragt dann nicht bei jedem Start neu
+  if (!confirm('Daten von der alten Adresse übernehmen? Der Link kommt ohne Code. Tipp nur auf OK, wenn du ihn selbst in der alten App über „Alles mitnehmen“ geöffnet hast.'
+    + (leer ? '' : ' Dein Stand hier bleibt, das Neuere gewinnt.'))) { toast('Nicht übernommen.'); return false; }
   let neu = 0;
+  // Ein Zugang, der hier schon mit Code liegt, wechselt durch den Umzug nie seinen Code, und sein Plan kommt nur mit demselben Code mit (13.11.2026)
+  const kVorher = Object.assign({}, kHier);
+  const fremd = (id) => !!(kVorher[id] && kVorher[id].code) && !(ist(d.dk_konten) && ist(d.dk_konten[id]) && typeof d.dk_konten[id].code === 'string' && K.appCodeNormal(d.dk_konten[id].code) === K.appCodeNormal(kVorher[id].code));
   // Konten: nur mit gültigem Code, der neuere Stand (t) gewinnt
   if (ist(d.dk_konten)) for (const [id, ko] of Object.entries(d.dk_konten)) {
-    if (!K.idOk(id) || !ist(ko) || typeof ko.t !== 'number' || ko.t > Date.now() + 1728e5 || typeof ko.code !== 'string' || !K.appCodeGueltig(ko.code)) continue;
+    if (!K.idOk(id) || !ist(ko) || typeof ko.t !== 'number' || ko.t > Date.now() + 1728e5 || typeof ko.code !== 'string' || !K.appCodeGueltig(ko.code) || fremd(id)) continue;
     if (!kHier[id] || !(kHier[id].t >= ko.t)) { kHier[id] = Object.assign({}, ko, { id, code: K.appCodeAnzeige(ko.code) }); neu++; }
   }
   // Pläne: geprüft wie beim Start, ein neuerer Plan (Erstelldatum d) gewinnt, der Beispielplan bleibt zurück
   if (ist(d.dk_plaene)) for (const [id, p] of Object.entries(d.dk_plaene)) {
-    const sauber = id !== 'beispiel' && K.idOk(id) && K.planSauber(p);
+    const sauber = id !== 'beispiel' && K.idOk(id) && !fremd(id) && K.planSauber(p);
     if (sauber && (!pHier[id] || (sauber.d || '') > (pHier[id].d || ''))) { pHier[id] = Object.assign(sauber, { id }); neu++; }
   }
   // Kommt ein echter Plan mit, hat der Beispielplan ausgedient: Wer ihn hier vorher angesehen hat, sieht danach seinen eigenen Plan
