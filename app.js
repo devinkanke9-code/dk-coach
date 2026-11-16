@@ -1849,7 +1849,19 @@ function gespeichertesPruefen() {
   if (JSON.stringify(neuK) !== JSON.stringify(alle)) speicher.schreib('dk_konten', neuK);
   for (const k of ['dk_aktiv', 'dk_konto']) { const v = speicher.lies(k, null); if (v != null && !K.idOk(v)) speicher.schreib(k, null); }
 }
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// Sofort neue Fassung (16.11.2026, Devin: „es ist tatsächlich noch nicht online“): Die App kommt aus dem Offline-Speicher, eine neue Fassung lädt im Hintergrund.
+// Übernimmt sie, lädt die App einmal neu, sobald nichts offen ist (kein Gym, Training oder Blatt; der Plan steckt im #-Teil und bleibt).
+// Kommt die App wieder in den Vordergrund (Home-Bildschirm am iPhone), fragt sie nach einer neuen Fassung.
+if ('serviceWorker' in navigator) {
+  const hatteFassung = !!navigator.serviceWorker.controller;
+  let neuLaden = false;
+  const jetztNeu = () => { if (!neuLaden || document.querySelector('.raum, .tm, .blatt.offen, .rang-auf')) return; neuLaden = false; location.reload(); };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hatteFassung) return; neuLaden = true; jetztNeu(); });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); else jetztNeu(); });
+  }).catch(() => {});
+  setInterval(jetztNeu, 2000);
+}
 (async () => {
   altesAbhakenWeg();
   gespeichertesPruefen();
