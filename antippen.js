@@ -85,7 +85,8 @@
  * Die Wahl steht immer ausdrücklich in dk_look. Ohne Eintrag gilt: neue Besucher der Kunden-App bekommen Schwarz-Gold (frühes Skript in index.html und analyse.html, Devin 05.11.2026), wer dort schon Daten hat und die Trainer-Seite bleiben bei Lagune. */
 (function () {
   var SCHLUESSEL = 'dk_look';
-  var WELTEN = [['lagune', 'Lagune'], ['klar', 'Klar'], ['gold', 'Schwarz-Gold']];
+  var WELTEN = [['sport', 'Sport'], ['gold', 'Schwarz-Gold'], ['lagune', 'Lagune'], ['klar', 'Klar']].filter(function (w) { return w[0] !== 'sport' || !!document.querySelector('link[href$="sport.css"]'); });
+  // Sport nur, wo sport.css geladen ist: Die Trainer-Seite nimmt diese Datei auch (app/build.js), hat aber kein sport.css (16.11.2026)   // Sport seit 16.11.2026 (sport.css)
   function lies() { try { return localStorage.getItem(SCHLUESSEL) || ''; } catch (e) { return ''; } }
   function waehle(wert) {
     try { localStorage.setItem(SCHLUESSEL, wert); } catch (e) {}
@@ -252,7 +253,7 @@
   if (!meta) return;
   var pfad = meta.getAttribute('content') || '', root = document.documentElement, v = null;
   var still = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) || (navigator.connection && navigator.connection.saveData);
-  function art() { var l = root.dataset.look; return l === 'klar' ? '' : l === 'gold' ? 'dunkel' : 'hell'; }
+  function art() { var l = root.dataset.look; return l === 'klar' || l === 'sport' ? '' : l === 'gold' ? 'dunkel' : 'hell'; }   // Sport: ruhiges Anthrazit ohne Video
   function abspielen() {
     if (!v || still) return;
     if (document.hidden || document.querySelector('.raum, .tm, .blatt.offen')) { if (!v.paused) v.pause(); return; }

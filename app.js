@@ -455,7 +455,7 @@ function startWeg() {
   if (STARTSEHEN) { STARTSEHEN.disconnect(); STARTSEHEN = null; }
   if (STARTBUEHNE) { STARTBUEHNE.disconnect(); STARTBUEHNE = null; }
 }
-const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + ({ klar: '-klar', gold: '-gold' }[document.documentElement.dataset.look] || '') + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
+const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + ({ klar: '-klar', gold: '-gold', sport: '-gold' }[document.documentElement.dataset.look] || '') + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
 // Blöcke erscheinen beim Hinscrollen, die Figur rechnet nur, solange sie zu sehen ist
 function startBeobachten() {
   const bloecke = [...document.querySelectorAll('.st-block:not(.da)')];
@@ -1739,7 +1739,7 @@ function infoUeber() {
  * Fällig ist der Umzug, sobald die alte Adresse umleitet: Die Probe (manifest.webmanifest?umzug=…) geht am Offline-Speicher vorbei (sw.js), und fetch folgt der Umleitung nicht. */
 const NEUE_ADRESSE = KONTAKT.adresse;
 const ALTE_ADRESSE = /\.github\.io$/.test(location.hostname) && location.origin !== new URL(NEUE_ADRESSE).origin;
-const LOOKS = ['lagune', 'klar', 'gold'];
+const LOOKS = ['lagune', 'klar', 'gold', 'sport'];
 const UMZUG_JE = /^dk_(?:(?:tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}|spiel_stand|bestleistung)$/;   // seit 09.11.2026 auch der Spielstand (genau dieser eine Schlüssel, spiel.js), sonst nichts
 async function umzugPruefen() {
   if (!ALTE_ADRESSE || S.umzug || navigator.onLine === false) return;
@@ -1829,7 +1829,7 @@ async function umzugEinlesen(teil) {
   if (leer && LOOKS.includes(d.look)) {   // Farbwelt nur auf einem leeren Handy übernehmen
     try { localStorage.setItem('dk_look', d.look); } catch (e) {}
     document.documentElement.dataset.look = d.look;
-    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = d.look === 'klar' ? '#F5F5F7' : d.look === 'gold' ? '#060608' : '#86CBEE';
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = d.look === 'klar' ? '#F5F5F7' : d.look === 'gold' ? '#060608' : d.look === 'sport' ? '#111215' : '#86CBEE';
   }
   gespeichertesPruefen();
   S.umzugNeu = true; S.tagWahl = null; S.ansicht = 'heute'; dauerhaft();

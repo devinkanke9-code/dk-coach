@@ -1,0 +1,199 @@
+/* ---------- Farbwelt „Sport“ (16.11.2026, Devin: „modern, minimalistisch, hochwertig … dunkler Hintergrund in Anthrazit, klare Schrift, großzügige Abstände,
+   gezielt eingesetzte Akzentfarbe wie Limettengrün … dezente Interaktion mit der Maus … ohne überladene Gaming-Optik“).
+   Nur Kunden-App: <html data-look="sport">. Läuft über dieselben Tokens wie Lagune, Klar und Schwarz-Gold (app/src/stil.css), dazu ein paar ruhigere Regeln.
+   Bewegt wird nur transform und opacity. Kein bewegter Hintergrund, kein Video, keine Dauer-Animation. Maus-Effekte: sport.js (nur mit Maus und Hover).
+   Kontraste (WCAG): Text #F2F4EF auf Karte #1A1C20 15,6:1 · Zweittext #A9AFA9 auf Karte 7,9:1 · Limette #C8F135 auf Karte 13,5:1 · Schrift #0D1003 auf Limette 15,1:1. ---------- */
+:root[data-look="sport"] {
+  --verlauf-a: #D4F75A;
+  --verlauf-b: #B8E623;
+  --verlauf-winkel: 120deg;
+  --akzent: #C8F135;
+  --akzent-hell: #CFF35A;
+  --auf-akzent: #0D1003;
+  --blatt-akzent: #CFF35A;
+  --verlauf-schrift: linear-gradient(120deg, #F2F4EF 0%, #F2F4EF 100%);
+  --akzent-verlauf: #C8F135;
+
+  --schwarz: #141518;
+  --anthrazit: #24272C;
+  --flaeche: #1A1C20;
+  --linie: #2C3036;
+  --text: #F2F4EF;
+  --text2: #A9AFA9;
+  --auf-grund: #F2F4EF;
+  --auf-grund2: #A9AFA9;
+  --gut: #6FDC9C;
+  --warn: #F3B64F;
+  --stopp: #FF7B6C;
+  color-scheme: dark;
+
+  --seite: #111215;
+  --flaechen: none;
+  --wellen: none;
+  --karte: #1A1C20;
+  --flaeche-verlauf: linear-gradient(180deg, #1C1E22, #1A1C20);
+  --rand-weich: rgba(255, 255, 255, .07);
+  --schatten: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .8);
+  --akzent-glanz: none;
+  --blatt: #18191D;
+  --blatt-text: #F2F4EF;
+  --blatt-text2: #A9AFA9;
+  --blatt-linie: #2C3036;
+  --blatt-feld: #24272C;
+  --glas: rgba(17, 18, 21, .82);
+  --glas-rand: rgba(255, 255, 255, .08);
+  --glas-dicht: rgba(20, 21, 25, .94);
+  --knopf-grund: rgba(255, 255, 255, .07);
+  --knopf-grund2: rgba(200, 241, 53, .22);
+  --knopf-text: #F2F4EF;
+  --feld: #202328;
+  --reihe: #202328;
+  --chip-grund: #24272C;
+  --platzhalter: #8F958F;
+  --blatt-hg: rgba(0, 0, 0, .6);
+  --tm-grund: #111215;
+  --buehne-grund: radial-gradient(80% 50% at 50% 100%, rgba(200, 241, 53, .07), transparent 72%), linear-gradient(180deg, #1C1E22 0%, #15161A 100%);
+  --buehne-rand: 0 0 0 1px rgba(255, 255, 255, .06) inset;
+  --rund-grund: rgba(30, 32, 37, .94);
+  --rund-rand: rgba(255, 255, 255, .1);
+  --mini-grund: linear-gradient(180deg, #23262B, #1A1C20);
+  --raum-grund: #111215;
+  --lila: #C8F135;
+
+  --r: 20px;
+  --knopf-voll: #C8F135;
+  --auf-voll: #0D1003;
+  --zweit-text: #F2F4EF;
+  --zweit-rand: rgba(242, 244, 239, .28);
+  --kachel: #1A1C20;
+  --kachel-text: #F2F4EF;
+  --kachel-text2: #A9AFA9;
+  --kachel-frei: transparent;
+  --kachel-frei-text: #F2F4EF;
+  --kachel-frei-text2: #A9AFA9;
+  --zweit-frei-text: #F2F4EF;
+  --zweit-frei-rand: rgba(242, 244, 239, .28);
+  --held-grund: transparent;
+  --held-text: #F2F4EF;
+  --held-text2: #A9AFA9;
+
+  --sp-ruhig: cubic-bezier(.22, .61, .36, 1);   /* weich auslaufend, ohne Überschwingen */
+  --sp-fokus: 0 0 0 2px #111215, 0 0 0 4px #C8F135;
+}
+
+/* Grund: ruhiges Anthrazit. Bewegte Farbflächen, Wellen und Video sind in dieser Farbwelt aus. */
+:root[data-look="sport"]::before, :root[data-look="sport"]::after { content: none; }
+:root[data-look="sport"] body::before { background: color-mix(in srgb, var(--seite) 90%, transparent); }
+:root[data-look="sport"] body { background: radial-gradient(120% 60% at 50% -10%, #1A1C21 0%, transparent 60%) no-repeat, var(--seite); background-attachment: fixed; }
+:root[data-look="sport"] .dk-wellen-video { display: none; }
+
+/* Schrift: klar, etwas mehr Kontrast zwischen Titel und Text */
+:root[data-look="sport"] h1, :root[data-look="sport"] h2, :root[data-look="sport"] h3 { letter-spacing: -.02em; }
+:root[data-look="sport"] h1 { font-weight: 700; }
+:root[data-look="sport"] .marke { background: none; color: var(--text); font-weight: 700; letter-spacing: -.015em; }
+:root[data-look="sport"] .marke::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%; background: var(--akzent); vertical-align: .12em; }
+:root[data-look="sport"] .st-held h1 { background: none; -webkit-text-fill-color: currentColor; animation: none; }   /* kein Dauer-Glanz */
+
+/* Kopf und Leiste: dunkles Glas mit feiner Linie */
+:root[data-look="sport"] .kopf { border-bottom-color: rgba(255, 255, 255, .06); }
+:root[data-look="sport"] nav.leiste { box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .8); border-color: rgba(255, 255, 255, .07); }
+:root[data-look="sport"] nav.leiste button { color: var(--text2); }
+:root[data-look="sport"] nav.leiste button[aria-current="page"] { color: var(--akzent); background: none; }
+
+/* Karten: eine Fläche, feiner Rand, großzügig */
+:root[data-look="sport"] .block, :root[data-look="sport"] .kunde, :root[data-look="sport"] .eintrag { background: var(--flaeche); border: 1px solid var(--rand-weich); box-shadow: var(--schatten); }
+:root[data-look="sport"] .block { padding: 22px; gap: 14px; }
+:root[data-look="sport"] .block.heute { border-color: color-mix(in srgb, var(--akzent) 30%, transparent); }
+:root[data-look="sport"] .naechstes { background: var(--reihe); border-color: var(--rand-weich); }
+:root[data-look="sport"] .st-block:not(.st-frei):not(.st-held) { border: 1px solid var(--rand-weich); }
+:root[data-look="sport"] .st-mock .block.heute { box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .9); }
+:root[data-look="sport"] .woche-karte .wochenleiste .wt.heute { border-color: var(--akzent); }
+:root[data-look="sport"] .fortschritt-balken i, :root[data-look="sport"] .woche-ring::before { will-change: auto; }
+:root[data-look="sport"] .tipp-text small, :root[data-look="sport"] .angepasst { color: var(--akzent); }
+@media (min-width: 1024px) {
+  :root[data-look="sport"] .st-block:not(.st-held):hover { transform: none; box-shadow: none; }   /* das Heben übernimmt sport.js, ruhiger und nur bis 3 px */
+}
+
+/* Knöpfe: Limette für das Wichtigste, sonst ruhig. Farbe und Größe ändern sich sanft. */
+:root[data-look="sport"] .knopf { transition: transform .22s var(--sp-ruhig), background-color .2s var(--sp-ruhig), color .2s var(--sp-ruhig), border-color .2s var(--sp-ruhig), box-shadow .2s var(--sp-ruhig); }
+:root[data-look="sport"] .knopf.haupt { background: var(--knopf-voll); color: var(--auf-voll); font-weight: 600; }
+:root[data-look="sport"] .knopf:not(.haupt):not(.text) { background: var(--knopf-grund); color: var(--knopf-text); border-color: rgba(255, 255, 255, .1); }
+:root[data-look="sport"] .knopf.text { color: var(--akzent); }
+@media (hover: hover) and (pointer: fine) {
+  :root[data-look="sport"] .knopf.haupt:hover { background: #D6F65E; }
+  :root[data-look="sport"] .knopf:not(.haupt):not(.text):hover { background: rgba(255, 255, 255, .11); border-color: rgba(200, 241, 53, .45); }
+  :root[data-look="sport"] .knopf.text:hover { color: #DDF77F; }
+  :root[data-look="sport"] .chip:hover { border-color: rgba(200, 241, 53, .45); }
+}
+/* Knopf-Gefühl aus antippen.js in dieser Farbwelt leiser: höchstens 4 px mitziehen, nicht dehnen, kein Wackeln, nur ein sanftes Einrasten */
+:root[data-look="sport"] .kg-schwebt { transform: translate3d(clamp(-3px, var(--kx, 0px), 3px), clamp(-3px, var(--ky, 0px), 3px), 0) scale(1.03) !important; transition: transform .3s var(--sp-ruhig), box-shadow .25s var(--sp-ruhig), background-color .2s var(--sp-ruhig) !important; }
+:root[data-look="sport"] .kg-zieht { transform: translate3d(clamp(-4px, var(--kx, 0px), 4px), clamp(-4px, var(--ky, 0px), 4px), 0) scale(.98) !important; transition: transform .12s var(--sp-ruhig) !important; }
+:root[data-look="sport"] .kg-drueckt { transform: scale(.97) !important; transition: transform .1s var(--sp-ruhig) !important; }
+:root[data-look="sport"] .kg-plopp { animation: sp-einrasten .28s var(--sp-ruhig) both !important; }
+@keyframes sp-einrasten { from { transform: scale(.97); } to { transform: none; } }
+:root[data-look="sport"] .knopf.kg-schwebt, :root[data-look="sport"] .knopf.kg-zieht, :root[data-look="sport"] .chip.kg-zieht, :root[data-look="sport"] .wt.kg-zieht { box-shadow: 0 10px 24px -14px rgba(0, 0, 0, .9); }
+:root[data-look="sport"] .knopf.haupt.kg-schwebt, :root[data-look="sport"] .knopf.haupt.kg-zieht { box-shadow: 0 10px 28px -12px rgba(200, 241, 53, .45); }
+:root[data-look="sport"] .kg-licht { background: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 60%); }
+:root[data-look="sport"] .kg-licht::after { display: none; }   /* kein Lichtstreifen quer über den Knopf */
+
+/* Felder und Auswahl */
+:root[data-look="sport"] .eingabe { background: var(--feld); border-color: var(--linie); color: var(--text); }
+:root[data-look="sport"] .eingabe:focus { border-color: var(--akzent); box-shadow: 0 0 0 3px rgba(200, 241, 53, .2); }
+:root[data-look="sport"] .optionen input:checked + span, :root[data-look="sport"] .janein input:checked + span { background: var(--knopf-voll); color: var(--auf-voll); border-color: transparent; }
+
+/* Tastatur: deutlich sichtbarer Fokus, nur bei Tastatur (focus-visible) */
+:root[data-look="sport"] :focus-visible { outline: 2px solid var(--akzent); outline-offset: 3px; }
+:root[data-look="sport"] .eingabe:focus-visible { outline: none; }
+:root[data-look="sport"] .optionen input:focus-visible + span, :root[data-look="sport"] .janein input:focus-visible + span, :root[data-look="sport"] .haken input:focus-visible + span { box-shadow: var(--sp-fokus); }
+
+/* Farbwelt-Knopf und Probe im Menü */
+:root[data-look="sport"] .look-wahl { background: linear-gradient(135deg, #1A1C20 0 48%, #C8F135 52% 100%); }
+.look-probe.sport { background: linear-gradient(135deg, #1A1C20 0 48%, #C8F135 52% 100%); }
+
+/* ---------- Maus-Effekte (sport.js setzt Klassen und Werte). Nur mit präzisem Zeiger und Hover, nie bei „weniger Bewegung“. ---------- */
+/* Lichtschein im Hintergrund: eine feste weiche Fläche, sport.js schiebt sie nur per transform (kein Blur-Filter) */
+.sp-schein { position: fixed; z-index: 0; left: 0; top: 0; width: 720px; height: 720px; margin: -360px 0 0 -360px; pointer-events: none; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(200, 241, 53, .055), rgba(200, 241, 53, .02) 55%, transparent);
+  opacity: 0; transition: opacity .6s var(--sp-ruhig); will-change: transform; contain: strict; }
+.sp-schein.an { opacity: 1; }
+:root[data-look="sport"] .app { position: relative; z-index: 1; }   /* Inhalt liegt über dem Schein */
+
+/* Aktive Karte: neigt sich leicht zur Maus und rückt höchstens 3 px. Andere Karten bleiben stehen. */
+.sp-karte { transition: transform .45s var(--sp-ruhig), border-color .3s var(--sp-ruhig), box-shadow .45s var(--sp-ruhig); }
+.sp-karte.sp-aktiv { transform: perspective(1000px) rotateX(var(--sp-rx, 0deg)) rotateY(var(--sp-ry, 0deg)) translate3d(var(--sp-tx, 0px), var(--sp-ty, 0px), 0);
+  transition: transform .18s linear, border-color .3s var(--sp-ruhig), box-shadow .45s var(--sp-ruhig); border-color: rgba(255, 255, 255, .12); }
+/* Highlight: Licht auf der Fläche und am Rand, folgt der Maus (zwei Ebenen, nur opacity wird überblendet) */
+.sp-licht, .sp-rand { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .35s var(--sp-ruhig); z-index: 0; }
+.sp-licht { background: radial-gradient(420px circle at var(--sp-mx, 50%) var(--sp-my, 50%), rgba(255, 255, 255, .045), transparent 60%); }
+.sp-rand { inset: 0; padding: 1px; background: radial-gradient(240px circle at var(--sp-mx, 50%) var(--sp-my, 50%), rgba(200, 241, 53, .65), rgba(200, 241, 53, 0) 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.sp-aktiv > .sp-licht, .sp-aktiv > .sp-rand { opacity: 1; }
+.sp-rel { position: relative; }
+
+/* ---------- Touch: kurze, leise Tap-Reaktion, kein Fingertracking ---------- */
+@media (hover: none), (pointer: coarse) {
+  :root[data-look="sport"] .block:active, :root[data-look="sport"] .naechstes:active, :root[data-look="sport"] .kunde:active { transform: scale(.992); transition: transform .12s var(--sp-ruhig); }
+  :root[data-look="sport"] .block, :root[data-look="sport"] .naechstes, :root[data-look="sport"] .kunde { transition: transform .25s var(--sp-ruhig); }
+  :root[data-look="sport"] .block:has(input:active, textarea:active, select:active, canvas:active) { transform: none; }   /* Felder und 3D-Bühne nicht anstupsen */
+}
+
+/* Weniger Bewegung: keine dekorative Bewegung, alles bleibt bedienbar */
+@media (prefers-reduced-motion: reduce) {
+  .sp-schein, .sp-licht, .sp-rand { display: none; }
+  .sp-karte, .sp-karte.sp-aktiv { transform: none !important; transition: none; }
+  :root[data-look="sport"] .knopf { transition: background-color .15s linear, color .15s linear, border-color .15s linear; }
+  :root[data-look="sport"] .block:active, :root[data-look="sport"] .naechstes:active, :root[data-look="sport"] .kunde:active { transform: none; }
+}
+
+/* Regeln, die in stil.css und buehne.css nur „Schwarz-Gold“ als dunkle Farbwelt kennen: für Sport ebenso dunkel.
+   stil.css setzt für alle Farbwelten außer Gold und Klar einen dunkelblauen Zweittext auf dem Grund (Lagune), darum hier mit höherem Gewicht. */
+:root[data-look="sport"][data-look] { --auf-grund2: #A9AFA9; }
+:root[data-look="sport"] .marke small { color: var(--auf-grund2); }
+:root[data-look="sport"] .buehne, :root[data-look="sport"] .blatt { color-scheme: dark; }
+:root[data-look="sport"] .blatt { box-shadow: 0 -1px 0 rgba(255, 255, 255, .08), 0 -18px 44px rgba(0, 0, 0, .5); }
+:root[data-look="sport"] .erklaer-blase { background: rgba(20, 21, 25, .96); }
+:root[data-look="sport"] .raum-pop { color: var(--text); text-shadow: 0 2px 18px rgba(0, 0, 0, .85), 0 0 3px rgba(0, 0, 0, .9); }
+
+/* Sehr schmale Handys (16.11.2026, Gesamttest): Der Punkt vor „Devin Kanke Coach“ machte den Namen 17 px breiter, „Analyse“ rutschte bei 320 px
+   bis auf 7 px an den Farbwelt-Knopf (sonst 12 px, damit die Trefferflächen sich nichts wegnehmen). Kleinerer Punkt, weniger Abstand. */
+@media (max-width: 360px) { :root[data-look="sport"] .marke::before { width: 6px; height: 6px; margin-right: 5px; } }

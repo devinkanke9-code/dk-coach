@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-G+hT70fi8Qgn4AHslbrS3RIY5GbFej1EchwJpwFme58=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-jRWc2imklzQq7/JQOMlIGgI7j1CikjW7oWIwpw10sls=' 'sha256-47SYuv52ST9yQ76ncm8OHvWn4zem0EXrZt9l4WuC2XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="dk-kein-zoom" content="1">
 <meta name="dk-wellen-video" content="">
 <title>Devin Kanke Coach</title>
-<meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!l&&!localStorage.getItem('dk_plaene')&&!localStorage.getItem('dk_konten')&&!localStorage.getItem('dk_analyse10')){l='gold';localStorage.setItem('dk_look',l)}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':'#86CBEE'}}catch(e){document.documentElement.dataset.look='gold'}</script>
+<meta name="theme-color" content="#111215"><script>try{var l=localStorage.getItem('dk_look');if(!localStorage.getItem('dk_look_sport')){l='sport';localStorage.setItem('dk_look',l);localStorage.setItem('dk_look_sport','1')}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':l==='sport'?'#111215':'#86CBEE'}}catch(e){document.documentElement.dataset.look='sport'}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="schriften/schriften.css">
 <link rel="stylesheet" href="stil.css">
 <link rel="stylesheet" href="buehne.css">
+<link rel="stylesheet" href="sport.css">
 <style>
 /* Nur Kunden-App: Rahmen ohne claude.ai (dort setzt die Plattform diese Grundwerte) */
 html, body { margin: 0; padding: 0; }
@@ -193,20 +194,22 @@ html.dk-wellen-an .g-glas > .g-linse { display: block; position: absolute; inset
 html.dk-wellen-an .g-glas.g-fern > .g-linse { display: none; }
 .g-linse i { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; background: var(--g-bild) center / cover no-repeat; transform: scale(1.16); transform-origin: 50% 50%; }
 .g-linse::after { content: ""; position: absolute; inset: 0; background: linear-gradient(155deg, var(--g-ton2), var(--g-ton) 70%); }
-.eintrag, .naechstes { border-color: var(--g-rand); box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 12px 26px -20px rgba(0, 0, 0, .55); }
-.kopf { box-shadow: inset 0 -1px 0 var(--g-tief), 0 10px 30px -22px rgba(0, 0, 0, .6); }
-nav.leiste { border-color: var(--g-rand); box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 18px 40px -14px rgba(0, 0, 0, .5); }
-nav.leiste button[aria-current="page"] { box-shadow: inset 0 1px 0 var(--g-kante), 0 8px 20px -10px var(--g-schein); }
-.knopf, .knopf:hover, .blatt .knopf:hover { border: 1px solid var(--g-rand); border-radius: 999px;
+/* Sport (16.11.2026): Die Knopf-, Kopf- und Leisten-Regeln vom Glas gelten nicht in der Farbwelt Sport (dort eigene, ruhigere Knöpfe aus sport.css).
+   :where() ändert die Spezifität nicht, in Lagune, Schwarz-Gold und Klar bleibt alles wie vorher. */
+:where(:root:not([data-look="sport"])) .eintrag, :where(:root:not([data-look="sport"])) .naechstes { border-color: var(--g-rand); box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 12px 26px -20px rgba(0, 0, 0, .55); }
+:where(:root:not([data-look="sport"])) .kopf { box-shadow: inset 0 -1px 0 var(--g-tief), 0 10px 30px -22px rgba(0, 0, 0, .6); }
+:where(:root:not([data-look="sport"])) nav.leiste { border-color: var(--g-rand); box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 18px 40px -14px rgba(0, 0, 0, .5); }
+:where(:root:not([data-look="sport"])) nav.leiste button[aria-current="page"] { box-shadow: inset 0 1px 0 var(--g-kante), 0 8px 20px -10px var(--g-schein); }
+:where(:root:not([data-look="sport"])) .knopf, :where(:root:not([data-look="sport"])) .knopf:hover, :where(:root:not([data-look="sport"])) .blatt .knopf:hover { border: 1px solid var(--g-rand); border-radius: 999px;
   box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 8px 18px -12px rgba(0, 0, 0, .45); }
-.knopf { background: linear-gradient(180deg, var(--g-glanz), transparent 32%), var(--knopf-grund); }
-.knopf:hover, .blatt .knopf:hover { background: linear-gradient(180deg, var(--g-glanz), transparent 32%), var(--knopf-grund2); }
-.knopf.klein { border-radius: 999px; }
-.knopf.haupt, .blatt .knopf.haupt, .knopf.haupt:hover, .blatt .knopf.haupt:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 30%), var(--knopf-voll);
+:where(:root:not([data-look="sport"])) .knopf { background: linear-gradient(180deg, var(--g-glanz), transparent 32%), var(--knopf-grund); }
+:where(:root:not([data-look="sport"])) .knopf:hover, :where(:root:not([data-look="sport"])) .blatt .knopf:hover { background: linear-gradient(180deg, var(--g-glanz), transparent 32%), var(--knopf-grund2); }
+:where(:root:not([data-look="sport"])) .knopf.klein { border-radius: 999px; }
+:where(:root:not([data-look="sport"])) .knopf.haupt, :where(:root:not([data-look="sport"])) .blatt .knopf.haupt, :where(:root:not([data-look="sport"])) .knopf.haupt:hover, :where(:root:not([data-look="sport"])) .blatt .knopf.haupt:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 30%), var(--knopf-voll);
   border-color: rgba(255, 255, 255, .3); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), inset 0 -2px 5px rgba(0, 0, 0, .16), 0 14px 30px -12px var(--g-schein), 0 3px 8px -3px var(--g-schein); }
-.knopf.haupt.kg-schwebt, .knopf.haupt.kg-zieht { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 20px 40px -12px var(--g-schein), 0 4px 12px -3px var(--g-schein); }
-.knopf.haupt.kg-drueckt { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 2px 8px rgba(0, 0, 0, .2), 0 6px 18px -6px var(--g-schein); }
-.knopf:disabled, .knopf[disabled] { box-shadow: none; }
+:where(:root:not([data-look="sport"])) .knopf.haupt.kg-schwebt, :where(:root:not([data-look="sport"])) .knopf.haupt.kg-zieht { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 20px 40px -12px var(--g-schein), 0 4px 12px -3px var(--g-schein); }
+:where(:root:not([data-look="sport"])) .knopf.haupt.kg-drueckt { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 2px 8px rgba(0, 0, 0, .2), 0 6px 18px -6px var(--g-schein); }
+:where(:root:not([data-look="sport"])) .knopf:disabled, :where(:root:not([data-look="sport"])) .knopf[disabled] { box-shadow: none; }
 </style>
 </head>
 <body>
@@ -223,6 +226,7 @@ nav.leiste button[aria-current="page"] { box-shadow: inset 0 1px 0 var(--g-kante
 <script src="gefuehl.js" defer></script>
 <script src="antippen.js" defer></script>
 <script src="glas.js" defer></script>
+<script src="sport.js" defer></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
