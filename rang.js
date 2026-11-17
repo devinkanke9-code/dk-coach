@@ -9,18 +9,29 @@ const offen = { form: null };
 export function aufraeumen() { offen.form = null; }
 export const wertText = (b) => komma(b.kg) + ' kg × ' + b.w;
 
-export function wappen(h, nr, gross) { return h('div', { class: 'rang-wappen t' + nr + (gross ? ' gross' : ''), 'aria-hidden': 'true' }, h('b', { text: String(nr) })); }
+// Rang mit Medaille (16.11.2026): runde Medaille mit Band statt Wappen. Metall und Band je Rang wie bei den 3D-Medaillen (medaille.js). zu: noch nicht erreicht.
+const BAND = { 1: ['#3F4652', '#A7B0BD'], 2: ['#6B3E1C', '#D8A06A'], 3: ['#2C2F36', '#8E939C'], 4: ['#39424E', '#C5CFDA'], 5: ['#22344A', '#8FB4DA'],
+  6: ['#4B5563', '#F2F5F9'], 7: ['#7A1E2E', '#F7DE93'], 8: ['#26324A', '#E8E8E4'], 9: ['#123B5C', '#A7E6FF'], 10: ['#17151C', '#8B5CF6'] };
+export function wappen(h, nr, gross, zu) {
+  const b = BAND[nr] || BAND[1];
+  return h('div', { class: 'rang-wappen rm t' + nr + (gross ? ' gross' : '') + (zu ? ' zu' : ''), style: '--band1:' + b[0] + ';--band2:' + b[1], 'aria-hidden': 'true' },
+    h('i', { class: 'rm-band' }), h('span', { class: 'rm-scheibe' }, h('b', { text: String(nr) })));
+}
+// Kleiner Level-Weg: 10 Punkte, erreichte in Farbe, der aktuelle leuchtet
+const wegKlein = (h, level) => h('div', { class: 'rm-weg', 'aria-hidden': 'true' }, Spiel.LEVEL.map((l, i) => h('i', { class: 't' + (i + 1) + (i + 1 < level ? ' da' : i + 1 === level ? ' jetzt' : '') })));
 const balken = (h, anteil) => h('div', { class: 'rang-balken', 'aria-hidden': 'true' }, h('i', { style: 'width:' + Math.round(Math.max(0, Math.min(1, anteil)) * 100) + '%' }));
 const punkteWort = (n) => n + (n === 1 ? ' Punkt' : ' Punkte');
 
 // Kleine Karte auf „Heute“: tippen öffnet die Rang-Seite. Feinschliff (10.11.2026): darunter steht, wie viel bis zum nächsten Rang fehlt
 export function kurzKarte(c) {
-  const h = c.h, st = Spiel.status();
-  return h('button', { class: 'rang-kurz', type: 'button', onclick: c.oeffnen, 'aria-label': 'Rang ' + st.level + ', ' + st.titel + ', ' + punkteWort(st.punkte) },
-    wappen(h, st.level),
-    h('span', { class: 'rang-kurz-text' }, h('b', { text: st.titel }), balken(h, st.anteil),
-      st.naechstes ? h('small', { class: 'rang-kurz-ziel', text: 'Noch ' + punkteWort(st.naechstes.fehlt) + ' bis „' + st.naechstes.titel + '“' }) : null),
-    h('span', { class: 'rang-kurz-pkt', text: String(st.punkte) }));
+  const h = c.h, st = Spiel.status(), max = Spiel.LEVEL.length;
+  return h('button', { class: 'rang-kurz rm-karte', type: 'button', onclick: c.oeffnen, 'aria-label': 'Rang ' + st.level + ' von ' + max + ', ' + st.titel + ', ' + punkteWort(st.punkte) },
+    h('span', { class: 'rm-oben' }, wappen(h, st.level),
+      h('span', { class: 'rang-kurz-text' }, h('small', { class: 'rm-stufe', text: 'Rang ' + st.level + ' von ' + max }), h('b', { text: st.titel })),
+      h('span', { class: 'rang-kurz-pkt' }, h('b', { text: String(st.punkte) }), h('small', { text: 'Punkte' }))),
+    h('span', { class: 'rm-ziel' }, balken(h, st.anteil), st.level < max ? wappen(h, st.level + 1, false, true) : null),
+    h('small', { class: 'rang-kurz-ziel', text: st.naechstes ? 'Noch ' + punkteWort(st.naechstes.fehlt) + ' bis „' + st.naechstes.titel + '“' : 'Ganz oben angekommen' }),
+    wegKlein(h, st.level));
 }
 
 // Großer Moment beim Aufstieg: legt sich über alles, tippen schließt
@@ -112,17 +123,20 @@ export function ansicht(c) {
       const nr = i + 1; if (!Medaille.hatMedaille(nr)) return null;
       const da = nr <= st.level;
       return h('button', { class: 'med-fach' + (da ? ' da' : ''), type: 'button', disabled: !da, 'aria-label': da ? 'Medaille ' + l.titel + ' ansehen' : l.titel + ': gesperrt, ab ' + l.ab + ' Punkten', onclick: () => Medaille.zeigen({ h, lade3d: c.lade3d, nr, titel: l.titel, ab: l.ab }) },
-        wappen(h, nr), h('b', { text: l.titel }), h('small', { text: da ? 'Ansehen' : 'ab ' + l.ab }));
+        wappen(h, nr, false, !da), h('b', { text: l.titel }), h('small', { text: da ? 'Ansehen' : 'ab ' + l.ab }));
     })),
     h('p', { class: 'klein leise', text: 'Medaillen gibt es nur fürs Training: Jeder neue Rang bringt eine.' }));
-  const leiter = h('section', { class: 'block' }, h('h2', { text: 'Alle Ränge' }),
-    h('ol', { class: 'rang-leiter' }, Spiel.LEVEL.map((l, i) => {
+  // Dein Weg (Rang mit Medaille (16.11.2026)): von unten nach oben, erreichte Medaillen in Farbe, die aktuelle leuchtet, die nächsten zeigen, ab wie vielen Punkten
+  const leiter = h('section', { class: 'block rm-pfad-block' }, h('h2', { text: 'Dein Weg nach oben' }),
+    h('ol', { class: 'rang-leiter rm-pfad' }, Spiel.LEVEL.map((l, i) => {
       const nr = i + 1, jetzt = nr === st.level, drin = nr <= st.level;
-      return h('li', { class: (jetzt ? 'jetzt ' : '') + (drin ? 'drin' : 'zu') }, wappen(h, nr), h('b', { text: l.titel }), h('span', { class: 'klein leise', text: jetzt ? 'Hier bist du' : drin ? 'Geschafft' : 'ab ' + l.ab + ' Punkten' }));
-    })));
+      return h('li', { class: (jetzt ? 'jetzt ' : '') + (drin ? 'drin' : 'zu') }, wappen(h, nr, false, !drin),
+        h('span', { class: 'rm-pfad-text' }, h('b', { text: l.titel }), h('span', { class: 'klein leise', text: jetzt ? 'Hier bist du' + (st.naechstes ? ' · noch ' + punkteWort(st.naechstes.fehlt) : '') : drin ? 'Geschafft' : 'ab ' + l.ab + ' Punkten' })),
+        jetzt ? balken(h, st.anteil) : null);
+    }).reverse()));
   const pr = h('section', { class: 'block' }, h('h2', { text: 'Deine PRs' }),
     h('button', { class: 'knopf haupt', type: 'button', onclick: c.prRaum, text: 'In den PR-Raum' }),
     h('div', { class: 'stapel' }, B.stand().map((x) => karte(c, x, min))),
     h('p', { class: 'klein leise pr-hinweis', text: (min === 1 ? 'Auch ein einzelner Maximalversuch zählt, wenn du willst. Das ist deine Entscheidung.' : 'Es zählt dein bester sauberer Satz ab ' + min + ' Wiederholungen. Einzelne Maximalversuche sind in deinem Plan nicht freigegeben.') + ' Sätze aus dem Training trägt die App selbst ein. Schwere Sätze nur mit Sicherung oder jemandem, der aufpasst. PRs bringen keine Punkte.' }));
-  return [c.kopf('Rang'), held, medaillen, pr, regeln, leiter];
+  return [c.kopf('Rang'), held, leiter, medaillen, pr, regeln];
 }

@@ -193,10 +193,11 @@ html.dk-wellen-an .g-glas .knopf, html.dk-wellen-an .g-glas input, html.dk-welle
 .g-linse { display: none; }
 html.dk-wellen-an .g-glas > .g-linse { display: block; position: absolute; inset: 0; z-index: -1; border-radius: inherit; -webkit-clip-path: inset(0 round var(--g-r)); clip-path: inset(0 round var(--g-r)); pointer-events: none; }
 html.dk-wellen-an .g-glas.g-fern > .g-linse { display: none; }
-.g-linse i { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; background: var(--g-bild) center / cover no-repeat; transform: scale(1.34); transform-origin: 50% 50%; }
-.g-linse > i { transform: scale(2); filter: brightness(1.14) saturate(1.3); }
-.g-mitte { position: absolute; inset: 0; -webkit-clip-path: inset(8px round calc(var(--g-r) - 8px)); clip-path: inset(8px round calc(var(--g-r) - 8px)); }
-.g-linse::after { content: ""; position: absolute; inset: 0; background: linear-gradient(155deg, var(--g-ton2), var(--g-ton) 70%); }
+/* Glas live (16.11.2026, Devin: „nur ein Standbild … nicht wie Glas“): glas.js malt das bewegte Wellen-Video in eine Leinwand je Karte. Darüber ein Lichtschein oben links wie auf echtem Glas. */
+.g-linse canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.g-linse::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(135deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 38%), radial-gradient(120% 70% at 85% 110%, rgba(255, 255, 255, .14), transparent 60%); }
+:root[data-look="gold"] .g-linse::before { background: linear-gradient(135deg, rgba(255, 245, 220, .16), rgba(255, 255, 255, 0) 38%); }
+.g-linse::after { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(155deg, var(--g-ton2), var(--g-ton) 70%); }
 /* Sport (16.11.2026): Die Knopf-, Kopf- und Leisten-Regeln vom Glas gelten nicht in der Farbwelt Sport (dort eigene, ruhigere Knöpfe aus sport.css).
    :where() ändert die Spezifität nicht, in Lagune, Schwarz-Gold und Klar bleibt alles wie vorher. */
 :where(:root:not([data-look="sport"])) .eintrag, :where(:root:not([data-look="sport"])) .naechstes { border-color: var(--g-rand); box-shadow: inset 0 1px 0 var(--g-kante), inset 0 -1px 0 var(--g-tief), 0 12px 26px -20px rgba(0, 0, 0, .55); }
@@ -213,6 +214,58 @@ html.dk-wellen-an .g-glas.g-fern > .g-linse { display: none; }
 :where(:root:not([data-look="sport"])) .knopf.haupt.kg-schwebt, :where(:root:not([data-look="sport"])) .knopf.haupt.kg-zieht { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 20px 40px -12px var(--g-schein), 0 4px 12px -3px var(--g-schein); }
 :where(:root:not([data-look="sport"])) .knopf.haupt.kg-drueckt { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 2px 8px rgba(0, 0, 0, .2), 0 6px 18px -6px var(--g-schein); }
 :where(:root:not([data-look="sport"])) .knopf:disabled, :where(:root:not([data-look="sport"])) .knopf[disabled] { box-shadow: none; }
+/* Rang mit Medaille (16.11.2026, Devin: „dass man da so eine Medaille direkt sieht, dass du dann hochgehen kannst und so dein Level-System siehst“).
+   rang.js baut die Medaille aus Band (.rm-band) und Scheibe (.rm-scheibe); Metall kommt aus --a/--b je Rang, das Band aus --band1/--band2.
+   Karte auf „Heute“: Medaille, Rang x von 10, Punkte, Balken bis zur nächsten (gesperrten) Medaille, kleiner Level-Weg. Rang-Seite: „Dein Weg nach oben“. */
+.rang-wappen.rm { width: 46px; height: 58px; display: block; background: none; clip-path: none; color: #fff; font-size: 17px; }
+.rang-wappen.rm.gross { width: 122px; height: 150px; font-size: 46px; }
+.rm-band { position: absolute; top: 0; left: 50%; width: 58%; height: 50%; transform: translateX(-50%);
+  background: linear-gradient(90deg, var(--band1) 0 34%, var(--band2) 34% 66%, var(--band1) 66%); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%); filter: brightness(.95); }
+.rm-scheibe { position: absolute; left: 0; right: 0; bottom: 0; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0) 38%), conic-gradient(from 200deg, var(--a), var(--b), var(--a), var(--b), var(--a));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .45), inset 0 -5px 10px rgba(0, 0, 0, .35), 0 8px 16px -8px rgba(0, 0, 0, .65); }
+.rm-scheibe::before { content: ""; position: absolute; inset: 15%; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .45); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .3); }
+.rang-wappen.rm.gross .rm-scheibe::before { border-width: 3px; }
+.rm-scheibe b { position: relative; margin: 0; font-weight: 800; text-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+.rang-wappen.rm:is(.t6, .t7, .t8, .t9, .t10) .rm-scheibe b { color: #16181d; text-shadow: 0 1px 0 rgba(255, 255, 255, .45); }
+/* Glanz, der ab und zu über die eigene Medaille läuft */
+.rm-scheibe::after { content: ""; position: absolute; top: -20%; bottom: -20%; width: 40%; left: -60%; transform: skewX(-18deg); background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .75), transparent); animation: rm-glanz 4.5s ease-in-out infinite; }
+@keyframes rm-glanz { 0%, 62% { left: -60%; } 82%, 100% { left: 130%; } }
+.rang-wappen.rm.zu { filter: grayscale(1) brightness(.85); opacity: .55; }
+.rang-wappen.rm.zu .rm-scheibe::after { content: none; }
+.rang-wappen.rm.zu .rm-scheibe b { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+.rang-auf .rang-wappen.rm.gross, .rang-held .rang-wappen.rm.gross { filter: drop-shadow(0 10px 24px color-mix(in srgb, var(--a) 55%, transparent)); }
+/* Karte auf „Heute“ */
+.rang-kurz.rm-karte { display: grid; gap: 8px; padding: 14px 16px; }
+.rm-oben { display: flex; align-items: center; gap: 14px; }
+.rm-karte .rang-kurz-text { gap: 0; }
+.rm-stufe { font-size: 13px; color: var(--text2); }
+.rm-karte .rang-kurz-text b { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.rm-karte .rang-kurz-pkt { display: grid; justify-items: end; line-height: 1.1; }
+.rm-karte .rang-kurz-pkt b { font-size: 22px; font-weight: 800; }
+.rm-karte .rang-kurz-pkt small { font-size: 12px; font-weight: 400; color: var(--text2); }
+.rm-ziel { display: flex; align-items: center; gap: 10px; }
+.rm-ziel .rang-balken { flex: 1; height: 10px; }
+.rm-ziel .rang-wappen.rm { width: 26px; height: 33px; font-size: 11px; }
+.rm-weg { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; padding-top: 2px; }
+.rm-weg i { height: 6px; border-radius: 99px; background: color-mix(in srgb, currentColor 16%, transparent); }
+.rm-weg i.da { background: var(--akzent-hell); }
+.rm-weg i.jetzt { background: var(--akzent-hell); box-shadow: 0 0 0 2px color-mix(in srgb, var(--akzent-hell) 35%, transparent), 0 0 10px var(--akzent-hell); }
+/* Rang-Seite: Dein Weg nach oben */
+.rm-pfad { position: relative; gap: 4px; }
+.rm-pfad::before { content: ""; position: absolute; left: 33px; top: 30px; bottom: 30px; width: 3px; border-radius: 3px; background: color-mix(in srgb, currentColor 14%, transparent); }
+.rm-pfad li { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 4px 14px; padding: 8px 10px; }
+.rm-pfad li .rang-balken { grid-column: 2; height: 6px; }
+.rm-pfad li.drin::after { content: ""; position: absolute; left: 33px; bottom: 50%; height: calc(100% + 4px); width: 3px; border-radius: 3px; background: var(--akzent-hell); z-index: 0; }
+.rm-pfad li.drin:last-child::after { content: none; }
+.rm-pfad li.jetzt::after { content: none; }
+.rm-pfad li .rang-wappen { position: relative; z-index: 1; }
+.rm-pfad-text { display: grid; gap: 1px; min-width: 0; }
+.rm-pfad li.zu { opacity: 1; }
+.rm-pfad li.zu .rm-pfad-text b { color: var(--text2); font-weight: 500; }
+.rm-pfad li.jetzt { background: color-mix(in srgb, var(--akzent) 14%, transparent); border-radius: 16px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--akzent) 35%, transparent); }
+.rm-pfad li.jetzt .rm-pfad-text b { font-size: 19px; }
+@media (prefers-reduced-motion: reduce) { .rm-scheibe::after { animation: none; content: none; } }
 </style>
 </head>
 <body>
