@@ -487,3 +487,34 @@ html:has(.raum), html:has(.raum) body { overflow: hidden; }
 }
 @media (hover: hover) and (pointer: fine) and (max-width: 520px) { .live-plan { width: calc(100% - 140px); } .raum.live .raum-unten { left: 12px; bottom: calc(140px + env(safe-area-inset-bottom, 0px)); justify-content: center; } }
 @media (hover: hover) and (pointer: fine) and (max-width: 1100px) { .raum.live .raum-tipp { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 300px); } }
+
+/* Fehlersuche 16.11.2026 abends (Devin: „alle Fehler … in dem Spiel“), erster Kunde Di 17.11.:
+   1) Die Stations-Karte erbte im Live-Gym die helle Spiel-Schrift (.raum.live { color: #F5F1E7 }): in Lagune und Klar standen Satz, Ziel und Reserve fast weiß auf hellem Grund.
+      Die Karte folgt jetzt der Farbwelt der App (Gold und Sport bleiben hell auf dunkel). */
+.raum.live .raum-karte { color: var(--text); }
+/* Kombitest 3D-Ablauf: in Klar hatten die Beschriftungen Satz/Ziel/Reserve nur Kontrast 3,4 (#6E6E73 auf #D2D2D7); dunkler = rund 6 */
+:root[data-look="klar"] .raum.live .raum-karte .tm-werte small { color: #48484D; }
+/* 2) Plan oben links: die Namen waren gekürzt (Handy „Beinpres…“, PC „Beinpresse (4…“). Am Handy etwas breiter (bis an die Spalte mit Schild und Knöpfen), überall lange Namen in zwei Zeilen. */
+@media (pointer: coarse), (hover: none) { .live-plan { width: min(262px, calc(100% - 128px)); max-width: none; } }
+@media (hover: hover) and (pointer: fine) and (min-width: 521px) and (max-width: 1100px) { .live-plan { width: 262px; } }
+.live-plan-liste li { align-items: start; padding: 2px 0; }
+.live-plan-liste li span { white-space: normal; text-overflow: clip; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.22; overflow-wrap: anywhere; }
+.live-plan-liste li em, .live-plan-liste li .live-haken { margin-top: 1px; }
+
+/* Gym einfacher (16.11.2026): „Übung starten“, Hilfe-Knopf, Einführung beim ersten Start */
+.raum-start { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 60px; margin: 12px 0 6px; border: 0; border-radius: 18px; cursor: pointer; font: inherit; font-size: 18px; font-weight: 800; color: var(--auf-akzent); background: var(--akzent-verlauf); box-shadow: var(--akzent-glanz); }
+.raum-start:active { transform: scale(.98); }
+.raum-start:focus-visible, .raum-hilfe:focus-visible, .raum-intro-los:focus-visible { outline: 3px solid var(--live-gold, #F7DE93); outline-offset: 3px; }
+.raum-start-zeichen { font-style: normal; font-size: 16px; }
+.raum-hilfe { position: absolute; z-index: 5; right: 14px; top: calc(150px + env(safe-area-inset-top, 0px)); width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--live-rand, rgba(232,196,104,.28)); background: var(--live-glas, rgba(14,14,18,.72)); color: var(--live-text, #F5F1E7); font: inherit; font-size: 20px; font-weight: 800; cursor: pointer; }
+.raum.an-station .raum-hilfe, .raum.faehrt .raum-hilfe { display: none; }
+@media (pointer: coarse), (hover: none) { .raum-hilfe { right: 8px; top: calc(178px + env(safe-area-inset-top, 0px)); } }
+.raum-intro { position: absolute; z-index: 30; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(8, 8, 10, .55); }
+.raum-intro-karte { width: min(420px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 22px 20px 18px; border-radius: 24px; background: #FBFAF7; color: #1C1C1E; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+.raum-intro-karte h2 { margin: 0 0 12px; font-size: 22px; color: #1C1C1E; }
+.raum-intro-karte p { color: #1C1C1E; }
+.raum-intro-zeile { display: grid; grid-template-columns: 44px 1fr; column-gap: 12px; align-items: center; padding: 8px 0; }
+.raum-intro-zeile i { grid-row: span 2; font-style: normal; font-size: 28px; text-align: center; }
+.raum-intro-zeile p { margin: 0; font-weight: 800; font-size: 16px; }
+.raum-intro-zeile small { color: #48484D; font-size: 14px; line-height: 1.3; }
+.raum-intro-los { width: 100%; min-height: 56px; margin-top: 14px; border: 0; border-radius: 16px; cursor: pointer; font: inherit; font-size: 17px; font-weight: 800; color: #fff; background: #1C1C1E; }

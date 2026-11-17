@@ -310,10 +310,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   wurzel.classList.add('faehrt');
   document.body.append(wurzel);
 
-  let a = null, offen = true, beobachter = null, aufraeumen = null, spiegelEnde = null, livePlan = null, liveKarte = null;   // livePlan, liveKarte: Anzeige im Live-Gym
+  let a = null, offen = true, beobachter = null, sichtBeob = null, aufraeumen = null, spiegelEnde = null, livePlan = null, liveKarte = null;   // livePlan, liveKarte: Anzeige im Live-Gym
   function schliessen(geschafft, still) {
     if (!offen) return; offen = false;
     if (beobachter) beobachter.disconnect();
+    if (sichtBeob) sichtBeob.disconnect();
     if (aufraeumen) aufraeumen();
     if (spiegelEnde) spiegelEnde();
     if (a) { a.entsorgen(); if (a.renderer.forceContextLoss) a.renderer.forceContextLoss(); }
@@ -1155,10 +1156,16 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (naheTuer) weiter.append(el('small', null, 'Tür öffnen'), el('b', null, 'PR-Raum'));
     else if (nahe != null && !stationen[nahe].fertig) weiter.append(el('small', null, 'Hier trainieren'), el('b', null, stationen[nahe].u.name));
     else if (n == null) weiter.append(el('small', null, 'Alles geschafft'), el('b', null, 'Zur Tür'));
-    else weiter.append(el('small', null, n === 0 ? 'Los geht’s' : 'Nächste Station: ' + (n + 1)), el('b', null, stationen[n].u.name));
+    else weiter.append(el('small', null, 'Direkt zur nächsten Übung · ' + (n + 1) + ' von ' + N), el('b', null, stationen[n].u.name));
     if (n == null) { schildMalen(true); lichtSaeule.visible = false; rahmenM.opacity = 1; }
     else { lichtSaeule.visible = true; lichtSaeule.position.set(stationen[n].pos.x, 1.6, stationen[n].pos.z); }
   }
+  wurzel.dkTest = () => {   // nur lesen, für den Rundgang am PC
+    const n = naechste(), st = n != null ? stationen[n] : null; let sp = null;
+    const r = bild.getBoundingClientRect(), wo = (q) => { const v = raum.localToWorld(q.pos.clone().setY(0.7)).project(a.kamera); return v.z < 1 ? { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height } : null; };
+    if (st) sp = wo(st);
+    return { x: F.x, z: F.z, kamW, modus, n, sp, alle: stationen.map((q) => ({ i: q.i, fertig: !!q.fertig, sp: wo(q) })) };
+  };
   function modusSetzen(m) {
     modus = m;
     wurzel.classList.toggle('an-station', m === 'station');
@@ -1167,7 +1174,15 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function pop(klein, gross) {
     popEl.textContent = ''; popEl.append(el('small', null, klein), gross); popEl.classList.remove('an'); void popEl.offsetWidth; popEl.classList.add('an');
   }
-  function lauf(punkte2, dann) { gang = { punkte: punkte2, i: 0, dann }; }
+  function lauf(punkte2, dann) { gang = { punkte: punkte2, i: 0, dann, v: (gang && gang.v) || gehV || 0 }; }   // v: das Tempo läuft weiter, wenn ein neues Ziel kommt
+  // 17.11. (gleiche Aktion, gleiche Wirkung): Eigene Eingabe (Knüppel, Tasten, Boden antippen) beendet einen Weg, den die Figur von selbst geht (zum Gerät, zur Waage, zum Spiegel, zur Tür).
+  // Vorher blieb sie danach im Zustand „läuft“ hängen: Knüppel, großer Knopf und Kreis gingen nicht mehr. Kurz vor dem Ankommen (Kamera fährt schon ans Gerät) zählt die Eingabe nicht.
+  function selbstGehen() {
+    if (modus !== 'lauf') return modus === 'gehen';
+    if (ankommt || aktiv != null || waageAktiv || spiegelAktiv) return false;
+    gang = null; warte = 0; nachWarte = null; tuerUnterwegs = false; modusSetzen('gehen'); kameraZu(verfolgen, 0.5);
+    return true;
+  }
 
   /* Zur Station laufen, kurz drehen, dann taucht die Kamera ein und die Figur geht ins Gerät */
   function zurStation(i) {
@@ -1177,11 +1192,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
     modusSetzen('lauf');
     const s = stationen[i];
-    lauf(route(F, s.start), () => { zielH = s.startH; warte = STILL ? 0 : 0.22; nachWarte = () => ankommen(i); });
+    lauf(route(F, s.start), () => { zielH = s.startH; warte = STILL ? 0 : LOOKL ? 0.34 : 0.22; nachWarte = () => ankommen(i); });
     kameraZu(verfolgen, 0.7);
   }
   function ankommen(i) {
-    kreisSperre = i;   // nach „Zurück“ steht die Figur im Kreis: erst nach dem Verlassen startet er wieder
+    ankommt = true; kreisSperre = i;   // nach „Zurück“ steht die Figur im Kreis: erst nach dem Verlassen startet er wieder
     const s = stationen[i];
     F.copy(s.start); H = zielH = s.startH;
     if (s.anim) setzeAktiv(i);
@@ -1194,12 +1209,29 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     // Bahn der Kamera um die Figur: gemerkt werden Radius, Winkel und Höhe; an der Wand kürzt umlaufKamera den Radius in jedem Bild, so geht sie nie durch die Wand
     const bahn = { mitte: blick, r: Math.hypot(off.x, off.z), w: Math.atan2(off.x, off.z), y: sicht.y, fov: sichtStation(), versatz: sv.senken, heben: 0, hebenZiel: 0 }, start = umlaufKamera(halle, bahn);
     kameraZu({ pos: V(start.x, start.y, start.z), blick, fov: start.fov || sichtStation() }, 1.5, () => {
-      orbit = bahn;
+      orbit = bahn; ankommt = false;
       kNr.textContent = pr ? s.u.name : 'Station ' + (i + 1) + ' von ' + N; kNr.dataset.station = i; kInhalt.textContent = ''; kName.textContent = pr ? (s.u.wert || 'Noch offen') : s.u.name; karteUnten(false, true);
       if (s.fertig || !beiStation) kInhalt.append(el('h2', null, s.u.name), el('p', 'raum-dosis', s.u.dosis || ''), el('p', 'raum-klein', s.fertig ? 'Diese Station hast du schon geschafft.' : (s.u.pause || '')));
-      else beiStation(i, kInhalt);
+      else if (pr) beiStation(i, kInhalt);
+      else startSchirm(i);
       karte.classList.add('offen'); modusSetzen('station');
     });
+  }
+  function startSchirm(i) {   // 16.11.2026: eindeutiger Start, die Zeit der Übung läuft erst ab hier
+    const s = stationen[i], b = el('button', 'raum-start'); b.type = 'button'; b.append(el('i', 'raum-start-zeichen', '▶'), el('span', null, 'Übung starten'));
+    kInhalt.append(el('h2', null, s.u.name), el('p', 'raum-dosis', s.u.dosis || ''), b, el('p', 'raum-klein', 'Die Figur zeigt dir die Bewegung. Danach tippst du nach jedem Satz auf „Satz fertig“.'));
+    b.addEventListener('click', () => { if (+kNr.dataset.station !== i || !karte.classList.contains('offen') || !b.isConnected) return; kInhalt.textContent = ''; beiStation(i, kInhalt); });
+    setTimeout(() => { try { if (FEIN_ZEIGER) b.focus({ preventScroll: true }); } catch (e) {} }, 60);
+  }
+  /* Direkt zur nächsten Übung (16.11.2026): kein Laufen nötig, kurzer Blitz, die Figur steht an der Station */
+  function direktZur(i) {
+    if (modus === 'draussen' || modus === 'station' || !stationen[i]) return;
+    tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null; gang = null; warte = 0; nachWarte = null; gehX = gehY = 0;
+    stationen.forEach((x) => { x.schild.visible = true; });
+    if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
+    blitz.classList.remove('an'); void blitz.offsetWidth; blitz.classList.add('an');
+    modusSetzen('lauf');
+    ankommen(i);
   }
   function zurueckZurKarte(hochspringen) {
     karte.classList.remove('offen'); orbit = null;
@@ -1251,14 +1283,14 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let waageAktiv = false, waageGesperrt = false, waageZeit = 0, kreisSperre = null, kreisZeit = 0;
   // G19 (16.11., Vorgaben von 3D-Ablauf, Devin: „lass den Charakter viel natürlicher wirken“): Gehen 1,5 m/s, Joggen (Sprint, Weg zum Gerät) 2,6–2,8 m/s, Schritte aus dem zurückgelegten Weg,
   // Anlaufen und Anhalten weich, Drehen höchstens 265 °/s, im Stand Atmen und Gewichtsverlagerung
-  let gehV = 0, gehDx = 0, gehDz = -1, vGlatt = 0; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false; const GEH = 1.5, JOGG = 2.8, FV = V(0, 0, 0);   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
+  let gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, JOGG = 2.8, FV = V(0, 0, 0);   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
   function zurWaage() {
     if (!waage || modus === 'draussen' || waageAktiv || spiegelAktiv) return;
     tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
     stationen.forEach((x) => { x.schild.visible = true; });
     if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
     modusSetzen('lauf');
-    lauf(route(F, waage.pos), () => { zielH = WAAGE_W; warte = STILL ? 0 : 0.22; nachWarte = statusZeigen; });
+    lauf(route(F, waage.pos), () => { zielH = WAAGE_W; warte = STILL ? 0 : LOOKL ? 0.34 : 0.22; nachWarte = statusZeigen; });
     kameraZu(verfolgen, 0.7);
   }
   function statusKarte() {   // Inhalt der Karte aus dem Spielstand: Level, Balken, Punkte, Serie, Einheiten, nächstes Ziel (alles Text, nichts Fremdes in die Seite)
@@ -1347,7 +1379,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     stationen.forEach((x) => { x.schild.visible = true; });
     if (aktiv != null) frei(stationen[aktiv].start, stationen[aktiv].startH);
     modusSetzen('lauf');
-    lauf(route(F, spiegel.pos), () => { zielH = SPIEGEL_W; warte = STILL ? 0 : 0.22; nachWarte = spiegelStart; });
+    lauf(route(F, spiegel.pos), () => { zielH = SPIEGEL_W; warte = STILL ? 0 : LOOKL ? 0.34 : 0.22; nachWarte = spiegelStart; });
     kameraZu(verfolgen, 0.7);
   }
   function spiegelKarte() {
@@ -1437,7 +1469,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }
   let sagUhr = null;
   function sag(t) { meldung.textContent = t; meldung.classList.add('offen'); clearTimeout(sagUhr); sagUhr = setTimeout(() => meldung.classList.remove('offen'), 3200); }
-  weiter.addEventListener('click', () => { if (naheTuer) return zurPrTuer(LOOKL); const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else zurStation(n); });
+  weiter.addEventListener('click', () => { if (naheTuer) return zurPrTuer(LOOKL); const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else if (n === nahe || pr || !LIVE) zurStation(n); else direktZur(n); });
 
   /* ---------- Antippen, Wischen, Knüppel ---------- */
   const strahl = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -1469,15 +1501,18 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (d.y >= -0.01) return;
     const t = -o.y / d.y, x = o.x + d.x * t, z = o.z + d.z * t;
     if (Math.abs(x) < TUER_B && z < zEnde + 3.6) return rausgehen();
+    if (!selbstGehen()) return;
     tipp.classList.add('weg');
     lauf([V(klemme(x, -BREITE / 2 + FIGUR_RAND, BREITE / 2 - FIGUR_RAND), 0, klemme(z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND))], null);
   }
+  const FEIN_ZEIGER = matchMedia('(pointer: fine)').matches;
+  const OHNE_HAND = true;   // 16.11.2026 (Devin: „Keine manuelle Kamerasteuerung, die Kamera folgt ruhig“): Antippen geht, Ziehen dreht nichts mehr
   const finger = { id: null, x: 0, y: 0, sx: 0, sy: 0, zeit: 0, weit: false };
   const zeiger = new Map(); let pinch = null;   // alle Finger auf dem Bild: zwei Finger zoomen (an der Übung, an der Waage und am Spiegel rückt die Kamera heran, beim Gehen ändert sich die Höhe wie beim Ziehen nach oben und unten)
   const ZOOM_MIN = 0.3, ZOOM_MAX = 1.25, ZOOM_NAH = 1.5;   // Faktor auf den Radius der Bahn (orbit.r0 = der Radius zu Beginn); näher als 1,5 m an die Mitte geht die Kamera nie
   const zoomSetzen = (z) => { if (orbit.r0 == null) orbit.r0 = orbit.r; orbit.r = Math.max(orbit.r0 * klemme(z, ZOOM_MIN, ZOOM_MAX), Math.min(orbit.r0, ZOOM_NAH)); };
   const pinchStart = () => {
-    const p = [...zeiger.entries()]; if (p.length !== 2 || !((modus === 'station' && orbit) || modus === 'gehen' || modus === 'lauf')) return;
+    const p = [...zeiger.entries()]; if (OHNE_HAND) { finger.weit = true; return; } if (p.length !== 2 || !((modus === 'station' && orbit) || modus === 'gehen' || modus === 'lauf')) return;
     const d = Math.hypot(p[0][1].x - p[1][1].x, p[0][1].y - p[1][1].y); if (d < 20) return;
     finger.weit = true; tipp.classList.add('weg');
     pinch = { a: p[0][0], b: p[1][0], d0: d, z0: modus === 'station' && orbit ? (orbit.r0 == null ? 1 : orbit.r / orbit.r0) : kamZ };
@@ -1499,7 +1534,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (e.pointerId !== finger.id) return;
     const dx = e.clientX - finger.x, dy = e.clientY - finger.y; finger.x = e.clientX; finger.y = e.clientY;
     if (Math.hypot(e.clientX - finger.sx, e.clientY - finger.sy) > 8) finger.weit = true;
-    if (!finger.weit) return;
+    if (!finger.weit || OHNE_HAND) return;
     if (modus === 'station' && orbit) { orbit.w -= dx * 0.008; orbit.y = klemme(orbit.y - dy * 0.008, ORBIT_Y_MIN, ORBIT_Y_MAX); }
     else if (modus === 'gehen' || modus === 'lauf') { kamHand = performance.now(); kamW -= dx * 0.006; if (LIVE) kamNick = klemme(kamNick + dy * 0.004, -0.6, 1); else kamZ = klemme(kamZ + dy * 0.004, 0.55, 2.3); tipp.classList.add('weg'); }   // Live-Gym: ziehen = umsehen (Zoom mit Mausrad oder zwei Fingern)
   });
@@ -1512,6 +1547,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   bild.addEventListener('pointerup', loslassen); bild.addEventListener('pointercancel', loslassen);
   bild.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (OHNE_HAND) return;
     if (modus === 'station' && orbit) { if (orbit.r0 == null) orbit.r0 = orbit.r; zoomSetzen(orbit.r / orbit.r0 * Math.exp(e.deltaY * 0.0012)); }   // an der Übung: Mausrad zoomt
     else kamZ = klemme(kamZ + e.deltaY * 0.001, 0.55, 2.3);
   }, { passive: false });
@@ -1521,7 +1557,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     let x = (e.clientX - mx) / gr, y = (e.clientY - my) / gr; const l = Math.hypot(x, y); sprint = l > 1.12; if (l > 1) { x /= l; y /= l; }   // über den Rand gezogen: rennen
     gehX = x; gehY = y; stickK.style.transform = 'translate(' + x * gr + 'px,' + y * gr + 'px)';
   };
-  stick.addEventListener('pointerdown', (e) => { stickId = e.pointerId; try { stick.setPointerCapture(e.pointerId); } catch (x) {} stickSetzen(e); gang = null; tipp.classList.add('weg'); });
+  stick.addEventListener('pointerdown', (e) => { stickId = e.pointerId; try { stick.setPointerCapture(e.pointerId); } catch (x) {} stickSetzen(e); if (selbstGehen()) gang = null; tipp.classList.add('weg'); });
   stick.addEventListener('pointermove', (e) => { if (e.pointerId === stickId) stickSetzen(e); });
   const stickLos = (e) => { if (e.pointerId !== stickId) return; stickId = null; gehX = gehY = 0; sprint = false; stickK.style.transform = ''; };
   stick.addEventListener('pointerup', stickLos); stick.addEventListener('pointercancel', stickLos);
@@ -1542,6 +1578,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const tasteNeu = (e) => {
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
     if (LIVE && e.type === 'keydown' && !e.repeat) {   // Live-Gym: E = das, was der große Knopf gerade anbietet; Tab = Plan auf- und zuklappen
+      if ((e.key === 'e' || e.key === 'E' || e.key === 'Enter') && modus === 'station') { const st = kInhalt.querySelector('.raum-start'); if (st) { st.click(); e.preventDefault(); } return; }
       if (e.key === 'e' || e.key === 'E') { if (weiter.offsetParent && getComputedStyle(weiter).visibility !== 'hidden') weiter.click(); e.preventDefault(); return; }
       if (e.key === 'Tab') { e.preventDefault(); if (livePlan) livePlan.umschalten(); return; }
     }
@@ -1550,7 +1587,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (e.type === 'keydown') tasten.add(t); else tasten.delete(t);
     const x = (tasten.has('r') ? 1 : 0) - (tasten.has('l') ? 1 : 0), y = (tasten.has('h') ? 1 : 0) - (tasten.has('v') ? 1 : 0), l = Math.hypot(x, y) || 1;
     gehX = x / l; gehY = y / l; e.preventDefault();
-    if (x || y) { gang = null; tipp.classList.add('weg'); }
+    if ((x || y) && selbstGehen()) { gang = null; tipp.classList.add('weg'); }
   };
   if (spieler || LIVE || pr) { window.addEventListener('keydown', tasteNeu); window.addEventListener('keyup', tasteNeu); aufraeumen = () => { window.removeEventListener('keydown', tasteNeu); window.removeEventListener('keyup', tasteNeu); }; }
   /* ---------- Führung (04.11.2026, Devin: Striche, die „die ganze Zeit den Charakter verfolgen und ihn immer zu der nächsten Übung führen“): Vom Charakter laufen Striche über den Boden zur nächsten Station, danach zur Tür, und ziehen beim Laufen mit. Sie nehmen den Gang in der Mitte, sonst gingen sie durch fremde Geräte. ---------- */
@@ -1844,7 +1881,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     schildL.append(zeichne(240, 120, (x, b) => { dkZeichen(x, b / 2, 44, 64, ST.logoA, ST.logoB); x.fillStyle = '#F5F1E7'; x.font = '600 21px ' + SCHRIFT; x.textAlign = 'center'; x.fillText('C O A C H', b / 2, 104); }));
     wurzel.append(schildL);
     const tastenL = el('div', 'live-tasten'); tastenL.setAttribute('aria-hidden', 'true');
-    for (const [k, t] of [['WASD', 'Laufen'], ['Shift', 'Rennen'], ['Maus', 'Umsehen'], ['E', 'Interagieren'], ['TAB', 'Plan']]) { const z = el('span'); z.append(el('kbd', null, k), t); tastenL.append(z); }
+    for (const [k, t] of [['Klick', 'Hingehen'], ['WASD', 'Laufen'], ['Shift', 'Rennen'], ['E', 'Starten'], ['TAB', 'Plan']]) { const z = el('span'); z.append(el('kbd', null, k), t); tastenL.append(z); }
     wurzel.append(tastenL);
     // Runde Karte: Halle, Geräte, Waage, Weg zum nächsten Gerät; dreht mit der Kamera (vorn ist oben), N zeigt zur Rückwand der Halle
     const kc = el('canvas', 'live-karte'); kc.setAttribute('aria-hidden', 'true'); wurzel.append(kc);
@@ -1870,7 +1907,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       kx.fillStyle = '#F5F1E7'; kx.font = '700 ' + Math.round(10 * d) + 'px ' + SCHRIFT; kx.textAlign = 'center'; kx.textBaseline = 'middle'; kx.fillText('N', R + si * (R - 11 * d), R - co * (R - 11 * d));
       kx.save(); kx.translate(R, R); kx.rotate(kamW - H + Math.PI); kx.fillStyle = '#FFFFFF'; kx.beginPath(); kx.moveTo(0, -7 * d); kx.lineTo(5 * d, 6 * d); kx.lineTo(0, 3 * d); kx.lineTo(-5 * d, 6 * d); kx.closePath(); kx.fill(); kx.restore();
     };
-    tipp.textContent = matchMedia('(pointer: coarse)').matches ? 'Knüppel: laufen · über das Bild wischen: umsehen' : 'WASD: laufen · Maus ziehen: umsehen · in den Kreis laufen: trainieren';
+    tipp.textContent = matchMedia('(pointer: coarse)').matches ? 'Boden antippen: hingehen · Gerät antippen: trainieren' : 'Boden anklicken: hingehen · Gerät anklicken: trainieren · WASD geht auch';
   }
 
   /* ---------- Live-Gym: Qualität (Ziel 60 Bilder pro Sekunde, so scharf wie das Gerät schafft). Start am PC Stufe 4, am Handy Stufe 3; fällt der Schnitt über 1,5 s unter etwa 53 Bilder,
@@ -1889,13 +1926,25 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const mittel = qSumme / qN * 1000; qSumme = 0; qN = 0;
     if (mittel > 18.8 && qStufe > 0) { qStufe--; qAnwenden(); }
   };
-  if (LOOKL) { qAnwenden(); a.beiBild = () => leuchten.zeichne(a.renderer); }
+  // 17.11. (Devin: „flüssig auf schwächeren Smartphones“): Steht die Figur am Handy still und nichts fährt, wird nur jedes zweite Bild gerechnet (30 statt 60 pro Sekunde).
+  // Atmen, Meer und Ringe laufen weiter, nur in halber Bildrate. Sobald etwas passiert (Knüppel, Laufen, Kamera, Station), sofort wieder volle Rate. Am PC nie.
+  let spar = 0, ruhigT = 0, sparBild = false; const zaehler = { bilder: 0, gerechnet: 0 };   // zaehler: nur für die Prüfseite
+  const sparen = (dt) => {
+    const ruhig = !FEIN && aktiv == null && modus === 'gehen' && !gang && !kamFlug && !auftritt && !gehX && !gehY && gehV === 0 && !standSchritt && fussAusT === 0 && hupf === 0 && !posAn && schrittL < 0.005;
+    ruhigT = ruhig ? ruhigT + dt : 0; sparBild = ruhigT > 1.5 && !sparBild;
+    if (sparBild) spar += dt;
+    return sparBild;
+  };
+  { const malen = a.renderer.render.bind(a.renderer); a.renderer.render = (s, k) => { if (!sparBild) malen(s, k); }; }
+  if (LOOKL) { qAnwenden(); a.beiBild = () => { if (!sparBild) leuchten.zeichne(a.renderer); }; }
 
-  a.kameraFolgt = (dt) => {
+  a.kameraFolgt = (dtRoh) => {
+    zaehler.bilder++; if (sparen(dtRoh)) return; zaehler.gerechnet++;
+    const dt = dtRoh + spar; spar = 0;
     zeit += dt;
     if (liveKarte) liveKarte(dt);
     if (!STILL) boote.forEach((g, i) => { g.position.y = -0.45 + Math.sin(zeit * 0.7 + i * 1.7) * 0.07; g.rotation.z = Math.sin(zeit * 0.55 + i) * 0.025; g.rotation.x = Math.sin(zeit * 0.43 + i * 2.1) * 0.02; });
-    if (LOOKL) { qMessen(dt); leuchten.stark = 0.45 + 0.27 * zn; leuchten.schwelle = 0.93 - 0.21 * zn; }   // nachts mehr Schein, am Abend weniger (der helle Himmel soll nicht verschwimmen)
+    if (LOOKL) { qMessen(dtRoh); leuchten.stark = 0.45 + 0.27 * zn; leuchten.schwelle = 0.93 - 0.21 * zn; }   // nachts mehr Schein, am Abend weniger (der helle Himmel soll nicht verschwimmen)
     // Figur: läuft oder steht (an der Station übernimmt die Ansicht)
     if (aktiv == null) {
       let bewegt = 0;
@@ -1903,7 +1952,12 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       else if (nachWarte) { const f = nachWarte; nachWarte = null; f(); }
       if (aktiv == null) {
         if (gang) {
-          let rest = (STILL ? 1000 : gang.tempo || (LOOKL ? 2.6 : TEMPO)) * dt;
+          const vMax = gang.tempo || (LOOKL ? 2.6 : TEMPO); let vG = vMax;
+          if (LOOKL && !STILL) {   // 17.11. (Fuß rutschte beim Losgehen und beim Ankommen bis 10 cm): auf dem Weg zum Gerät oder zum angetippten Punkt weich anlaufen (rund 0,4 s) und vor dem Ziel abbremsen
+            let bis = 0, p = F; for (let j = gang.i; j < gang.punkte.length; j++) { bis += Math.hypot(gang.punkte[j].x - p.x, gang.punkte[j].z - p.z); p = gang.punkte[j]; }
+            gang.v = Math.min(vMax, (gang.v || 0) + 7 * dt, Math.max(0.6, Math.sqrt(2 * 4 * bis))); vG = gang.v;
+          }
+          let rest = (STILL ? 1000 : vG) * dt;
           while (rest > 0 && gang) {
             const z = gang.punkte[gang.i], dx = z.x - F.x, dz = z.z - F.z, l = Math.hypot(dx, dz);
             if (l <= rest) {
@@ -1916,15 +1970,19 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           const sin = Math.sin(kamW), cos = Math.cos(kamW), st = Math.hypot(gehX, gehY);
           let dx = gehX * cos + gehY * sin, dz = -gehX * sin + gehY * cos;
           if (LOOKL) {   // G19: Tempo steigt in rund 0,3 s, fällt in rund 0,25 s; ohne Knüppel läuft die Figur in der letzten Richtung aus
-            if (st > 0.01) { gehDx = dx / st; gehDz = dz / st; }
-            const vZiel = st > 0.01 ? Math.min(1, st) * (sprint ? JOGG : GEH) : 0;
-            gehV += (vZiel - gehV) * Math.min(1, dt * (vZiel > gehV ? 9 : 12)); if (gehV < 0.02 && !vZiel) gehV = 0;
-            F.x += gehDx * gehV * dt; F.z += gehDz * gehV * dt; zielH = Math.atan2(gehDx, gehDz); bewegt = gehV / GEH; dx = gehDx; dz = gehDz;
+            // 17.11. (Wende rutschte 16 cm): Tempo als Richtung mit Betrag. Kehrt man um, bremst die Figur erst ab und läuft dann in die neue Richtung an (vorher sprang die Laufrichtung sofort um, sie glitt rückwärts)
+            const vZiel = st > 0.01 ? Math.min(1, st) * (sprint ? JOGG : GEH) : 0, zx = st > 0.01 ? dx / st * vZiel : 0, zz = st > 0.01 ? dz / st * vZiel : 0;
+            gegenEingabe = st > 0.01 && gehV > 0.05 && (dx / st * gehDx + dz / st * gehDz) < -0.3;
+            const kv = Math.min(1, dt * (vZiel > gehV ? 9 : 12)); gehVx += (zx - gehVx) * kv; gehVz += (zz - gehVz) * kv; gehV = Math.hypot(gehVx, gehVz);
+            if (gehV < 0.02 && !vZiel) gehV = gehVx = gehVz = 0;
+            if (fussAusT > 0) gehV = gehVx = gehVz = 0;   // 17.11.: während des Anhalte-Schritts steht der Körper; danach läuft er neu an
+            if (gehV > 1e-4) { gehDx = gehVx / gehV; gehDz = gehVz / gehV; }
+            F.x += gehVx * dt; F.z += gehVz * dt; zielH = st > 0.01 ? Math.atan2(dx, dz) : Math.atan2(gehDx, gehDz); bewegt = gehV / GEH; dx = gehDx; dz = gehDz;
           } else {
             const tempo = TEMPO * (LIVE && sprint ? 1.75 : 1);
             F.x += dx * tempo * dt; F.z += dz * tempo * dt; zielH = Math.atan2(dx, dz); bewegt = st * tempo / TEMPO;
           }
-          if (LIVE && performance.now() - kamHand > 900 && !STILL) {   // 16.11. (Devin: „wenn ich mich umdrehen will, sieht das komplett komisch aus“): beim Laufen dreht die Kamera weich hinter die Figur, außer man läuft auf die Kamera zu
+          if (LIVE && performance.now() - kamHand > 900) {   // 16.11. (Devin: „wenn ich mich umdrehen will, sieht das komplett komisch aus“): beim Laufen dreht die Kamera weich hinter die Figur, außer man läuft auf die Kamera zu
             const d = winkelDiff(kamW, zielH + Math.PI); if (Math.abs(d) < 2.0) kamW += d * (1 - Math.exp(-dt * 2.2 * Math.min(1, st)));
           }
           for (const h of hindernisse) {   // Live-Gym: nicht durch Möbel, Statuen, Pflanzen und Deko-Geräte laufen, sondern daran entlang
@@ -1935,13 +1993,21 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           F.x = klemme(F.x, -BREITE / 2 + FIGUR_RAND, BREITE / 2 - FIGUR_RAND); F.z = klemme(F.z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND);
         }
       }
+      const ausStation = warAktiv; warAktiv = aktiv != null;   // zurück von Station, Waage oder Spiegel: wie versetzt (die Merker vom Hinlaufen gelten nicht mehr)
       if (aktiv == null) {
         if (LOOKL) {
           const w = winkelDiff(H, zielH); H += klemme(w * Math.min(1, dt * 10), -4.0 * dt, 4.0 * dt);   // G19: höchstens 230 °/s, weich
           const weg = Math.hypot(F.x - FV.x, F.z - FV.z); FV.set(F.x, 0, F.z);
-          const v = dt > 0.001 && weg < 1 ? weg / dt : 0; vGlatt += (v - vGlatt) * Math.min(1, dt * 12);
-          schrittL += ((vGlatt > 0.08 ? SCHRITT * klemme(vGlatt / GEH, 0.55, 1.65) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo: Gehen rund 125, Joggen rund 145 Schritte pro Minute
-          if (schrittL > 0.012 && weg < 1) ph += Math.PI * weg / Math.max(0.25, 2 * schrittL);   // Takt aus dem Weg: die Füße schaffen genau den Weg
+          // Kombitest 3D-Ablauf (16.11.): Versetzt (Zurück von der Station, Waage, Spiegel, PR-Tür, Start, Prüfseite) = weiter als Rennen in einem Bild schafft: kein Schritt, kein Anhalten,
+          // alle Fuß-Merker weg und die Figur steht sofort am neuen Platz (sonst zog das Anhalten sie zum alten Standfuß zurück).
+          const versetzt = (ausStation || weg > Math.max(0.25, JOGG * dt * 3));
+          if (versetzt) { for (const sd of ['l', 'r']) { fussFest[sd].an = false; fussFest[sd].ab = 0; fussZuletzt[sd] = null; standAnker[sd].an = false; fussWeltZuletzt[sd] = null; } fussAusT = 0; warLauf = false; standSchritt = null; vGlatt = 0; schrittL = 0; gehV = gehVx = gehVz = 0; }
+          const v = dt > 0.001 && weg < 1 && fussAusT === 0 && !versetzt ? weg / dt : 0; vGlatt += (v - vGlatt) * Math.min(1, dt * 12);   // Fehlersuche 16.11.: beim Anhalten setzt sich der Körper über den Standfuß; das ist kein Gehen (sonst fing der Schritt neu an und die Füße sprangen bis 24 cm)
+          // 17.11. (Kombitest: Fuß rutscht nach dem Anhalten bis 32 cm): Wird die Figur langsam und will nicht weiter (oder kehrt um), endet der Gang sofort und der Anhalte-Schritt übernimmt.
+          // Vorher lief der Schritt noch rund 0,4 s am Platz weiter, der Takt stand, die Schrittweite schrumpfte, und der Fuß am Boden glitt zur Mitte.
+          if (schrittL > 0.012 && !gang && vGlatt < 0.3 && (!(gehX || gehY) || gegenEingabe)) { schrittL = 0; gehV = gehVx = gehVz = 0; }
+          else schrittL += ((vGlatt > 0.08 ? SCHRITT * klemme(vGlatt / GEH, 0.55, 1.65) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo: Gehen rund 125, Joggen rund 145 Schritte pro Minute
+          if (schrittL > 0.012 && weg < 1 && !versetzt) ph += Math.PI * weg / Math.max(0.25, 2 * schrittL);   // Takt aus dem Weg: die Füße schaffen genau den Weg
         } else {
           H += winkelDiff(H, zielH) * Math.min(1, dt * 11);
           schrittL += ((bewegt ? SCHRITT * Math.max(0.55, bewegt) : 0) - schrittL) * Math.min(1, dt * 9);
@@ -1950,37 +2016,69 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         const lauft = schrittL > 0.012;
         if (lauft && !LOOKL) ph += (TEMPO * Math.max(0.6, bewegt || 0.6) / Math.max(0.2, schrittL)) * dt;
         const pose = lauft ? stehen(posi, H, { phase: ph, schritt: schrittL, neigung: 2 + 8 * (schrittL / SCHRITT) }) : stehen(posi, H);
-        if (LOOKL && lauft && !STILL) for (const [sd, sg] of [['l', 1], ['r', -1]]) {   // G19: der Standfuß bleibt am Boden stehen, wo er aufgesetzt hat; beim Abheben gleitet er in 0,12 s in die Schwungbahn
+        if (LOOKL && lauft) for (const [sd, sg] of [['l', 1], ['r', -1]]) {   // G19: der Standfuß bleibt am Boden stehen, wo er aufgesetzt hat; beim Abheben gleitet er in 0,12 s in die Schwungbahn
           const fp = pose.fuss[sd], fz = fussFest[sd];
-          if (sg * Math.cos(ph) <= 0) { if (!fz.an) { fz.an = true; fz.x = F.x + fp.x; fz.z = F.z + fp.z; } fp.x = fz.x - F.x; fp.z = fz.z - F.z; }
-          else { if (fz.an) { fz.an = false; fz.dx = fz.x - F.x - fp.x; fz.dz = fz.z - F.z - fp.z; fz.ab = 1; } if (fz.ab > 0) { fz.ab = Math.max(0, fz.ab - dt / 0.12); const k = glatt(fz.ab); fp.x += fz.dx * k; fp.z += fz.dz * k; fp.y += 0.02 * Math.sin(Math.PI * k); } }   // beim Hinübergleiten ist der Fuß schon in der Luft
+          if (sg * Math.cos(ph) <= 0) { if (!fz.an) { fz.an = true; const w = !warLauf && fussWeltZuletzt[sd]; fz.x = w ? w.x : F.x + fp.x; fz.z = w ? w.z : F.z + fp.z; } fp.x = fz.x - F.x; fp.z = fz.z - F.z; }   // 17.11.: beim Losgehen bleibt der Standfuß, wo er im Stand war (vorher sprang er an die Stelle aus dem Gang)
+          else { if (fz.an) { fz.an = false; fz.dx = fz.x - F.x - fp.x; fz.dz = fz.z - F.z - fp.z; fz.ab = 1; } else if (!warLauf && fussWeltZuletzt[sd]) { const w = fussWeltZuletzt[sd]; fz.dx = w.x - F.x - fp.x; fz.dz = w.z - F.z - fp.z; fz.ab = 1; } if (fz.ab > 0) { fz.ab = Math.max(0, fz.ab - dt / 0.14); const k = glatt(klemme(fz.ab * 1.35, 0, 1)); fp.x += fz.dx * k; fp.z += fz.dz * k; fp.y += 0.03 * Math.sin(Math.PI * Math.pow(1 - fz.ab, 0.6)); } }   // 17.11.: erst abheben, dann hinübergleiten (vorher schleifte die Spitze bis 7 cm über den Boden)   // beim Hinübergleiten ist der Fuß schon in der Luft
         }
-        if (LOOKL && !STILL) {   // G19: Anhalten in 0,3 s: der Fuß am Boden bleibt stehen, der Körper setzt sich über ihn, der andere Fuß tritt mit kleinem Heben daneben (letzter Schritt schließt die Füße)
+        if (LOOKL) {   // G19: Anhalten in 0,3 s: der Fuß am Boden bleibt stehen, der Körper setzt sich über ihn, der andere Fuß tritt mit kleinem Heben daneben (letzter Schritt schließt die Füße)
           if (lauft) { for (const sd of ['l', 'r']) fussZuletzt[sd] = { p: pose.fuss[sd].clone(), an: fussFest[sd].an, x: fussFest[sd].x, z: fussFest[sd].z }; fussAusT = 0; }
           else {
             if (warLauf && fussZuletzt.l) {
               const st = fussZuletzt.l.an ? 'l' : fussZuletzt.r.an ? 'r' : null;
               fussAus.st = st; fussAus.welt = st ? V(fussZuletzt[st].x, 0, fussZuletzt[st].z) : null; fussAus.koerper = st ? V(fussZuletzt[st].x - F.x - pose.fuss[st].x, 0, fussZuletzt[st].z - F.z - pose.fuss[st].z) : V();
               fussAus.F0 = V(F.x, 0, F.z); fussAus.frei = st === 'l' ? 'r' : 'l'; fussAus.von = fussZuletzt[fussAus.frei].p.clone().sub(pose.fuss[fussAus.frei]).setY(0); fussAusT = 1;
+              // Fehlersuche 16.11.: der freie Fuß geht in der Welt von dort, wo er zuletzt war, zu seinem Platz neben dem Standfuß, und hebt dabei ab, sobald der Weg über 2 cm ist
+              // (vorher rechnete er nur am Körper: setzte sich der Körper über den Standfuß, glitt der freie Fuß bis 16 cm über den Boden mit)
+              const fz = fussZuletzt[fussAus.frei].p; fussAus.vonW = V(F.x + fz.x, 0, F.z + fz.z);
+              fussAus.hub = Math.hypot(fussAus.vonW.x - (F.x + fussAus.koerper.x + pose.fuss[fussAus.frei].x), fussAus.vonW.z - (F.z + fussAus.koerper.z + pose.fuss[fussAus.frei].z)) > 0.02;
             }
             if (fussAusT > 0) {
               fussAusT = Math.max(0, fussAusT - dt / 0.3); const k = glatt(fussAusT), u = 1 - k;
               if (fussAus.st) { F.x = fussAus.F0.x + fussAus.koerper.x * u; F.z = fussAus.F0.z + fussAus.koerper.z * u; const fp = pose.fuss[fussAus.st]; fp.x = fussAus.welt.x - F.x; fp.z = fussAus.welt.z - F.z; }
-              const ff = pose.fuss[fussAus.frei]; ff.x += fussAus.von.x * k; ff.z += fussAus.von.z * k; if (fussAus.von.lengthSq() > 0.0004) ff.y += 0.05 * Math.sin(Math.PI * Math.min(1, u * 1.15));
+              const uL = 1 - fussAusT, uF = fussAus.hub ? glatt(klemme((uL - 0.15) / 0.7, 0, 1)) : u;   // 17.11.: der freie Fuß hebt erst ab, dann tritt er daneben, dann setzt er auf
+              const ff = pose.fuss[fussAus.frei], wx = fussAus.vonW.x + (F.x + ff.x - fussAus.vonW.x) * uF, wz = fussAus.vonW.z + (F.z + ff.z - fussAus.vonW.z) * uF;
+              ff.x = wx - F.x; ff.z = wz - F.z; if (fussAus.hub) ff.y += 0.05 * Math.sin(Math.PI * uL);
             }
           }
           warLauf = lauft;
         }
-        if (LOOKL && !STILL) {   // Kombitest G19 (Devins Regel: nichts geht durch den Körper): die Füße kreuzen nie, der freie Fuß bleibt mindestens 17 cm seitlich vom Fuß am Boden (Fußachsen gemessen ab 14 cm)
+        if (LOOKL) {   // Kombitest G19 (Devins Regel: nichts geht durch den Körper): die Füße kreuzen nie, der freie Fuß bleibt mindestens 17 cm seitlich vom Fuß am Boden (Fußachsen gemessen ab 14 cm)
           const Lx = Math.cos(H), Lz = -Math.sin(H), fl = pose.fuss.l, fr = pose.fuss.r, lat = (fl.x - fr.x) * Lx + (fl.z - fr.z) * Lz;
           if (lat < 0.17) {
             const d = 0.17 - lat, lFest = fussFest.l.an || (fussAusT > 0 && fussAus.st === 'l'), rFest = fussFest.r.an || (fussAusT > 0 && fussAus.st === 'r');
             if (lFest && !rFest) { fr.x -= Lx * d; fr.z -= Lz * d; } else if (rFest && !lFest) { fl.x += Lx * d; fl.z += Lz * d; } else { fl.x += Lx * d / 2; fl.z += Lz * d / 2; fr.x -= Lx * d / 2; fr.z -= Lz * d / 2; }
           }
         }
+        // Fehlersuche 16.11. (Kombitest: nach der Kurve rutscht der Fuß beim Anhalten bis 24 cm, weil sich die Figur im Stand noch zu Ende dreht und die Füße mitdrehen):
+        // im Stand bleiben beide Füße am Boden, wo sie stehen. Liegt ein Fuß mehr als 9 cm (oder 20°) neben seinem Platz, setzt die Figur ihn mit einem kleinen Schritt (0,26 s) nach, immer nur einen Fuß.
+        if (LOOKL && !lauft && fussAusT === 0 && aktiv == null && !posAn) {   // 17.11.: Füße am Boden auch bei „Bewegung reduzieren“ (dort rutschten sie bis 78 cm); nur die Gewichtsverlagerung bleibt dort aus
+          for (const sd of ['l', 'r']) {
+            const fp = pose.fuss[sd], a = standAnker[sd], nx = F.x + fp.x, nz = F.z + fp.z;
+            if (!a.an) { const z = fussWeltZuletzt[sd]; a.an = true; a.x = z ? z.x : nx; a.z = z ? z.z : nz; a.h = z ? z.h : H; }   // dort weiter, wo der Fuß im letzten Bild stand (sonst springt er am Ende des Anhaltens, wenn sich die Figur dabei noch gedreht hat)
+            if (standSchritt && standSchritt.sd === sd) {
+              standSchritt.t = Math.min(1, standSchritt.t + dt / 0.32); const k = glatt(klemme((standSchritt.t - 0.18) / 0.64, 0, 1));   // 17.11.: erst heben, dann versetzen, dann aufsetzen (vorher glitt der Fuß am Anfang und Ende des Schritts über den Boden)
+              a.x = standSchritt.x0 + (nx - standSchritt.x0) * k; a.z = standSchritt.z0 + (nz - standSchritt.z0) * k; fp.y += 0.05 * Math.sin(Math.PI * standSchritt.t);
+              if (standSchritt.t >= 1) { a.h = H; standSchritt = null; }
+            } else if (!standSchritt && (Math.hypot(a.x - nx, a.z - nz) > 0.09 || Math.abs(winkelDiff(a.h, H)) > 0.35)) {
+              const o = sd === 'l' ? 'r' : 'l', b = standAnker[o], dHier = Math.hypot(a.x - nx, a.z - nz), dDort = b.an ? Math.hypot(b.x - F.x - pose.fuss[o].x, b.z - F.z - pose.fuss[o].z) : 0;
+              if (dHier >= dDort - 0.001) standSchritt = { sd, t: 0, x0: a.x, z0: a.z };
+            }
+            fp.x = a.x - F.x; fp.z = a.z - F.z;
+          }
+        } else if (LOOKL) { standAnker.l.an = standAnker.r.an = false; standSchritt = null; }
+        if (LOOKL) for (const sd of ['l', 'r']) fussWeltZuletzt[sd] = aktiv == null && !posAn ? { x: F.x + pose.fuss[sd].x, z: F.z + pose.fuss[sd].z, h: H } : null;
         if (LOOKL && !lauft) { fussFest.l.an = fussFest.r.an = false; fussFest.l.ab = fussFest.r.ab = 0; }
         if (!lauft && LOOKL) { pose.becken.y += Math.sin(zeit * 1.5) * 0.005 + Math.sin(zeit * 0.79 + 1.3) * 0.002; }   // G19: ruhiger Atem (Periode rund 4,2 s), dazu ein langsamer zweiter Takt
         else if (!lauft) pose.becken.y += Math.sin(zeit * 1.9) * 0.004;
+        // Fehlersuche 16.11. (offen aus dem Kombitest: „im Stand fehlen Gewichtsverlagerung und Kopf“): im Stand verlagert sich das Gewicht langsam von Fuß zu Fuß (Becken bis 1,6 cm seitlich,
+        // die Hüfte der belasteten Seite etwas höher), der Kopf schaut ab und zu wenige Grad zur Seite. Die Füße bleiben stehen (sie hängen nicht am Becken). Blendet nach dem Anhalten in rund 1 s ein, nie bei „weniger Bewegung“.
+        standT = !lauft && LOOKL && !STILL && aktiv == null && !posAn ? Math.min(1, standT + dt) : 0;
+        if (standT > 0) {
+          const k = glatt(standT), wv = Math.sin(zeit * 0.9) * 0.7 + Math.sin(zeit * 0.37 + 2.1) * 0.3, rx = -Math.cos(H), rz = Math.sin(H);
+          pose.becken.x += rx * 0.016 * wv * k; pose.becken.z += rz * 0.016 * wv * k; pose.becken.y -= 0.004 * Math.abs(wv) * k;
+          pose.kopf = Object.assign({}, pose.kopf, { dreh: ((pose.kopf && pose.kopf.dreh) || 0) + 9 * k * (Math.sin(zeit * 0.31 + 0.7) * 0.75 + Math.sin(zeit * 0.83) * 0.25), neigung: ((pose.kopf && pose.kopf.neigung) || 0) + 2 * k * Math.sin(zeit * 0.53 + 1.1) });
+        }
         reach += (reachZiel - reach) * Math.min(1, dt * (STILL ? 100 : 7));
         if (reach > 0.02) {   // an der Tür: die rechte Hand geht zum Türgriff
           const vorn = V(Math.sin(H), 0, Math.cos(H)), rechts = V(-Math.cos(H), 0, Math.sin(H)), hz = pose.becken.clone().add(V(0, 0.1, 0)).addScaledVector(vorn, 0.58).addScaledVector(rechts, 0.14);
@@ -2115,8 +2213,31 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   statuenMachen();
   if (typeof ResizeObserver !== 'undefined') { beobachter = new ResizeObserver(() => a.groesse()); beobachter.observe(bild); }
   a.start();
+  // 17.11.: Ist das Gym nicht zu sehen (aus dem Bild gerollt, verdeckt), hält die 3D-Schleife an. Ist die App im Hintergrund, hält der Browser sie ohnehin an.
+  if (typeof IntersectionObserver !== 'undefined') { let laeuft = true; sichtBeob = new IntersectionObserver((l) => { const da = l[l.length - 1].isIntersecting; if (da !== laeuft && offen) { laeuft = da; if (da) a.start(); else a.stopp(); } }); sichtBeob.observe(bild); }
   laden.classList.add('weg');
   setTimeout(() => laden.remove(), 500);
+  if (LIVE) {
+    const hilfe = el('button', 'raum-hilfe', '?'); hilfe.type = 'button'; hilfe.setAttribute('aria-label', 'So geht’s'); wurzel.append(hilfe);
+    const einfuehrung = () => {
+      if (wurzel.querySelector('.raum-intro')) return;
+      const touch = matchMedia('(pointer: coarse)').matches, box = el('div', 'raum-intro'), k = el('div', 'raum-intro-karte'), los = el('button', 'raum-intro-los', 'Los geht’s');
+      box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'So geht dein Gym'); los.type = 'button';
+      const zeile = (z, b, t) => { const d = el('div', 'raum-intro-zeile'); d.append(el('i', null, z), el('p', null, b), el('small', null, t)); return d; };
+      k.append(el('h2', null, 'So geht dein Gym'),
+        zeile('👆', touch ? 'Boden antippen' : 'Boden anklicken', 'Deine Figur geht dorthin.'),
+        zeile('🏋️', touch ? 'Gerät antippen' : 'Gerät anklicken', 'Die Figur geht hin, dann tippst du auf „Übung starten“.'),
+        zeile('⏩', 'Direkt zur nächsten Übung', 'Der große Knopf unten bringt dich sofort hin, ohne Laufen.'),
+        touch ? zeile('🕹️', 'Knüppel unten links', 'Geht auch: selbst laufen.') : zeile('⌨️', 'WASD', 'Geht auch: selbst laufen.'), los);
+      box.append(k); wurzel.append(box);
+      const zu = () => { box.remove(); try { localStorage.setItem('dk_gym_intro', '1'); } catch (e) {} try { hilfe.focus({ preventScroll: true }); } catch (e) {} };
+      los.addEventListener('click', zu); box.addEventListener('keydown', (e) => { if (e.key === 'Escape') zu(); e.stopPropagation(); });
+      setTimeout(() => { try { los.focus({ preventScroll: true }); } catch (e) {} }, 60);
+    };
+    hilfe.addEventListener('click', einfuehrung);
+    let gesehen = false; try { gesehen = localStorage.getItem('dk_gym_intro') === '1'; } catch (e) {}
+    if (!gesehen && !ausPr) einfuehrung();
+  }
   if (ausPr) pop('Zurück im', 'Gym');
   else pop(pr ? 'Willkommen im' : spieler ? 'Dein Charakter' : 'Dein Gym heute', pr ? 'PR-Raum' : (spieler && spieler.name) || titel || 'Training');
   if (ausPr || LIVE) { /* er steht schon da */ }
@@ -2153,6 +2274,9 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const zugang = test ? { test: {   // nur für Prüfseiten (test: true): Figur und Kamera setzen, Stufe und Bildzeiten lesen
     setze(x, z, h, w, nick, zoom) { if (aktiv == null && modus === 'gehen') { F.set(x, 0, z); H = zielH = h; kamW = w; kamNick = nick || 0; if (zoom) kamZ = zoom; const k = verfolgen(); K.pos.copy(k.pos); K.blick.copy(k.blick); K.fov = k.fov; } },
     zeit(n) { znZiel = n; zn = n; zeitSetzen(n); zeitZeichen(); }, stufe: (n) => { if (n != null) { qStufe = n; qFest = true; qAnwenden(); } return { stufe: qStufe, pr: a.renderer.getPixelRatio() }; },
-    modus: () => modus, nahe: () => nahe, stationen: () => stationen.map((x) => ({ x: x.pos.x, z: x.pos.z })), szene, renderer: a.renderer, F: () => ({ x: F.x, z: F.z, h: H }) } } : {};
+    modus: () => modus, nahe: () => nahe, stationen: () => stationen.map((x) => ({ x: x.pos.x, z: x.pos.z })), szene, renderer: a.renderer, F: () => ({ x: F.x, z: F.z, h: H }),
+    zaehler: () => ({ ...zaehler }),
+    zustand: () => ({ sL: +schrittL.toFixed(3), vG: +vGlatt.toFixed(2), gv: +gehV.toFixed(2), fa: +fussAusT.toFixed(2), ss: standSchritt ? standSchritt.sd + standSchritt.t.toFixed(2) : '', wl: warLauf, st: +standT.toFixed(2) }),
+    tippe(x, z) { if (selbstGehen()) lauf([V(x, 0, z)], null); }, zur: (i) => zurStation(i), direkt: (i) => direktZur(i), zurueck: () => zurueckZurKarte(false), knueppel(x, y) { if (x || y) { if (selbstGehen()) gang = null; } gehX = x; gehY = y; } } } : {};
   return { schliessen, stationFertig, zumSpiegel, scheibenSetzen, jubel, karteRunter: () => karteUnten(true), zurKarte: () => (waageAktiv ? statusZu() : spiegelAktiv ? spiegelZu() : zurueckZurKarte(false)), ...zugang };
 }
