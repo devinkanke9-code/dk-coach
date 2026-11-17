@@ -197,3 +197,12 @@
 /* Sehr schmale Handys (16.11.2026, Gesamttest): Der Punkt vor „Devin Kanke Coach“ machte den Namen 17 px breiter, „Analyse“ rutschte bei 320 px
    bis auf 7 px an den Farbwelt-Knopf (sonst 12 px, damit die Trefferflächen sich nichts wegnehmen). Kleinerer Punkt, weniger Abstand. */
 @media (max-width: 360px) { :root[data-look="sport"] .marke::before { width: 6px; height: 6px; margin-right: 5px; } }
+
+/* ---------- Finger und Wischen (17.11.2026, sport.js, alle Farbwelten). Finger: Licht nur solange der Finger liegt. Wischen: Karten unterhalb des Bildschirms
+   kommen einmal mit 18 px Bewegung und Überblendung. Nur transform und opacity, keine Dauer-Animation, nie bei „weniger Bewegung“. ---------- */
+.sp-finger > .sp-licht, .sp-finger > .sp-rand { opacity: 1; transition-duration: .12s; }
+.sp-finger > .sp-licht { background: radial-gradient(170px circle at var(--sp-mx, 50%) var(--sp-my, 50%), color-mix(in srgb, var(--akzent) 13%, transparent), transparent 70%); }
+.sp-finger > .sp-rand { background: radial-gradient(210px circle at var(--sp-mx, 50%) var(--sp-my, 50%), color-mix(in srgb, var(--akzent) 75%, transparent), transparent 70%); }
+.sp-vor { opacity: 0; transform: translate3d(0, 18px, 0); }
+.sp-da { transition: opacity .42s var(--sp-ruhig, cubic-bezier(.22, .61, .36, 1)), transform .52s var(--sp-ruhig, cubic-bezier(.22, .61, .36, 1)); }
+@media (prefers-reduced-motion: reduce) { .sp-vor { opacity: 1; transform: none; } .sp-finger > .sp-licht, .sp-finger > .sp-rand { opacity: 0; } }

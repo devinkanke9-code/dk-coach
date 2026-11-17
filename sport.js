@@ -127,3 +127,96 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', los); else los();
 })();
+
+/* Finger und Wischen (17.11.2026, Devins Auftrag: „Smartphone: dezente, unmittelbar auf Fingerbewegungen reagierende Effekte. Beim vertikalen Wischen
+ * erscheinen die nächsten klar getrennten Inhaltsabschnitte mit sanften Übergängen aus Bewegung und Überblendung … Touch-Effekte nur während der Interaktion“).
+ * - Finger: Liegt der Finger auf einer Karte, folgt ihm ein weiches Licht auf Fläche und Rand, nur solange er liegt. Beginnt der Browser zu scrollen
+ *   (pointercancel, scroll), geht es aus. Positionen pro Bild gebündelt (requestAnimationFrame), nur CSS-Werte; überblendet wird nur opacity.
+ * - Wischen: Karten, die beim Zeichnen unterhalb des Bildschirms liegen, kommen beim Hereinscrollen einmal mit kurzer Bewegung und Überblendung.
+ *   Was schon zu sehen ist, bleibt ruhig. Natives Scrollen ohne Einrasten (springt sonst bei Inhaltsänderungen).
+ * Alle Farbwelten. Nie bei „weniger Bewegung“. Blätter, Training und Gym bleiben ruhig. Aussehen in sport.css (Abschnitt „Finger und Wischen“). */
+(function () {
+  'use strict';
+  if (!window.matchMedia || !window.requestAnimationFrame) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var KARTE = '.block, .kunde, .naechstes, .rang-kurz', NICHT = '.blatt, .tm, .raum, .st-mock, .look-menue', FELD = 'input, textarea, select, canvas, label';
+
+  /* ---------- Finger-Licht ---------- */
+  var finger = null, fx = 0, fy = 0, fUhr = 0;
+  function schichten(el) {
+    if (el.querySelector(':scope > .sp-rand')) return;
+    if (getComputedStyle(el).position === 'static') el.classList.add('sp-rel');
+    var licht = document.createElement('span'), rand = document.createElement('span');
+    licht.className = 'sp-licht'; rand.className = 'sp-rand';
+    licht.setAttribute('aria-hidden', 'true'); rand.setAttribute('aria-hidden', 'true');
+    el.insertBefore(rand, el.firstChild); el.insertBefore(licht, el.firstChild);
+  }
+  function fBild() {
+    fUhr = 0;
+    if (!finger || !finger.el.isConnected) return;
+    var r = finger.el.getBoundingClientRect();
+    finger.el.style.setProperty('--sp-mx', (fx - r.left).toFixed(0) + 'px');
+    finger.el.style.setProperty('--sp-my', (fy - r.top).toFixed(0) + 'px');
+  }
+  function fAus() {
+    if (!finger) return;
+    finger.el.classList.remove('sp-finger'); finger = null;
+    if (fUhr) { cancelAnimationFrame(fUhr); fUhr = 0; }
+  }
+  document.addEventListener('pointerdown', function (e) {
+    if (e.pointerType !== 'touch' || !e.isPrimary || !e.target || !e.target.closest) return;
+    var el = e.target.closest(KARTE);
+    if (!el || el.closest(NICHT) || e.target.closest(FELD)) return;
+    var aussen = el.parentElement && el.parentElement.closest(KARTE);
+    if (aussen && !aussen.closest(NICHT)) el = aussen;   // Karte in Karte: die äußere leuchtet
+    fAus(); schichten(el);
+    finger = { el: el, id: e.pointerId }; fx = e.clientX; fy = e.clientY;
+    fBild(); el.classList.add('sp-finger');
+  }, { passive: true });
+  document.addEventListener('pointermove', function (e) {
+    if (!finger || e.pointerId !== finger.id) return;
+    fx = e.clientX; fy = e.clientY;
+    if (!fUhr) fUhr = requestAnimationFrame(fBild);
+  }, { passive: true });
+  document.addEventListener('pointerup', function (e) { if (finger && e.pointerId === finger.id) fAus(); }, { passive: true });
+  document.addEventListener('pointercancel', function (e) { if (finger && e.pointerId === finger.id) fAus(); }, { passive: true });
+  window.addEventListener('scroll', fAus, { passive: true, capture: true });
+
+  /* ---------- Abschnitte beim Wischen ---------- */
+  if (!('IntersectionObserver' in window)) return;
+  function los() {
+    var ansicht = document.getElementById('ansicht');
+    if (!ansicht) return;
+    function zeigen(el) {
+      io.unobserve(el);
+      if (!el.classList.contains('sp-vor')) return;
+      el.classList.add('sp-da'); el.classList.remove('sp-vor');
+      setTimeout(function () { el.classList.remove('sp-da'); }, 700);
+    }
+    var io = new IntersectionObserver(function (liste) {
+      liste.forEach(function (e) { if (e.isIntersecting) zeigen(e.target); });
+    }, { rootMargin: '0px 0px -24px 0px' });
+    function neu() {
+      var h = window.innerHeight;
+      for (var i = 0; i < ansicht.children.length; i++) {
+        var el = ansicht.children[i];
+        if (el.dataset.spGesehen) continue;
+        el.dataset.spGesehen = '1';
+        if (el.getBoundingClientRect().top > h - 8) { el.classList.add('sp-vor'); io.observe(el); }
+      }
+    }
+    new MutationObserver(neu).observe(ansicht, { childList: true });
+    neu();
+    // Sicherheitsnetz: Was im Bild ist, wird gezeigt, auch wenn der Beobachter einmal nichts meldet (nie unsichtbarer Inhalt)
+    var sUhr = 0;
+    window.addEventListener('scroll', function () {
+      if (sUhr) return;
+      sUhr = setTimeout(function () {
+        sUhr = 0;
+        var h = window.innerHeight, offen = ansicht.querySelectorAll(':scope > .sp-vor');
+        for (var i = 0; i < offen.length; i++) if (offen[i].getBoundingClientRect().top < h - 8) zeigen(offen[i]);
+      }, 200);
+    }, { passive: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', los); else los();
+})();

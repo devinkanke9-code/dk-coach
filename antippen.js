@@ -162,7 +162,13 @@
     el.style.setProperty('--ky', ky.toFixed(2) + 'px');
     if (sx != null) { el.style.setProperty('--sx', sx.toFixed(4)); el.style.setProperty('--sy', sy.toFixed(4)); }
   }
-  function ruhe(el) { ['--kx', '--ky', '--sx', '--sy'].forEach(function (k) { el.style.removeProperty(k); }); }
+  // Zeiger-Bewegungen pro Bild bündeln (17.11.2026): pointermove kommt oft mehrmals je Bild, gesetzt wird nur das letzte
+  var plan = null, planUhr = 0;
+  function setzeBald(el, x, y, kx, ky, sx, sy) {
+    plan = [el, x, y, kx, ky, sx, sy];
+    if (!planUhr) planUhr = requestAnimationFrame(function () { planUhr = 0; var p = plan; plan = null; if (p && p[0].isConnected) setze(p[0], p[1], p[2], p[3], p[4], p[5], p[6]); });
+  }
+  function ruhe(el) { if (plan && plan[0] === el) plan = null; ['--kx', '--ky', '--sx', '--sy'].forEach(function (k) { el.style.removeProperty(k); }); }
   function schwebenAus() {
     if (!schwebt) return;
     schwebt.classList.remove('kg-schwebt'); ruhe(schwebt); lichtWeg(schwebt); schwebt = null;
@@ -175,7 +181,7 @@
     if (el !== schwebt) { schwebenAus(); if (el) { schwebt = el; licht(el); el.classList.add('kg-schwebt'); } }
     if (!el) return;
     var r = el.getBoundingClientRect(), px = (e.clientX - r.left) / (r.width || 1) - .5, py = (e.clientY - r.top) / (r.height || 1) - .5;
-    setze(el, e.clientX, e.clientY, px * 6, py * 4);
+    setzeBald(el, e.clientX, e.clientY, px * 6, py * 4);
   }, { passive: true });
   document.addEventListener('mouseout', function (e) { if (!e.relatedTarget) schwebenAus(); }, { passive: true });
 
@@ -225,7 +231,7 @@
     if (d > WEIT) kg.weit = true;
     var f = d ? MAX * Math.tanh(d / (MAX * 1.5)) / d : 0, s = Math.min(.07, d / 520);
     kg.kx = dx * f; kg.ky = dy * f;
-    setze(kg.el, e.clientX, e.clientY, kg.kx, kg.ky, 1 + s * Math.abs(dx) / (d || 1), 1 + s * Math.abs(dy) / (d || 1));
+    setzeBald(kg.el, e.clientX, e.clientY, kg.kx, kg.ky, 1 + s * Math.abs(dx) / (d || 1), 1 + s * Math.abs(dy) / (d || 1));
   }, { passive: true });
   // Während des Haltens nicht scrollen, sonst bricht der Browser das Ziehen ab
   document.addEventListener('touchmove', function (e) { if (kg && kg.halten && e.cancelable) e.preventDefault(); }, { passive: false });
