@@ -1180,6 +1180,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function selbstGehen() {
     if (modus !== 'lauf') return modus === 'gehen';
     if (ankommt || aktiv != null || waageAktiv || spiegelAktiv) return false;
+    if (gang && LOOKL) {   // 17.11. abends (Kombitest: Weg zum Gerät mit W abgebrochen, Fuß glitt bis 21 cm): die Figur behält ihr Tempo und ihre Richtung und biegt weich ab, statt auf der Stelle zu stoppen
+      const z = gang.punkte[gang.i] || F, dx = z.x - F.x, dz = z.z - F.z, l = Math.hypot(dx, dz), v = Math.min(gang.v || 0, GEH);
+      if (l > 0.01 && v > 0.05) { gehVx = dx / l * v; gehVz = dz / l * v; gehV = v; gehDx = dx / l; gehDz = dz / l; }
+    }
     gang = null; warte = 0; nachWarte = null; tuerUnterwegs = false; modusSetzen('gehen'); kameraZu(verfolgen, 0.5);
     return true;
   }
@@ -1283,7 +1287,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let waageAktiv = false, waageGesperrt = false, waageZeit = 0, kreisSperre = null, kreisZeit = 0;
   // G19 (16.11., Vorgaben von 3D-Ablauf, Devin: „lass den Charakter viel natürlicher wirken“): Gehen 1,5 m/s, Joggen (Sprint, Weg zum Gerät) 2,6–2,8 m/s, Schritte aus dem zurückgelegten Weg,
   // Anlaufen und Anhalten weich, Drehen höchstens 265 °/s, im Stand Atmen und Gewichtsverlagerung
-  let gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, JOGG = 2.8, FV = V(0, 0, 0);   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
+  let haltSperre = 0, drehT = 0, zugJetzt = 1, gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, standLetzt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, JOGG = 2.8, FV = V(0, 0, 0), LEINE = 0.07;   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
   function zurWaage() {
     if (!waage || modus === 'draussen' || waageAktiv || spiegelAktiv) return;
     tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
@@ -1952,7 +1956,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       else if (nachWarte) { const f = nachWarte; nachWarte = null; f(); }
       if (aktiv == null) {
         if (gang) {
-          const vMax = gang.tempo || (LOOKL ? 2.6 : TEMPO); let vG = vMax;
+          const vMax = gang.tempo || (LOOKL ? 2.6 : TEMPO); let vG = vMax; zugJetzt = 1;
           if (LOOKL && !STILL) {   // 17.11. (Fuß rutschte beim Losgehen und beim Ankommen bis 10 cm): auf dem Weg zum Gerät oder zum angetippten Punkt weich anlaufen (rund 0,4 s) und vor dem Ziel abbremsen
             let bis = 0, p = F; for (let j = gang.i; j < gang.punkte.length; j++) { bis += Math.hypot(gang.punkte[j].x - p.x, gang.punkte[j].z - p.z); p = gang.punkte[j]; }
             gang.v = Math.min(vMax, (gang.v || 0) + 7 * dt, Math.max(0.6, Math.sqrt(2 * 4 * bis))); vG = gang.v;
@@ -1977,13 +1981,18 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             if (gehV < 0.02 && !vZiel) gehV = gehVx = gehVz = 0;
             if (fussAusT > 0) gehV = gehVx = gehVz = 0;   // 17.11.: während des Anhalte-Schritts steht der Körper; danach läuft er neu an
             if (gehV > 1e-4) { gehDx = gehVx / gehV; gehDz = gehVz / gehV; }
-            F.x += gehVx * dt; F.z += gehVz * dt; zielH = st > 0.01 ? Math.atan2(dx, dz) : Math.atan2(gehDx, gehDz); bewegt = gehV / GEH; dx = gehDx; dz = gehDz;
+            // 17.11. abends: erst drehen, dann gehen. Zeigt der Körper (noch) nicht dorthin, wohin es geht (Wende, Seitwärts, Rückwärts), kommt er kaum voran, bis er sich gedreht hat:
+            // bis 30° voll, bei 60° halb, ab 90° fast nichts. Vorher lief er mit voller Geschwindigkeit quer zur Blickrichtung, und die Füße glitten seitlich über den Boden.
+            const zug = zugJetzt = gehV > 1e-4 ? klemme((Math.cos(winkelDiff(H, Math.atan2(gehDx, gehDz))) - 0.2) / 0.6, 0.08, 1) : 1;
+            F.x += gehVx * dt * zug; F.z += gehVz * dt * zug; zielH = st > 0.01 ? Math.atan2(dx, dz) : Math.atan2(gehDx, gehDz); bewegt = gehV / GEH; dx = gehDx; dz = gehDz;
           } else {
             const tempo = TEMPO * (LIVE && sprint ? 1.75 : 1);
             F.x += dx * tempo * dt; F.z += dz * tempo * dt; zielH = Math.atan2(dx, dz); bewegt = st * tempo / TEMPO;
           }
           if (LIVE && performance.now() - kamHand > 900) {   // 16.11. (Devin: „wenn ich mich umdrehen will, sieht das komplett komisch aus“): beim Laufen dreht die Kamera weich hinter die Figur, außer man läuft auf die Kamera zu
-            const d = winkelDiff(kamW, zielH + Math.PI); if (Math.abs(d) < 2.0) kamW += d * (1 - Math.exp(-dt * 2.2 * Math.min(1, st)));
+            // 17.11. abends (Devin: „du kannst dich nicht einfach irgendwo hinbewegen“): Hielt man den Knüppel zur Seite, drehte die Kamera mit und die Figur lief im engen Kreis.
+            // Jetzt dreht die Kamera nur nach, wenn man ungefähr nach vorn läuft (bis 60° zur Seite, je seitlicher desto schwächer). Seitwärts oder rückwärts läuft die Figur geradeaus dorthin.
+            const d = winkelDiff(kamW, zielH + Math.PI), sk = Math.max(0, 1 - Math.abs(d) / 1.05); if (sk > 0) kamW += d * (1 - Math.exp(-dt * 2.2 * Math.min(1, st) * sk));
           }
           for (const h of hindernisse) {   // Live-Gym: nicht durch Möbel, Statuen, Pflanzen und Deko-Geräte laufen, sondern daran entlang
             if (h.box) { const r = 0.35, x0 = h.box[0] - r, x1 = h.box[1] + r, z0 = h.box[2] - r, z1 = h.box[3] + r; if (F.x > x0 && F.x < x1 && F.z > z0 && F.z < z1) { const w = [F.x - x0, x1 - F.x, F.z - z0, z1 - F.z], m = Math.min(...w); if (m === w[0]) F.x = x0; else if (m === w[1]) F.x = x1; else if (m === w[2]) F.z = z0; else F.z = z1; } }
@@ -1996,17 +2005,20 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       const ausStation = warAktiv; warAktiv = aktiv != null;   // zurück von Station, Waage oder Spiegel: wie versetzt (die Merker vom Hinlaufen gelten nicht mehr)
       if (aktiv == null) {
         if (LOOKL) {
-          const w = winkelDiff(H, zielH); H += klemme(w * Math.min(1, dt * 10), -4.0 * dt, 4.0 * dt);   // G19: höchstens 230 °/s, weich
+          const w = winkelDiff(H, zielH), hVor = H; H += klemme(w * Math.min(1, dt * 10), -4.0 * dt, 4.0 * dt);   // G19: höchstens 230 °/s, weich
+          drehT += ((dt > 0.001 ? Math.abs(winkelDiff(hVor, H)) / dt : 0) - drehT) * Math.min(1, dt * 10);   // 17.11. abends: wie schnell sich der Körper gerade dreht (rad/s, geglättet)
           const weg = Math.hypot(F.x - FV.x, F.z - FV.z); FV.set(F.x, 0, F.z);
           // Kombitest 3D-Ablauf (16.11.): Versetzt (Zurück von der Station, Waage, Spiegel, PR-Tür, Start, Prüfseite) = weiter als Rennen in einem Bild schafft: kein Schritt, kein Anhalten,
           // alle Fuß-Merker weg und die Figur steht sofort am neuen Platz (sonst zog das Anhalten sie zum alten Standfuß zurück).
           const versetzt = (ausStation || weg > Math.max(0.25, JOGG * dt * 3));
-          if (versetzt) { for (const sd of ['l', 'r']) { fussFest[sd].an = false; fussFest[sd].ab = 0; fussZuletzt[sd] = null; standAnker[sd].an = false; fussWeltZuletzt[sd] = null; } fussAusT = 0; warLauf = false; standSchritt = null; vGlatt = 0; schrittL = 0; gehV = gehVx = gehVz = 0; }
+          if (versetzt) { for (const sd of ['l', 'r']) { fussFest[sd].an = false; fussFest[sd].ab = 0; fussZuletzt[sd] = null; standAnker[sd].an = false; fussWeltZuletzt[sd] = null; } fussAusT = 0; warLauf = false; standSchritt = null; standLetzt = null; haltSperre = 0; vGlatt = 0; schrittL = 0; gehV = gehVx = gehVz = 0; }
           const v = dt > 0.001 && weg < 1 && fussAusT === 0 && !versetzt ? weg / dt : 0; vGlatt += (v - vGlatt) * Math.min(1, dt * 12);   // Fehlersuche 16.11.: beim Anhalten setzt sich der Körper über den Standfuß; das ist kein Gehen (sonst fing der Schritt neu an und die Füße sprangen bis 24 cm)
           // 17.11. (Kombitest: Fuß rutscht nach dem Anhalten bis 32 cm): Wird die Figur langsam und will nicht weiter (oder kehrt um), endet der Gang sofort und der Anhalte-Schritt übernimmt.
           // Vorher lief der Schritt noch rund 0,4 s am Platz weiter, der Takt stand, die Schrittweite schrumpfte, und der Fuß am Boden glitt zur Mitte.
-          if (schrittL > 0.012 && !gang && vGlatt < 0.3 && (!(gehX || gehY) || gegenEingabe)) { schrittL = 0; gehV = gehVx = gehVz = 0; }
-          else schrittL += ((vGlatt > 0.08 ? SCHRITT * klemme(vGlatt / GEH, 0.55, 1.65) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo: Gehen rund 125, Joggen rund 145 Schritte pro Minute
+          if (haltSperre > 0) haltSperre = vGlatt < 0.08 ? 0 : Math.max(0, haltSperre - dt);   // nach dem Anhalten kein neuer Schritt für höchstens 0,25 s (vorher flackerte er ein paar Bilder, der Fuß sprang bis 17 cm)
+          if (schrittL > 0.012 && !gang && vGlatt < 0.3 && (!(gehX || gehY) || gegenEingabe || zugJetzt < 0.5)) {   // 17.11. abends: auch beim Drehen im Stand (kein Schritt am Platz, die Füße tippeln mit)
+            schrittL = 0; gehV = gehVx = gehVz = 0; haltSperre = 0.25; }
+          else schrittL += ((vGlatt > 0.08 && !(haltSperre > 0) && !(!warLauf && Math.abs(winkelDiff(H, zielH)) > 0.6) && !(zugJetzt < 0.5 && vGlatt < 0.3) ? SCHRITT * klemme(vGlatt / GEH, 0.55, 1.65) * Math.min(klemme(1 - drehT / 5, 0.45, 1), klemme(1 - Math.abs(winkelDiff(H, zielH)) / 1.6, 0.4, 1)) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo: Gehen rund 125, Joggen rund 145 Schritte pro Minute
           if (schrittL > 0.012 && weg < 1 && !versetzt) ph += Math.PI * weg / Math.max(0.25, 2 * schrittL);   // Takt aus dem Weg: die Füße schaffen genau den Weg
         } else {
           H += winkelDiff(H, zielH) * Math.min(1, dt * 11);
@@ -2016,53 +2028,67 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         const lauft = schrittL > 0.012;
         if (lauft && !LOOKL) ph += (TEMPO * Math.max(0.6, bewegt || 0.6) / Math.max(0.2, schrittL)) * dt;
         const pose = lauft ? stehen(posi, H, { phase: ph, schritt: schrittL, neigung: 2 + 8 * (schrittL / SCHRITT) }) : stehen(posi, H);
-        if (LOOKL && lauft) for (const [sd, sg] of [['l', 1], ['r', -1]]) {   // G19: der Standfuß bleibt am Boden stehen, wo er aufgesetzt hat; beim Abheben gleitet er in 0,12 s in die Schwungbahn
-          const fp = pose.fuss[sd], fz = fussFest[sd];
-          if (sg * Math.cos(ph) <= 0) { if (!fz.an) { fz.an = true; const w = !warLauf && fussWeltZuletzt[sd]; fz.x = w ? w.x : F.x + fp.x; fz.z = w ? w.z : F.z + fp.z; } fp.x = fz.x - F.x; fp.z = fz.z - F.z; }   // 17.11.: beim Losgehen bleibt der Standfuß, wo er im Stand war (vorher sprang er an die Stelle aus dem Gang)
-          else { if (fz.an) { fz.an = false; fz.dx = fz.x - F.x - fp.x; fz.dz = fz.z - F.z - fp.z; fz.ab = 1; } else if (!warLauf && fussWeltZuletzt[sd]) { const w = fussWeltZuletzt[sd]; fz.dx = w.x - F.x - fp.x; fz.dz = w.z - F.z - fp.z; fz.ab = 1; } if (fz.ab > 0) { fz.ab = Math.max(0, fz.ab - dt / 0.14); const k = glatt(klemme(fz.ab * 1.35, 0, 1)); fp.x += fz.dx * k; fp.z += fz.dz * k; fp.y += 0.03 * Math.sin(Math.PI * Math.pow(1 - fz.ab, 0.6)); } }   // 17.11.: erst abheben, dann hinübergleiten (vorher schleifte die Spitze bis 7 cm über den Boden)   // beim Hinübergleiten ist der Fuß schon in der Luft
-        }
-        if (LOOKL) {   // G19: Anhalten in 0,3 s: der Fuß am Boden bleibt stehen, der Körper setzt sich über ihn, der andere Fuß tritt mit kleinem Heben daneben (letzter Schritt schließt die Füße)
-          if (lauft) { for (const sd of ['l', 'r']) fussZuletzt[sd] = { p: pose.fuss[sd].clone(), an: fussFest[sd].an, x: fussFest[sd].x, z: fussFest[sd].z }; fussAusT = 0; }
-          else {
-            if (warLauf && fussZuletzt.l) {
-              const st = fussZuletzt.l.an ? 'l' : fussZuletzt.r.an ? 'r' : null;
-              fussAus.st = st; fussAus.welt = st ? V(fussZuletzt[st].x, 0, fussZuletzt[st].z) : null; fussAus.koerper = st ? V(fussZuletzt[st].x - F.x - pose.fuss[st].x, 0, fussZuletzt[st].z - F.z - pose.fuss[st].z) : V();
-              fussAus.F0 = V(F.x, 0, F.z); fussAus.frei = st === 'l' ? 'r' : 'l'; fussAus.von = fussZuletzt[fussAus.frei].p.clone().sub(pose.fuss[fussAus.frei]).setY(0); fussAusT = 1;
-              // Fehlersuche 16.11.: der freie Fuß geht in der Welt von dort, wo er zuletzt war, zu seinem Platz neben dem Standfuß, und hebt dabei ab, sobald der Weg über 2 cm ist
-              // (vorher rechnete er nur am Körper: setzte sich der Körper über den Standfuß, glitt der freie Fuß bis 16 cm über den Boden mit)
-              const fz = fussZuletzt[fussAus.frei].p; fussAus.vonW = V(F.x + fz.x, 0, F.z + fz.z);
-              fussAus.hub = Math.hypot(fussAus.vonW.x - (F.x + fussAus.koerper.x + pose.fuss[fussAus.frei].x), fussAus.vonW.z - (F.z + fussAus.koerper.z + pose.fuss[fussAus.frei].z)) > 0.02;
+        // 17.11. abends (Devin: „die Füße bleiben fest am Boden, wenn du dich drehen willst … dann bleiben die Füße hintereinander. Können wir machen, dass die Füße wirklich immer mit dem Körper mitbleiben?“):
+        // Neue Regel, einfach statt festgeklebt: Die Füße hängen am Körper. Sie zeigen in Körperrichtung, stehen hüftbreit nebeneinander und drehen mit, wenn sich der Körper dreht.
+        // Beim Gehen kommen sie direkt aus dem Schritt (der Takt folgt dem Weg, darum steht der Fuß am Boden beim Geradeausgehen trotzdem still). Beim Drehen gleiten sie lieber eine Spur, als sich zu verdrehen.
+        const vorX = Math.sin(H), vorZ = Math.cos(H), liX = Math.cos(H), liZ = -Math.sin(H);
+        const zuKoerper = (v) => ({ s: v.x * liX + v.z * liZ, v: v.x * vorX + v.z * vorZ }), ausKoerper = (k, fp) => { fp.x = liX * k.s + vorX * k.v; fp.z = liZ * k.s + vorZ * k.v; };
+        const ebenAngehalten = LOOKL && warLauf && !lauft, inLuft = ebenAngehalten ? (!fussFest.l.an ? 'l' : !fussFest.r.an ? 'r' : null) : null;
+        if (LOOKL) {
+          if (lauft) {   // Losgehen: stand ein Fuß noch ein paar Zentimeter neben seinem Platz, geht er in 0,15 s weich in den Schritt (kein Sprung)
+            for (const [sd, sg] of [['l', 0], ['r', Math.PI]]) {   // Fuß am Boden gleichmäßig nach hinten, genau so schnell wie der Körper nach vorn (im Schritt aus stehen() lief er wie eine Welle, darum glitt er bis 18 cm)
+              const phi = ((ph + sg) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI), k = zuKoerper(pose.fuss[sd]);
+              if (phi >= Math.PI / 2 && phi <= 1.5 * Math.PI) { k.v = schrittL * (1 - 2 * (phi - Math.PI / 2) / Math.PI); ausKoerper(k, pose.fuss[sd]); }
             }
-            if (fussAusT > 0) {
-              fussAusT = Math.max(0, fussAusT - dt / 0.3); const k = glatt(fussAusT), u = 1 - k;
-              if (fussAus.st) { F.x = fussAus.F0.x + fussAus.koerper.x * u; F.z = fussAus.F0.z + fussAus.koerper.z * u; const fp = pose.fuss[fussAus.st]; fp.x = fussAus.welt.x - F.x; fp.z = fussAus.welt.z - F.z; }
-              const uL = 1 - fussAusT, uF = fussAus.hub ? glatt(klemme((uL - 0.15) / 0.7, 0, 1)) : u;   // 17.11.: der freie Fuß hebt erst ab, dann tritt er daneben, dann setzt er auf
-              const ff = pose.fuss[fussAus.frei], wx = fussAus.vonW.x + (F.x + ff.x - fussAus.vonW.x) * uF, wz = fussAus.vonW.z + (F.z + ff.z - fussAus.vonW.z) * uF;
-              ff.x = wx - F.x; ff.z = wz - F.z; if (fussAus.hub) ff.y += 0.05 * Math.sin(Math.PI * uL);
+            // Der Fuß am Boden bleibt stehen, aber an einer kurzen Leine: nie mehr als 7 cm von seinem Platz am Körper. Geradeaus ist er genau dort (er steht still);
+            // dreht sich der Körper oder wechselt er die Richtung, gleitet der Fuß an der Leine mit, statt zurückzubleiben, sich zu verdrehen oder hinter dem anderen zu stehen.
+            for (const [sd, sg] of [['l', 0], ['r', Math.PI]]) {
+              const fz = fussFest[sd], fp = pose.fuss[sd], w = !warLauf && fussWeltZuletzt[sd], phi = ((ph + sg) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI), amBoden = phi >= Math.PI / 2 && phi <= 1.5 * Math.PI;
+              const tx = F.x + fp.x, tz = F.z + fp.z;
+              if (amBoden) {
+                if (!fz.an) { const wz = fussWeltZuletzt[sd]; fz.an = true; fz.ab = 0; fz.x = wz ? wz.x : tx; fz.z = wz ? wz.z : tz; fz.lim = Math.max(LEINE, Math.abs(zuKoerper({ x: fz.x - tx, z: fz.z - tz }).s)); }   // er setzt genau dort auf, wo er gerade ist, auch mitten aus einem Tippelschritt; steht er dabei weiter daneben, wird die Leine in Ruhe kürzer (sonst sprang er bis 18 cm)
+                fz.lim = Math.max(LEINE, (fz.lim || LEINE) - dt * 0.4);
+                // Leine quer zum Körper 7 cm (nie hintereinander, nie über Kreuz); längs darf er so weit stehen, wie ein Schritt reicht (beim Beschleunigen und Bremsen gleitet er so nicht)
+                const e = zuKoerper({ x: fz.x - tx, z: fz.z - tz }), tk = zuKoerper(fp), es = klemme(e.s, -fz.lim, fz.lim), ev = klemme(tk.v + e.v, -0.5, 0.5) - tk.v;
+                if (es !== e.s || ev !== e.v) { fz.x = tx + liX * es + vorX * ev; fz.z = tz + liZ * es + vorZ * ev; }
+                fp.x = fz.x - F.x; fp.z = fz.z - F.z;
+              } else {
+                if (fz.an) { fz.an = false; fz.dx = fz.x - tx; fz.dz = fz.z - tz; fz.ab = 1; } else if (w) { fz.dx = w.x - tx; fz.dz = w.z - tz; fz.ab = 1; }
+                if (fz.ab > 0) { fz.ab = Math.max(0, fz.ab - dt / 0.14); const k = glatt(klemme(fz.ab * 1.35, 0, 1)); fp.x += fz.dx * k; fp.z += fz.dz * k; }   // in der Luft weich an den Platz im Schritt
+              }
+              fussZuletzt[sd] = zuKoerper(fp);
             }
+            fussAusT = 0;
           }
+          // Anhalten: kein eigener Ablauf mehr. Die Füße stehen, wo sie gerade sind, und tippeln mit denselben kleinen Schritten wie beim Drehen im Stand an ihren Platz (der weitere zuerst).
           warLauf = lauft;
         }
-        if (LOOKL) {   // Kombitest G19 (Devins Regel: nichts geht durch den Körper): die Füße kreuzen nie, der freie Fuß bleibt mindestens 17 cm seitlich vom Fuß am Boden (Fußachsen gemessen ab 14 cm)
-          const Lx = Math.cos(H), Lz = -Math.sin(H), fl = pose.fuss.l, fr = pose.fuss.r, lat = (fl.x - fr.x) * Lx + (fl.z - fr.z) * Lz;
-          if (lat < 0.17) {
-            const d = 0.17 - lat, lFest = fussFest.l.an || (fussAusT > 0 && fussAus.st === 'l'), rFest = fussFest.r.an || (fussAusT > 0 && fussAus.st === 'r');
-            if (lFest && !rFest) { fr.x -= Lx * d; fr.z -= Lz * d; } else if (rFest && !lFest) { fl.x += Lx * d; fl.z += Lz * d; } else { fl.x += Lx * d / 2; fl.z += Lz * d / 2; fr.x -= Lx * d / 2; fr.z -= Lz * d / 2; }
-          }
+        if (LOOKL) {   // Kombitest G19 (Devins Regel: nichts geht durch den Körper): die Füße kreuzen nie, sie bleiben mindestens 17 cm seitlich auseinander
+          const fl = pose.fuss.l, fr = pose.fuss.r, lat = (fl.x - fr.x) * liX + (fl.z - fr.z) * liZ;
+          if (lat < 0.17) { const d = 0.17 - lat; fl.x += liX * d / 2; fl.z += liZ * d / 2; fr.x -= liX * d / 2; fr.z -= liZ * d / 2; }
         }
-        // Fehlersuche 16.11. (Kombitest: nach der Kurve rutscht der Fuß beim Anhalten bis 24 cm, weil sich die Figur im Stand noch zu Ende dreht und die Füße mitdrehen):
-        // im Stand bleiben beide Füße am Boden, wo sie stehen. Liegt ein Fuß mehr als 9 cm (oder 20°) neben seinem Platz, setzt die Figur ihn mit einem kleinen Schritt (0,26 s) nach, immer nur einen Fuß.
-        if (LOOKL && !lauft && fussAusT === 0 && aktiv == null && !posAn) {   // 17.11.: Füße am Boden auch bei „Bewegung reduzieren“ (dort rutschten sie bis 78 cm); nur die Gewichtsverlagerung bleibt dort aus
+        // Im Stand (auch nach dem Anhalten und bei „weniger Bewegung“): Dreht sich der Körper oder rückt er ein Stück, tippeln die Füße mit kleinen Schritten mit (0,2 s, abwechselnd).
+        // Ein Fuß am Boden bleibt nie mehr als 6 cm oder 15° hinter seinem Platz zurück: wird es mehr (schnelle Drehung), gleitet er einfach mit. So kleben sie nicht und stehen nie hintereinander.
+        if (LOOKL && !lauft && fussAusT === 0 && aktiv == null && !posAn) {
           for (const sd of ['l', 'r']) {
             const fp = pose.fuss[sd], a = standAnker[sd], nx = F.x + fp.x, nz = F.z + fp.z;
-            if (!a.an) { const z = fussWeltZuletzt[sd]; a.an = true; a.x = z ? z.x : nx; a.z = z ? z.z : nz; a.h = z ? z.h : H; }   // dort weiter, wo der Fuß im letzten Bild stand (sonst springt er am Ende des Anhaltens, wenn sich die Figur dabei noch gedreht hat)
+            if (inLuft === sd && !a.an) { const z = fussWeltZuletzt[sd]; if (z) { standSchritt = { sd, t: 0.35, x0: z.x, z0: z.z }; } }   // war beim Anhalten in der Luft: setzt mit seinem Schritt auf, statt auf den Boden zu fallen
+            if (!a.an) { const z = fussWeltZuletzt[sd]; a.an = true; a.x = z ? z.x : nx; a.z = z ? z.z : nz; a.h = z ? z.h : H; a.lim = Math.max(0.06, Math.hypot(a.x - nx, a.z - nz)); }   // nach dem Anhalten darf er erst weiter weg sein, bis er dran ist
             if (standSchritt && standSchritt.sd === sd) {
-              standSchritt.t = Math.min(1, standSchritt.t + dt / 0.32); const k = glatt(klemme((standSchritt.t - 0.18) / 0.64, 0, 1));   // 17.11.: erst heben, dann versetzen, dann aufsetzen (vorher glitt der Fuß am Anfang und Ende des Schritts über den Boden)
-              a.x = standSchritt.x0 + (nx - standSchritt.x0) * k; a.z = standSchritt.z0 + (nz - standSchritt.z0) * k; fp.y += 0.05 * Math.sin(Math.PI * standSchritt.t);
-              if (standSchritt.t >= 1) { a.h = H; standSchritt = null; }
-            } else if (!standSchritt && (Math.hypot(a.x - nx, a.z - nz) > 0.09 || Math.abs(winkelDiff(a.h, H)) > 0.35)) {
-              const o = sd === 'l' ? 'r' : 'l', b = standAnker[o], dHier = Math.hypot(a.x - nx, a.z - nz), dDort = b.an ? Math.hypot(b.x - F.x - pose.fuss[o].x, b.z - F.z - pose.fuss[o].z) : 0;
-              if (dHier >= dDort - 0.001) standSchritt = { sd, t: 0, x0: a.x, z0: a.z };
+              standSchritt.t = Math.min(1, standSchritt.t + dt / 0.17); const k = glatt(klemme((standSchritt.t - 0.1) / 0.8, 0, 1));
+              a.x = standSchritt.x0 + (nx - standSchritt.x0) * k; a.z = standSchritt.z0 + (nz - standSchritt.z0) * k; fp.y += 0.035 * Math.sin(Math.PI * standSchritt.t);
+              if (standSchritt.t >= 1) { a.h = H; a.lim = 0.06; standSchritt = null; standLetzt = sd; }
+            } else {
+              const ab = Math.hypot(a.x - nx, a.z - nz), dw = Math.abs(winkelDiff(a.h, H));
+              if (!standSchritt && (ab > 0.035 || dw > 0.17)) {
+                const o = sd === 'l' ? 'r' : 'l', b = standAnker[o], abO = b.an ? Math.hypot(b.x - F.x - pose.fuss[o].x, b.z - F.z - pose.fuss[o].z) : 0, dwO = b.an ? Math.abs(winkelDiff(b.h, H)) : 0;
+                const auchDort = abO > 0.035 || dwO > 0.17;   // müssen beide, dann abwechselnd (nie zweimal derselbe Fuß hintereinander)
+                if (!auchDort || standLetzt !== sd) standSchritt = { sd, t: 0, x0: a.x, z0: a.z };
+              }
+              if (!(standSchritt && standSchritt.sd === sd)) {   // am Boden: höchstens 6 cm und 15° zurück, sonst gleitet er mit
+                a.lim = Math.min(a.lim || 0.06, Math.max(0.06, ab)); if (ab > a.lim) { const f = a.lim / ab; a.x = nx + (a.x - nx) * f; a.z = nz + (a.z - nz) * f; }
+                const w = winkelDiff(H, a.h); if (Math.abs(w) > 0.26) a.h = H + Math.sign(w) * 0.26;
+              }
             }
             fp.x = a.x - F.x; fp.z = a.z - F.z;
           }
