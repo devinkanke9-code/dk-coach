@@ -49,6 +49,7 @@ export function buehne({ lade3d, fotoGross }) {
     h('p', { class: 'tipp', text: 'Wischen zum Drehen · zwei Finger zum Zoomen' }));
   const passe = () => ansicht && ansicht.groesse();
   const beobachter = window.ResizeObserver ? new ResizeObserver(passe) : null;
+  let sicht = null;   // Figur rechnet nur, solange sie im Bild ist (17.11.2026)
   return {
     el,
     async zeige(d, o) {
@@ -72,6 +73,7 @@ export function buehne({ lade3d, fotoGross }) {
         ansicht.beiDrehStopp = () => auto.setAttribute('aria-pressed', 'false');
         ansicht.start();
         if (beobachter) beobachter.observe(canvas); else window.addEventListener('resize', passe);
+        if (window.IntersectionObserver) { sicht = new IntersectionObserver((l) => { if (ansicht) ansicht.ruhen = !l[l.length - 1].isIntersecting; }); sicht.observe(canvas); }
       }
       el.classList.remove('wechsel'); void el.offsetWidth; el.classList.add('wechsel');
       ansicht.groesse();
@@ -82,7 +84,7 @@ export function buehne({ lade3d, fotoGross }) {
       ansicht.autoDrehen(auto.getAttribute('aria-pressed') === 'true');
     },
     ruhe(an) { if (ansicht && an !== ruht) { ruht = an; if (an) ansicht.stopp(); else ansicht.start(); } },
-    weg() { if (erk) erk.ende(); if (ansicht) ansicht.entsorgen(); ansicht = null; if (beobachter) beobachter.disconnect(); window.removeEventListener('resize', passe); }
+    weg() { if (erk) erk.ende(); if (ansicht) ansicht.entsorgen(); ansicht = null; if (beobachter) beobachter.disconnect(); if (sicht) sicht.disconnect(); window.removeEventListener('resize', passe); }
   };
 }
 

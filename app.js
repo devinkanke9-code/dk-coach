@@ -179,6 +179,7 @@ function anmelden(d, code, teil) {
   if (!alt) toast('Hi' + (vn ? ' ' + vn : '') + '! Du bist eingeloggt.');
   else if (alt.t !== d.t) toast(d.p && !alt.plan ? 'Dein Plan ist da!' : d.p ? 'Neuer Stand von Devin ist da' : 'Aktualisiert');
   S.tagWahl = null; S.ansicht = 'heute';
+  if (typeof sitzungSichern === 'function') sitzungSichern(code, d.k).catch(() => {});   // typeof: app/test.js prüft anmelden allein
 }
 // Nachricht von Devin einfügen: für die App vom Home-Bildschirm, die Links aus WhatsApp nicht selbst öffnet
 // Code in Devins Nachricht: neu 12 Ziffern (1234-5678-9012), ältere 8 (1234-5678). Erst hinter „Code:“ suchen, sonst die erste passende Ziffernfolge
@@ -387,13 +388,122 @@ function zeichne() {
    Der Kunde tippt nur den Code aus Devins Nachricht. Die Seite fragt den Code-Briefkasten (Google-Skript in Devins Konto) mit einer Prüfsumme
    des Codes, nie mit dem Code selbst, und bekommt den verschlüsselten Zugang zurück, genau den Teil, der sonst im Link nach #z= steht.
    Danach läuft alles wie beim Link: Code schließt auf, anmelden(). Der Briefkasten kennt nur Zugänge, die Devin per Gmail geschickt hat. */
+
+/* ---------- Einmalcode und Sitzung (16.11.2026, Devin: „Der Code ist ein Einmalcode mit begrenzter Gültigkeit, sicher serverseitig geprüft … Halte danach eine sichere Sitzung aktiv“) ----------
+   Der Briefkasten (Google-Skript, Version 3) gibt einen Code genau einmal heraus, nur in den ersten 14 Tagen nach Devins Mail, und dazu einen langen Sitzungsschlüssel.
+   Der Schlüssel liegt nur auf diesem Handy (nie in der Adresse) und holt neue Pläne für genau dieses Konto. Den Plan öffnet weiterhin nur der Code (bleibt wie bisher auf dem Handy).
+   Älterer Briefkasten ohne Version 3: Die App fällt auf den alten Weg (?k=) zurück, alles geht wie vorher. */
+const sitzungen = () => { const s = speicher.lies('dk_sitzungen', {}); return s && typeof s === 'object' && !Array.isArray(s) ? s : {}; };
+function sitzungSetzen(k, t, zeit) { const s = sitzungen(); if (t) s[k] = { t: String(t), zeit: Number(zeit) || 0 }; else delete s[k]; speicher.schreib('dk_sitzungen', s); }
+async function pruefsummeVon(salz, text) {
+  const roh = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salz + text));
+  return Array.from(new Uint8Array(roh), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+async function briefPost(daten) {   // POST mit JSON als Text: kein Vorab-Check des Browsers, keine Cookies, nichts in der Adresse
+  if (!KONTAKT.briefkasten) return { ok: false, grund: 'aus' };
+  const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 20000);
+  try {
+    const r = await fetch(KONTAKT.briefkasten, { method: 'POST', body: JSON.stringify(daten), cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
+    if (!r.ok) return { ok: false, grund: 'netz' };
+    const text = await r.text();
+    try { const j = JSON.parse(text); return j && typeof j === 'object' && !Array.isArray(j) ? j : { ok: false, grund: 'alt' }; } catch (e) { return { ok: false, grund: 'alt' }; }   // Briefkasten vor Version 3
+  } catch (e) { return { ok: false, grund: 'netz' }; } finally { clearTimeout(uhr); }
+}
+// Nach einem Login über den Link (Code eingetippt oder gespeichert): einmal beim Briefkasten einlösen, dann hat auch dieses Handy eine Sitzung
+async function sitzungSichern(code, k) {
+  if (!KONTAKT.briefkasten || !code || sitzungen()[k] || navigator.onLine === false) return;
+  const r = await briefPost({ a: 'einloesen', k: await pruefsummeVon('dk-zugang|', K.appCodeNormal(code)) });
+  if (!r.ok || typeof r.t !== 'string' || typeof r.z !== 'string') return;
+  let d = null; try { d = await K.entpacken(code, r.z); } catch (e) {}
+  if (d && d.k === k) sitzungSetzen(k, r.t, r.zeit);
+}
+// Neuer Stand von Devin (neuer Plan, gleicher Code): beim Öffnen, bei Rückkehr in die App und wenn das Internet wiederkommt. Nie mitten im Training oder Gym.
+let STAND_ZULETZT = 0;
+async function standHolen(vonHand) {
+  const ko = aktivesKonto(), s = ko && sitzungen()[ko.id];
+  if (!ko || !ko.code || !s) return 'kein';
+  if (navigator.onLine === false) return 'offline';
+  if (!vonHand && (Date.now() - STAND_ZULETZT < 60000 || document.querySelector('.raum, .tm, .blatt.offen'))) return 'warte';
+  STAND_ZULETZT = Date.now();
+  const r = await briefPost({ a: 'stand', t: s.t, seit: s.zeit || 0 });
+  if (!r.ok) { if (r.grund === 'sitzung') sitzungSetzen(ko.id, null); return r.grund || 'netz'; }
+  if (!r.neu) return 'aktuell';
+  let d = null; try { d = await K.entpacken(ko.code, r.z); } catch (e) {}
+  if (!linkDatenOk(d) || d.k !== ko.id) return 'passt-nicht';
+  sitzungSetzen(ko.id, s.t, r.zeit);
+  if (!vonHand && document.querySelector('.raum, .tm, .blatt.offen')) { STAND_ZULETZT = 0; return 'warte'; }   // inzwischen ein Training geöffnet: später
+  const ansichtVorher = S.ansicht;
+  anmelden(d, ko.code, r.z);
+  if (!vonHand) S.ansicht = ansichtVorher;   // von selbst: die Seite bleibt, wo man war
+  zeichne(); fotosVorladen();
+  return 'neu';
+}
+// iPhone: Safari und die App vom Home-Bildschirm haben getrennte Speicher. Übergabe-Code (8 Ziffern, 10 Minuten, einmal) bringt das Konto in die App.
+function uebergabeKarte() {
+  const ko = aktivesKonto(), s = ko && sitzungen()[ko.id];
+  if (!ko || !s || !ko.code || !KONTAKT.briefkasten || !istIos || installiert()) return null;
+  const aus = h('div', { class: 'stapel', role: 'status' });
+  const knopf = h('button', { class: 'knopf', type: 'button', text: 'Übergabe-Code erstellen', onclick: async () => {
+    knopf.disabled = true; knopf.textContent = 'Erstelle …'; aus.textContent = '';
+    const z = new Uint32Array(2); crypto.getRandomValues(z);
+    const ziffern = String(z[0] % 10000).padStart(4, '0') + String(z[1] % 10000).padStart(4, '0');
+    let b = ''; try { b = await K.verpacken(ziffern, { c: K.appCodeNormal(ko.code), k: ko.id }); } catch (e) {}
+    const r = b ? await briefPost({ a: 'uebergabe', t: s.t, u: await pruefsummeVon('dk-uebergabe|', ziffern), b }) : { ok: false };
+    knopf.disabled = false; knopf.textContent = 'Neuen Übergabe-Code erstellen';
+    if (!r.ok) { aus.append(h('p', { class: 'klein', text: r.grund === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Das hat nicht geklappt. Bitte nochmal versuchen.' })); return; }
+    aus.append(h('p', { class: 'uebergabe-code', text: ziffern.slice(0, 4) + '-' + ziffern.slice(4) }),
+      h('p', { class: 'leise klein', text: 'Gilt 10 Minuten und nur einmal. Öffne jetzt die App auf dem Home-Bildschirm und gib ihn dort bei „Übergabe-Code aus Safari?“ ein.' }));
+  } });
+  return h('section', { class: 'block' }, h('h2', { text: 'Weiter in der App vom Home-Bildschirm' }),
+    h('p', { class: 'leise klein', text: 'Auf dem iPhone hat die App vom Home-Bildschirm einen eigenen Speicher. Mit einem Übergabe-Code nimmst du dein Konto einmal mit, ohne neuen Code von Devin.' }), knopf, aus);
+}
+function uebergabeEingabe() {
+  if (!KONTAKT.briefkasten || !installiert()) return null;
+  const status = h('p', { class: 'klein', role: 'status' });
+  let laeuft = false;
+  const feld = h('input', { class: 'eingabe code-feld', id: 'uebergabe-feld', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '9', placeholder: '0000-0000', 'aria-describedby': 'uebergabe-hilfe',
+    oninput: (e) => { const n = String(e.target.value).replace(/\D/g, '').slice(0, 8); e.target.value = (n.match(/\d{1,4}/g) || []).join('-'); if (n.length === 8) los(); },   // Übergabe-Code: 8 Ziffern (kein Kunden-Code)
+    onkeydown: (e) => { if (e.key === 'Enter') los(); } });
+  const knopf = h('button', { class: 'knopf haupt', type: 'button', text: 'Übernehmen', onclick: () => los() });
+  async function los() {
+    if (laeuft) return;
+    const n = K.appCodeNormal(feld.value);
+    if (n.length !== 8) { status.textContent = 'Der Übergabe-Code hat 8 Ziffern, zum Beispiel 4821-7730.'; return; }
+    laeuft = true; knopf.disabled = true; status.textContent = 'Prüfe …';
+    const r = await briefPost({ a: 'uebergabe-holen', u: await pruefsummeVon('dk-uebergabe|', n) });
+    if (r.ok && typeof r.b === 'string' && typeof r.z === 'string') {
+      let innen = null, d = null;
+      try { innen = await K.entpacken(n, r.b); } catch (e) {}
+      if (innen && typeof innen.c === 'string') { try { d = await K.entpacken(innen.c, r.z); } catch (e) {} }
+      if (linkDatenOk(d) && d.k === innen.k) {
+        sitzungSetzen(d.k, r.t, r.zeit); anmelden(d, innen.c, r.z);
+        zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast('Fertig, du bist eingeloggt.'); return;
+      }
+    }
+    laeuft = false; knopf.disabled = false;
+    status.textContent = r.grund === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : r.grund === 'pause' ? 'Zu viele Versuche. Bitte in 10 Minuten nochmal.' : 'Der Übergabe-Code passt nicht oder ist abgelaufen (10 Minuten). Erstell in Safari unter Infos einen neuen.';
+    feld.select();
+  }
+  return h('section', { class: 'block code-leiste' }, h('label', { class: 'lbl', for: 'uebergabe-feld', text: 'Übergabe-Code aus Safari?' }),
+    h('p', { class: 'leise klein', id: 'uebergabe-hilfe', text: 'Schon in Safari eingeloggt? Dort unter Infos „Übergabe-Code erstellen“ und hier eingeben.' }),
+    h('div', { class: 'code-reihe' }, feld, knopf), status);
+}
+// Offline klar anzeigen
+function netzAnzeigen() {
+  let el = document.getElementById('netz-hinweis');
+  if (navigator.onLine !== false) { if (el) el.remove(); return; }
+  if (el) return;
+  document.body.append(h('div', { id: 'netz-hinweis', class: 'netz-hinweis', role: 'status' }, h('b', { text: 'Offline' }), h('span', { text: ' · Dein Plan geht trotzdem. Neues kommt, sobald du wieder online bist.' })));
+}
 async function codeHolen(code) {
   const ziffern = K.appCodeNormal(code);
-  const roh = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('dk-zugang|' + ziffern));
-  const pruefsumme = Array.from(new Uint8Array(roh), (b) => b.toString(16).padStart(2, '0')).join('');
+  const pruefsumme = await pruefsummeVon('dk-zugang|', ziffern);
+  const v3 = await briefPost({ a: 'einloesen', k: pruefsumme });
+  let teil = '', schluessel = '', zeit = 0;
+  if (v3.ok && typeof v3.z === 'string') { teil = v3.z.trim(); schluessel = typeof v3.t === 'string' ? v3.t : ''; zeit = Number(v3.zeit) || 0; }
+  else if (v3.grund !== 'alt') return { benutzt: 'benutzt', 'zu-alt': 'abgelaufen', abgelaufen: 'abgelaufen', pause: 'pause', unbekannt: 'unbekannt' }[v3.grund] || 'netz';
   const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 15000);
-  let teil = '';
-  try {
+  if (!teil) try {
     const r = await fetch(KONTAKT.briefkasten + '?k=' + pruefsumme, { cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
     if (!r.ok) return 'netz';
     teil = (await r.text()).trim();
@@ -402,6 +512,7 @@ async function codeHolen(code) {
   let d = null;
   try { d = await K.entpacken(ziffern, teil); } catch (e) {}
   if (!linkDatenOk(d)) return 'passt-nicht';
+  if (schluessel) sitzungSetzen(d.k, schluessel, zeit);   // vor anmelden: sonst löst sitzungSichern den Code ein zweites Mal ein
   anmelden(d, ziffern, teil);
   return 'ok';
 }
@@ -413,12 +524,15 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
     'aria-describedby': 'code-start-hilfe',
     oninput: (e) => { if (codeTippen(e.target) === 12) los(); },
     onkeydown: (e) => { if (e.key === 'Enter') los(); } });
-  const knopfText = art === 'zugang' ? 'Plan holen' : 'Einloggen';   // unter Infos ist man schon eingeloggt (Gesamttest 13.11.2026)
+  const knopfText = art === 'zugang' ? 'Einlösen' : 'Einloggen';   // unter Infos ist man schon eingeloggt (Gesamttest 13.11.2026)
   const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: knopfText });
   const TEXTE = {
     netz: 'Keine Verbindung. Bitte mit Internet nochmal versuchen.',
     unbekannt: 'Diesen Code kennt die Seite noch nicht. Hat Devin ihn gerade erst geschickt? Dann versuch es in 5 Minuten nochmal, oder öffne den Link aus seiner Nachricht.',
-    'passt-nicht': 'Der Code passt nicht. Schau nochmal in Devins Nachricht.'
+    'passt-nicht': 'Der Code passt nicht. Schau nochmal in Devins Nachricht.',
+    benutzt: 'Dieser Code wurde schon benutzt. Auf diesem Handy schon eingeloggt? Dann ist alles da. Neues Handy: Bitte Devin um einen neuen Code.',
+    abgelaufen: 'Dieser Code ist abgelaufen. Bitte Devin um einen neuen Code.',
+    pause: 'Zu viele Versuche. Bitte in 10 Minuten nochmal.'
   };
   async function los() {
     if (laeuft) return;
@@ -431,12 +545,12 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
     feld.select();
   }
   return h('section', { class: 'block code-leiste' },
-    h('label', { class: 'lbl', for: 'code-start', text: art === 'zugang' ? 'Neuen Plan holen' : 'Code von Devin?' }),
-    h('p', { class: 'leise klein', id: 'code-start-hilfe', text: art === 'zugang' ? 'Hat Devin dir einen neuen Plan geschickt? Gib deinen Code ein, dann holt die Seite den neuesten Stand.' : 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
+    h('label', { class: 'lbl', for: 'code-start', text: art === 'zugang' ? 'Neuer Code von Devin?' : 'Code von Devin?' }),
+    h('p', { class: 'leise klein', id: 'code-start-hilfe', text: art === 'zugang' ? 'Neue Pläne kommen von selbst, sobald du online bist. Hat Devin dir einen neuen Code geschickt? Dann hier eingeben.' : 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
     h('div', { class: 'code-reihe' }, feld, knopf), status);
 }
 function willkommen() {
-  return [codeLeiste(), h('section', { class: 'block willkommen' },
+  return [uebergabeEingabe(), codeLeiste(), h('section', { class: 'block willkommen' },
     h('img', { class: 'logo', src: 'icon.svg', alt: '' }),
     h('h1', { text: 'Dein Trainingsplan' }),
     h('p', { class: 'leise', text: installiert()
@@ -1028,7 +1142,9 @@ function ansichtInfo() {
       h('p', { class: 'klein', text: 'Eingeloggt als ' + (ko.n || 'Kunde') + (ko.bis ? ' · bis ' + datumDe(ko.bis) + (tageBis(ko) >= 0 ? ' (noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag)' : ' Tage)') : '') : ' · ohne Ablauf') }),
       h('p', { class: 'leise klein', text: 'Neuer Link von Devin? Einfach öffnen, der Code ist gespeichert. In der App vom Home-Bildschirm: Nachricht kopieren und hier einfügen.' }),
       einfuegenBlock('Neuen Link einfügen'),
+      sitzungen()[ko.id] ? h('button', { class: 'knopf klein', type: 'button', text: 'Nach neuem Plan suchen', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; b.textContent = 'Suche …'; const r = await standHolen(true); if (r !== 'neu') { b.disabled = false; b.textContent = 'Nach neuem Plan suchen'; toast(r === 'aktuell' ? 'Dein Plan ist aktuell.' : r === 'offline' || r === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Gerade nicht möglich. Bitte später nochmal.'); } else toast('Neuer Stand von Devin ist da'); } }) : null,
       h('button', { class: 'knopf klein', type: 'button', onclick: abmelden, text: 'Abmelden' })) : null,
+    mitZugang ? uebergabeKarte() : null,
     installKarte(true),
     gefuehlBlock(),
     h('section', { class: 'block' }, h('h2', { text: 'Begriffe' }),
@@ -1049,6 +1165,7 @@ function abmelden(e) {
   const b = e.currentTarget;
   if (!b.dataset.sicher) { b.dataset.sicher = '1'; b.textContent = 'Wirklich abmelden? Nochmal tippen'; return; }
   const ko = aktivesKonto(), alle = konten(), plaene = speicher.lies('dk_plaene', {});
+  const sz = sitzungen()[ko.id]; if (sz) { briefPost({ a: 'abmelden', t: sz.t }).catch(() => {}); sitzungSetzen(ko.id, null); }   // Sitzung auch auf dem Server löschen
   delete alle[ko.id]; delete plaene[ko.id];
   speicher.schreib('dk_konten', alle); speicher.schreib('dk_plaene', plaene); speicher.schreib(entwurfKey(ko), null);
   speicher.schreib(VERLAUF_KEY, null); speicher.schreib('dk_tage_' + ko.id, null); if (LAUF) laufSchliessen();   // der nächste auf diesem Handy soll nichts davon sehen
@@ -1852,15 +1969,38 @@ function gespeichertesPruefen() {
 // Sofort neue Fassung (16.11.2026, Devin: „es ist tatsächlich noch nicht online“): Die App kommt aus dem Offline-Speicher, eine neue Fassung lädt im Hintergrund.
 // Übernimmt sie, lädt die App einmal neu, sobald nichts offen ist (kein Gym, Training oder Blatt; der Plan steckt im #-Teil und bleibt).
 // Kommt die App wieder in den Vordergrund (Home-Bildschirm am iPhone), fragt sie nach einer neuen Fassung.
+// 16.11.2026 (Devin: „Zeige bei neuer Version einen verständlichen Hinweis mit Jetzt aktualisieren … Unterbrich keine laufende Übung“): Die neue Fassung wartet.
+// Gerade geöffnet oder zurückgekommen (12 s) und nichts offen: gleich übernehmen. Sonst Hinweis mit „Jetzt aktualisieren“, im Training/Gym erst danach.
+// Nachgesehen wird beim Öffnen, bei Rückkehr in die App, wenn das Internet wiederkommt und alle 30 Minuten. Trainings und Plan liegen im Speicher des Handys und bleiben.
 if ('serviceWorker' in navigator) {
-  const hatteFassung = !!navigator.serviceWorker.controller;
-  let neuLaden = false;
-  const jetztNeu = () => { if (!neuLaden || document.querySelector('.raum, .tm, .blatt.offen, .rang-auf')) return; neuLaden = false; location.reload(); };
+  const hatteFassung = !!navigator.serviceWorker.controller, START = Date.now();
+  let neuLaden = false, reg = null, hinweis = null, zurueck = 0;
+  const offenesEtwas = () => !!document.querySelector('.raum, .tm, .blatt.offen, .rang-auf');
+  const tippt = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
+  const jetztNeu = () => { if (!neuLaden || offenesEtwas()) return; neuLaden = false; location.reload(); };
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hatteFassung) return; neuLaden = true; jetztNeu(); });
-  navigator.serviceWorker.register('sw.js').then((reg) => {
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); else jetztNeu(); });
+  const anwenden = () => { if (reg && reg.waiting) { neuLaden = true; reg.waiting.postMessage('jetzt'); } else location.reload(); };
+  const pruefen = () => { if (reg && navigator.onLine !== false) reg.update().catch(() => {}); };
+  const hinweisWeg = () => { if (hinweis) { hinweis.remove(); hinweis = null; } };
+  const wartet = () => {
+    if (!reg || !reg.waiting || !navigator.serviceWorker.controller) { hinweisWeg(); return; }
+    if (offenesEtwas()) { hinweisWeg(); return; }
+    if (!tippt() && Date.now() - Math.max(START, zurueck) < 12000) { anwenden(); return; }
+    if (hinweis) return;
+    const knopf = h('button', { class: 'knopf haupt', type: 'button', text: 'Jetzt aktualisieren', onclick: () => { knopf.disabled = true; knopf.textContent = 'Lädt …'; anwenden(); } });
+    hinweis = h('div', { class: 'update-hinweis', role: 'status' }, h('div', { class: 'update-text' }, h('b', { text: 'Neue Version da' }), h('small', { text: 'Dauert nur einen Moment. Dein Plan und deine Trainings bleiben.' })), knopf);
+    document.body.append(hinweis);
+  };
+  try { if (window.caches) caches.open('dk-flags').then((c) => c.put('update-knopf', new Response('1'))).catch(() => {}); } catch (e) {}   // sagt der neuen sw.js: diese App kann „Jetzt aktualisieren“
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => {
+    reg = r;
+    r.addEventListener('updatefound', () => { const n = r.installing; if (n) n.addEventListener('statechange', wartet); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { zurueck = Date.now(); pruefen(); standHolen().catch(() => {}); } else jetztNeu(); });
+    window.addEventListener('online', pruefen);
+    pruefen(); wartet();
   }).catch(() => {});
-  setInterval(jetztNeu, 2000);
+  setInterval(() => { jetztNeu(); wartet(); }, 2000);
+  setInterval(pruefen, 30 * 60 * 1000);
 }
 (async () => {
   altesAbhakenWeg();
@@ -1871,7 +2011,9 @@ if ('serviceWorker' in navigator) {
   fotosVorladen();
   gymAusLink();
   umzugPruefen();
+  netzAnzeigen();
+  standHolen().catch(() => {});
 })();
 window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { zeichne(); window.scrollTo(0, 0); fotosVorladen(); } });
-window.addEventListener('online', () => { zeichne(); umzugPruefen(); });
-window.addEventListener('offline', zeichne);
+window.addEventListener('online', () => { zeichne(); umzugPruefen(); netzAnzeigen(); standHolen().catch(() => {}); });
+window.addEventListener('offline', () => { zeichne(); netzAnzeigen(); });

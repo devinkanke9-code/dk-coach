@@ -2029,6 +2029,8 @@ export class Ansicht {
     let vorher = performance.now(), mess = 0, messN = 0;
     const schleife = (jetzt) => {
       this._raf = requestAnimationFrame(schleife);
+      // Nicht zu sehen (Pause im Training, Blatt zu, weggescrollt, App im Hintergrund): nichts rechnen und die Zeit anhalten; danach geht es dort weiter, wo es stand (17.11.2026)
+      if (this.ruhen || !this.canvas.isConnected || document.hidden) { vorher = jetzt; return; }
       // Schafft das Gerät das Bild nicht (im Schnitt unter 30 Bilder/s über 2 s), wird es etwas weniger scharf gerechnet: die Bewegung bleibt flüssig
       if (jetzt - vorher < 100) { mess += jetzt - vorher; messN++; }
       if (mess > 2000) { if (mess / messN > 34 && this.renderer.getPixelRatio() > 1) this.renderer.setPixelRatio(Math.max(1, this.renderer.getPixelRatio() * 0.8)); mess = 0; messN = 0; }
