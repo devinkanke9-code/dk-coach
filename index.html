@@ -277,6 +277,11 @@ html.dk-wellen-an .g-glas.g-fern > .g-linse { display: none; }
 .netz-hinweis { position: fixed; z-index: 85; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); width: max-content; max-width: calc(100% - 24px); padding: 10px 14px; border-radius: 14px; background: #3A3A3C; color: #FFF; font-size: 14px; line-height: 1.3; text-align: center; pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 body:has(.raum) .netz-hinweis { bottom: auto; top: calc(10px + env(safe-area-inset-top, 0px)); font-size: 12px; padding: 6px 10px; }
 .uebergabe-code { margin: 8px 0 0; font-size: 34px; font-weight: 800; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+/* Studio-Hintergrund (17.11.2026, Devin: „die ganzen Seiten im Fokus und das andere außer Fokus … nicht zu krass“): das Bild ist schon weichgezeichnet und etwas dunkler,
+   es kostet beim Scrollen nichts. Sport zeigt es statt des glatten Anthrazits; dafür wird der Grund der Seite durchsichtig. */
+:root[data-look="sport"] .dk-wellen-video.dk-studio { display: block; }
+html.dk-wellen-an[data-look="sport"] body { background: transparent; }
+.dk-studio { user-select: none; -webkit-user-select: none; }
 </style>
 </head>
 <body>

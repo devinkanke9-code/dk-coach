@@ -259,18 +259,29 @@
   if (!meta) return;
   var pfad = meta.getAttribute('content') || '', root = document.documentElement, v = null;
   var still = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) || (navigator.connection && navigator.connection.saveData);
-  function art() { var l = root.dataset.look; return l === 'klar' || l === 'sport' ? '' : l === 'gold' ? 'dunkel' : 'hell'; }   // Sport: ruhiges Anthrazit ohne Video
+  // Studio-Hintergrund (17.11.2026): Sport und Schwarz-Gold zeigen Devins Studio-Bild, weichgezeichnet (hoch fürs Handy, breit für große Bildschirme), Lagune eine helle Fassung davon. Klar bleibt ohne.
+  function art() { var l = root.dataset.look; return l === 'klar' ? '' : l === 'gold' || l === 'sport' ? 'studio' : 'studio-hell'; }
+  var breitMq = window.matchMedia ? window.matchMedia('(min-aspect-ratio: 1/1)') : null;
+  function studioBild() { if (v && v.tagName === 'IMG') v.src = pfad + 'hintergrund-' + (breitMq && breitMq.matches ? 'breit' : 'hoch') + (v.dataset.art === 'studio-hell' ? '-hell' : '') + '.jpg'; }
+  if (breitMq) { if (breitMq.addEventListener) breitMq.addEventListener('change', studioBild); else if (breitMq.addListener) breitMq.addListener(studioBild); }
   function abspielen() {
-    if (!v || still) return;
+    if (!v || still || !v.play) return;
     if (document.hidden || document.querySelector('.raum, .tm, .blatt.offen')) { if (!v.paused) v.pause(); return; }
     if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }   // Stromsparmodus am iPhone: Standbild bleibt stehen
   }
   function setzen() {
     var a = art();
     if ((v ? v.dataset.art : '') === a) return;
-    if (v) { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); v = null; }
+    if (v) { if (v.pause) { v.pause(); v.removeAttribute('src'); v.load(); } v.remove(); v = null; }
     root.classList.toggle('dk-wellen-an', !!a);
     if (!a) return;
+    if (a.indexOf('studio') === 0) {   // ein ruhiges Bild statt Video: lädt sofort, braucht kaum Daten
+      v = document.createElement('img');
+      v.className = 'dk-wellen-video dk-studio'; v.dataset.art = a; v.alt = ''; v.decoding = 'async'; v.setAttribute('aria-hidden', 'true');
+      studioBild();
+      document.body.insertBefore(v, document.body.firstChild);
+      return;
+    }
     v = document.createElement('video');
     v.className = 'dk-wellen-video'; v.dataset.art = a; v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true; v.tabIndex = -1;
     ['muted', 'playsinline', 'disablepictureinpicture', 'disableremoteplayback'].forEach(function (x) { v.setAttribute(x, ''); });

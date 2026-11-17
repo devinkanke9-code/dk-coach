@@ -22,6 +22,7 @@
   function quelle() {
     var v = video();
     if (!v) return null;
+    if (v.tagName === 'IMG') return v.complete && v.naturalWidth ? { bild: v, w: v.naturalWidth, h: v.naturalHeight, kasten: v.getBoundingClientRect(), laeuft: false } : null;   // Studio-Bild (17.11.2026)
     if (v.readyState >= 2 && v.videoWidth) return { bild: v, w: v.videoWidth, h: v.videoHeight, kasten: v.getBoundingClientRect(), laeuft: !v.paused };
     var p = v.poster || '';
     if (p && standbildFuer !== p) { standbildFuer = p; standbild = new Image(); standbild.onload = function () { schmutzig = true; }; standbild.src = p; }
@@ -80,7 +81,7 @@
   var geplant = false;
   function alle() {
     geplant = false;
-    if (!root.classList.contains('dk-wellen-an')) return;
+    if (!root.classList.contains('dk-wellen-an') || root.dataset.look === 'sport') return;   // Sport: Karten bleiben ruhig und scharf, kein Glas
     var liste = document.querySelectorAll(ZIEL);
     for (var k = 0; k < liste.length; k++) linse(liste[k]);
     schmutzig = true;
