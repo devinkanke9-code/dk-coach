@@ -37,6 +37,8 @@ function vollstaendig(pose) {
   p.ellbogenPol = seiten((s) => { const v = g.ellbogenAchse[s].clone().cross((pose.kelch && pose.kelch[s] ? g.handgelenk[s] : g.handZiel[s]).clone().sub(g.schulter[s]).normalize()); return v.lengthSq() > 1e-6 ? v.normalize() : pol(g.ellbogen[s].clone().sub(mitte(g.schulter[s], g.handgelenk[s])), pose.ellbogenPol && pose.ellbogenPol[s], g.R.vor.clone().negate()); });
   p.kniePol = seiten((s) => pol(g.knie[s].clone().sub(mitte(g.huefte[s], g.knoechel[s])), pose.kniePol && pose.kniePol[s], g.R.vor));
   p.fussRicht = seiten((s) => g.zehe[s].clone().sub(g.ferse[s]));
+  if (pose.zehenAuf) p.zehenAuf = pose.zehenAuf;   // 17.11.2026: Zehen aufgestellt bzw. Bodenfuß nach dem Schienbein gelten auch im Ablauf dorthin (mische)
+  if (pose.fussLuft) p.fussLuft = pose.fussLuft;
   p.handflaeche = seiten((s) => g.handRuecken[s].clone().negate());
   p.zehen = Object.assign({}, pose.zehen || {});
   // Fläche unter dem Fuß (Box, schräge Platte) mitnehmen, sonst steht der Fuß im letzten Bild des Ablaufs anders als in der Übung
@@ -135,6 +137,30 @@ function handLage(p) {
   return t;
 }
 const rahmen = (f) => { const F = f.finger.clone().addScaledVector(f.ruecken, -f.finger.dot(f.ruecken)).normalize(); return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(F, f.ruecken, F.clone().cross(f.ruecken))); };
+// 17.11.2026: Fußrichtung mischen, ohne dass der Fuß zur Seite wegdreht. Gerade gemischt läuft „nach vorn“ -> „nach hinten“ durch einen kurzen Vektor, dessen kleiner Seitenanteil dann die Richtung bestimmt
+// (V nach außen). Zeigen die beiden Richtungen auseinander (Winkel über 90°), geht der Weg zusätzlich über „Zehen nach unten“: der Fuß kippt in der Ebene des Körpers.
+// Nur aus dem Stand auf den Zehen (Knien) und für den Fuß, der hinten auf die Bank geht (fussDreh); allgemein angewandt zog es Füße in der Luft über die Linie des Schienbeins (Beincurl mit Handtuch, Pike)
+function fussRichtMisch(a, b, u) {
+  const an = a.clone().normalize(), bn = b.clone().normalize(), v = an.clone().lerp(bn, u), gegen = -an.dot(bn);
+  if (gegen > 0) v.y -= 4 * u * (1 - u) * gegen;
+  return v.lengthSq() > 1e-8 ? v : bn;
+}
+// 17.11.2026: Im Ablauf davor nie mit dem Fuß im Boden (Befund: beim Hinlegen auf die Seite tauchten Ballen und Ferse bis 4,7 cm unter den Boden). Liegt Ferse oder Ballen tiefer
+// als im flachen Stand (2,8 cm), hebt sich das Fußziel um genau so viel; sonst bleibt alles, wie es ist
+const SOHLE_MIN = 0.026;
+function ueberBoden(p, anteil = 1) {
+  if (!p.fuss || !p.fuss.l || !p.fuss.r) return p;
+  for (let i = 0; i < 2; i++) {
+    const g = gelenke(p); let neu = null;
+    for (const s of ['l', 'r']) {
+      const tief = Math.min(g.ferse[s].y, g.ballen[s].y);
+      if (tief < SOHLE_MIN - 0.002 && anteil > 0) { neu = neu || { l: p.fuss.l, r: p.fuss.r }; neu[s] = p.fuss[s].clone(); neu[s].y += (SOHLE_MIN - tief) * anteil; }
+    }
+    if (!neu) break;
+    p = Object.assign({}, p, { fuss: neu });
+  }
+  return p;
+}
 // Zwischen zwei vollständigen Posen; hand: eigener Anteil für die Hände (sie greifen zuletzt); vorne: die Hantel in beiden Händen geht in der Mitte so weit vor dem Körper
 function mische(A, B, u, hand = u, vorne = 0) {
   const lv = (a, b, x) => a.clone().lerp(b, x), ln = (a, b, x) => { const v = lv(a, b, x); return v.lengthSq() > 1e-8 ? v : b.clone(); };
@@ -150,9 +176,17 @@ function mische(A, B, u, hand = u, vorne = 0) {
   p.hand = seiten((s) => imBogen(A.hand[s], B.hand[s], wA, wB, { n: 'schulter', m: wM }, hand, s));
   p.fuss = seiten((s) => imBogen(A.fuss[s], B.fuss[s], wA, wB, { n: 'huefte', m: wM }, u, s));
   for (const k of ['ellbogenPol', 'handflaeche']) p[k] = seiten((s) => armVektor(A[k][s], B[k][s], A.hand[s], B.hand[s], wA, wB, wM, hand, s));
-  for (const k of ['kniePol', 'fussRicht']) p[k] = seiten((s) => ln(A[k][s], B[k][s], u));
+  p.kniePol = seiten((s) => ln(A.kniePol[s], B.kniePol[s], u));
+  // Fußrichtung: gerade gemischt (beim Hinknien zeigt das Ziel seit 17.11. nach unten, darum kein V mehr). Steht der Fuß schon auf den Zehen (zeigt nach unten: aus dem Knien
+  // in die Seitlage, in die Bauchlage), über „Zehen nach unten“ in der Ebene des Körpers, sonst drehten die Füße beim Hinlegen nach innen und außen
+  p.fussRicht = seiten((s) => (A.fussRicht[s].clone().normalize().y < -0.6 ? fussRichtMisch : ln)(A.fussRicht[s], B.fussRicht[s], u));
   { const ua = unterarmVon(A), ub = unterarmVon(B); p.unterarm = seiten((s) => mix(ua[s], ub[s], hand)); }
   p.zehen = seiten((s) => mix(A.zehen[s] || 0, B.zehen[s] || 0, u));
+  // 17.11.2026: Stellt die Übung die Zehen auf (pose.zehenAuf, bewegungen.js) oder legt den Bodenfuß nach dem Schienbein (fussLuft), gilt das schon auf dem Weg dorthin.
+  // Sonst endete der Ablauf mit dem Fuß auf dem Spann und die Übung begann mit aufgestellten Zehen: Sprung bei der Übergabe (bis 28 cm an der Zehe). figur.js blendet zehenAuf
+  // nach der Lage des Schienbeins weich ein (im Stand wirkt es nicht)
+  if (B.zehenAuf) p.zehenAuf = B.zehenAuf;
+  if (B.fussLuft) p.fussLuft = B.fussLuft;
   p.fussFlaeche = seiten((s) => ((u < 0.5 ? A : B).fussFlaeche || {})[s] || null);   // gilt ab der zweiten Hälfte (Fuß kommt dort an)
   p.handKnick = seiten((s) => mix(A.handKnick[s] || 0, B.handKnick[s] || 0, hand));
   p.kelchW = seiten((s) => { const a = (A.kelchW && A.kelchW[s]) || 0, b = (B.kelchW && B.kelchW[s]) || 0; return mix(a, b, b < 0 ? glatt((hand - 0.55) / 0.45) : hand); });   // über den Kopf: die Finger bleiben unter dem Kopf eingehakt, bis die Arme fast oben sind
@@ -287,7 +321,10 @@ function uebergang(von, s) {
         { const ra = A.fussRicht[k], rb = s.ziel.fussRicht[k], wa = Math.atan2(ra.x, ra.z), wb = Math.atan2(rb.x, rb.z), nick = (r) => r.y / (Math.hypot(r.x, r.z) || 1);
           if (s.steigen.fussDreh) {
             const aussen = k === 'l' ? 1 : -1, e = glatt((v - 0.15) / 0.75); let dw = kurz(wb - wa); if (dw * aussen < 0) dw += aussen * 2 * Math.PI;
-            const w = wa + dw * e; p.fussRicht[k] = V(Math.sin(w), mix(nick(ra), nick(rb), e), Math.cos(w));
+            // 17.11.2026 (Devin: Füße wenden sich nie vom Körper ab): nicht mehr zur Seite drehen, sondern in der Ebene des Körpers: gleich beim Abheben über „Zehen nach unten“
+            // (die Ferse geht hoch), dann nach hinten, solange der Fuß hoch über die Bank geht
+            p.fussRicht[k] = fussRichtMisch(ra, rb, glatt(v / 0.45));
+            if (false) { const w = wa + dw * e; p.fussRicht[k] = V(Math.sin(w), mix(nick(ra), nick(rb), e), Math.cos(w)); }
           } }
       }
       if (!s.steigen.mitBecken) p.becken.y = mix(A.becken.y, s.ziel.becken.y, glatt((u - 0.3) / 0.6));   // mitBecken: das Becken hebt sich gleichmäßig (ein Knie liegt schon oben und muss erreichbar bleiben)
@@ -583,8 +620,10 @@ function klassisch(art, G, Gp, gg, hantel = false, frei = false, sitzVersatz = 0
     { const kr = rumpfRahmen(knien.rumpf), kb = knien.becken.clone().addScaledVector(kr.oben, MASS.rumpf - 0.03); knien.hand = seiten((s, sg) => kb.clone().addScaledVector(kr.links, sg * (MASS.schulterBreite + 0.05)).addScaledVector(kr.oben, -ARM() * 0.95)); }
     knien.fuss = seiten((s, sg) => kniePunkt.clone().add(blick.clone().multiplyScalar(-0.42)).add(V(sg * 0.12, 0, 0).applyQuaternion(drehY(winkelVon(blick)))).setY(0.09));
     knien.kniePol = seiten(() => blick.clone());
-    knien.zehen = seiten(() => -40);
-    knien.fussRicht = seiten(() => blick.clone().negate().add(V(0, -1.2, 0)));
+    // 17.11.2026 (Devin: Füße dürfen sich nie vom Körper abwenden; Regel 1: beim Knien Zehen aufgestellt): Fuß zeigt nach unten und etwas zum Knie (Ballen und Zehen am Boden, Ferse oben).
+    // Bis dahin zeigte er nach hinten unten (Spann am Boden); die gerade Mischung aus „nach vorn“ lief dabei durch „zur Seite“: beide Füße drehten kurz in ein V nach außen
+    knien.zehen = seiten(() => 0);
+    knien.fussRicht = seiten(() => blick.clone().multiplyScalar(0.25).add(V(0, -1, 0)));
     return { name: art, blick, stand: kniePunkt.clone().add(blick.clone().multiplyScalar(-0.15)), schritte: [{ ziel: knien, d: DAUER.setzen + 0.2 }, { ziel: Gp, d: DAUER.legen + 0.4, verzug: 0.1, bogen: 0.1 }] };
   }
   if (art === 'haengen') {
@@ -1303,7 +1342,8 @@ export function baueEinleitung(anim, ger, z, kamera) {
       if (!p) p = teile[teile.length - 1].bild(1);
       if (auf && sek < tMit) halten(sek, p);
       if (tuch) tuch.visible = sek >= Math.min(tMit, tGriff);
-      return Object.assign({}, p, griffStand(sek));
+      const ende = 1 - glatt((sek - (dauer - 0.45)) / 0.4);   // die letzten 0,45 s ohne Eingriff: der Ablauf endet genau in der Startpose der Übung (sonst Sprung bei der Übergabe)
+      return ueberBoden(Object.assign({}, p, griffStand(sek)), ende);
     },
     gehtMit: (sek) => sek >= Math.min(tMit, tGriff),
     // zum Prüfen: Art, gewählter Einstieg, Ende des Laufens (mit Drehen)
