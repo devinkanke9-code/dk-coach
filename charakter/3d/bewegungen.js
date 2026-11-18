@@ -2,6 +2,7 @@
 // Jede Vorlage ist eine Funktion (optionen) → Animation { aufbau(geraete), pose(t), blick, abstand, kameraRicht, dauer }.
 // t läuft von 0 (Start der Bewegung, z. B. unten bei der Kniebeuge) bis 1 (Endposition, z. B. oben).
 import { THREE, V, RAD, MASS, SOHLE, BALLEN, HAND_ULNAR, kniescheibe, koerperTiefe, rumpfRahmen, wirbelRahmen, wirbelBogen, rumpfRing, rumpfPunkt, rundGeo, scheibenGeo, ik, gelenke, KELCH_MASS, kelchGriff, hakenGriff, griffBei } from './figur.js';
+import { BAU as NK_BAU } from './figur-modell.js';   // Nacken schwer: Kopfgröße des Charakters (Band, Scheibe und Gurt liegen am Kopf an)
 export { KELCH_MASS };
 
 const FY = 0.07;                                  // Knöchelhöhe, Fuß steht auf dem Boden
@@ -5422,6 +5423,7 @@ const handtuchStoff = () => new THREE.MeshStandardMaterial({ color: 0xd9d5cb, ro
 // Hintere Schulter & Rotatoren: art: reverse_butterfly | pull_apart | kabel_reverse_fly | aussenrotation | yt_bauchlage ; last: kabel (aussenrotation am Kabelturm statt Band)
 // Neu (G15-B): wandengel | wandrutschen (Arme an der Wand, eigene Funktion wandArmeG15b) | rueckzug_sitzend (Schulterblätter zusammenziehen auf dem Stuhl, eigene Funktion rueckzugSitzG15b)
 // Neu (Nacken, 18.11.2026): kinn_zurueck_wand | nacken_halten_hand_vorn_hinten | nacken_halten_hand_seite | kopf_heben_vierfuessler | kopf_drehen_sitzend | kopf_heben_rueckenlage_bank | kopf_heben_bauchlage_bank | kopf_heben_seitlage | ball_wand_nacken_vorn | ball_wand_nacken_seite (eigene Funktion nackenUebung)
+// Neu (Nacken schwer, 18.11.2026): kinn_zurueck_liegend | nacken_halten_band_vorn_hinten | nacken_halten_band_seite | kopf_heben_vierfuessler_band | kopf_drehen_vierfuessler | kopf_heben_rueckenlage_scheibe | kopf_heben_bauchlage_scheibe | kopf_heben_seitlage_scheibe | nacken_halten_kabel_vorn | nacken_halten_kabel_seite
 export function schulterzug(o = {}) {
   const art = o.art || 'reverse_butterfly';
   if (art === 'wandengel' || art === 'wandrutschen') return wandArmeG15b(art);
@@ -6743,7 +6745,629 @@ function nkBallWand(art) {
   };
 }
 
+/* NACKEN SCHWER BEGINN */
+/* =================================================================== */
+/* Nacken schwer (18.11.2026, Devin: „jede Übung in 2 Stufen“, Geräte Hantelscheibe und Kabelzug): zu jeder leichten Nackenübung eine schwere Fassung, gleiche Bewegung, mehr Widerstand.
+   Zu Hause: Kinn zurück im Liegen (gegen das Kopfgewicht), Nacken halten gegen ein Band am Pfosten (vorn/hinten, Seite), Kopf heben im Vierfüßler gegen ein Band, Kopf drehen im Vierfüßler.
+   Gym: Kopf heben mit kleiner Hantelscheibe (Rücken-, Bauch-, Seitlage), Nacken halten am Kabelzug mit Kopfgurt (vorn, Seite). */
+/* =================================================================== */
+const NK2_ARTEN = ['kinn_zurueck_liegend', 'nacken_halten_band_vorn_hinten', 'nacken_halten_band_seite', 'kopf_heben_vierfuessler_band', 'kopf_drehen_vierfuessler',
+  'kopf_heben_rueckenlage_scheibe', 'kopf_heben_bauchlage_scheibe', 'kopf_heben_seitlage_scheibe', 'nacken_halten_kabel_vorn', 'nacken_halten_kabel_seite'];
+NACKEN_ARTEN.push(...NK2_ARTEN);
+// Kopfform (echte Haut aus koerper.bin, werkzeug/kopftabelle.mjs): Abstand in mm von der Kopfmitte (im Kopf-Rahmen NK_KM vor g.kopf) in Richtung Höhe −45 … 90° (Zeilen, Schritt 15°)
+// und Richtung 0 … 345° (Spalten, Schritt 15°; 0 = vor, 90 = links, 180 = hinten). Darüber liegen 6 mm Haar, außer im Gesicht
+const NK_KM = 0.066, NK_TAB = [
+  [147, 146, 135, 124, 118, 110, 101, 106, 124, 123, 115, 113, 113, 113, 115, 123, 124, 106, 101, 110, 118, 124, 135, 146],
+  [139, 129, 121, 114, 107, 94, 95, 92, 86, 92, 95, 95, 87, 95, 95, 92, 86, 92, 95, 94, 107, 114, 121, 129],
+  [139, 112, 108, 104, 95, 82, 93, 95, 77, 82, 88, 91, 92, 91, 88, 82, 77, 95, 93, 82, 95, 104, 108, 112],
+  [109, 106, 105, 98, 86, 78, 93, 94, 83, 88, 94, 96, 98, 96, 94, 88, 83, 94, 93, 78, 86, 98, 105, 106],
+  [110, 108, 105, 98, 87, 83, 78, 84, 90, 95, 99, 101, 101, 101, 99, 95, 90, 84, 78, 83, 87, 98, 105, 108],
+  [113, 111, 107, 103, 96, 91, 92, 93, 98, 102, 103, 103, 103, 103, 103, 102, 98, 93, 92, 91, 96, 103, 107, 111],
+  [112, 111, 108, 107, 105, 104, 102, 103, 104, 105, 106, 106, 105, 106, 106, 105, 104, 103, 102, 104, 105, 107, 108, 111],
+  [109, 109, 109, 108, 108, 107, 106, 106, 106, 106, 106, 107, 106, 107, 106, 106, 106, 106, 106, 107, 108, 108, 109, 109],
+  [107, 107, 107, 107, 107, 107, 107, 106, 106, 106, 106, 106, 106, 106, 106, 106, 106, 106, 107, 107, 107, 107, 107, 107],
+  [105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105, 105]];
+// Haut (ohne Haar) in Richtung d (Kopf-Rahmen: x links, y oben, z vor; Einheitsvektor), Abstand in m von der Kopfmitte der Grundfigur
+function nkKopfRoh(d) {
+  const el = Math.asin(Math.max(-1, Math.min(1, d.y))) / RAD, az = ((Math.atan2(d.x, d.z) / RAD) % 360 + 360) % 360;
+  const fe = Math.max(0, Math.min(9, (el + 45) / 15)), e0 = Math.min(8, Math.floor(fe)), ue = fe - e0, fa = az / 15, a0 = Math.floor(fa) % 24, a1 = (a0 + 1) % 24, ua = fa - Math.floor(fa);
+  const T = NK_TAB;
+  return ((T[e0][a0] * (1 - ua) + T[e0][a1] * ua) * (1 - ue) + (T[e0 + 1][a0] * (1 - ua) + T[e0 + 1][a1] * ua) * ue) / 1000;
+}
+// Haar über der Haut (6 mm, Grundfigur; längeres Haar gibt unter Band und Scheibe nach), nicht im Gesicht
+function nkHaar(d) {
+  const el = Math.asin(Math.max(-1, Math.min(1, d.y))) / RAD, az = ((Math.atan2(d.x, d.z) / RAD) % 360 + 360) % 360, seite = Math.min(az, 360 - az);
+  return el >= 35 || (el >= 0 && seite > 60) || (el >= -30 && seite > 80) ? 0.006 : 0;
+}
+// Kopfgröße des Charakters (charakter/fotomass.js: BAU.kopf, Grundfigur 1,03). Der Kopf wächst um NK_DREH (Kopf-Rahmen, gemessen mit werkzeug/kopfpivot.mjs, Rest unter 5 mm bei +10 %)
+const NK_DREH = V(0, -0.106, 0.064);
+const nkSkala = () => (NK_BAU && NK_BAU.kopf ? NK_BAU.kopf / 1.03 : 1);
+const nkMitteL = () => NK_DREH.clone().add(V(0, 0, NK_KM).sub(NK_DREH).multiplyScalar(nkSkala()));   // Kopfmitte im Kopf-Rahmen, mit der Kopfgröße
+// Punkt der Oberfläche (Haut, Haar, plus aussen) in Richtung d von der Kopfmitte, im Kopf-Rahmen
+const nkHautL = (d, aussen = 0) => nkMitteL().addScaledVector(d, nkKopfRoh(d) * nkSkala() + nkHaar(d) + aussen);
+// Abstand der Oberfläche (mit Haar) von der Kopfmitte in Richtung d
+const nkKopfR = (d) => nkKopfRoh(d) * nkSkala() + nkHaar(d);
+const nkRichtung = (el, az) => V(Math.cos(el * RAD) * Math.sin(az * RAD), Math.sin(el * RAD), Math.cos(el * RAD) * Math.cos(az * RAD));
+const nkWelt = (K, l) => V().addScaledVector(K.links, l.x).addScaledVector(K.oben, l.y).addScaledVector(K.vor, l.z);
+// Kopf-Rahmen des echten Kopfs aus den Gelenken: Achsen aus g.kopfQ, Ursprung so, dass die Tabelle passt. g.kopf dreht um den Nacken (Länge MASS.kopf + 3 cm), der echte Kopf (figur-modell.js)
+// um seinen Knochen (NK_DREH); geneigt wandern die beiden auseinander (28° mit halbem Hals: 3 cm). Der Unterschied ist (Rumpf − Kopf)·c0 mit c0 = NK_DREH + (0, MASS.kopf + 0.03, 0)
+function nkRahmen(g) {
+  const K = { oben: V(0, 1, 0).applyQuaternion(g.kopfQ), vor: V(0, 0, 1).applyQuaternion(g.kopfQ), links: V(1, 0, 0).applyQuaternion(g.kopfQ), q: g.kopfQ };
+  const c0 = NK_DREH.clone().add(V(0, MASS.kopf + 0.03, 0)), R = g.R;
+  K.m = g.kopf.clone().add(nkWelt(R, c0)).sub(nkWelt(K, c0));
+  return K;
+}
+const nkLokal = (K, w) => V(w.dot(K.links), w.dot(K.oben), w.dot(K.vor));
+const nkPunkt = (K, l) => K.m.clone().add(nkWelt(K, l));   // Punkt im Kopf-Rahmen → Welt
+const nkMitte = (K) => nkPunkt(K, nkMitteL());
+
+/* ---------- Kleine Hantelscheibe am Kopf (1,25–2,5 kg, Ø 18 cm, 2 cm dick) ---------- */
+const NK_SCH_R = 0.09, NK_SCH_D = 0.02;
+// Lage im Kopf-Rahmen: Normale n zeigt vom Kopf weg; die Unterseite liegt 2 mm über dem höchsten Hautpunkt (mit Haar) unter der Scheibe. Neu gerechnet, wenn sich die Kopfgröße ändert
+function nkScheibeLage(n0, senk = 0) {
+  const n = n0.clone().normalize(), L = { n, skala: null };
+  L.neu = () => {
+    if (L.skala === nkSkala()) return L;
+    L.skala = nkSkala(); const c = nkMitteL(); let s = 0;
+    for (let el = -45; el <= 90; el += 5) for (let az = 0; az < 360; az += 5) {
+      const p = nkHautL(nkRichtung(el, az)).sub(c), h = p.dot(n);
+      if (h > 0 && p.clone().addScaledVector(n, -h).length() < NK_SCH_R + 0.004) s = Math.max(s, h);
+    }
+    L.mitte = c.addScaledVector(n, s + NK_SCH_D / 2 + 0.002 - senk);
+    return L;
+  };
+  // Griffe am Rand: Achse u in der Scheibe (zur Hand), Faustmitte 1 cm innerhalb der Kante, der Rand läuft quer durch die Faust (Tangente t)
+  L.griff = (u) => { L.neu(); u = u.clone().addScaledVector(n, -u.dot(n)).normalize(); return { p: L.mitte.clone().addScaledVector(u, NK_SCH_R - 0.01), u, t: n.clone().cross(u).normalize() }; };
+  return L;
+}
+function nkScheibeBauen(ger) { return ger.teil(r4_scheibeGeo(NK_SCH_R, NK_SCH_D), ger.mScheibe); }
+function nkScheibeSetzen(sch, K, L) { L.neu(); sch.position.copy(nkPunkt(K, L.mitte)); sch.quaternion.setFromUnitVectors(V(0, 1, 0), nkWelt(K, L.n).normalize()); }
+// Fäuste genau an ihr Ziel: gelenke() lässt eine freie Hand mit dem Schultergürtel mitwandern, wenn der Oberarm über die Waagerechte zeigt (an der Scheibe bis 7 cm neben dem Rand,
+// beim Übergang aus dem Ablauf sprang die Scheibe). Das Ziel wird um diesen Versatz vorgehalten (drei Runden, danach unter 1 mm)
+function nkHaendeGenau(p, liste) {
+  const ziel = {}; for (const s of liste) ziel[s] = p.hand[s].clone();
+  for (let k = 0; k < 3; k++) { const g = gelenke(p); for (const s of liste) p.hand[s] = genau(p.hand[s].clone().add(ziel[s]).sub(g.hand[s])); }
+}
+// Hand am Scheibenrand: Faust um den Rand (greift), Handfläche zur Scheibenmitte
+function nkRandGriff(p, K, G, s, ellbogen) {
+  p.hand[s] = genau(nkPunkt(K, G.p)); (p.greift = p.greift || {})[s] = true;
+  (p.handflaeche = p.handflaeche || {})[s] = nkWelt(K, G.u).negate();
+  (p.griffAchse = p.griffAchse || {})[s] = nkWelt(K, G.t);
+  (p.ellbogenPol = p.ellbogenPol || {})[s] = ellbogen;
+}
+
+/* ---------- Band und Gurt um den Kopf ---------- */
+// Ring um den Kopf, Punkte in Welt: in der Ebene durch c2 (Welt; Standard Kopfmitte) mit den Achsen e1, e2 (Welt, senkrecht zueinander), Abstand = Haut + Haar + aussen.
+// Liegt c2 nicht in der Kopfmitte, sucht jeder Strahl die Oberfläche in ein paar Schritten
+function nkRingEbene(K, e1, e2, aussen, n = 40, c2 = null) {
+  const c = nkMitte(K), m = c2 || c, pkt = [];
+  for (let i = 0; i < n; i++) {
+    const f = 2 * Math.PI * i / n, w = e1.clone().multiplyScalar(Math.cos(f)).addScaledVector(e2, Math.sin(f));
+    let r = 0.1; for (let k = 0; k < 6; k++) { const q = m.clone().addScaledVector(w, r).sub(c), d = q.length(); r += nkKopfR(nkLokal(K, q.divideScalar(d))) + aussen - d; }
+    pkt.push(m.clone().addScaledVector(w, r));
+  }
+  return pkt;
+}
+// Punkt der Kopfoberfläche (plus aussen) in Richtung (Höhe el, Richtung az), Welt
+const nkHautW = (K, el, az, aussen) => nkPunkt(K, nkHautL(nkRichtung(el, az), aussen));
+// Stirnband-Ring (Kopf-Rahmen): vorn auf Höhe 20° (Stirn), hinten 2° (über dem Hinterhauptshöcker, rutscht nicht), dazwischen weich; in Welt
+function nkStirnRing(K, aussen, n = 40) {
+  const c = nkMitte(K), pkt = [];
+  for (let i = 0; i < n; i++) { const az = 360 * i / n; pkt.push(nkHautW(K, 2 + 18 * (0.5 + 0.5 * Math.cos(az * RAD)), az, aussen)); }
+  return pkt;
+}
+// Weg eines Bands von Anker A über den Kopf zurück zu Anker B (A = B: Schlaufe an einem Punkt): Tangente an den Ring, außen herum über die abgewandte Seite.
+// ring: Punkte (Welt) eines konvexen Rings, e1/e2: Ebene des Rings (e2 zeigt von den Ankern weg), A: linker Anker (Seite +e1), B: rechter
+function nkBandUm(ring, c, e1, e2, A, B) {
+  const f2 = (p) => { const d = p.clone().sub(c); return [d.dot(e1), d.dot(e2)]; };
+  const P = ring.map((p) => { const [x, y] = f2(p); return { p, w: Math.atan2(y, x) }; }).sort((a, b) => a.w - b.w);
+  const tang = (Q, sgn) => {
+    const [qx, qy] = f2(Q); let best = 0, bw = Infinity;
+    P.forEach((x, i) => { const [px, py] = f2(x.p), dx = px - qx, dy = py - qy, cx = -qx, cy = -qy, w = Math.atan2(cx * dy - cy * dx, cx * dx + cy * dy) * sgn; if (w < bw) { bw = w; best = i; } });
+    return best;
+  };
+  const iA = tang(A, 1), iB = tang(B, -1), weg = [A.clone()];
+  // vom linken Tangentenpunkt mit wachsendem Winkel (über die abgewandte Seite, +e2) zum rechten
+  for (let k = 0, i = iA; k <= P.length; k++, i = (i + 1) % P.length) { weg.push(P[i].p.clone()); if (i === iB) break; }
+  weg.push(B.clone());
+  return weg;
+}
+// Durchhang eines lockeren Bands: in die geraden Stücke am Anfang und Ende je zwei Punkte, um sack nach unten gezogen
+function nkDurchhang(weg, sack) {
+  if (sack < 0.002) return weg;
+  const zwischen = (a, b) => [0.33, 0.67].map((u) => a.clone().lerp(b, u).add(V(0, -sack * Math.sin(Math.PI * u) * 1.15, 0)));
+  const n = weg.length;
+  return [weg[0], ...zwischen(weg[0], weg[1]), ...weg.slice(1, n - 1), ...zwischen(weg[n - 2], weg[n - 1]), weg[n - 1]];
+}
+const nkGurtStoff = () => new THREE.MeshStandardMaterial({ color: 0x23262c, roughness: 0.85 });
+// Band vom Pfosten (Anker A) um den Kopf: Stirnband-Ring, außen herum über die vom Anker abgewandte Seite, Durchhang sack
+function nkPfostenWeg(K, A, sack) {
+  const c = nkMitte(K), ring = nkStirnRing(K, 0.008), N = K.oben, d = c.clone().sub(A);
+  const e2 = d.addScaledVector(N, -d.dot(N)).normalize(), e1 = N.clone().cross(e2).normalize();
+  return nkDurchhang(nkBandUm(ring, c, e1, e2, A.clone().addScaledVector(e1, 0.012), A.clone().addScaledVector(e1, -0.012)), sack);
+}
+// Punkt eines Rings wie das Stirnband (Richtung az), um die Kopfachse sk-mal so weit und dh höher (Schlaufe offen über dem Kopf), Welt
+function nkRingV(K, az, sk, dh, aussen = 0.008) {
+  const c = nkMitte(K), d = nkHautW(K, 2 + 18 * (0.5 + 0.5 * Math.cos(az * RAD)), az, aussen).sub(c), o = d.dot(K.oben);
+  return c.clone().addScaledVector(K.oben, o + dh).addScaledVector(d.addScaledVector(K.oben, -o), sk);
+}
+// Auf der Stelle um O drehen (dw, Bogenmaß) in Tippelschritten zu 45°: abwechselnd ein Fuß (der in Drehrichtung zuerst), der andere schließt zuletzt. Schritte für den Ablauf davor
+function nkTippel(stehen, O, w0, dw, d = 0.38) {
+  const n = Math.max(2, Math.round(Math.abs(dw) / (45 * RAD))), erst = dw > 0 ? 'l' : 'r', ww = { l: w0, r: w0 }, aus = [];
+  for (let k = 1; k <= n + 1; k++) {
+    const f = k % 2 ? erst : (erst === 'l' ? 'r' : 'l');
+    ww[f] = w0 + dw * Math.min(k, n) / n;
+    const p = stehen(O, (ww.l + ww.r) / 2);
+    p.fuss = seiten((s, sg) => V(sg * 0.11, FY, 0).applyAxisAngle(V(0, 1, 0), ww[s]).add(O)); p.fussRicht = seiten((s, sg) => V(sg * 0.25, 0, 1).applyAxisAngle(V(0, 1, 0), ww[s]));
+    aus.push({ ziel: p, d, steigen: { erst: f, nur: f, bogen: 0.045 } });
+    if (Math.abs(ww.l - ww.r) < 1e-6) break;
+  }
+  return aus;
+}
+
+/* ---------- Drehen auf der Stelle (180°, Tippelschritte) ---------- */
+// Fünf Schritte zu 45° (rechts, links, rechts, links, rechts schließt), u 0…1 über die ganze Drehung, von → von + 180°. Die Füße drehen um die Mitte zwischen ihnen
+function nkDrehSchritte(u, von, breite = 0.11) {
+  const S = [['r', 45], ['l', 90], ['r', 135], ['l', 180], ['r', 180]], w = { l: von, r: von }, hoch = { l: 0, r: 0 };
+  const k = Math.min(4.999, Math.max(0, u * 5)), i = Math.floor(k), v = glatt(k - i);
+  for (let j = 0; j < i; j++) w[S[j][0]] = von + S[j][1];
+  const [s, ziel] = S[i], start = w[s]; w[s] = start + (von + ziel - start) * v; hoch[s] = 0.045 * Math.sin(Math.PI * v);
+  const fuss = {}, fussRicht = {};
+  for (const [x, sg] of [['l', 1], ['r', -1]]) { const q = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), w[x] * RAD); fuss[x] = V(sg * breite, FY + hoch[x], 0).applyQuaternion(q); fussRicht[x] = V(sg * 0.25, 0, 1).applyQuaternion(q); }
+  return { fuss, fussRicht, dreh: (w.l + w.r) / 2 };
+}
+// Stehen mit hängenden Armen, Blick in Richtung dreh (Grad um y), leicht gebeugte Knie; lehn: Becken verschoben (Welt), rz: Zusatz zum Rumpf
+function nkStehPose(dreh, fuesse, lehn, rz, kopf) {
+  const r = Object.assign({ neigung: 0, drehung: dreh }, rz || {}), knie = 10;
+  const becken = V(0, g15bStandY(knie, 0.015), 0).add(lehn || V());
+  const k = rumpf(becken, r), R = k.R;
+  return { becken, rumpf: r, kopf, hand: seiten((s, sg) => k.schulter[s].clone().addScaledVector(R.links, sg * 0.055).add(V(0, -ARM * 0.985, 0)).addScaledVector(R.vor, 0.03)),
+    handflaeche: seiten((s, sg) => R.links.clone().multiplyScalar(-sg).addScaledVector(R.vor, 0.15)), ellbogenPol: seiten((s, sg) => R.links.clone().multiplyScalar(sg * 0.3).addScaledVector(R.vor, -1)),
+    fuss: fuesse.fuss, fussRicht: fuesse.fussRicht };
+}
+
+/* ---------- Ablauf davor: Geräte am Kopf (Haken ablaufGeraete in einleitung.js) ---------- */
+// Bis dahin hingen Scheibe, Band und Gurt im Ablauf dort in der Luft, wo der Kopf in der Startpose ist. Jetzt: Scheibe liegt am Boden und wird aufgehoben, Band hängt am Pfosten
+// und wird über den Kopf gelegt, der Gurt hängt am Kabel und wird aufgesetzt. setze(t, g) bekommt die Zeit ab dem ersten Schritt
+// props im Ablauf davor: hat gehtMit eine Zeit hinterlegt (einleitung.js), setzt die Vorlage ihre Geräte für dieses Bild selbst (setze aus ablaufGeraete)
+function nkAblaufProps(g, z) { if (!z || z.ablaufZeit == null || !z.ablaufGeraete) return false; const t = z.ablaufZeit; z.ablaufZeit = null; z.ablaufGeraete(t, g); return true; }
+const nkZeiten = (schritte) => schritte.reduce((a, s) => (a.push(a[a.length - 1] + s.d), a), [0]);
+const nkAnteil = (t, T, i, verzug = 0) => glatt(((t - T[i]) / (T[i + 1] - T[i]) - verzug) / (1 - verzug));   // wie im Ablauf (Hände mit verzug)
+const nkSchritt = (t, T) => { if (t < 0) return -1; for (let i = 0; i < T.length - 1; i++) if (t < T[i + 1]) return i; return T.length - 1; };
+const nkSlerpN = (a, b, u) => new THREE.Vector3().copy(a).applyQuaternion(new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(a.clone().normalize(), b.clone().normalize()), u)).normalize();
+// Scheibe in beiden Händen (Fäuste am Rand gegenüber): Mitte zwischen den Fäusten, h entlang −n darunter (am Boden greifen die Finger unter den Rand), Normale n senkrecht zur Linie der Fäuste
+function nkScheibeZwei(sch, g, n, h = 0) {
+  const u = g.hand.l.clone().sub(g.hand.r).normalize(), nn = n.clone().addScaledVector(u, -n.dot(u)).normalize();
+  sch.position.copy(g.hand.l).add(g.hand.r).multiplyScalar(0.5).addScaledVector(nn, -h);
+  sch.quaternion.setFromUnitVectors(V(0, 1, 0), nn);
+}
+const NK_FAUST_BODEN = 0.028;   // Faustmitte über der Mitte einer liegenden Scheibe (Finger unter dem Rand)
+// Hände halten eine Scheibe vor dem Rumpf (im Rahmen des Rumpfs: so weit über dem Becken, so weit davor), Fäuste links und rechts am Rand
+function nkHaltVorn(p, hoch, vor) {
+  const g = gelenke(p), c = g.becken.clone().addScaledVector(g.R.oben, hoch).addScaledVector(g.R.vor, vor);
+  return Object.assign({}, p, { hand: seiten((s, sg) => genau(c.clone().addScaledVector(g.R.links, sg * (NK_SCH_R - 0.01)))), handflaeche: seiten((s, sg) => g.R.links.clone().multiplyScalar(-sg)),
+    ellbogenPol: seiten((s, sg) => g.R.links.clone().multiplyScalar(sg).addScaledVector(g.R.oben, -0.7)), greift: { l: true, r: true }, flach: { l: null, r: null }, kelch: null });
+}
+// Hände an einer Scheibe mit Mitte c und Normale n (Welt), Fäuste in Richtung ±links (Welt) am Rand
+function nkHaltBei(p, c, links, ellbogen) {
+  return Object.assign({}, p, { hand: seiten((s, sg) => genau(c.clone().addScaledVector(links, sg * (NK_SCH_R - 0.01)))), handflaeche: seiten((s, sg) => links.clone().multiplyScalar(-sg)),
+    ellbogenPol: seiten((s, sg) => ellbogen(sg)), greift: { l: true, r: true }, flach: { l: null, r: null }, kelch: null });
+}
+
+/* ---------- Übungen ---------- */
+// Kinn zurück im Liegen (Matte): wie Kopf heben auf der Bank, aber am Boden, Knie gebeugt, Füße flach, gefaltetes Handtuch unter dem Kopf. 1,5 s Kinn einziehen und den Kopf
+// 2–3 cm heben, 10 s halten, 1,5 s ablegen, 2 s Pause. Schleife 15 s
+function nk2KinnLiegend() {
+  const T = 15, auf = 0.005, becken = V(0, auf + 0.1, 0.3), r = { basis: quer(-90), neigung: 0 }, k = rumpf(becken, r), R = k.R;
+  const an = (t) => g15Halte(t, 1.5 / T, 11.5 / T, 13 / T);
+  const handZiel = (sg) => becken.clone().addScaledVector(R.vor, 0.095).addScaledVector(R.oben, 0.12).addScaledVector(R.links, sg * 0.085);
+  return {
+    aufbau(ger) { ger.matte(); ger.teil(rundGeo(0.26, NK_TUCH_H, 0.22, 0.015, 3), handtuchStoff(), V(0, auf + NK_TUCH_H / 2, NK_TUCH_Z)); return {}; },
+    pose(t) {
+      const a = an(t);
+      return { pose: { becken, rumpf: r, kopf: { neigung: 14 * a, hals: 0.25, zurueck: 0.008 * a }, hand: seiten((s, sg) => handZiel(sg)), flach: seiten(() => R.vor.clone()), ellbogenPol: seiten((s, sg) => R.links.clone().multiplyScalar(sg).addScaledVector(R.vor, -0.6)),
+        fuss: seiten((s, sg) => V(sg * 0.15, FY, 0.76)), kniePol: seiten(() => V(0, 1, 0)), fussRicht: seiten((s, sg) => V(sg * 0.1, 0, 1)) },
+        props(g) { fingerStellen(g, (s, sg) => R.links.clone().multiplyScalar(-sg).addScaledVector(R.oben, 0.3)); } };
+    },
+    blick: V(0, 0.25, -0.2), abstand: 2.6, kameraRicht: V(1, 0.45, 0.1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.15 + 0.65 * an(t)
+  };
+}
+
+// Nacken halten gegen ein Band am Pfosten (Band um den Kopf, Kopf bleibt still). vorn_hinten: Rücken zum Pfosten, Band an der Stirn, 1 s leicht nach vorn lehnen, bis es spannt, 6 s halten,
+// zurück; mit Tippelschritten umdrehen (das Band dreht um den Kopf), Gesicht zum Pfosten, Band am Hinterkopf, nach hinten lehnen, halten; zurückdrehen. seite: der Pfosten steht links,
+// das Band zieht nach links, die rechte Halsseite hält; umdrehen, dann zieht es nach rechts. Schleife 23 s
+function nk2BandPfosten(art) {
+  const T = 23, vh = art === 'nacken_halten_band_vorn_hinten', kopf = { neigung: 4, zurueck: 0.008 };
+  const st0 = nkStehPose(0, stehFuesse(0.11, 0, 0.25), null, null, kopf), K0 = nkKopf(st0);
+  const hy = K0.m.y + 0.03, A = vh ? V(0, hy, -1.05) : V(1.05, hy, 0);
+  // Halten [a, b] (darin je 1 s An- und Abspannen), dann Drehen [c, d] ab Blickrichtung von
+  const ph = [{ a: 0.2, b: 8.2, c: 8.6, d: 11.6, von: 0 }, { a: 11.8, b: 19.8, c: 20, d: 23, von: 180 }];
+  const druck = (s) => { let w = 0; for (const x of ph) w = Math.max(w, nkAb(s, x.a, x.a + 1) * (1 - nkAb(s, x.b - 1, x.b))); return w; };
+  const weg = A.clone().setY(0).negate().normalize();   // vom Pfosten weg
+  let AB = null;   // Ablauf davor: Seite des ersten Ankers, Schlaufe unten
+  return {
+    aufbau(ger) { bandPfosten(ger, A); return { band_k: ger.stab(V(), V(0, 1, 0), 0.008, ger.mBand) }; },
+    pose(t) {
+      const s = t * T; let dreh = 0, fu = null;
+      for (const x of ph) { if (s >= x.c && s < x.d) { fu = nkDrehSchritte((s - x.c) / (x.d - x.c), x.von); dreh = fu.dreh; } else if (s >= x.a - 0.2 && s < x.c) dreh = x.von; }
+      if (!fu) { const q = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), dreh * RAD); fu = { fuss: seiten((x, sg) => V(sg * 0.11, FY, 0).applyQuaternion(q)), fussRicht: seiten((x, sg) => V(sg * 0.25, 0, 1).applyQuaternion(q)) }; }
+      const w = druck(s), p = nkStehPose(dreh, fu, weg.clone().multiplyScalar(0.025 * w), null, kopf);
+      // der Rumpf lehnt mit (aus dem Sprunggelenk): in Blickrichtung über die Neigung, quer über seit
+      const imBlick = weg.dot(V(Math.sin(dreh * RAD), 0, Math.cos(dreh * RAD))), quer2 = weg.dot(V(Math.cos(dreh * RAD), 0, -Math.sin(dreh * RAD)));
+      p.rumpf.neigung = 2 * w * imBlick; p.rumpf.seit = -2 * w * quer2;
+      const locker = 1 - Math.max(...ph.map((x) => nkAb(s, x.a - 0.2, x.a + 0.3) * (1 - nkAb(s, x.b - 0.3, x.c + 0.2))));
+      return { pose: p, props(g, z) {
+        if (nkAblaufProps(g, z) || !z || !z.band_k) return;
+        bandKette(z, 'band_k', nkPfostenWeg(nkRahmen(g), A, 0.06 * locker));
+      } };
+    },
+    // Ablauf davor: das Band hängt als Schlaufe am Pfosten. Die Figur geht hin (Gesicht zum Pfosten), greift die Schlaufe unten, hebt sie offen über den Kopf, legt sie um den
+    // Hinterkopf (Stirnband-Höhe), lässt los, geht zwei Schritte rückwärts auf ihren Platz und dreht sich mit Tippelschritten in die Blickrichtung der Übung (das Band dreht um den Kopf)
+    ablaufEigen({ Gp, stehen }) {
+      const zuMir = A.clone().setY(0).negate().normalize(), Sp = A.clone().setY(0).addScaledVector(zuMir, 0.52), w = Math.atan2(-zuMir.x, -zuMir.z), links = V(Math.cos(w), 0, -Math.sin(w));
+      const Ks = nkRahmen(gelenke(stehen(Sp, w))), c = nkMitte(Ks), dA = Math.hypot(A.x - c.x, A.z - c.z), azT = Math.acos(Math.min(0.95, 0.1 / dA)) / RAD;   // Tangente vom Anker an den Kopf (gut 10 cm)
+      const B = A.clone().addScaledVector(zuMir, 0.03).add(V(0, -0.5, 0));
+      const greift = Object.assign(stehen(Sp, w, { neigung: 6 }), { hand: seiten((s, sg) => genau(B.clone().addScaledVector(links, sg * 0.045))), handflaeche: seiten((s, sg) => links.clone().multiplyScalar(-sg)),
+        ellbogenPol: seiten((s, sg) => links.clone().multiplyScalar(sg).add(V(0, -0.6, 0))) });
+      const offen = (sk, dh) => Object.assign(stehen(Sp, w), { hand: seiten((s, sg) => genau(nkRingV(Ks, sg * azT, sk, dh, 0.03))), handflaeche: seiten((s, sg) => links.clone().multiplyScalar(-sg)),
+        ellbogenPol: seiten((s, sg) => links.clone().multiplyScalar(sg).add(V(0, 0.3, 0))) });
+      const O = V(0, 0, 0), schritte = [{ ziel: greift, d: 0.8, verzug: 0.2 }, { ziel: offen(1.7, 0.17), d: 0.8 }, { ziel: offen(1, 0), d: 0.7 }, { ziel: stehen(Sp, w), d: 0.5 }];
+      for (const [k, f] of [[1, 'l'], [2, 'r']]) schritte.push({ ziel: stehen(Sp.clone().lerp(O, k / 2), w), d: 0.5, steigen: { erst: f, bogen: 0.04 } });
+      schritte.push(...nkTippel(stehen, O, w, vh ? Math.PI : -Math.PI / 2), { ziel: Gp, d: 0.4 });
+      AB = { e1: links.clone().negate(), B };   // +e1 (Seite des ersten Ankers) = rechte Seite der Figur, wenn sie zum Pfosten schaut
+      return { name: 'band_pfosten', blick: zuMir.clone().negate(), stand: Sp, von: Sp.clone().addScaledVector(zuMir, 1.0).addScaledVector(links, 0.9), griffNach: 1, schritte };   // von: Anlauf von der Seite des Platzes (sonst lief die Figur durch den Pfosten)
+    },
+    ablaufGeraete(plan, h) {
+      const S = plan.schritte, T = nkZeiten(S), A1 = A.clone().addScaledVector(AB.e1, 0.012), A2 = A.clone().addScaledVector(AB.e1, -0.012);
+      const B1 = AB.B.clone().addScaledVector(AB.e1, 0.045), B2 = AB.B.clone().addScaledVector(AB.e1, -0.045);
+      return (t, g) => {
+        const z = h.z; if (!z.band_k) return;
+        const i = nkSchritt(t, T);
+        if (i <= 0) return bandKette(z, 'band_k', [A1, B1, B2, A2]);   // hängt als Schlaufe am Pfosten
+        const K = nkRahmen(g), c = nkMitte(K);
+        if (i >= S.length) return bandKette(z, 'band_k', nkPfostenWeg(K, A, 0.06));
+        const [h1, h2] = g.hand.l.clone().sub(g.hand.r).dot(AB.e1) > 0 ? [g.hand.l, g.hand.r] : [g.hand.r, g.hand.l];
+        if (i === 1) return bandKette(z, 'band_k', nkDurchhang([A1, h1.clone(), h2.clone(), A2], 0.05));   // offen zwischen den Händen
+        if (i === 2) {   // die offene Schlaufe legt sich hinten um den Kopf: Bogen zwischen den Händen über die abgewandte Seite, erst flach, dann rund und tiefer
+          const u = nkAnteil(t, T, 2), sk = mix(1.7, 1, u), dh = mix(0.17, 0, u), f = glatt(u / 0.45);
+          const az = (p) => { const l = nkLokal(K, p.clone().sub(c)); return Math.atan2(l.x, l.z) / RAD; }, a1 = az(h1), a2 = az(h2), aA = az(A), um = (x) => ((x % 360) + 360) % 360;
+          let span = um(a2 - a1), dir = 1; if (um(aA - a1) < span) { dir = -1; span = 360 - span; }
+          const n = Math.max(2, Math.round(span / 9)), bogen = [];
+          for (let k = 1; k < n; k++) bogen.push(h1.clone().lerp(h2, k / n).lerp(nkRingV(K, a1 + dir * span * k / n, sk, dh), f));
+          return bandKette(z, 'band_k', nkDurchhang([A1, h1.clone(), ...bogen, h2.clone(), A2], 0.05));
+        }
+        const dist = Math.hypot(c.x - A.x, c.z - A.z);   // um den Kopf; nah am Pfosten hängt es lockerer
+        bandKette(z, 'band_k', nkPfostenWeg(K, A, Math.min(0.14, 0.06 + 0.12 * Math.max(0, 1 - dist / 1.0))));
+      };
+    },
+    blick: V(0, 1.25, vh ? -0.3 : 0.2), abstand: 3.2, kameraRicht: vh ? V(1, 0.25, 0.2) : V(0.3, 0.25, 1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.15 + 0.6 * druck(t * T)
+  };
+}
+
+// Vierfüßler wie Kopf heben im Vierfüßler (gleiche Haltung): Grundlage der beiden schweren Vierfüßler-Übungen
+function nk2VierBasis() {
+  const bY = 0.53, n0 = -Math.asin((0.045 + STUETZ * 0.9975 - bY) / (MASS.rumpf - 0.03)) / RAD, B0 = V(0, bY, -0.3), r = { basis: BAUCHLAGE, neigung: n0 };
+  const k0 = rumpf(B0, r), L = (sg, f) => k0.R.links.clone().multiplyScalar(sg * f);
+  const hand = seiten((s, sg) => V(0, 0.045, k0.schulter[s].z).add(L(sg, MASS.schulterBreite)));
+  const knie = (sg) => V(0, 0.065, -0.3).add(L(sg, 0.1));
+  const pose = (kopf) => ({ becken: B0.clone(), rumpf: r, kopf, hand, flach: seiten(() => V(0, 1, 0)), ellbogenPol: seiten(() => V(0, 1, 0.2)),
+    fuss: seiten((s, sg) => knie(sg).add(V(0, 0.04, MASS.unterschenkel * 0.96))), kniePol: seiten(() => V(0, -1, -0.2)), fussRicht: seiten(() => V(0, -0.2, 1)) });
+  return { pose, hand, R: k0.R };
+}
+// Kopf heben im Vierfüßler gegen ein Band: das Band liegt unter beiden Händen und hinten um den Kopf (über dem Hinterkopf). Ablauf wie ohne Band, oben 2 s halten. Schleife 8 s
+function nk2VierBand() {
+  const T = 8, B = nk2VierBasis();
+  const unten = (t) => { const s = t * T; return s < 2 ? 0 : s < 4.5 ? nkAb(s, 2, 4.5) : s < 5.5 ? 1 : 1 - nkAb(s, 5.5, 8); };
+  // das Band kommt vorn unter dem Handballen heraus (die Finger zeigen nach −z), 1 cm über dem Boden
+  const anker = seiten((s) => V(B.hand[s].x, 0.01, B.hand[s].z - 0.1));
+  // das Band liegt hinten oben am Kopf: Ebene durch die Enden und 3,5 cm über der Kopfmitte (zum Scheitel), so läuft es über den Ohren vorbei. hinten (0…1, Ablauf davor): Ebene so weit
+  // zum Hinterkopf gekippt. Aufrecht kniend lägen die Hände sonst fast unter dem Kopf, und das Band liefe über den Scheitel statt um den Hinterkopf
+  const bandUm = (K, Al, Ar, hinten = 0) => {
+    const c = nkMitte(K).addScaledVector(K.oben, 0.035), m = Al.clone().add(Ar).multiplyScalar(0.5), e1 = Al.clone().sub(Ar).normalize(), e2 = c.clone().sub(m);
+    e2.addScaledVector(e1, -e2.dot(e1)).normalize().multiplyScalar(1 - hinten).addScaledVector(K.vor, -hinten); e2.addScaledVector(e1, -e2.dot(e1)).normalize();
+    return nkBandUm(nkRingEbene(K, e1, e2, 0.008, 40, c), c, e1, e2, Al, Ar);
+  };
+  return {
+    aufbau(ger) { ger.matte(); for (const s of ['l', 'r']) ger.teil(new THREE.BoxGeometry(0.05, 0.006, 0.16), ger.mBand, V(anker[s].x, 0.008, anker[s].z + 0.07)); return { band_v: ger.stab(V(), V(0, 1, 0), 0.008, ger.mBand) }; },
+    pose(t) {
+      const u = unten(t);
+      return { pose: B.pose({ neigung: mix(4, 40, u), hals: 0.5, zurueck: 0.008 * (1 - u) }), props(g, z) {
+        if (nkAblaufProps(g, z) || !z || !z.band_v) return;
+        bandKette(z, 'band_v', bandUm(nkRahmen(g), anker.l, anker.r));
+      } };
+    },
+    // Ablauf davor: das Band liegt als Schlaufe auf der Matte, die Enden dort, wo die Hände hinkommen. Die Figur kniet sich hin (wie ohne Band), geht in den Vierfüßler und nimmt
+    // die Enden, richtet sich auf (die Schlaufe hängt vor dem Körper), hebt sie gestreckt über den Kopf, legt sie hinten um den Kopf, hält die Enden vor der Brust und geht mit den
+    // Händen auf den Enden wieder in den Vierfüßler
+    ablaufGeraete(plan, h) {
+      const Gp = h.Gp, S = plan.schritte;
+      if (S.length < 2 || S[S.length - 1].ziel !== Gp) return null;   // anderer Einstieg: dann wie bisher
+      const knien = S[S.length - 2].ziel, letzter = S[S.length - 1], gk = gelenke(knien), Kk = nkRahmen(gk), R = gk.R;
+      const haende = (p, f, flaeche, pol) => Object.assign({}, p, { hand: seiten((s, sg) => genau(f(s, sg))), handflaeche: seiten((s, sg) => flaeche(s, sg)), ellbogenPol: seiten((s, sg) => pol(s, sg)), greift: { l: true, r: true }, flach: { l: null, r: null }, kelch: null });
+      const greift = haende(Gp, (s) => anker[s].clone().add(V(0, 0.035, 0)), () => V(0, -1, 0), () => V(0, 1, 0.2));
+      const vorBrust = (p) => { const g = gelenke(p); return haende(p, (s, sg) => g.brust.clone().addScaledVector(g.R.vor, 0.26).addScaledVector(g.R.oben, -0.12).addScaledVector(g.R.links, sg * 0.12), (s, sg) => g.R.links.clone().multiplyScalar(-sg), (s, sg) => g.R.links.clone().multiplyScalar(sg).addScaledVector(g.R.oben, -0.8)); };
+      const offen = (sk, dh, az) => haende(knien, (s, sg) => nkRingV(Kk, sg * az, sk, dh, 0.03), (s, sg) => R.links.clone().multiplyScalar(-sg), (s, sg) => R.links.clone().multiplyScalar(sg).add(V(0, 0.3, 0)));
+      const aufrecht = vorBrust(knien);
+      S.splice(S.length - 1, 1, Object.assign({}, letzter, { ziel: greift }), { ziel: aufrecht, d: 0.9, bogen: 0.06 }, { ziel: offen(1.7, 0.17, 80), d: 0.65 }, { ziel: offen(1, 0, 100), d: 0.6 },
+        { ziel: vorBrust(knien), d: 0.6 }, Object.assign({}, letzter, { ziel: Gp }));
+      const n = S.length, iG = n - 6, T = nkZeiten(S);
+      plan.griffNach = iG + 1;
+      // Schlaufe auf der Matte: von den Enden 20 cm nach vorn, dann im Halbkreis herum
+      const vorn = -0.2, mz = anker.l.z + vorn, rr = Math.abs(anker.l.x - anker.r.x) / 2, ruhe = [anker.l.clone().setY(0.008)];
+      for (let k = 0; k <= 12; k++) { const a = Math.PI * k / 12; ruhe.push(V((anker.l.x + anker.r.x) / 2 + rr * Math.cos(a) * Math.sign(anker.l.x - anker.r.x), 0.008, mz - rr * 0.8 * Math.sin(a))); }
+      ruhe.push(anker.r.clone().setY(0.008));
+      return (t, g) => {
+        const z = h.z; if (!z.band_v) return;
+        const i = nkSchritt(t, T);
+        if (i <= iG) return bandKette(z, 'band_v', ruhe);
+        const K = nkRahmen(g);
+        if (i >= n) return bandKette(z, 'band_v', bandUm(K, anker.l, anker.r));
+        const hl = g.hand.l.clone(), hr = g.hand.r.clone(), u = nkAnteil(t, T, i, S[i].verzug || 0);
+        if (i <= iG + 2) {   // hängt zwischen den Händen; je weiter sie auseinander sind, desto straffer
+          const sack = Math.min(0.25, Math.max(0.02, 0.32 - 0.9 * hl.distanceTo(hr))), weg = [hl];
+          for (let k = 1; k < 8; k++) weg.push(hl.clone().lerp(hr, k / 8).add(V(0, -sack * Math.sin(Math.PI * k / 8), 0)));
+          weg.push(hr); return bandKette(z, 'band_v', weg);
+        }
+        if (i === iG + 3) {   // hinten um den Kopf legen: Bogen zwischen den Händen über den Hinterkopf, erst flach, dann rund und tiefer (wie am Pfosten)
+          const c = nkMitte(K), sk = mix(1.7, 1, u), dh = mix(0.17, 0, u), f = glatt(u / 0.45);
+          const az = (p) => { const l = nkLokal(K, p.clone().sub(c)); return Math.atan2(l.x, l.z) / RAD; }, um = (x) => ((x % 360) + 360) % 360, a1 = az(hl), a2 = az(hr);
+          let span = um(a2 - a1), dir = 1; if (um(0 - a1) < span) { dir = -1; span = 360 - span; }
+          const m = Math.max(2, Math.round(span / 9)), weg = [hl];
+          for (let k = 1; k < m; k++) weg.push(hl.clone().lerp(hr, k / m).lerp(nkRingV(K, a1 + dir * span * k / m, sk, dh), f));
+          weg.push(hr); return bandKette(z, 'band_v', weg);
+        }
+        // um den Hinterkopf, die Enden in den Händen; zuletzt kommen sie unter die Hände auf die Matte (aufrecht ist die Ebene zum Hinterkopf gekippt, im Vierfüßler wie in der Übung)
+        const zuletzt = i === n - 1 ? u : 0, a = (s, hh) => hh.clone().lerp(anker[s], zuletzt);
+        bandKette(z, 'band_v', bandUm(K, a('l', hl), a('r', hr), 0.65 * (1 - glatt(zuletzt / 0.7))));
+      };
+    },
+    blick: V(0, 0.45, -0.55), abstand: 2.6, kameraRicht: V(-1, 0.25, -0.2),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.25 + 0.45 * (1 - unten(t))
+  };
+}
+// Kopf drehen im Vierfüßler: Kopf in der Linie, Kinn leicht ein, langsam 2,5 s nach rechts drehen (40°), zurück, nach links, zurück. Die tiefen Nackenstrecker halten den Kopf dabei. Schleife 11 s
+function nk2VierDrehen() {
+  const T = 11, B = nk2VierBasis();
+  const dreh = (s) => { const u = s / T; return -40 * Math.sin(2 * Math.PI * u) * (Math.abs(Math.sin(2 * Math.PI * u)) ** 0.25); };
+  return {
+    aufbau(ger) { ger.matte(); return {}; },
+    pose(t) { return { pose: B.pose({ neigung: 4, dreh: dreh(t * T), hals: 0.5, zurueck: 0.008 }) }; },
+    blick: V(0, 0.48, -0.6), abstand: 2.5, kameraRicht: V(-0.55, 0.12, -1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.3 + 0.15 * Math.abs(Math.sin(2 * Math.PI * t))
+  };
+}
+
+// Kopf heben in Rückenlage mit Hantelscheibe: wie ohne (Flachbank, Handtuch), die Scheibe liegt auf der Stirn, beide Hände halten sie am Rand. Kinn ein, Kopf 2–3 cm heben, 5 s halten. Schleife 10 s
+const NK_SCH_STIRN = nkScheibeLage(V(0, Math.sin(28 * RAD), Math.cos(28 * RAD)));
+function nk2RueckenScheibe() {
+  const T = 10, becken = V(0, 0.565, 0.3), r = { basis: quer(-90), neigung: 0 }, k = rumpf(becken, r), R = k.R, L = NK_SCH_STIRN;
+  const an = (t) => g15Halte(t, 1.5 / T, 6.5 / T, 8 / T);
+  let AB = null;   // Ablauf davor: wo die Scheibe am Boden liegt
+  return {
+    aufbau(ger) { ger.bank(-0.05, 1.2, 0.43, 0); ger.teil(rundGeo(0.26, NK_TUCH_H, 0.22, 0.015, 3), handtuchStoff(), V(0, 0.465 + NK_TUCH_H / 2, NK_TUCH_Z)); return { scheibe: nkScheibeBauen(ger) }; },
+    pose(t) {
+      const a = an(t), p = { becken, rumpf: r, kopf: { neigung: 14 * a, hals: 0.25, zurueck: 0.008 * a }, hand: {},
+        fuss: seiten((s, sg) => V(sg * 0.3, FY, 0.78)), kniePol: seiten((s, sg) => V(sg * 0.3, 1, 0.3)), fussRicht: seiten((s, sg) => V(sg * 0.3, 0, 1)) };
+      const K = nkRahmen(gelenke(Object.assign({}, p, { hand: seiten((s, sg) => becken.clone().add(V(sg * 0.2, 0.1, -0.2))) })));
+      for (const [s, sg] of [['l', 1], ['r', -1]]) nkRandGriff(p, K, L.griff(V(sg, 0, 0)), s, R.links.clone().multiplyScalar(sg).addScaledVector(R.oben, -0.5).addScaledVector(R.vor, -0.25));
+      nkHaendeGenau(p, ['l', 'r']); p.kopfStill = true;   // in der Pause kein Blick zur Kamera (figur.js): die Scheibe bliebe sonst nicht in den Händen
+      return { pose: p, props(g, z) { if (nkAblaufProps(g, z)) return; if (z && z.scheibe) nkScheibeSetzen(z.scheibe, nkRahmen(g), L); } };
+    },
+    // Ablauf davor: die Scheibe liegt am Fußende der Bank am Boden. Die Figur kommt rückwärts zur Bank, hockt sich hin, hebt sie mit beiden Händen am Rand auf, hält sie aufrecht
+    // vor dem Bauch, setzt sich ans Bankende, legt sich zurück (die Scheibe liegt dann flach auf dem Bauch), hebt sie über das Gesicht und legt sie auf die Stirn
+    ablaufEigen({ Gp, stehen }) {
+      const S = V(0, 0, 0.74), hocke = stehen(S, 0, { neigung: 64 });   // vor dem Fußende (Bank bis z = 0,55)
+      Object.assign(hocke, { becken: V(0, 0.46, S.z + 0.02), kopf: { neigung: 14 }, fuss: seiten((s, sg) => V(sg * 0.2, FY, S.z)), kniePol: seiten((s, sg) => V(sg * 0.8, 0, 1)), fussRicht: seiten((s, sg) => V(sg * 0.4, 0, 1)) });
+      const g0 = gelenke(hocke), pz = Math.max((g0.schulter.l.z + g0.schulter.r.z) / 2, Math.max(g0.knie.l.z, g0.knie.r.z) + 0.12);
+      const P0 = V(0, NK_SCH_D / 2 + 0.002, pz);
+      const greift = nkHaltBei(hocke, P0.clone().add(V(0, NK_FAUST_BODEN, 0)), V(1, 0, 0), (sg) => V(sg, -0.2, -0.6));
+      const auf = nkHaltVorn(stehen(S, 0), 0.22, 0.2);
+      // vorn auf der Kante sitzen, beim Zurücklegen rutscht das Becken an seinen Platz
+      const B1 = V(0, becken.y, 0.47), sitz0 = stehen(B1, 0); Object.assign(sitz0, { becken: B1, fuss: seiten((s, sg) => V(sg * 0.15, FY, B1.z + 0.42)), kniePol: seiten((s, sg) => V(sg * 0.2, 1, 0.6)) });
+      const sitz = nkHaltVorn(sitz0, 0.22, 0.2), liegt = nkHaltVorn(Gp, 0.22, 0.2);
+      // mit langen Armen über die Brust heben (so bleiben die Fäuste am Rand: im einen Bogen vom Bauch zur Stirn rückten sie bis auf 7 cm zusammen), dann auf die Stirn
+      const gS = gelenke(Gp), sm = gS.schulter.l.clone().add(gS.schulter.r).multiplyScalar(0.5), hoch = nkHaltBei(Gp, sm.clone().addScaledVector(gS.R.vor, 0.5).addScaledVector(gS.R.oben, -0.04), V(1, 0, 0), (sg) => V(sg, 0, 0.3));
+      AB = { P0 };
+      return { name: 'scheibe_rueckenlage', blick: V(0, 0, 1), stand: S, griffNach: 1,
+        schritte: [{ ziel: greift, d: 1.0, verzug: 0.25 }, { ziel: auf, d: 0.8, aussen: 0.016 }, { ziel: sitz, d: 0.9 }, { ziel: liegt, d: 1.0 }, { ziel: hoch, d: 0.7, aussen: 0.02 }, { ziel: Gp, d: 0.9, aussen: 0.02 }] };   // aussen: im Bogen rückten die Fäuste sonst bis 4 cm zusammen
+    },
+    ablaufGeraete(plan, h) {
+      const T = nkZeiten(plan.schritte), S = plan.schritte, OBEN = V(0, 1, 0);
+      return (t, g) => {
+        const sch = h.z.scheibe; if (!sch || !AB) return;
+        const i = nkSchritt(t, T), u = i >= 0 && i < S.length ? nkAnteil(t, T, i, S[i].verzug || 0) : 1;
+        if (i <= 0) { sch.position.copy(AB.P0); sch.quaternion.identity(); return; }   // liegt am Boden, bis die Hände sie haben
+        if (i >= S.length) return nkScheibeSetzen(sch, nkRahmen(g), L);
+        const nKopf = () => nkWelt(nkRahmen(g), L.n).normalize();
+        const n = i === 1 ? nkSlerpN(OBEN, g.R.vor, u) : i <= 3 ? g.R.vor.clone() : i === 4 ? nkSlerpN(g.R.vor, OBEN, u) : nkSlerpN(OBEN, nKopf(), u);
+        nkScheibeZwei(sch, g, n, i === 1 ? NK_FAUST_BODEN * (1 - u) : 0);
+      };
+    },
+    blick: V(0, 0.75, -0.25), abstand: 2.6, kameraRicht: V(1, 0.45, 0.1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.2 + 0.7 * an(t)
+  };
+}
+// Kopf heben in Bauchlage mit Hantelscheibe: wie ohne (Brust bis zum Bankende), die Scheibe liegt hinten oben am Kopf, beide Hände halten sie am Rand (Ellbogen zur Seite).
+// Kopf 2,5 s sinken lassen (28°), 2,5 s bis in die Linie heben, nicht höher, 1,5 s halten. Schleife 8 s
+const NK_SCH_HINTEN = nkScheibeLage(V(0, Math.sin(40 * RAD), -Math.cos(40 * RAD)));
+function nk2BauchScheibe() {
+  const T = 8, Bk = NK_BAUCH_BANK, oben = Bk.h + 0.035, becken = V(0, oben + 0.165, 0.28), r = { basis: BAUCHLAGE, neigung: -4 }, RBk = rumpfRahmen(r), k = rumpf(becken, r), R = k.R, L = NK_SCH_HINTEN;   // Becken 1 cm höher als ohne Scheibe: mit den Armen am Kopf sänke die Brust sonst 3 cm ins Polster
+  const unten = (t) => { const s = t * T; return s < 1.5 ? 0 : s < 4 ? nkAb(s, 1.5, 4) : s < 5 ? 1 : 1 - nkAb(s, 5, 7.5); };
+  return {
+    aufbau(ger) { ger.bank(Bk.z0, Bk.L, Bk.h, 0); return { scheibe: nkScheibeBauen(ger) }; },
+    pose(t) {
+      const u = unten(t), p = { becken, rumpf: r, kopf: { neigung: mix(-2, 28, u), hals: 0.5, zurueck: 0.008 * (1 - u) }, hand: {},
+        fuss: seitenBauch((s, sg) => { const H = hueftGelenk(becken, RBk, s), dy = H.y - (oben + 0.11); return V(H.x, oben + 0.11, H.z + Math.sqrt(Math.max(0, (BEIN * 0.9995) ** 2 - dy * dy))); }), kniePol: seiten(() => V(0, -1, 0)), fussRicht: seiten(() => V(0, -0.72, 0.7)) };
+      const K = nkRahmen(gelenke(Object.assign({}, p, { hand: seitenBauch((s, sg) => V(sg * 0.25, 0.3, k.schulter[s].z)) })));
+      for (const [s, sg] of [['l', 1], ['r', -1]]) nkRandGriff(p, K, L.griff(V(sg, 0, 0)), s, R.links.clone().multiplyScalar(sg).addScaledVector(R.vor, 0.6).addScaledVector(R.oben, -0.2));
+      nkHaendeGenau(p, ['l', 'r']); p.kopfStill = true;   // in der Pause kein Blick zur Kamera (figur.js): die Scheibe bliebe sonst nicht in den Händen
+      return { pose: p, props(g, z) { if (nkAblaufProps(g, z)) return; if (z && z.scheibe) nkScheibeSetzen(z.scheibe, nkRahmen(g), L); } };
+    },
+    // Ablauf davor: die Scheibe steht unter dem Kopfende auf dem Rand, leicht an die Bank gelehnt. Die Figur steigt wie ohne Scheibe auf die Bank und legt sich hin, lässt die Arme
+    // hängen, greift die Scheibe links und rechts am Rand, führt sie mit langen Armen vor den Scheitel und hoch (dort ist sie frei vom Kopf) und legt sie hinten oben auf den Kopf
+    ablaufGeraete(plan, h) {
+      const Gp = h.Gp, links = V(-1, 0, 0), nRuhe = V(0, Math.sin(6 * RAD), -Math.cos(6 * RAD)), vorn = V(0, 0, -1);
+      const P0 = V(0, NK_SCH_R + 0.003, Bk.z0 - Bk.L / 2 - 0.07);
+      const haengt = nkHaltBei(Object.assign({}, Gp, { kopf: Object.assign({}, Gp.kopf, { neigung: 22 }) }), P0, links, (sg) => V(-sg, 0, 0.4));
+      const Kp = nkRahmen(gelenke(Gp)), scheitel = nkHautW(Kp, 90, 0, 0);
+      // erst nach vorn (Scheibe vor dem Gesicht, weit unter dem Kinn vorbei), dann vor dem Scheitel hoch: in einem großen Bogen rückten die Fäuste bis auf 7 cm zusammen
+      const vor = nkHaltBei(Gp, V(0, 0.36, scheitel.z - 0.1), links, (sg) => V(-sg, -0.3, 0.3));
+      const heben = nkHaltBei(Gp, V(0, scheitel.y + 0.06, scheitel.z - 0.05), links, (sg) => V(-sg, -0.6, 0));
+      const S = plan.schritte;
+      if (S.length && S[S.length - 1].ziel === Gp) S[S.length - 1].ziel = haengt; else S.push({ ziel: haengt, d: 1.0 });
+      S.push({ ziel: vor, d: 0.7, aussen: 0.012 }, { ziel: heben, d: 0.7, aussen: 0.01 }, { ziel: Gp, d: 1.0 });
+      plan.griffNach = S.length - 3;
+      const T = nkZeiten(S), iH = S.length - 4;
+      return (t, g) => {
+        const sch = h.z.scheibe; if (!sch) return;
+        const i = nkSchritt(t, T);
+        if (i <= iH) { sch.position.copy(P0); sch.quaternion.setFromUnitVectors(V(0, 1, 0), nRuhe); return; }   // steht am Boden, bis die Hände sie haben
+        if (i >= S.length) return nkScheibeSetzen(sch, nkRahmen(g), L);
+        const u = nkAnteil(t, T, i, S[i].verzug || 0);
+        nkScheibeZwei(sch, g, i === iH + 1 ? nkSlerpN(nRuhe, vorn, u) : i === iH + 2 ? vorn : nkSlerpN(vorn, nkWelt(nkRahmen(g), L.n), u));
+      };
+    },
+    blick: V(0, 0.65, -0.2), abstand: 2.7, kameraRicht: V(1, 0.25, -0.35),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.25 + 0.55 * (1 - unten(t))
+  };
+}
+// Kopf heben in Seitlage mit Hantelscheibe (Matte): wie ohne, die Scheibe liegt oben an der Kopfseite über dem Ohr, die obere (linke) Hand hält sie am Rand zum Scheitel hin.
+// Kopf liegt auf dem Handtuch (22°), hebt sich 2,5 s bis in die Linie, 1,5 s halten, 2,5 s ablegen, 1,5 s liegen. Schleife 8 s
+const NK_SCH_SEITE = nkScheibeLage(V(Math.cos(22 * RAD), Math.sin(22 * RAD), 0.05), 0.004);   // die Tabelle sieht das Ohr etwas zu groß: 4 mm tiefer liegt die Scheibe auf dem Haar
+function nk2SeitScheibe() {
+  const T = 8, becken = V(0, 0.21, 0.2), r = { basis: NK_SEIT, neigung: 0, seit: 6 }, k = rumpf(becken, r), R = k.R, L = NK_SCH_SEITE;
+  const ab = (t) => { const s = t * T; return s < 1 ? 0 : s < 3.5 ? nkAb(s, 1, 3.5) : s < 5 ? 1 : 1 - nkAb(s, 5, 7.5); };
+  const G = L.griff(V(0.15, 1, -0.35));
+  return {
+    aufbau(ger) { ger.matte(); ger.teil(new THREE.CylinderGeometry(0.05, 0.05, 0.34, 14), handtuchStoff(), V(-0.065, 0.097, -0.475)).rotation.z = Math.PI / 2; return { scheibe: nkScheibeBauen(ger) }; },
+    pose(t) {
+      const u = ab(t);
+      const p = { becken, rumpf: r, kopf: { seit: -22 * u, hals: 0.55, neigung: 4 }, hand: { r: k.schulter.r.clone().addScaledVector(R.vor, STUETZ * 0.93).setY(0.045) }, flach: { r: V(0, 1, 0) }, ellbogenPol: { r: V(0, 1, 0) },
+        fuss: seiten((s, sg) => becken.clone().addScaledVector(R.oben, -0.82).addScaledVector(R.vor, 0.12).setY(s === 'r' ? 0.085 : 0.19)), kniePol: seiten(() => R.vor.clone()), fussRicht: seiten(() => R.oben.clone().negate().addScaledVector(R.vor, 0.6)) };
+      const K = nkRahmen(gelenke(Object.assign({}, p, { hand: { l: k.brust.clone().addScaledVector(R.vor, 0.2).setY(0.3), r: p.hand.r } })));
+      nkRandGriff(p, K, G, 'l', R.vor.clone().multiplyScalar(0.6).add(V(0, 1, 0)));
+      nkHaendeGenau(p, ['l']); p.kopfStill = true;
+      return { pose: p, props(g, z) { fingerStellen(g, () => V(-0.3, 0, -1)); if (nkAblaufProps(g, z)) return; if (z && z.scheibe) nkScheibeSetzen(z.scheibe, nkRahmen(g), L); } };
+    },
+    // Ablauf davor: die Scheibe liegt flach auf der Matte vor dem Gesicht. Die Figur kniet sich hin und legt sich auf die Seite (Einstieg wie ohne Scheibe), greift mit der oberen Hand
+    // den Rand, hebt die Scheibe vor dem Gesicht hoch und legt sie oben auf die Kopfseite
+    ablaufGeraete(plan, h) {
+      const Gp = h.Gp, OBEN = V(0, 1, 0), K0 = nkRahmen(gelenke(Gp)), uR = nkWelt(K0, G.u).setY(0).normalize();
+      const P0 = V(-0.3, 0.005 + NK_SCH_D / 2 + 0.002, -0.52), rand = (c, u) => c.clone().addScaledVector(u, NK_SCH_R - 0.01);
+      const linkeHand = (p, hand, pol) => Object.assign({}, p, { hand: { l: genau(hand), r: p.hand.r }, handflaeche: { l: uR.clone().negate(), r: p.handflaeche.r }, ellbogenPol: { l: pol, r: p.ellbogenPol.r },
+        greift: { l: true, r: p.greift.r }, flach: { l: null, r: p.flach.r }, kelch: null });
+      const greift = linkeHand(Gp, rand(P0, uR).add(V(0, NK_FAUST_BODEN, 0)), V(0.3, 1, 0));
+      const hoch = V(-0.31, 0.53, P0.z), hebt = linkeHand(Gp, rand(hoch, uR), V(0.4, 1, 0.1));
+      const S = plan.schritte;
+      if (S.length && S[S.length - 1].ziel === Gp) S[S.length - 1].ziel = greift; else S.push({ ziel: greift, d: 1.0 });
+      S.push({ ziel: hebt, d: 0.8 }, { ziel: Gp, d: 0.9 });
+      plan.griffNach = S.length - 2;
+      const T = nkZeiten(S), iG = S.length - 3;
+      return (t, g) => {
+        const sch = h.z.scheibe; if (!sch) return;
+        const i = nkSchritt(t, T);
+        if (i <= iG) { sch.position.copy(P0); sch.quaternion.identity(); return; }   // liegt auf der Matte, bis die Hand sie hat
+        if (i >= S.length) return nkScheibeSetzen(sch, nkRahmen(g), L);
+        const u = nkAnteil(t, T, i, S[i].verzug || 0), K = nkRahmen(g);
+        const n = i === iG + 1 ? OBEN.clone() : nkSlerpN(OBEN, nkWelt(K, L.n), u);
+        const ud = i === iG + 1 ? uR.clone() : uR.clone().lerp(nkWelt(K, G.u), u); ud.addScaledVector(n, -ud.dot(n)).normalize();
+        sch.position.copy(g.hand.l).addScaledVector(ud, -(NK_SCH_R - 0.01)).addScaledVector(n, i === iG + 1 ? -NK_FAUST_BODEN * (1 - u) : 0);
+        sch.quaternion.setFromUnitVectors(OBEN, n);
+      };
+    },
+    blick: V(0, 0.32, -0.25), abstand: 2.6, kameraRicht: V(-1, 0.5, -0.1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.2 + 0.55 * (1 - ab(t))
+  };
+}
+
+// Nacken halten am Kabelzug mit Kopfgurt: Gurt um den Kopf (Stirnband und Band über den Scheitel), Ring hinten (vorn: Rücken zum Turm, das Kabel zieht den Kopf nach hinten, die Halsbeuger
+// halten) oder links (seite: der Turm steht links, die rechte Halsseite hält). 1,5 s leicht vom Turm weg lehnen, bis der Stapel abhebt, 10 s halten, 1,5 s zurück, 1 s Pause. Schleife 14 s
+function nk2KabelGurt(art) {
+  const T = 14, vorn = art === 'nacken_halten_kabel_vorn', kopf = { neigung: 4, zurueck: 0.008 };
+  const an = (t) => g15Halte(t, 1.5 / T, 11.5 / T, 13 / T);
+  const st0 = nkStehPose(0, stehFuesse(0.11, 0, 0.25), null, null, kopf), K0 = nkKopf(st0);
+  const ringAz = vorn ? 180 : 90, ringD = nkRichtung(4, ringAz);
+  const A = vorn ? V(0, K0.m.y + 0.03, -0.95) : V(0.95, K0.m.y + 0.03, 0);
+  const weg = A.clone().setY(0).negate().normalize();
+  let AB = null;   // Ablauf davor: Kabelende an der Öse, Hand, Schritt des Einhakens
+  // Kopfgurt am Kopf (Stirnband, Band über den Scheitel, goldener Ring); gibt die Lage des Rings, gurtEnde den Knoten am Kabel 2 cm davor
+  const gurtSetzen = (K, z) => {
+    const ring = nkStirnRing(K, 0.007); ring.push(ring[0]); bandKette(z, 'gurt', ring);
+    const ob = []; for (let el = 20; el <= 168; el += 12) ob.push(nkHautW(K, el <= 90 ? el : 180 - el, el <= 90 ? 0 : 180, 0.007));
+    bandKette(z, 'gurt_o', ob);
+    const Rp = nkHautW(K, 4, ringAz, 0.016); z.ring.position.copy(Rp); z.ring.quaternion.setFromUnitVectors(V(0, 0, 1), nkWelt(K, ringD).normalize().cross(K.oben).normalize());
+    return Rp;
+  };
+  const gurtEnde = (Rp) => Rp.clone().addScaledVector(A.clone().sub(Rp).normalize(), 0.02);
+  return {
+    aufbau(ger) {
+      const z = {}, stoff = nkGurtStoff();
+      r3_setze(z, r3_turm(ger, A, vorn ? V(0, 0, -1) : V(1, 0, 0), vorn ? V(1, 0.25, 0.2) : V(0.3, 0.25, 1), 'KABELZUG', 'NACKEN'));
+      z.gurt = ger.teil(new THREE.CylinderGeometry(0.006, 0.006, 1, 8), stoff); z.gurt_o = ger.teil(new THREE.CylinderGeometry(0.006, 0.006, 1, 8), stoff);
+      z.ring = ger.teil(new THREE.TorusGeometry(0.016, 0.004, 8, 18), ger.mDKGold); z.ring.userData.keinTeil = true;
+      z.seil = ger.stab(V(), V(0, 1, 0), 0.004, ger.mKabel); z.knoten = r3_knoten(ger);
+      r3_vorlauf(this, z);
+      return z;
+    },
+    pose(t) {
+      const a = an(t), p = nkStehPose(0, stehFuesse(0.11, 0, 0.25), weg.clone().multiplyScalar(0.03 * a), null, kopf);
+      if (vorn) p.rumpf.neigung = 2.5 * a; else p.rumpf.seit = -2.5 * a;
+      return { pose: p, props(g, z) {
+        if (nkAblaufProps(g, z) || !z || !z.gurt) return;
+        const ende = gurtEnde(gurtSetzen(nkRahmen(g), z)); z.knoten.position.copy(ende);
+        seil(z.seil, A, ende); z.dkTurm[0].zieh(A.distanceTo(ende));
+      } };
+    },
+    // Ablauf davor: der Kopfgurt sitzt schon auf dem Kopf, das Kabelende hängt an der Öse. Die Figur geht zum Turm (Gesicht zum Turm), holt das Kabelende mit einer Hand, hält es
+    // neben dem Kopf, dreht sich mit Tippelschritten (vorn: Rücken zum Turm, seite: Turm links), hakt es hinten bzw. links in den Ring am Gurt, lässt los und geht auf ihren Platz
+    ablaufEigen({ Gp, stehen }) {
+      const zuMir = A.clone().setY(0).negate().normalize(), Sp = A.clone().setY(0).addScaledVector(zuMir, 0.5), w = Math.atan2(-zuMir.x, -zuMir.z), dw = vorn ? Math.PI : -Math.PI / 2, wE = w + dw;
+      const s = vorn ? 'r' : 'l', sg = s === 'l' ? 1 : -1, C = A.clone().addScaledVector(zuMir, 0.02).add(V(0, -0.12, 0));   // Hand, die das Kabel holt; Kabelende an der Öse
+      const hand = (p, h, flaeche, pol) => Object.assign(p, { hand: Object.assign({}, p.hand, { [s]: genau(h) }), handflaeche: Object.assign({}, p.handflaeche, { [s]: flaeche }), ellbogenPol: Object.assign({}, p.ellbogenPol, { [s]: pol }) });
+      const neben = (p) => { const g = gelenke(p); return hand(p, g.schulter[s].clone().addScaledVector(g.R.oben, 0.17).addScaledVector(g.R.links, sg * 0.12).addScaledVector(g.R.vor, -0.02), g.R.links.clone().multiplyScalar(-sg), g.R.links.clone().multiplyScalar(sg).addScaledVector(g.R.oben, -0.8)); };   // Kabelende neben dem Ohr
+      const greift = hand(stehen(Sp, w, { neigung: 4 }), C.clone(), zuMir.clone().negate(), V(Math.cos(w), 0, -Math.sin(w)).multiplyScalar(sg).add(V(0, -0.7, 0)));
+      const Ke = nkRahmen(gelenke(stehen(Sp, wE))), aus = nkWelt(Ke, ringD).normalize();
+      const hake = hand(stehen(Sp, wE), nkHautW(Ke, 4, ringAz, 0.016).addScaledVector(aus, 0.035), aus.clone().negate(), V(Math.cos(wE), 0, -Math.sin(wE)).multiplyScalar(sg).add(V(0, 0.6, 0)));
+      const O = V(0, 0, 0), schritte = [{ ziel: greift, d: 0.8, verzug: 0.2 }, { ziel: neben(stehen(Sp, w)), d: 0.6 }];
+      for (const st of nkTippel(stehen, Sp, w, dw)) schritte.push(Object.assign(st, { ziel: neben(st.ziel) }));
+      const iHake = schritte.length; schritte.push({ ziel: hake, d: 0.7 }, { ziel: stehen(Sp, wE), d: 0.5 });
+      for (const [k, f] of [[1, vorn ? 'l' : 'r'], [2, 'r']])   // seitlich nach rechts: der rechte Fuß führt (sonst kreuzten die Füße)
+      schritte.push({ ziel: stehen(Sp.clone().lerp(O, k / 2), wE), d: 0.5, steigen: { erst: f, bogen: 0.04 } });
+      schritte.push({ ziel: Gp, d: 0.4 });
+      AB = { C, s, iHake };
+      return { name: 'kabel_einhaken', blick: zuMir.clone().negate(), stand: Sp, von: Sp.clone().addScaledVector(zuMir, 1.0).addScaledVector(V(Math.cos(w), 0, -Math.sin(w)), vorn ? 0.9 : -0.9), griffNach: 1, schritte };
+    },
+    ablaufGeraete(plan, h) {
+      const S = plan.schritte, T = nkZeiten(S);
+      return (t, g) => {
+        const z = h.z; if (!z.gurt) return;
+        const i = nkSchritt(t, T), K = nkRahmen(g);
+        if (i >= S.length) { const ende = gurtEnde(gurtSetzen(K, z)); z.knoten.position.copy(ende); seil(z.seil, A, ende); z.dkTurm[0].zieh(A.distanceTo(ende)); return; }
+        const ende = gurtEnde(gurtSetzen(K, z)), faust = g.hand[AB.s].clone().addScaledVector(A.clone().sub(g.hand[AB.s]).normalize(), 0.02);
+        const k = i <= 0 ? AB.C.clone() : i < AB.iHake ? faust : i === AB.iHake ? faust.lerp(ende, glatt((nkAnteil(t, T, i) - 0.6) / 0.4)) : ende;   // hängt, in der Hand, eingehakt
+        z.knoten.position.copy(k); seil(z.seil, A, k); z.dkTurm[0].stelle([0]);   // der Stapel bleibt im Ablauf unten (zieh würde die Ruhelänge verkürzen)
+      };
+    },
+    blick: V(0, 1.3, vorn ? -0.3 : 0.25), abstand: 3.4, kameraRicht: vorn ? V(1, 0.25, 0.2) : V(0.3, 0.25, 1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.15 + 0.65 * an(t)
+  };
+}
+
+function nk2Uebung(art) {
+  if (art === 'kinn_zurueck_liegend') return nk2KinnLiegend();
+  if (art === 'nacken_halten_band_vorn_hinten' || art === 'nacken_halten_band_seite') return nk2BandPfosten(art);
+  if (art === 'kopf_heben_vierfuessler_band') return nk2VierBand();
+  if (art === 'kopf_drehen_vierfuessler') return nk2VierDrehen();
+  if (art === 'kopf_heben_rueckenlage_scheibe') return nk2RueckenScheibe();
+  if (art === 'kopf_heben_bauchlage_scheibe') return nk2BauchScheibe();
+  if (art === 'kopf_heben_seitlage_scheibe') return nk2SeitScheibe();
+  return nk2KabelGurt(art);
+}
+/* NACKEN SCHWER ENDE */
 function nackenUebung(art) {
+  if (NK2_ARTEN.includes(art)) return nk2Uebung(art);   // Nacken schwer (18.11.2026)
   if (art === 'nacken_halten_hand_vorn_hinten' || art === 'nacken_halten_hand_seite') return nkHaltenHand(art);
   if (art === 'kopf_drehen_sitzend') return nkKopfDrehen();
   if (art === 'kinn_zurueck_wand') return nkKinnWand();

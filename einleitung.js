@@ -1245,6 +1245,10 @@ export function baueEinleitung(anim, ger, z, kamera) {
       if (wert(p) < wert(plan) - (plan === klass ? 0.02 : 0)) plan = p;
     }
   }
+  // Geräte am Kopf (Vorlage ablaufGeraete, Nacken 18.11.2026): die Vorlage darf den gewählten Einstieg ergänzen (Scheibe aufheben, Band anlegen, Gurt einhaken) und setzt diese Geräte im
+  // ganzen Ablauf selbst: setze(t, g), t = Zeit ab dem ersten Schritt (beim Hinlaufen negativ). Bis dahin hingen sie bis zum Greifen dort in der Luft, wo der Kopf in der Startpose ist
+  const eigeneGeraete = anim.ablaufGeraete ? anim.ablaufGeraete(plan, { Gp, gg, stehen, sitzen, haendeAufBeinen, haendeNeben, vollstaendig, z }) : null;
+  if (eigeneGeraete) { z.ablaufGeraete = eigeneGeraete; z.ablaufZeit = null; eigeneGeraete(-1, gelenke(stehen(plan.stand, winkelVon(plan.blick)))); for (const o of obj) o.updateMatrixWorld(true); }
   const { blick, stand, schritte } = plan, winkel = winkelVon(blick);
 
   // Zeitleiste
@@ -1311,6 +1315,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // Griff am Ende quer zum Körper und die Hanteln auf den Knien: Die Ellbogen bleiben unten. Zur Seite weg läge der Unterarm auf dem Weg längs zum Griff, und die Hand kippte im Bildtakt hin und her (bis 3.11. beim Wadenheben im Sitzen)
   const knieQuer = auf && art === 'sitzen' && griffEnde.l && Math.abs(griffEnde.l.dot(gg.R.links)) > 0.9 && Math.abs(gg.hand.l.y - gg.huefte.l.y - 0.07) < 0.13;
   if (knieQuer) for (const s of schritte) if (s.ziel !== Gp) s.ziel = Object.assign({}, s.ziel, { ellbogenPol: seiten((k, sg) => gg.R.links.clone().multiplyScalar(sg * 0.35).addScaledVector(gg.R.oben, -1).addScaledVector(gg.R.vor, -0.3)) });
+  const tSchritte0 = teile.reduce((a, x) => a + x.d, 0);   // ab hier die Schritte (Zeit für eigeneGeraete)
   for (const s of schritte) { teile.push({ d: s.d, bild: uebergang(vorher, s) }); vorher = s.ziel; }
   if (dannStart) { const st = { ziel: dannStart, d: 0.9 }; teile.push({ d: st.d, bild: uebergang(vorher, st) }); vorher = dannStart; }
   // Kommt die Hand erst mit dem letzten Schritt an, bleibt kurz Zeit zum Zugreifen, bevor die Übung beginnt
@@ -1345,7 +1350,8 @@ export function baueEinleitung(anim, ger, z, kamera) {
       const ende = 1 - glatt((sek - (dauer - 0.45)) / 0.4);   // die letzten 0,45 s ohne Eingriff: der Ablauf endet genau in der Startpose der Übung (sonst Sprung bei der Übergabe)
       return ueberBoden(Object.assign({}, p, griffStand(sek)), ende);
     },
-    gehtMit: (sek) => sek >= Math.min(tMit, tGriff),
+    // eigene Geräte (oben): immer, mit der Zeit dieses Bilds in z.ablaufZeit (die props der Vorlage setzen sie damit)
+    gehtMit: (sek) => { if (eigeneGeraete) { z.ablaufZeit = sek - tSchritte0; return true; } return sek >= Math.min(tMit, tGriff); },
     // zum Prüfen: Art, gewählter Einstieg, Ende des Laufens (mit Drehen)
     art, einstieg: plan.name, phasen: { gehenBis: tGehen + DAUER.drehen }, aufheben: auf && Object.assign({ d: auf.d }, auf.wahl)
   };

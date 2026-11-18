@@ -1906,6 +1906,7 @@ export class Ansicht {
   schaue(pose, punkt, ziel, laecheln = false) {
     if (punkt) this.blickPunkt = punkt.clone();
     this.laechelZiel = 0; this.blickFest = null;
+    if (pose.kopfStill) { this.blickKopf = 0; return; }   // Nacken schwer (18.11.2026): Gerät am Kopf, die Hände halten es (Scheibe): kein Blick zur Kamera
     if (!this.blickPunkt || (ziel < 0.01 && this.blickKopf < 0.005)) { this.blickKopf = 0; return; }
     const g = gelenke(pose), auge = V(0, -0.09, 0.07).applyQuaternion(g.kopfQ).add(g.kopf);
     const d = this.blickPunkt.clone().sub(auge).applyQuaternion(g.kopfQ.clone().invert());
