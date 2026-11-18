@@ -354,6 +354,8 @@ function leiste() {
   }
 }
 function geh(id) { S.ansicht = id; zeichne(); window.scrollTo(0, 0); }
+// Farbwelt mit einem Tipp (18.11.2026, antippen.js „dk-look“): die Ansicht sofort in den neuen Farben neu zeichnen, ohne Neuladen; man bleibt auf derselben Seite an derselben Stelle
+window.addEventListener('dk-look', () => { const y = window.scrollY; zeichne(); window.scrollTo(0, y); });
 // Was die App zeigt: Code-Eingabe, Sperre nach Ablauf, Analyse, Warten auf den Plan, der Plan selbst oder Willkommen
 function zustand() {
   if (S.wartet) return 'code';
@@ -1142,6 +1144,14 @@ function gefuehlBlock() {
     h('div', { class: 'reihe' }, schalter('Töne', G.ton(), G.setzeTon), schalter('Vibration', G.vibration(), G.setzeVibration),
       h('button', { class: 'knopf klein', type: 'button', onclick: () => G.spiel('geschafft'), text: 'Probe: Training geschafft' })));
 }
+// Farbwelt mit einem Tipp (18.11.2026): dieselben Farbwelten wie der runde Knopf oben rechts, hier zum direkten Antippen (antippen.js → window.dkFarbe)
+function farbBlock() {
+  const F = window.dkFarbe; if (!F) return null;
+  return h('section', { class: 'block farb-block' }, h('h2', { text: 'Farbwelt' }),
+    h('p', { class: 'leise klein', text: 'Antippen und sofort sehen. Oder oben rechts auf den runden Knopf tippen: Jeder Tipp zeigt die nächste.' }),
+    h('div', { class: 'farb-wahl' }, F.welten.map(([w, n]) => h('button', { class: 'farb-eintrag', type: 'button', 'aria-pressed': F.jetzt() === w ? 'true' : 'false', onclick: () => { if (F.jetzt() !== w) F.setzen(w); } },
+      h('i', { class: 'look-probe ' + w, 'aria-hidden': 'true' }), h('span', { text: n })))));
+}
 function ansichtInfo() {
   const p = S.plan, ko = aktivesKonto(), mitZugang = ko && ko.id === p.id;
   const plaene = Object.values(speicher.lies('dk_plaene', {}));
@@ -1156,6 +1166,7 @@ function ansichtInfo() {
     mitZugang ? uebergabeKarte() : null,
     installKarte(true),
     gefuehlBlock(),
+    farbBlock(),
     h('section', { class: 'block' }, h('h2', { text: 'Begriffe' }),
       h('p', { class: 'klein', text: 'Reserve (RIR): Wiederholungen, die du am Ende des Satzes noch schaffen würdest. RIR 2 heißt: aufhören, wenn noch zwei gehen würden.' }),
       h('p', { class: 'klein', text: 'Pause: Zeit zwischen zwei Sätzen. Im Training läuft sie als Ring und geht danach von selbst weiter.' }),

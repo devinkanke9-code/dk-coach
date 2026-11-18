@@ -81,40 +81,58 @@
   }, true);   // vor dem eigenen Handler: der zeichnet neu, danach wäre der Haken schon weg
 })();
 
-/* Farbwelt wählen: Lagune, Klar oder Schwarz-Gold, auf diesem Gerät gemerkt (kleines Menü oben rechts im Kopf).
- * Die Wahl steht immer ausdrücklich in dk_look. Ohne Eintrag gilt: neue Besucher der Kunden-App bekommen Schwarz-Gold (frühes Skript in index.html und analyse.html, Devin 05.11.2026), wer dort schon Daten hat und die Trainer-Seite bleiben bei Lagune. */
+/* Farbwelt wechseln (18.11.2026, Devin: „dass man ganz einfach, also wirklich super einfach, das ändern kann, also man klickt drauf und das geht direkt“).
+ * Ein Tipp auf den runden Knopf oben rechts zeigt sofort die nächste Farbwelt (Sport → Schwarz-Gold → Lagune → Lounge-Weiß → …), ohne Menü und ohne Neuladen.
+ * Ein kleines Schild nennt kurz den Namen. Gemerkt in dk_look auf diesem Gerät. Ohne Eintrag gilt das frühe Skript in index.html (neue Besucher: Sport).
+ * Die Seite zeichnet sich selbst neu (Ereignis „dk-look“: app.js zeichnet die Ansicht neu, buehne.js baut die Vorschaubilder neu), Hintergrund, Glas und Sport-Effekte hören auf data-look.
+ * Unter „Infos“ (Kunden-App) stehen dieselben Farbwelten zum direkten Antippen (window.dkFarbe).
+ * Früher: Menü und location.reload(). Das war langsam, sprang auf „Heute“ zurück, und wo der Speicher fehlt (abgeschirmte Trainer-Seite), ging die Wahl beim Neuladen verloren. */
 (function () {
   var SCHLUESSEL = 'dk_look';
   var WELTEN = [['sport', 'Sport'], ['gold', 'Schwarz-Gold'], ['lagune', 'Lagune'], ['klar', 'Lounge-Weiß']].filter(function (w) { return w[0] !== 'sport' || !!document.querySelector('link[href$="sport.css"]'); });
-  // Sport nur, wo sport.css geladen ist: Die Trainer-Seite nimmt diese Datei auch (app/build.js), hat aber kein sport.css (16.11.2026)   // Sport seit 16.11.2026 (sport.css)
+  // Sport nur, wo sport.css geladen ist: Die Trainer-Seite nimmt diese Datei auch (app/build.js), hat aber kein sport.css (16.11.2026)
+  var LEISTE = { klar: '#F5F5F7', gold: '#060608', sport: '#111215', lagune: '#86CBEE' };   // Farbe der Handy-Leiste, wie im frühen Skript in index.html
+  var root = document.documentElement, schild = null, schildUhr = 0, bald = 0;
   function lies() { try { return localStorage.getItem(SCHLUESSEL) || ''; } catch (e) { return ''; } }
-  function waehle(wert) {
-    try { localStorage.setItem(SCHLUESSEL, wert); } catch (e) {}
-    location.reload();   // 3D-Bühne und Vorschaubilder entstehen dann in den neuen Farben
+  function jetzt() { return root.dataset.look || 'lagune'; }
+  function name(w) { for (var i = 0; i < WELTEN.length; i++) if (WELTEN[i][0] === w) return WELTEN[i][1]; return w; }
+  function hinweis(w) { return 'Farbwelt: ' + name(w) + '. Tippen zeigt die nächste'; }
+  function zeigeSchild(text) {
+    if (!schild) {
+      schild = document.createElement('div'); schild.className = 'look-schild'; schild.setAttribute('role', 'status'); schild.setAttribute('aria-live', 'polite');
+      schild.style.cssText = 'position:fixed;z-index:60;top:calc(env(safe-area-inset-top, 0px) + 60px);right:12px;padding:9px 16px;border-radius:999px;background:var(--flaeche);color:var(--text);'
+        + 'border:1px solid var(--rand-weich, rgba(127,127,127,.25));box-shadow:0 12px 30px -12px rgba(0,0,0,.55);font-family:inherit;font-size:15px;font-weight:600;line-height:1.2;pointer-events:none;opacity:0;transition:opacity .2s ease';
+      document.body.appendChild(schild);
+    }
+    schild.textContent = text; schild.style.opacity = '1';
+    clearTimeout(schildUhr); schildUhr = setTimeout(function () { schild.style.opacity = '0'; }, 1500);
   }
+  function setzen(w) {
+    if (!WELTEN.some(function (x) { return x[0] === w; })) return;
+    root.dataset.look = w;
+    var m = document.querySelector('meta[name=theme-color]'); if (m && LEISTE[w]) m.content = LEISTE[w];
+    try { localStorage.setItem(SCHLUESSEL, w); } catch (e) {}   // ohne Speicher gilt die Wahl bis zum Schließen
+    var b = document.querySelector('.look-wahl'); if (b) { b.setAttribute('aria-label', hinweis(w)); b.title = hinweis(w); }
+    zeigeSchild(name(w));
+    // Erst die neuen Farben zeigen, dann neu zeichnen: Das Neuzeichnen (Vorschaubilder) braucht auf langen Seiten etwas Zeit. Schnelles Weitertippen zeichnet nur einmal
+    if (bald) return;
+    var melden = function () { bald = 0; try { window.dispatchEvent(new CustomEvent('dk-look', { detail: root.dataset.look })); } catch (e) {} };
+    bald = 1;
+    if (window.requestAnimationFrame) requestAnimationFrame(function () { setTimeout(melden, 30); }); else setTimeout(melden, 30);
+  }
+  function naechste() { var i = 0; while (i < WELTEN.length && WELTEN[i][0] !== jetzt()) i++; return WELTEN[(i + 1) % WELTEN.length][0]; }
+  window.dkFarbe = { welten: WELTEN.slice(), jetzt: jetzt, name: name, setzen: setzen };
   function knopf() {
     var kopf = document.querySelector('.kopf-innen');
     if (!kopf || kopf.querySelector('.look-wahl')) return;
-    var jetzt = document.documentElement.dataset.look || 'lagune', rahmen = document.createElement('div'), b = document.createElement('button'), menue = document.createElement('div');
+    var rahmen = document.createElement('div'), b = document.createElement('button');
     rahmen.className = 'look-rahmen';
-    b.type = 'button'; b.className = 'look-wahl'; b.title = 'Farbwelt wählen'; b.setAttribute('aria-label', 'Farbwelt wählen'); b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
-    menue.className = 'look-menue'; menue.setAttribute('role', 'menu'); menue.hidden = true;
-    function zeigen(an) { menue.hidden = !an; b.setAttribute('aria-expanded', String(an)); }
-    WELTEN.forEach(function (w) {
-      var e = document.createElement('button'), probe = document.createElement('i');
-      e.type = 'button'; e.className = 'look-eintrag'; e.setAttribute('role', 'menuitemradio'); e.setAttribute('aria-checked', String(jetzt === w[0]));
-      probe.className = 'look-probe ' + w[0]; e.appendChild(probe); e.appendChild(document.createTextNode(w[1]));
-      e.addEventListener('click', function () { zeigen(false); if (w[0] !== jetzt) waehle(w[0]); });
-      menue.appendChild(e);
-    });
-    b.addEventListener('click', function (e) { e.stopPropagation(); zeigen(menue.hidden); });
-    document.addEventListener('click', function (e) { if (!menue.hidden && !rahmen.contains(e.target)) zeigen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !menue.hidden) { zeigen(false); b.focus(); } });
-    rahmen.appendChild(b); rahmen.appendChild(menue);
-    kopf.appendChild(rahmen);
+    b.type = 'button'; b.className = 'look-wahl'; b.title = hinweis(jetzt()); b.setAttribute('aria-label', hinweis(jetzt()));
+    b.addEventListener('click', function (e) { e.stopPropagation(); setzen(naechste()); });
+    rahmen.appendChild(b); kopf.appendChild(rahmen);
   }
-  if (lies()) document.documentElement.dataset.look = lies();
-  if (document.querySelector('meta[name="dk-ohne-farbwahl"]')) return;   // Seiten ohne Menü für die Farbwelt (Analyse für dich)
+  if (lies()) root.dataset.look = lies();
+  if (document.querySelector('meta[name="dk-ohne-farbwahl"]')) return;   // Seiten ohne Knopf für die Farbwelt (Analyse für dich)
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', knopf); else knopf();
 })();
 

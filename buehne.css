@@ -538,3 +538,13 @@ html:has(.raum), html:has(.raum) body { overflow: hidden; }
 .st-figur:active { transform: scale(.98); }
 .st-figur:focus-visible { outline: 2px solid var(--akzent); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .st-figur { transition: none; } .st-figur:active { transform: none; } }
+
+/* Farbwelt unter Infos (18.11.2026): ein Tipp genügt (app.js farbBlock, antippen.js window.dkFarbe) */
+.farb-wahl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.farb-eintrag { display: flex; align-items: center; gap: 10px; min-height: 52px; margin: 0; padding: 10px 12px; border-radius: 16px; border: 1px solid var(--rand-weich); background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text); font: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .15s ease; }
+.farb-eintrag .look-probe { width: 28px; height: 28px; }
+.farb-eintrag[aria-pressed="true"] { border-color: transparent; box-shadow: 0 0 0 2.5px var(--akzent); }
+.farb-eintrag:active { transform: scale(.98); }
+.farb-eintrag:focus-visible { outline: 2px solid var(--akzent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .farb-eintrag { transition: none; } .farb-eintrag:active { transform: none; } }

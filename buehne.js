@@ -183,6 +183,8 @@ export function erklaerung(ansicht, d, buehneEl, fertig) {
 // Standbilder der Figur für Listen (eine unsichtbare Bühne malt sie nacheinander, danach aus dem Zwischenspeicher)
 const standCache = new Map();
 let standAnsicht = null;
+// Farbwelt mit einem Tipp (18.11.2026, antippen.js „dk-look“): Die Vorschaubilder entstehen danach neu in den neuen Farben; vorher half dafür nur Neuladen
+window.addEventListener('dk-look', () => { standCache.clear(); if (standAnsicht) { try { standAnsicht.entsorgen(); } catch (e) { /* schon weg */ } if (standAnsicht.canvas) standAnsicht.canvas.remove(); standAnsicht = null; } });
 export async function standbilder(lade3d, ziele, datenZu) {
   if (!ziele.length) return;
   const M = await lade3d();
