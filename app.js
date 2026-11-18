@@ -7,6 +7,7 @@ import { buehne, standbilder } from './buehne.js';
 import { erklaerPunkte, ART_NAME } from './coach.js';
 import * as Bestleistung from './bestleistung.js';
 import * as Rang from './rang.js';
+import * as Status from './status.js';   // Status (18.11.2026): eigener Charakter mit Zahlen, Skins, wer im Gym trainiert
 import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 import * as Statistik from './statistik.js';   // Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings, nur auf diesem Handy
@@ -339,6 +340,7 @@ const BEREICHE = [
   ['plan', 'Plan', '<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12h6M9 15.5h4"/>'],
   ['uebungen', 'Übungen', '<circle cx="12" cy="5" r="2"/><path d="M12 7v6M8 21l4-8 4 8M7 10l5 1 5-1"/>'],
   ['rang', 'Rang', '<path d="M12 3l7 3v5.5c0 4.4-2.9 7.7-7 9.5-4.1-1.8-7-5.1-7-9.5V6z"/><path d="M12 8l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z"/>'],
+  ['status', 'Status', '<circle cx="12" cy="7.6" r="3.6"/><path d="M4.6 21c.8-4.6 3.8-7.3 7.4-7.3s6.6 2.7 7.4 7.3"/>'],
   ['info', 'Infos', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>']
 ];
 function leiste() {
@@ -373,7 +375,7 @@ function zeichne() {
   leiste();
   const ziel = $('#ansicht'); ziel.textContent = '';
   const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
-    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, info: ansichtInfo, fortschritt: ansichtFortschritt }[S.ansicht] || ansichtHeute;
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, fortschritt: ansichtFortschritt }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
@@ -876,6 +878,11 @@ function kopf(unter, titel) {
 const charakterLink = () => h('a', { class: 'knopf charakter-knopf', href: 'charakter/kunde.html', text: 'Mein Charakter' });
 /* ---------- Heute: Wochenleiste, Training des Tages, Übungen abhaken ---------- */
 let OHNE_3D = false;   // Der PR-Raum hat nicht geladen: Die Rang-Seite zeigt dann das Formular
+function ansichtStatus() {
+  const ko = aktivesKonto();
+  return Status.ansicht({ h, plan: S.plan, eigen: ko && ko.id === S.plan.id ? ko.c : null, lies: speicher.lies, schreib: speicher.schreib, toast, neu: zeichne,
+    vorladen: () => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}) });
+}
 function ansichtRang() { return Rang.ansicht({ h, kopf: () => kopf('', 'Dein Rang'), lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
 function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
@@ -1202,7 +1209,7 @@ function fotoGross(src) {
 function fotosVorladen() {
   if (!S.plan || navigator.onLine === false) return;
   const ko = aktivesKonto();
-  if (ko && ko.c) setTimeout(() => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}), 3000);   // der eigene Charakter ist auch ohne Internet im Gym dabei
+  if ((ko && ko.c) || Status.figurFuer(S.plan, null, speicher.lies).c) setTimeout(() => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}), 3000);   // der eigene Charakter ist auch ohne Internet im Gym dabei
   const pfade = new Set();
   for (const t of S.plan.t || []) for (const x of t.u || []) { const d = UEBUNGEN[x.i]; if (d && d.b) pfade.add(d.b); }
   if (pfade.size) setTimeout(() => pfade.forEach((p) => fetch(p).catch(() => {})), 2500);
@@ -1327,9 +1334,11 @@ let GYM = null;
 function raumLaden(wie, p) {
   const normal = () => import('./raum.js').then((m) => m.raumOeffnen(wie));
   // Eigener Charakter: läuft aus dem Ordner charakter/ mit eigener Kopie der Figur. Klappt das nicht, trainiert die normale Figur, das Training selbst bleibt gleich
-  const ko = aktivesKonto(), c = ko && p && ko.id === p.id ? ko.c : null;
-  if (c) toast('Dein Charakter kommt …');
-  return c ? import('./charakter/gym.js').then((m) => m.oeffnen(c, { ...wie, name: vorname(p.n) })).catch(() => { toast('Dein Charakter lädt gerade nicht. Heute trainiert die normale Figur.'); return normal(); }) : normal();
+  // Status (18.11.2026): Wer im Gym trainiert, wählt der Kunde unter Status (eigener Charakter, normale Figur oder ein Skin). Von „Mein Charakter“ aus immer der eigene Charakter
+  const ko = aktivesKonto(), eigen = ko && p && ko.id === p.id ? ko.c : null, f = S.gymEigen && eigen ? { c: eigen, eigen: true } : Status.figurFuer(p, eigen, speicher.lies), c = f.c;
+  S.gymEigen = false;
+  if (c) toast(f.eigen ? 'Dein Charakter kommt …' : f.name + ' kommt …');
+  return c ? import('./charakter/gym.js').then((m) => m.oeffnen(c, { ...wie, name: vorname(p.n) })).catch(() => { toast((f.eigen ? 'Dein Charakter lädt' : f.name + ' lädt') + ' gerade nicht. Heute trainiert die normale Figur.'); return normal(); }) : normal();
 }
 /* PR-Raum: aus dem Gym durch die Tür (zurueck bringt die Figur dann wieder vor die Tür) oder von der Rang-Seite */
 let PR = null;
@@ -1396,6 +1405,7 @@ function raumStarten(p, ti, abTuer) {
 function gymAusLink() {
   if (!/[#&]gym\b/.test(location.hash)) return;
   history.replaceState(null, '', location.pathname + location.search);
+  S.gymEigen = true;   // von „Mein Charakter“: dort ist der eigene Charakter gemeint, auch wenn unter Status ein Skin gewählt ist
   const p = S.plan;
   if (!p) return;
   if (LAUF && LAUF.phase !== 'fertig') { if (LAUF.gym && LAUF.plan === p.id) raumStarten(p, LAUF.tagNr - 1); return; }
