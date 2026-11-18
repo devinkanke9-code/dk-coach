@@ -193,6 +193,13 @@ html.dk-wellen-an .g-glas .knopf, html.dk-wellen-an .g-glas input, html.dk-welle
 .g-linse { display: none; }
 html.dk-wellen-an .g-glas > .g-linse { display: block; position: absolute; inset: 0; z-index: -1; border-radius: inherit; -webkit-clip-path: inset(0 round var(--g-r)); clip-path: inset(0 round var(--g-r)); pointer-events: none; }
 html.dk-wellen-an .g-glas.g-fern > .g-linse { display: none; }
+/* Durchsichtig statt Linse (18.11.2026, Devin: „dass es durchsichtig ist, dass man einfach nur durchgucken kann, aber nichts anderes“, „dass der Hintergrund immer gleich bleibt
+   und dass da keine reingezoomt ist“): keine Leinwand mehr (glas.js malt nichts), kein Lichtschein, kein Farbschleier, kein Leuchten. Die Karte ist klar wie eine Scheibe,
+   nur der feine Rand und der Schriftschatten halten Form und Lesbarkeit. Der Hintergrund steht fest. */
+html.dk-wellen-an .g-glas { background: transparent; box-shadow: none; }
+html.dk-wellen-an .g-glas > .g-linse { display: none; }
+/* Lagune heller (Devin: „bei den weißen … auch direkt auch durchsichtig machen, aber halt in helleren Stil“): halb weißer Schleier, man sieht weiter durch. Schwarz-Gold bleibt ganz klar. */
+html.dk-wellen-an[data-look="lagune"] .g-glas { background: rgba(255, 255, 255, .5); }
 /* Glas live (16.11.2026, Devin: „nur ein Standbild … nicht wie Glas“): glas.js malt das bewegte Wellen-Video in eine Leinwand je Karte. Darüber ein Lichtschein oben links wie auf echtem Glas. */
 .g-linse canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .g-linse::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(135deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 38%), radial-gradient(120% 70% at 85% 110%, rgba(255, 255, 255, .14), transparent 60%); }
