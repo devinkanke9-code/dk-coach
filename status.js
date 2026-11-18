@@ -34,13 +34,15 @@ export function figurFuer(p, eigen, lies) {
   return s ? { id: s.id, c: s.c, name: s.name, eigen: false } : { id: 'standard', c: null, name: 'Standard', eigen: false };
 }
 
-// Zahlen des eigenen Charakters wie auf „Mein Charakter“ (charakter/stand.js): Körperfett eingetragen oder aus Größe und Gewicht geschätzt (koerperform.js, fettSchaetzung)
+// Zahlen des eigenen Charakters wie auf „Mein Charakter“ (charakter/stand.js): Körperfett eingetragen oder geschätzt.
+// Körperfett aus Alter (18.11.2026): gleiche Formel wie stand.js fettSchaetzung (Deurenberg 1991, Jugend- und Erwachsenen-Formel mit weichem Übergang von 13 bis 18), mit dem Alter aus dem Charakter (al); ohne Alter 25 Jahre wie bisher
 export function zahlenVon(c) {
-  const z = c && Array.isArray(c.z) ? c.z : [], frau = !!(c && c.w), ein = zahl(z[2]);
-  const groesse = Math.max(130, Math.min(220, zahl(z[0]) || 175)), gewicht = Math.max(35, Math.min(200, zahl(z[1]) || 50));
-  const geschaetzt = !(ein >= 3), bmi = gewicht / ((groesse / 100) ** 2);
-  const fett = geschaetzt ? Math.max(frau ? 14 : 7, Math.min(45, 1.2 * bmi + 0.23 * 25 - (frau ? 0 : 10.8) - 5.4)) : Math.min(60, ein);
-  return { groesse, gewicht, fett, geschaetzt };
+  const z = c && Array.isArray(c.z) ? c.z : [], frau = !!(c && c.w), ein = zahl(z[2]), al = zahl(c && c.al);
+  const groesse = Math.max(130, Math.min(220, zahl(z[0]) || 175)), gewicht = Math.max(35, Math.min(200, zahl(z[1]) || 50)), alter = al != null && al >= 10 && al <= 100 ? Math.round(al) : null;
+  const geschaetzt = !(ein >= 3), bmi = gewicht / ((groesse / 100) ** 2), j = alter || 25, u = Math.max(0, Math.min(1, (j - 13) / 5));
+  const jung = 1.51 * bmi - 0.7 * j - (frau ? 0 : 3.6) + 1.4, erwachsen = 1.2 * bmi + 0.23 * j - (frau ? 0 : 10.8) - 5.4;
+  const fett = geschaetzt ? Math.max(frau ? 14 : 7, Math.min(45, jung + (erwachsen - jung) * u)) : Math.min(60, ein);
+  return { groesse, gewicht, alter, fett, geschaetzt };
 }
 
 const PERSON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7.6" r="3.6"/><path d="M4.6 21c.8-4.6 3.8-7.3 7.4-7.3s6.6 2.7 7.4 7.3"/></svg>';
@@ -56,7 +58,7 @@ function eigenKarte(o) {
       feld(Math.round(z.groesse) + ' cm', 'Größe'),
       feld(komma(z.gewicht, 1) + ' kg', 'Gewicht'),
       feld((z.geschaetzt ? '≈ ' : '') + Math.round(z.fett) + ' %', z.geschaetzt ? 'Körperfett, geschätzt' : 'Körperfett')),
-    z.geschaetzt ? h('p', { class: 'leise klein', text: 'Geschätzt aus Größe und Gewicht. Weißt du deinen Wert genau, sag ihn Devin.' }) : null,
+    z.geschaetzt ? h('p', { class: 'leise klein', text: 'Geschätzt aus ' + (z.alter ? 'Alter, Größe und Gewicht' : 'Größe und Gewicht') + '. Weißt du deinen Wert genau, sag ihn Devin.' }) : null,
     h('a', { class: 'knopf charakter-knopf', href: 'charakter/kunde.html', text: 'Ansehen und drehen' }));
 }
 

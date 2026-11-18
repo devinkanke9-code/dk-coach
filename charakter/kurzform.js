@@ -13,6 +13,7 @@ export function packen(d, kopf, name) {
   const o = { v: 1, z, c: FARBEN.map((id) => String(f[id] || STANDARD[id]).slice(1)).join(''), a: [OBEN.indexOf(d.oben || 'ohne'), UNTEN.indexOf(d.unten || 'kurz'), d.muetze === false ? 0 : 1, d.farbenGesetzt ? 1 : 0] };
   if (name) o.n = name;
   if (f['e-geschlecht'] === 'w') o.w = 1;
+  if (+f['e-alter'] >= 10 && +f['e-alter'] <= 100) o.al = Math.round(+f['e-alter']);   // Körperfett aus Alter (18.11.2026): Alter für die Körperfett-Schätzung
   if (kopf) o.k = kopf;
   if (d.rFoto) { o.r = flach(d.rFoto); o.d = [d.dFoto.groesse, +d.dFoto.gewicht.toFixed(1), +d.dFoto.fett.toFixed(1)]; }
   if (d.herkunft) o.h = d.herkunft;
@@ -41,6 +42,7 @@ export function auspacken(o) {
   (Array.isArray(o.z) ? o.z.slice(0, ZAHLEN.length) : []).forEach((v, i) => { const n = zahl(v); felder[ZAHLEN[i]] = n == null ? '' : String(n); });
   FARBEN.forEach((id, i) => { const hex = String(o.c).substr(i * 6, 6); if (/^[0-9a-fA-F]{6}$/.test(hex)) felder[id] = '#' + hex; });
   if (o.w) felder['e-geschlecht'] = 'w';
+  if (zahl(o.al) != null && o.al >= 10 && o.al <= 100) felder['e-alter'] = String(Math.round(o.al));
   const a = Array.isArray(o.a) ? o.a : [0, 0, 1, 0], d = { v: 13, felder, name: kurzText(o.n, 120), muetze: !!a[2], oben: OBEN[+a[0]] || 'ohne', unten: UNTEN[+a[1]] || 'kurz', farbenGesetzt: !!a[3], herkunft: kurzText(o.h, 200), rFoto: null, dFoto: null, kopf: null, monate: (Array.isArray(o.m) ? o.m : []).filter((m) => Array.isArray(m) && /^\d{4}-\d{2}$/.test(m[0]) && zahl(m[1]) != null && zahl(m[3]) != null).slice(-12).map((m) => ({ monat: m[0], gewicht: m[1], fett: zahl(m[2]), fettfrei: m[3] })), gesetzt: { training: !!o.gt, essen: !!o.ge } };
   if (Array.isArray(o.r) && o.r.length === 19 && o.r.every((v) => zahl(v) != null) && Array.isArray(o.d) && o.d.length === 3 && o.d.every((v) => zahl(v) != null)) { d.rFoto = ausFlach(o.r); d.dFoto = { groesse: o.d[0], gewicht: o.d[1], fett: o.d[2] }; }
   const kopf = kopfSauber(o.k);

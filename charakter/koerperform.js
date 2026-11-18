@@ -446,7 +446,7 @@ export function kleidungZurueck(figur) { for (const n of ['uOberteil', 'uHose', 
 // Devin, 2.11.: „realistisch … nicht zu brutal … Starterfigur ganz dünn … 50 Kilo“. x: fettfreie Masse je Körpergröße (FFMI 14 = sehr dünn, 25 = natürliche Grenze und die modellierte Figur),
 // y: Fett über 10 %. Die Faktoren sind die Breiten gegenüber der modellierten Figur (Erfahrungswerte aus Umfangstabellen), das genaue Gewicht stellt danach aufGewicht ein
 export const ffmi = (groesse, gewicht, fett) => gewicht * (1 - fett / 100) / ((groesse / 100) ** 2);
-export function fettSchaetzung(groesse, gewicht, frau) { const bmi = gewicht / ((groesse / 100) ** 2); return Math.max(frau ? 14 : 7, Math.min(45, 1.2 * bmi + 0.23 * 25 - (frau ? 0 : 10.8) - 5.4)); }
+export { fettSchaetzung } from './stand.js';   // Körperfett aus Alter (18.11.2026): eine Formel mit Alter für Editor, Kundenseite, Gym und Status
 export function modell(groesse, gewicht, fett) {
   const x = Math.max(-0.2, Math.min(1.1, (ffmi(groesse, gewicht, fett) - 14) / 11)), y = 0.2 * Math.max(-0.05, (fett - 10) / 100), h = groesse / 180;   // Fett kommt jetzt fast nur noch über die Schichten
   const br = { arm: 0.62 + 0.38 * x + 0.6 * y, bein: 0.68 + 0.32 * x + 0.7 * y, brust: 0.78 + 0.22 * x + 0.5 * y, taille: 0.84 + 0.16 * x + 1.5 * y, huefte: 0.8 + 0.2 * x + 0.9 * y, schulter: 0.9 + 0.1 * x + 0.1 * y, hals: 0.78 + 0.22 * x + 0.4 * y };

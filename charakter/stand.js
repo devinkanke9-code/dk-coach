@@ -3,9 +3,9 @@ export const EINS = () => ({ hoehe: 1, kopf: 1, breit: { schulter: 1, aussen: 1,
 export const mischR = (a, b, u) => { const r = EINS(); r.hoehe = a.hoehe + (b.hoehe - a.hoehe) * u; r.kopf = (a.kopf || 1) + ((b.kopf || 1) - (a.kopf || 1)) * u; for (const g of ['breit', 'tiefe', 'lang']) for (const k in r[g]) { const p = a[g][k] == null ? 1 : a[g][k], q = b[g][k] == null ? 1 : b[g][k]; r[g][k] = p + (q - p) * u; } return r; };
 // wert(id): der Inhalt eines Felds, als Text wie im Formular
 export function daten(wert, fettSchaetzung) {
-  const groesse = Math.max(130, Math.min(220, +wert('e-groesse') || 175)), gewicht = Math.max(35, Math.min(200, +wert('e-gewicht') || 50)), frau = wert('e-geschlecht') === 'w', ein = +wert('e-fett'), geschaetzt = !(ein >= 3);
-  const fett = geschaetzt ? (fettSchaetzung ? fettSchaetzung(groesse, gewicht, frau) : 10) : Math.min(60, ein), h2 = (groesse / 100) ** 2, ffm = gewicht * (1 - fett / 100);
-  return { groesse, gewicht, frau, fett, geschaetzt, h2, ffm, grenzeFfm: (frau ? 21 : 25) * h2, fettGrenze: frau ? 24 : 15 };
+  const groesse = Math.max(130, Math.min(220, +wert('e-groesse') || 175)), gewicht = Math.max(35, Math.min(200, +wert('e-gewicht') || 50)), frau = wert('e-geschlecht') === 'w', ein = +wert('e-fett'), geschaetzt = !(ein >= 3), alter = +wert('e-alter') >= 10 ? Math.min(100, Math.round(+wert('e-alter'))) : null;
+  const fett = geschaetzt ? (fettSchaetzung ? fettSchaetzung(groesse, gewicht, frau, alter) : 10) : Math.min(60, ein), h2 = (groesse / 100) ** 2, ffm = gewicht * (1 - fett / 100);
+  return { groesse, gewicht, frau, alter, fett, geschaetzt, h2, ffm, grenzeFfm: (frau ? 21 : 25) * h2, fettGrenze: frau ? 24 : 15 };
 }
 export function mitNachstellen(r, wert) {
   const n = mischR(r, r, 0), t = (id) => 1 + +wert(id) / 100;
@@ -28,3 +28,14 @@ const reliefAus = (ffm, h2) => 0.35 + 0.65 * Math.max(0, Math.min(1, (ffm / h2 -
 export function reliefMit(ffm, h2, v) { const g = reliefAus(ffm, h2); return v >= 0 ? g + (1 - g) * v : g * (1 + v); }
 // Foto-Maß: Es gilt für den Stand beim Messen, die Zahlen von heute kommen obendrauf
 export function ausFoto(modell, rFoto, dFoto, d) { const r = nachZahlen(modell, rFoto, dFoto.groesse, dFoto, d); r.hoehe = d.groesse / 180; return r; }
+
+// Körperfett aus Alter (18.11.2026, Devin: „einen ungefähren Körperfettprozent anhand diesen Alter, dieser Masse, wie schwer die sind … außer sie wissen das wirklich 100%ig“).
+// Deurenberg, Weststrate, Seidell 1991 (BMI, Alter, Geschlecht): Kinder und Jugendliche 1,51·BMI − 0,70·Alter − 3,6 (Jungen) + 1,4; Erwachsene 1,20·BMI + 0,23·Alter − 10,8 (Männer) − 5,4.
+// Bis 13 Jahre die Jugend-Formel, ab 18 die Erwachsenen-Formel, dazwischen ein weicher Übergang: Sonst spränge der Wert am 16. Geburtstag um mehrere Prozentpunkte.
+// Ohne Alter wie bisher mit 25 Jahren. Grenzen wie bisher: Männer 7–45 %, Frauen 14–45 %. Kann einige Prozentpunkte danebenliegen; ein genau gemessener Wert im Feld „Körperfett“ geht immer vor.
+// Gleiche Rechnung steht in kunden-app/status.js (zahlenVon), damit die App sie ohne die 3D-Dateien kennt.
+export function fettSchaetzung(groesse, gewicht, frau, alter) {
+  const bmi = gewicht / ((groesse / 100) ** 2), j = alter >= 10 ? Math.min(100, alter) : 25, u = Math.max(0, Math.min(1, (j - 13) / 5));
+  const jung = 1.51 * bmi - 0.7 * j - (frau ? 0 : 3.6) + 1.4, erwachsen = 1.2 * bmi + 0.23 * j - (frau ? 0 : 10.8) - 5.4;
+  return Math.max(frau ? 14 : 7, Math.min(45, jung + (erwachsen - jung) * u));
+}
