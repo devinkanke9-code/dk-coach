@@ -5428,7 +5428,7 @@ export function schulterzug(o = {}) {
   const art = o.art || 'reverse_butterfly';
   if (art === 'wandengel' || art === 'wandrutschen') return wandArmeG15b(art);
   if (art === 'rueckzug_sitzend') return rueckzugSitzG15b();
-  if (NACKEN_ARTEN.includes(art)) return nackenUebung(art);   // Nacken (18.11.2026)
+  if (NACKEN_ARTEN.includes(art)) return nkKopfStill(nackenUebung(art));   // Nacken (18.11.2026)
   return {
     aufbau(ger) {
       const z = {};
@@ -6929,6 +6929,9 @@ function nkStehPose(dreh, fuesse, lehn, rz, kopf) {
 /* ---------- Ablauf davor: Geräte am Kopf (Haken ablaufGeraete in einleitung.js) ---------- */
 // Bis dahin hingen Scheibe, Band und Gurt im Ablauf dort in der Luft, wo der Kopf in der Startpose ist. Jetzt: Scheibe liegt am Boden und wird aufgehoben, Band hängt am Pfosten
 // und wird über den Kopf gelegt, der Gurt hängt am Kabel und wird aufgesetzt. setze(t, g) bekommt die Zeit ab dem ersten Schritt
+// Alle Nackenübungen (leicht und schwer): in der Pause bleibt der Kopf, wo er ist (figur.js pose.kopfStill). Sonst dreht er sich bis 40° zur Kamera, und Hand, Ball, Scheibe
+// oder Gurt passen nicht mehr zum Kopf (Messung 18.11. abends: Hand bis 12,7 cm, Ball bis 18 cm daneben)
+function nkKopfStill(v) { const p0 = v.pose; v.pose = function (t, z) { const e = p0.call(this, t, z); if (e && e.pose) e.pose.kopfStill = true; return e; }; return v; }
 // props im Ablauf davor: hat gehtMit eine Zeit hinterlegt (einleitung.js), setzt die Vorlage ihre Geräte für dieses Bild selbst (setze aus ablaufGeraete)
 function nkAblaufProps(g, z) { if (!z || z.ablaufZeit == null || !z.ablaufGeraete) return false; const t = z.ablaufZeit; z.ablaufZeit = null; z.ablaufGeraete(t, g); return true; }
 const nkZeiten = (schritte) => schritte.reduce((a, s) => (a.push(a[a.length - 1] + s.d), a), [0]);
