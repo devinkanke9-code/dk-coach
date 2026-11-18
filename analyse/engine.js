@@ -1902,12 +1902,12 @@
     schulter_vorne: 'Vordere Schulter', schulter_seite: 'Seitliche Schulter', schulter_hinten: 'Hintere Schulter',
     bizeps: 'Bizeps', trizeps: 'Trizeps', unterarme: 'Unterarme', quadrizeps: 'Quadrizeps', beinbeuger: 'Beinbeuger',
     gesaess: 'Gesäß', adduktoren: 'Adduktoren', abduktoren: 'Abduktoren', waden: 'Waden', bauch: 'Bauch',
-    seitlicher_rumpf: 'Seitlicher Rumpf', unterer_ruecken: 'Unterer Rücken' };
+    seitlicher_rumpf: 'Seitlicher Rumpf', unterer_ruecken: 'Unterer Rücken', nacken: 'Nacken' };
   var MUSTER_NAME = { kniedominant: 'Kniebeuge-Muster', hueftdominant: 'Hüftstreckung', ausfallschritt: 'Ausfallschritt',
     horizontal_druecken: 'Drücken horizontal', vertikal_druecken: 'Drücken über Kopf', horizontal_ziehen: 'Rudern',
     vertikal_ziehen: 'Ziehen von oben', isolation_arme: 'Arme', isolation_schulter: 'Schulter isoliert',
     isolation_beine: 'Beine isoliert', rumpf_anti_extension: 'Rumpf (Anti-Extension)', rumpf_anti_rotation: 'Rumpf (Anti-Rotation)',
-    rumpf_flexion: 'Bauch', tragen: 'Tragen', wade: 'Waden', reha_basis: 'Reha-Grundlagen', dehnen: 'Dehnen', cardio: 'Cardio', aufwaermen: 'Aufwärmen' };
+    rumpf_flexion: 'Bauch', tragen: 'Tragen', wade: 'Waden', reha_basis: 'Reha-Grundlagen', dehnen: 'Dehnen', cardio: 'Cardio', aufwaermen: 'Aufwärmen', nacken: 'Nacken-Gesundheit' };
   function muskelLesbar(m) { return MUSKEL_NAME[m] || m; }
   function musterLesbar(m) { return MUSTER_NAME[m] || m; }
   function typNameLesbar(t) {

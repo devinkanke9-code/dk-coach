@@ -14,6 +14,7 @@ const RAD = Math.PI / 180;
 let laden = null, geladen = null;
 export const koerper = () => geladen;
 // url = koerper.bin, oder koerper.txt (derselbe Inhalt als Base64: claude.ai liefert keine .bin-Dateien aus, darum nimmt die Trainer-Seite die .txt)
+const _V0 = new THREE.Vector3();   // Nacken (18.11.2026): kein Kopfversatz
 export function ladeKoerper(url = 'koerper.bin') {
   const ausBase64 = (t) => { const s = atob(t.trim()), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b.buffer; };
   if (!laden) laden = fetch(url).then((r) => { if (!r.ok) throw new Error(url + ': ' + r.status); return /\.txt$/.test(url) ? r.text().then(ausBase64) : r.arrayBuffer(); })
@@ -1722,9 +1723,9 @@ export class FigurModell {
       if (/Shoulder$/.test(n)) { const o = sh.off[n === 'LeftShoulder' ? 'l' : 'r'], k = SCHULTER_HAUT.klav; rumpf[n].premultiply(new THREE.Matrix4().makeTranslation(o.x * k, o.y * k, o.z * k)); }
       setze(n, rumpf[n]);
     }
-    // Kopf: sitzt auf dem Hals, dreht mit kopfQ
+    // Kopf: sitzt auf dem Hals, dreht mit kopfQ; Nacken-Übungen (18.11.2026): g.kopfVersatz schiebt ihn mit (Kinn zurück, Hals biegt mit), sonst 0
     const kx = X.clone().applyQuaternion(g.kopfQ), ky = Y.clone().applyQuaternion(g.kopfQ);
-    setze('Head', abbilden(new THREE.Matrix4(), P('Head'), X, Y, P('Head').clone().applyMatrix4(rumpf.Neck).addScaledVector(R.oben, 0.005 * (g.atem || 0) - BAU.hals), kx, ky, BAU.kopf, BAU.kopf, BAU.kopf));
+    setze('Head', abbilden(new THREE.Matrix4(), P('Head'), X, Y, P('Head').clone().applyMatrix4(rumpf.Neck).addScaledVector(R.oben, 0.005 * (g.atem || 0) - BAU.hals).add(g.kopfVersatz || _V0), kx, ky, BAU.kopf, BAU.kopf, BAU.kopf));
     for (const s of ['l', 'r']) {
       const S = s === 'l' ? 'Left' : 'Right', sg = s === 'l' ? 1 : -1, ru = r[S];
       // Oberarm: Ellbogenbeuge in Ruhe vorn (+Z). Jetzt zeigt sie weg von der Ellbogenspitze, und zwar aus der Knickachse der IK (ellbogenAchse): am fast gestreckten Arm ist der

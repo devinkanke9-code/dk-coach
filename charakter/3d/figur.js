@@ -297,9 +297,14 @@ export function gelenke(pose) {
   const RB = rumpfRahmen(pose.rumpf || {}), wb = pose.wirbel || null, R = wb ? wirbelRahmen(RB, wb) : RB;
   const becken = pose.becken.clone();
   const brust = wb ? becken.clone().add(wirbelBogen(RB, wb, m.rumpf)) : becken.clone().add(R.oben.clone().multiplyScalar(m.rumpf));
-  const nacken = brust.clone().add(R.oben.clone().multiplyScalar(m.hals));
   const kq = new THREE.Quaternion().setFromAxisAngle(R.links, ((pose.kopf && pose.kopf.neigung) || 0) * RAD);
+  // Nacken-Übungen (18.11.2026): kopf.seit (Grad, + = Ohr zur linken Schulter), kopf.hals (0…1: so viel der Kopfbewegung macht der Hals mit, statt nur am Kopfgelenk zu drehen),
+  // kopf.zurueck (m, Kinn zurückziehen: der Kopf gleitet waagerecht nach hinten). Ohne diese Angaben bleibt alles wie bisher
+  if (pose.kopf && pose.kopf.seit) kq.premultiply(new THREE.Quaternion().setFromAxisAngle(R.vor, -pose.kopf.seit * RAD));
   if (pose.kopf && pose.kopf.dreh) kq.premultiply(new THREE.Quaternion().setFromAxisAngle(R.oben, pose.kopf.dreh * RAD));
+  const nacken = pose.kopf && (pose.kopf.hals || pose.kopf.zurueck)
+    ? brust.clone().add(R.oben.clone().applyQuaternion(new THREE.Quaternion().slerp(kq, pose.kopf.hals || 0)).multiplyScalar(m.hals)).addScaledVector(R.vor, -(pose.kopf.zurueck || 0))
+    : brust.clone().add(R.oben.clone().multiplyScalar(m.hals));
   const kopfRicht = R.oben.clone().applyQuaternion(kq);
   const kopf = nacken.clone().add(kopfRicht.multiplyScalar(m.kopf + 0.03));
   // schulterHub (m): Schultern hochziehen (Shrugs), Schultergelenke wandern entlang der Rumpfachse
@@ -345,7 +350,9 @@ export function gelenke(pose) {
     for (const p of [becken, brust, nacken, kopf, schulter.l, schulter.r, huefte.l, huefte.r, schulterBasis.l, schulterBasis.r]) p.sub(sink);
     for (const d of Object.values(schulterDreh)) d.punkt.sub(sink);
   }
-  const out = { handHaut: pose.handHaut || null, drehGlatt: !!pose.drehGlatt, flachFinger: pose.flachFinger || null, atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
+  // Nacken (18.11.2026): wie weit Kinn-zurück und Hals-mitbiegen den Kopf versetzen; der echte Körper (figur-modell.js) setzt den Kopf sonst fest auf den Hals
+  const kopfVersatz = pose.kopf && (pose.kopf.hals || pose.kopf.zurueck) ? nacken.clone().sub(brust).addScaledVector(R.oben, -m.hals) : null;
+  const out = { kopfVersatz, handHaut: pose.handHaut || null, drehGlatt: !!pose.drehGlatt, flachFinger: pose.flachFinger || null, atem: pose.atem || 0, spann: pose.spann || 0, mimik: pose.mimik || null, griffZu: pose.griffZu || null, handAuf: pose.handAuf || null, kelchW: Object.assign({}, pose.kelchW), haken: pose.haken || false, schulterHub: hubS, schulterVor: vorS, schulterBasis, schulterDreh, R, RB, wirbel: wb, becken, brust, nacken, kopf, kopfQ: kq.clone().multiply(R.q), schulter, huefte, ellbogen: {}, ellbogenAchse: {}, hand: {}, handZiel: {}, handgelenk: {}, flach: {}, haelt: {}, faust: pose.faust || {}, handAchse: {}, handRuecken: {}, handKnick: {}, handFinger: {}, handMitte: {}, knie: {}, knoechel: {}, fussZiel: {}, zehe: {}, ballen: {}, ferse: {}, sohleN: {} };
   for (const s of ['l', 'r']) {
     const sg = s === 'l' ? 1 : -1;
     // Arme: Ellbogen zeigt standardmäßig nach hinten-außen

@@ -5421,10 +5421,12 @@ const AR_ANKER = V(0.76, 1.16, 0.3);   // Außenrotation: Ansatz auf Ellbogenhö
 const handtuchStoff = () => new THREE.MeshStandardMaterial({ color: 0xd9d5cb, roughness: 0.95 });
 // Hintere Schulter & Rotatoren: art: reverse_butterfly | pull_apart | kabel_reverse_fly | aussenrotation | yt_bauchlage ; last: kabel (aussenrotation am Kabelturm statt Band)
 // Neu (G15-B): wandengel | wandrutschen (Arme an der Wand, eigene Funktion wandArmeG15b) | rueckzug_sitzend (Schulterblätter zusammenziehen auf dem Stuhl, eigene Funktion rueckzugSitzG15b)
+// Neu (Nacken, 18.11.2026): kinn_zurueck_wand | nacken_halten_hand_vorn_hinten | nacken_halten_hand_seite | kopf_heben_vierfuessler | kopf_drehen_sitzend | kopf_heben_rueckenlage_bank | kopf_heben_bauchlage_bank | kopf_heben_seitlage | ball_wand_nacken_vorn | ball_wand_nacken_seite (eigene Funktion nackenUebung)
 export function schulterzug(o = {}) {
   const art = o.art || 'reverse_butterfly';
   if (art === 'wandengel' || art === 'wandrutschen') return wandArmeG15b(art);
   if (art === 'rueckzug_sitzend') return rueckzugSitzG15b();
+  if (NACKEN_ARTEN.includes(art)) return nackenUebung(art);   // Nacken (18.11.2026)
   return {
     aufbau(ger) {
       const z = {};
@@ -6514,6 +6516,244 @@ function kniestreckungG15b() {
   };
 }
 /* G15-B ENDE */
+
+/* NACKEN BEGINN */
+/* =================================================================== */
+/* Nacken (18.11.2026): 5 Übungen für zu Hause, 5 fürs Gym, alle über schulterzug (art = ID) */
+/* Neu in figur.js: kopf.seit (Ohr zur linken Schulter +), kopf.hals (Hals biegt mit), kopf.zurueck (Kinn zurück, m) */
+/* Jede Schleife beginnt und endet mit dem Kopf gerade: der Ablauf davor kennt nur kopf.neigung, so springt beim Übergang nichts */
+/* =================================================================== */
+const NACKEN_ARTEN = ['kinn_zurueck_wand', 'nacken_halten_hand_vorn_hinten', 'nacken_halten_hand_seite', 'kopf_heben_vierfuessler', 'kopf_drehen_sitzend',
+  'kopf_heben_rueckenlage_bank', 'kopf_heben_bauchlage_bank', 'kopf_heben_seitlage', 'ball_wand_nacken_vorn', 'ball_wand_nacken_seite'];
+// Kopf-Rahmen einer Pose (Mitte, oben, vor, links), wie gelenke() ihn stellt
+function nkKopf(p) { const g = gelenke(p), q = g.kopfQ; return { m: g.kopf, oben: V(0, 1, 0).applyQuaternion(q), vor: V(0, 0, 1).applyQuaternion(q), links: V(1, 0, 0).applyQuaternion(q), g }; }
+// Echter Kopf (koerper.bin, nicht die Ersatzkugel): im Kopf-Rahmen liegt die Stirn 17 cm vor der Kopfmitte von gelenke(), der Hinterkopf 3,4 cm dahinter, die Seiten 9,3 cm
+// zur Seite bei 6,5 cm vor (gemessen mit werkzeug/haut.mjs). Alle Berührpunkte am Kopf richten sich danach
+const NK_STIRN = 0.168, NK_HINTEN = 0.036, NK_SEITE = 0.094, NK_SEITE_VOR = 0.065;
+// Quadratische Kurve a → b mit Zug zu c (Hand geht außen um Schulter und Kopf herum)
+const nkBogen = (a, c, b, u) => a.clone().multiplyScalar((1 - u) * (1 - u)).addScaledVector(c, 2 * u * (1 - u)).addScaledVector(b, u * u);
+const nkRicht = (a, b, u) => a.clone().normalize().lerp(b.clone().normalize(), u).normalize();
+// Abschnitt einer Zeitleiste (Sekunden) auf 0 … 1, weich
+const nkAb = (s, a, b) => glatt(Math.max(0, Math.min(1, (s - a) / (b - a))));
+// Weicher kleiner Ball (Softball, Ø 25 cm), matt
+const NK_BALL_R = 0.125;
+// Die Kugel ist nur zum Ansehen (keinTeil): Die Schutzhülle sieht Teile als Quader oder Zylinder, ein Quader um die Kugel stäke mit den Ecken im Kopf. Für Hülle und Hut steht an ihrer Stelle
+// ein unsichtbarer Zylinder entlang der Richtung zur Wand (seine Fläche liegt am Kopf an wie die Kugel)
+function nkBall(ger, richt) {
+  const b = ger.teil(new THREE.SphereGeometry(NK_BALL_R, 28, 18), new THREE.MeshStandardMaterial({ color: 0xc9a85a, roughness: 0.7 })); b.userData.keinTeil = true;
+  const z = ger.teil(new THREE.CylinderGeometry(0.045, 0.045, NK_BALL_R * 1.94, 16), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+  z.castShadow = false; z.receiveShadow = false; z.quaternion.setFromUnitVectors(V(0, 1, 0), richt.clone().normalize());
+  return { b, z };
+}
+
+/* ---------- Sitzen auf dem Stuhl (wie rueckzug_sitzend): Hände liegen auf den Oberschenkeln ---------- */
+const NK_B = V(0, STUHL_SITZ + 0.115, -0.1);
+const NK_SITZ_R = { neigung: 2 };
+const nkOS = (sg) => V(sg * (MASS.hueftBreite + 0.035), 0.6, NK_B.z + 0.31);   // Handgelenk auf dem Oberschenkel
+const NK_OS_FLACH = (sg) => V(sg * 0.2, 1, 0), NK_OS_FINGER = (sg) => V(sg * 0.1, -0.1, 1);
+function nkSitzPose(kopf) {
+  return { becken: NK_B.clone(), rumpf: NK_SITZ_R, kopf, hand: seiten((s, sg) => nkOS(sg)), flach: seiten((s, sg) => NK_OS_FLACH(sg)), ellbogenPol: seiten((s, sg) => V(sg * 0.5, -0.3, -1)),
+    fuss: seiten((s, sg) => V(sg * 0.12, FY, NK_B.z + 0.47)), kniePol: seiten((s, sg) => V(sg * 0.12, 0.3, 1)), fussRicht: seiten((s, sg) => V(sg * 0.12, 0, 1)) };
+}
+// Ziel einer flachen Hand am Kopf: Handgelenk 4,5 cm über der Fläche, die Handmitte liegt auf dem Punkt p (Hand reicht 5 cm vom Handgelenk zur Mitte)
+const nkAmKopf = (p, flach, finger) => p.clone().addScaledVector(flach, 0.045).addScaledVector(finger, -0.05);
+// Wo die Hand am Kopf liegt: stirn, hinten (beide Hände, sg trennt sie in der Höhe) und seite (die Hand auf ihrer Seite)
+function nkKopfStelle(K, wo, sg) {
+  if (wo === 'stirn') { const fl = K.vor.clone(), fi = K.links.clone().multiplyScalar(-sg).addScaledVector(K.oben, 0.2).normalize();
+    return { p: K.m.clone().addScaledVector(K.vor, NK_STIRN - 0.004).addScaledVector(K.oben, 0.022), fl, fi }; }
+  if (wo === 'hinten') { const fl = K.vor.clone().negate(), fi = K.links.clone().multiplyScalar(-sg).addScaledVector(K.oben, 0.15).normalize();
+    return { p: K.m.clone().addScaledVector(K.vor, -NK_HINTEN - 0.004).addScaledVector(K.oben, -0.005 + sg * 0.018).addScaledVector(K.links, sg * 0.012), fl, fi }; }
+  const fl = K.links.clone().multiplyScalar(sg), fi = K.oben.clone().addScaledVector(K.vor, -0.3).normalize();
+  return { p: K.m.clone().addScaledVector(K.links, sg * 0.084).addScaledVector(K.oben, 0.05).addScaledVector(K.vor, 0.08), fl, fi };
+}
+
+// Nacken halten gegen die Hand (Stuhl). vorn_hinten: rechte Hand an die Stirn, halten; zurück; beide Hände an den Hinterkopf, halten; zurück.
+// seite: rechte Hand an die rechte Kopfseite, halten; zurück; linke an die linke. Je Halten 1 s anspannen, 5 s halten (der Kopf bleibt still, nur die Spannung steigt), 0,8 s lösen. Schleife 20 s
+function nkHaltenHand(art) {
+  const T = 20, K0 = nkKopf(nkSitzPose({ neigung: 0 }));
+  // [Hand, Stelle, Start, angekommen, lösen-Ende, zurück-Ende]
+  const plan = art === 'nacken_halten_hand_vorn_hinten'
+    ? [{ s: ['r'], wo: 'stirn', a: 0, b: 1.4, c: 8.2, d: 9.6 }, { s: ['l', 'r'], wo: 'hinten', a: 9.6, b: 11.2, c: 18.0, d: 19.6 }]
+    : [{ s: ['r'], wo: 'seite', a: 0, b: 1.4, c: 8.2, d: 9.6 }, { s: ['l'], wo: 'seite', a: 9.6, b: 11.0, c: 17.8, d: 19.2 }];
+  const druck = (sek) => { let w = 0; for (const x of plan) w = Math.max(w, nkAb(sek, x.b, x.b + 1) * (1 - nkAb(sek, x.c - 0.8, x.c))); return w; };
+  return {
+    aufbau(ger) { stuhlBauen(ger, 0, NK_B.z - 0.2); return {}; },
+    pose(t) {
+      const sek = t * T, p = nkSitzPose({ neigung: 0 }), finger = {};
+      for (const [s, sg] of [['l', 1], ['r', -1]]) {
+        finger[s] = NK_OS_FINGER(sg);
+        const x = plan.find((y) => y.s.includes(s) && sek > y.a && sek < y.d); if (!x) continue;
+        const st = nkKopfStelle(K0, x.wo, sg), ziel = nkAmKopf(st.p, st.fl, st.fi), os = nkOS(sg);
+        // Zug nach außen und etwas vor: an der Stirn vor dem Gesicht vorbei, zum Hinterkopf und zur Seite über der Schulter
+        const zug = x.wo === 'stirn' ? V(sg * 0.2, 1.05, 0.32) : x.wo === 'hinten' ? V(sg * 0.42, 1.3, 0.12) : V(sg * 0.42, 1.12, 0.18);
+        const u = sek < x.b ? nkAb(sek, x.a, x.b) : sek < x.c ? 1 : 1 - nkAb(sek, x.c, x.d);
+        p.hand[s] = genau(nkBogen(os, zug, ziel, u));
+        p.flach[s] = nkRicht(NK_OS_FLACH(sg), st.fl, glatt(Math.min(1, u * 1.4)));
+        finger[s] = nkRicht(NK_OS_FINGER(sg), st.fi, glatt(Math.min(1, u * 1.4)));
+        p.ellbogenPol[s] = nkRicht(V(sg * 0.5, -0.3, -1), x.wo === 'stirn' ? V(sg, -0.6, 0.2) : V(sg, 0.25, 0), u);
+      }
+      const w = druck(sek);
+      p.kopf = { neigung: 0.6 * w };
+      g15OhneSinken(p);   // ein Hauch Spannung, sichtbar ohne dass der Kopf sich bewegt
+      return { pose: p, props(g) { for (const [s, sg] of [['l', 1], ['r', -1]]) if (g.flach[s]) g.handFinger[s] = finger[s].clone().normalize(); } };
+    },
+    blick: V(0, 1.05, 0), abstand: 2.7, kameraRicht: art === 'nacken_halten_hand_seite' ? V(0.35, 0.2, 1) : V(-1, 0.25, 0.55),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.12 + 0.55 * druck(t * T)
+  };
+}
+
+// Kopf langsam drehen im Sitzen: 2,5 s nach rechts (bis 60°, der Hals dreht mit), zurück, nach links, zurück; Schultern ruhig. Schleife 11 s
+function nkKopfDrehen() {
+  const T = 11;
+  const dreh = (sek) => { const u = sek / T; return -60 * Math.sin(2 * Math.PI * u) * (Math.abs(Math.sin(2 * Math.PI * u)) ** 0.25); };
+  return {
+    aufbau(ger) { stuhlBauen(ger, 0, NK_B.z - 0.2); return {}; },
+    pose(t) { return { pose: nkSitzPose({ neigung: 2, dreh: dreh(t * T), hals: 0.55 }), props(g) { fingerStellen(g, (s, sg) => NK_OS_FINGER(sg)); } }; },
+    blick: V(0, 1.1, 0), abstand: 2.5, kameraRicht: V(0.25, 0.35, 1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.15 + 0.15 * Math.abs(Math.sin(2 * Math.PI * t))
+  };
+}
+
+// Kinn zurückziehen an der Wand: Stand wie Wandengel (Gesäß und oberer Rücken an der Wand), Arme hängen. 1,5 s das Kinn waagerecht nach hinten ziehen (Kopf gleitet 3 cm zurück,
+// Richtung Wand, nickt dabei 3° ein: Doppelkinn); der Hinterkopf erreicht die Wand beim Modell nicht (gerundeter oberer Rücken, wie beim Wandengel), 5 s halten, 1,5 s lösen, 1 s Pause. Schleife 9 s
+function nkKinnWand() {
+  const T = 9, r = { neigung: -(WE_LEHN + WE_KIPP) }, w = { beuge: WE_KIPP }, RB = rumpfRahmen(r), hz = WE_WZ + 0.12;
+  const hip = V(0, FY + Math.sqrt(g15bHoch(WE_KNIE, 0.015) ** 2 - hz * hz), hz), becken = hip.clone().addScaledVector(RB.oben, 0.02), k = rumpf(becken, r, w);
+  const an = (t) => g15Halte(t, 1.5 / T, 6.5 / T, 8 / T);
+  return {
+    aufbau(ger) { g15bWand(ger, 1.8, 2.6, V(0, 1.3, WE_WZ), V(0, 0, 1)); return {}; },
+    pose(t) {
+      const a = an(t);
+      const hand = seiten((s, sg) => k.schulter[s].clone().add(V(sg * 0.055, -ARM * 0.985, 0.045)));
+      return { pose: Object.assign({ becken, rumpf: r, wirbel: w, kopf: { neigung: mix(-8, -5, a), zurueck: 0.03 * a }, hand, handflaeche: seiten((s, sg) => V(-sg, 0, 0.15)), ellbogenPol: seiten((s, sg) => V(sg * 0.3, 0, -1)) }, stehFuesse(0.11, 0, 0.25)) };
+    },
+    blick: V(0, 1.45, -0.15), abstand: 2.4, kameraRicht: V(1, 0.15, 0.25),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.12 + 0.5 * an(t)
+  };
+}
+
+// Kopf heben im Vierfüßlerstand (wie Katze-Kuh, Rücken neutral): Kopf in der Linie mit dem Rücken, Kinn leicht eingezogen; 2,5 s locker nach unten sinken lassen (Blick zu den Knien, 38°,
+// der Hals biegt mit), 1 s unten, 2,5 s langsam bis in die Linie heben, nicht höher; 1 s oben halten. Schleife 7 s, beginnt oben
+function nkVierfuessler() {
+  const T = 7, bY = 0.53, n0 = -Math.asin((0.045 + STUETZ * 0.9975 - bY) / (MASS.rumpf - 0.03)) / RAD, B0 = V(0, bY, -0.3), r = { basis: BAUCHLAGE, neigung: n0 };
+  const k0 = rumpf(B0, r), L = (sg, f) => k0.R.links.clone().multiplyScalar(sg * f);
+  const hand = seiten((s, sg) => V(0, 0.045, k0.schulter[s].z).add(L(sg, MASS.schulterBreite)));
+  const knie = (sg) => V(0, 0.065, -0.3).add(L(sg, 0.1));
+  const unten = (t) => { const s = t * T; return s < 1 ? 0 : s < 3.5 ? nkAb(s, 1, 3.5) : s < 4.5 ? 1 : 1 - nkAb(s, 4.5, 7); };
+  return {
+    aufbau(ger) { ger.matte(); return {}; },
+    pose(t) {
+      const u = unten(t);
+      return { pose: { becken: B0.clone(), rumpf: r, kopf: { neigung: mix(4, 40, u), hals: 0.5, zurueck: 0.008 * (1 - u) }, hand, flach: seiten(() => V(0, 1, 0)), ellbogenPol: seiten(() => V(0, 1, 0.2)),
+        fuss: seiten((s, sg) => knie(sg).add(V(0, 0.04, MASS.unterschenkel * 0.96))), kniePol: seiten(() => V(0, -1, -0.2)), fussRicht: seiten(() => V(0, -0.2, 1)) } };
+    },
+    blick: V(0, 0.45, -0.55), abstand: 2.6, kameraRicht: V(-1, 0.2, -0.15),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.2 + 0.35 * (1 - unten(t))
+  };
+}
+
+// Gefaltetes Handtuch unter dem Kopf (Oberkante 0,531): Beim echten Kopf liegt der Hinterkopf sonst 7 cm über der Bank, das Gesicht bleibt so waagerecht
+const NK_TUCH_H = 0.066, NK_TUCH_Z = -0.405;
+// Kopf heben in Rückenlage auf der Flachbank (Füße am Boden wie beim Bankdrücken, Hände auf dem Bauch, Handtuch unter dem Kopf): 1,5 s Kinn einziehen und den Kopf 2–3 cm von der Bank heben,
+// 5 s halten, 1,5 s ablegen, 2 s Pause. Schleife 10 s
+function nkRueckenlage() {
+  const T = 10, becken = V(0, 0.565, 0.3), r = { basis: quer(-90), neigung: 0 }, k = rumpf(becken, r), R = k.R;
+  const an = (t) => g15Halte(t, 1.5 / T, 6.5 / T, 8 / T);
+  const handZiel = (sg) => becken.clone().addScaledVector(R.vor, 0.095).addScaledVector(R.oben, 0.12).addScaledVector(R.links, sg * 0.085);
+  return {
+    aufbau(ger) { ger.bank(-0.05, 1.2, 0.43, 0); ger.teil(rundGeo(0.26, NK_TUCH_H, 0.22, 0.015, 3), handtuchStoff(), V(0, 0.465 + NK_TUCH_H / 2, NK_TUCH_Z)); return {}; },
+    pose(t) {
+      const a = an(t);
+      return { pose: { becken, rumpf: r, kopf: { neigung: 14 * a, hals: 0.25, zurueck: 0.008 * a }, hand: seiten((s, sg) => handZiel(sg)), flach: seiten(() => R.vor.clone()), ellbogenPol: seiten((s, sg) => R.links.clone().multiplyScalar(sg).addScaledVector(R.vor, -0.6)),
+        fuss: seiten((s, sg) => V(sg * 0.3, FY, 0.78)), kniePol: seiten((s, sg) => V(sg * 0.3, 1, 0.3)), fussRicht: seiten((s, sg) => V(sg * 0.3, 0, 1)) },
+        props(g) { fingerStellen(g, (s, sg) => R.links.clone().multiplyScalar(-sg).addScaledVector(R.oben, 0.3)); } };
+    },
+    blick: V(0, 0.7, -0.2), abstand: 2.6, kameraRicht: V(1, 0.45, 0.1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.12 + 0.55 * an(t)
+  };
+}
+
+// Kopf heben in Bauchlage auf der Flachbank: Brust liegt bis zum Bankende, Kopf und Hals frei darüber, die Hände halten die Bank seitlich unter den Schultern. Kopf in der Linie,
+// Kinn leicht eingezogen; 2,5 s locker nach unten sinken lassen (32°, der Hals biegt mit), 1 s unten, 2,5 s bis in die Linie heben, nicht höher; 1,5 s halten. Schleife 7,5 s, beginnt oben
+const NK_BAUCH_BANK = { z0: 0.36, L: 1.25, h: 0.43 };   // Polster von z = −0,265 bis 0,985, Oberkante 0,465
+function nkBauchlage() {
+  const T = 7.5, B = NK_BAUCH_BANK, oben = B.h + 0.035, becken = V(0, oben + 0.155, 0.28), r = { basis: BAUCHLAGE, neigung: -4 }, RBk = rumpfRahmen(r), k = rumpf(becken, r), Lk = (sg, f) => k.R.links.clone().multiplyScalar(sg * f);
+  const unten = (t) => { const s = t * T; return s < 1.5 ? 0 : s < 4 ? nkAb(s, 1.5, 4) : s < 5 ? 1 : 1 - nkAb(s, 5, 7.5); };
+  // Hand fasst die Polsterkante von unten-außen, etwas fußwärts der Schulter
+  const griff = seitenBauch((s, sg) => V(sg * 0.15, B.h - 0.03, k.schulter[s].z + 0.1));
+  return {
+    aufbau(ger) { ger.bank(B.z0, B.L, B.h, 0); return {}; },
+    pose(t) {
+      const u = unten(t);
+      return { pose: { becken, rumpf: r, kopf: { neigung: mix(-2, 32, u), hals: 0.5, zurueck: 0.008 * (1 - u) }, hand: griff, greift: seiten(() => true), handflaeche: seitenBauch((s, sg) => V(-sg, 0.4, 0)), ellbogenPol: seitenBauch((s, sg) => V(sg, 0.4, 0.3)),
+        fuss: seitenBauch((s, sg) => { const H = hueftGelenk(becken, RBk, s), dy = H.y - (oben + 0.11); return V(H.x, oben + 0.11, H.z + Math.sqrt(Math.max(0, (BEIN * 0.9995) ** 2 - dy * dy))); }), kniePol: seiten(() => V(0, -1, 0)), fussRicht: seiten(() => V(0, -0.72, 0.7)) } };
+    },
+    blick: V(0, 0.6, -0.15), abstand: 2.7, kameraRicht: V(1, 0.2, -0.35),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.2 + 0.4 * (1 - unten(t))
+  };
+}
+
+// Kopf heben in Seitlage auf der Matte (auf der rechten Seite, Blick nach −x, Kopf nach −z wie seitlage; der Rumpf 6° zur Seite gehoben, sonst läge die untere Schulter des echten Körpers 4 cm im Boden): Beine leicht gebeugt übereinander, der linke Arm liegt flach vor dem Bauch,
+// der rechte lang nach vorn auf der Matte. Ein gerolltes Handtuch liegt unter dem Kopf. Der Kopf liegt zur Matte geneigt (22°) auf dem Handtuch und hebt sich 2,5 s bis in die Linie, 1,5 s halten,
+// 2,5 s ablegen, 1,5 s liegen. Schleife 8 s, beginnt oben (Kopf in der Linie)
+const NK_SEIT = new THREE.Quaternion().setFromEuler(new THREE.Euler(-90 * RAD, 0, 90 * RAD, 'ZXY'));
+function nkSeitlage() {
+  const T = 8, becken = V(0, 0.21, 0.2), r = { basis: NK_SEIT, neigung: 0, seit: 6 }, k = rumpf(becken, r), R = k.R;
+  const ab = (t) => { const s = t * T; return s < 1 ? 0 : s < 3.5 ? nkAb(s, 1, 3.5) : s < 5 ? 1 : 1 - nkAb(s, 5, 7.5); };   // 0 = Kopf in der Linie, 1 = auf dem Handtuch
+  const knie = (sg) => becken.clone().addScaledVector(R.oben, -0.22).addScaledVector(R.vor, 0.32);
+  return {
+    aufbau(ger) { ger.matte(); ger.teil(new THREE.CylinderGeometry(0.05, 0.05, 0.34, 14), handtuchStoff(), V(-0.065, 0.097, -0.475)).rotation.z = Math.PI / 2; return {}; },
+    pose(t) {
+      const u = ab(t);
+      const hand = { l: k.brust.clone().addScaledVector(R.vor, 0.2).addScaledVector(R.oben, -0.22).setY(0.045), r: k.schulter.r.clone().addScaledVector(R.vor, STUETZ * 0.93).setY(0.045) };
+      return { pose: { becken, rumpf: r, kopf: { seit: -22 * u, hals: 0.55, neigung: 4 }, hand, flach: seiten(() => V(0, 1, 0)), ellbogenPol: { l: V(0, 1, 0.3), r: V(0, 1, 0) },
+        fuss: seiten((s, sg) => becken.clone().addScaledVector(R.oben, -0.82).addScaledVector(R.vor, 0.12).setY(s === 'r' ? 0.085 : 0.19)), kniePol: seiten(() => R.vor.clone()), fussRicht: seiten(() => R.oben.clone().negate().addScaledVector(R.vor, 0.6)) },
+        props(g) { fingerStellen(g, () => V(-0.3, 0, -1)); } };
+    },
+    blick: V(0, 0.3, -0.25), abstand: 2.6, kameraRicht: V(-1, 0.45, -0.1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.15 + 0.4 * (1 - ab(t))
+  };
+}
+
+// Ball an der Wand halten (kleiner weicher Ball, Ø 25 cm). vorn: Gesicht zur Wand, Ball zwischen Stirn und Wand, der ganze Körper lehnt 1 cm mehr hinein (Ball gibt nach), 10 s halten.
+// seite: rechte Seite zur Wand, Ball zwischen rechter Kopfseite und Wand. 1,5 s anlehnen, 10 s halten, 1,5 s lösen, 1 s Pause. Schleife 14 s. Kopf gerade, Kinn leicht eingezogen
+function nkBallWand(art) {
+  const T = 14, vorn = art === 'ball_wand_nacken_vorn', an = (t) => g15Halte(t, 1.5 / T, 11.5 / T, 13 / T);
+  const knie = 10, b0 = V(0, g15bStandY(knie, 0.015), 0), K0 = nkKopf(Object.assign({ becken: b0, rumpf: { neigung: 0 }, kopf: { neigung: 4, zurueck: 0.008 }, hand: seiten((s, sg) => V(sg * 0.25, 0.8, 0)) }, stehFuesse(0.11, 0, 0.25)));
+  // Kontaktpunkt am Kopf und Richtung zur Wand
+  const kontakt = vorn ? K0.m.clone().addScaledVector(K0.vor, NK_STIRN).addScaledVector(K0.oben, 0.04) : K0.m.clone().addScaledVector(K0.links, -NK_SEITE).addScaledVector(K0.vor, NK_SEITE_VOR).addScaledVector(K0.oben, 0.03);
+  const zurWand = vorn ? V(0, 0, 1) : V(-1, 0, 0);
+  const ball = kontakt.clone().addScaledVector(zurWand, NK_BALL_R * 0.97), wand = ball.clone().addScaledVector(zurWand, NK_BALL_R * 0.97);
+  return {
+    aufbau(ger) {
+      g15bWand(ger, 1.6, 2.6, vorn ? V(0, 1.3, wand.z) : V(wand.x, 1.3, 0), zurWand.clone().negate());
+      const k = nkBall(ger, zurWand); k.b.position.copy(ball); k.z.position.copy(ball); return { ball: k.b };
+    },
+    pose(t) {
+      const a = an(t), lehn = 0.01 * a, kipp = vorn ? 0.5 * a : 0;
+      const becken = b0.clone().addScaledVector(zurWand, lehn * 0.5);
+      const p = Object.assign({ becken, rumpf: vorn ? { neigung: kipp } : { neigung: 0, seit: -0.5 * a }, kopf: { neigung: 4, zurueck: 0.008 }, ellbogenPol: seiten((s, sg) => V(sg * 0.3, 0, -1)) }, stehFuesse(0.11, 0, 0.25));
+      const k = rumpf(becken, p.rumpf);
+      p.hand = seiten((s, sg) => k.schulter[s].clone().add(V(sg * 0.055, -ARM * 0.985, 0.03)));
+      p.handflaeche = seiten((s, sg) => V(-sg, 0, 0.15));
+      return { pose: p, props(g, z) { if (z && z.ball) { z.ball.scale.set(1, 1, 1); const d = vorn ? 'z' : 'x'; z.ball.scale[d] = 1 - 0.06 * a; z.ball.position.copy(ball).addScaledVector(zurWand, NK_BALL_R * 0.06 * a * 0.5); } } };
+    },
+    blick: V(0, 1.4, vorn ? 0.1 : 0), abstand: 2.6, kameraRicht: vorn ? V(1, 0.2, 0.15) : V(0.15, 0.2, 1),
+    dauer: [T, 0, 0, 0], gleichmaessig: true, belastung: (t) => 0.12 + 0.55 * an(t)
+  };
+}
+
+function nackenUebung(art) {
+  if (art === 'nacken_halten_hand_vorn_hinten' || art === 'nacken_halten_hand_seite') return nkHaltenHand(art);
+  if (art === 'kopf_drehen_sitzend') return nkKopfDrehen();
+  if (art === 'kinn_zurueck_wand') return nkKinnWand();
+  if (art === 'kopf_heben_vierfuessler') return nkVierfuessler();
+  if (art === 'kopf_heben_rueckenlage_bank') return nkRueckenlage();
+  if (art === 'kopf_heben_bauchlage_bank') return nkBauchlage();
+  if (art === 'kopf_heben_seitlage') return nkSeitlage();
+  return nkBallWand(art);
+}
+/* NACKEN ENDE */
 
 export const VORLAGEN = { kniebeuge, kreuzheben, ausfallschritt, hueftheben, wadenheben, beinmaschine, bankdruecken, liegestuetz, schulterdruecken, schulterheben, rudern, klimmzug, curl, trizeps, rumpfuebung, tragen, kabelstand, swing, kniestand, seitlage,
   einbeinkniebeuge, sonderkniebeuge, bandgang, beincurl, seitstuetz, schulterzug, brustmaschine, sprung, vierfuessler, bauchbank, dehnung, pendeln };

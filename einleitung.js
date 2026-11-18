@@ -28,6 +28,7 @@ const kelchVersetzt = (k, d) => (k && k.lage ? Object.assign({}, k, { lage: Obje
 // Vollständige Pose aus einer Vorlagen-Pose: alle Ziele so, wie gelenke() sie gelöst hat (Faust, Knöchel, Pole, Fußrichtung)
 function vollstaendig(pose) {
   const g = gelenke(pose), p = { becken: g.becken.clone(), rumpf: { basis: g.RB.q.clone() }, wirbel: pose.wirbel || null, kopf: { neigung: (pose.kopf && pose.kopf.neigung) || 0 }, fest: GENAU() };
+  for (const x of ['zurueck', 'hals', 'seit']) if (pose.kopf && pose.kopf[x]) p.kopf[x] = pose.kopf[x];   // Nacken (18.11.2026)
   const mitte = (a, b) => a.clone().add(b).multiplyScalar(0.5);
   p.hand = seiten((s) => g.hand[s].clone());
   p.fuss = seiten((s) => g.knoechel[s].clone());
@@ -141,6 +142,7 @@ function mische(A, B, u, hand = u, vorne = 0) {
     becken: lv(A.becken, B.becken, u), rumpf: { basis: A.rumpf.basis.clone().slerp(B.rumpf.basis, u) },
     kopf: { neigung: mix(A.kopf.neigung, B.kopf.neigung, u) }, fest: GENAU()
   };
+  for (const x of ['zurueck', 'hals', 'seit']) if (A.kopf[x] || B.kopf[x]) p.kopf[x] = mix(A.kopf[x] || 0, B.kopf[x] || 0, u);   // Nacken (18.11.2026)
   if (A.schulterHub || B.schulterHub) p.schulterHub = mix(A.schulterHub || 0, B.schulterHub || 0, u);   // Schultergürtel läuft mit, sonst springt er am Ende des Ablaufs in die Startpose
   if (A.schulterVor || B.schulterVor) p.schulterVor = mix(A.schulterVor || 0, B.schulterVor || 0, u);
   if (A.wirbel || B.wirbel) { const wa = A.wirbel || {}, wb = B.wirbel || {}; p.wirbel = { beuge: mix(wa.beuge || 0, wb.beuge || 0, u), seit: mix(wa.seit || 0, wb.seit || 0, u), dreh: mix(wa.dreh || 0, wb.dreh || 0, u) }; }
