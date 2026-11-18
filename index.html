@@ -282,6 +282,52 @@ body:has(.raum) .netz-hinweis { bottom: auto; top: calc(10px + env(safe-area-ins
 :root[data-look="sport"] .dk-wellen-video.dk-studio { display: block; }
 html.dk-wellen-an[data-look="sport"] body { background: transparent; }
 .dk-studio { user-select: none; -webkit-user-select: none; }
+/* Dein Fortschritt (17.11.2026): Karte auf „Heute“ und eigene Seite (app.js → ansichtFortschritt, Rechnung statistik.js). Farben nur aus den Farbwelten:
+   mehr als davor in --gut, weniger bleibt ruhig in --text2 (kein Rot, Entlastung gehört dazu). Alles in Spalten mit minmax(0, …): kein Überlauf bis 320 px. */
+.fs-karte, .fs-zeitraum { gap: 14px; }
+.fs-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.fs-zahlen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.fs-kachel { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 12px; border-radius: 14px; background: var(--reihe); border: 1px solid var(--rand-weich); text-shadow: none; }
+.fs-kachel > small { font-size: 13px; color: var(--text2); }
+.fs-kachel > b { font-size: 22px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fs-mini .fs-kachel { padding: 10px; }
+.fs-mini .fs-kachel > b { font-size: 20px; }
+.fs-einheit { font-size: 14px; font-weight: 500; color: var(--text2); }
+.fs-vorher { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
+.fs-aend { justify-self: start; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text2); white-space: nowrap; }
+.fs-aend.hoch { color: var(--gut); }
+.fs-hinweis { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--reihe); color: var(--text2); text-shadow: none; }
+.fs-zurueck { justify-self: start; margin-left: -8px; }
+.fs-wahl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--reihe); border: 1px solid var(--rand-weich); }
+.fs-wahl-knopf { min-width: 0; min-height: 44px; padding: 0 4px; border: 0; border-radius: 12px; background: none; color: var(--text2); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .2s var(--sanft), color .2s var(--sanft); }
+.fs-wahl-knopf[aria-pressed="true"] { background: var(--knopf-voll); color: var(--auf-voll); }
+.fs-zeit { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; }
+.fs-zeit-text { display: grid; justify-items: center; text-align: center; gap: 2px; min-width: 0; }
+.fs-zeit-text b { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.fs-zeit-text small { font-size: 14px; color: var(--text2); }
+.fs-pfeil { width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 1px solid var(--rand-weich); background: var(--reihe); color: var(--text); font: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
+.fs-pfeil:disabled { opacity: .35; cursor: default; }
+.fs-diagramm { display: grid; gap: 6px; min-width: 0; }
+.fs-diagramm-titel { font-size: 13px; color: var(--text2); }
+.fs-balken { display: grid; gap: 3px; min-width: 0; }
+.fs-saeule { display: grid; gap: 4px; min-width: 0; }
+.fs-saeule-feld { position: relative; display: block; height: 96px; border-radius: 5px; background: color-mix(in srgb, currentColor 9%, transparent); overflow: hidden; }
+.fs-saeule-feld i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: inherit; background: var(--knopf-voll); }
+.fs-saeule.heute .fs-saeule-feld { box-shadow: inset 0 0 0 2px var(--akzent); }
+.fs-saeule.spaeter .fs-saeule-feld { opacity: .45; }
+.fs-saeule small { display: block; height: 14px; font-size: 11px; line-height: 14px; text-align: center; color: var(--text2); white-space: nowrap; }   /* feste Höhe: Säulen ohne Beschriftung stehen sonst tiefer */
+.fs-liste { display: grid; }
+.fs-ueb { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--linie); min-width: 0; }
+.fs-ueb:first-child { border-top: 0; padding-top: 2px; }
+.fs-ueb-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.fs-ueb-kopf b { font-size: 17px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.fs-ueb-wert { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.fs-ueb-wert small { color: var(--text2); font-size: 14px; }
+.fs-ueb-wert b { font-variant-numeric: tabular-nums; }
+.fs-ueb > small { font-size: 14px; }
+.fs-chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--reihe); color: var(--text2); border: 1px solid var(--rand-weich); text-shadow: none; }
+.fs-chip.rekord { background: color-mix(in srgb, var(--gut) 16%, var(--reihe)); color: var(--gut); border-color: color-mix(in srgb, var(--gut) 45%, transparent); }
+.fs-info ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: var(--text2); }
 </style>
 </head>
 <body>

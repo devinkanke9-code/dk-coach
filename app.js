@@ -9,6 +9,7 @@ import * as Bestleistung from './bestleistung.js';
 import * as Rang from './rang.js';
 import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
+import * as Statistik from './statistik.js';   // Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings, nur auf diesem Handy
 const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
 // Nie in einer fremden Seite (13.11.2026): Steckt die App in einem Rahmen (iframe), zeigt sie nichts und startet nicht.
 // Sonst könnte eine fremde Seite sie unsichtbar überdecken und den Kunden Knöpfe tippen lassen. Per <meta> lässt sich frame-ancestors nicht setzen.
@@ -345,7 +346,7 @@ function leiste() {
   $('nav.leiste').hidden = !S.plan;
   n.style.gridTemplateColumns = 'repeat(' + BEREICHE.length + ', 1fr)';
   for (const [id, name, icon] of BEREICHE) {
-    const b = h('button', { type: 'button', 'aria-current': S.ansicht === id ? 'page' : null, onclick: () => geh(id) });
+    const b = h('button', { type: 'button', 'aria-current': (S.ansicht === 'fortschritt' ? 'heute' : S.ansicht) === id ? 'page' : null, onclick: () => geh(id) });   // Fortschritt gehört zu „Heute“
     b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon + '</svg>';
     b.append(h('span', { text: name })); n.append(b);
   }
@@ -372,7 +373,7 @@ function zeichne() {
   leiste();
   const ziel = $('#ansicht'); ziel.textContent = '';
   const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
-    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, info: ansichtInfo }[S.ansicht] || ansichtHeute;
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, info: ansichtInfo, fortschritt: ansichtFortschritt }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
@@ -894,6 +895,7 @@ function ansichtHeute() {
   teile.push(wochenKarte(p, heute));
   const ti = tagFuer(p, S.tagWahl);
   teile.push(ti >= 0 ? trainingsKarte(p, ti, S.tagWahl === heute) : ruhetagKarte(p, S.tagWahl, heute));
+  teile.push(fortschrittKarte(p));
   teile.push(tippKarte(p, ti >= 0 ? ti : (naechstesTraining(p, S.tagWahl) || { ti: -1 }).ti));
   teile.push(verlaufBlock());
   const w = aktuelleWoche(p), ph = PHASE[(p.w || [])[w]];   // die Zeile „Woche x von y“ steht jetzt in der Wochenkarte
@@ -1169,6 +1171,7 @@ function abmelden(e) {
   delete alle[ko.id]; delete plaene[ko.id];
   speicher.schreib('dk_konten', alle); speicher.schreib('dk_plaene', plaene); speicher.schreib(entwurfKey(ko), null);
   speicher.schreib(VERLAUF_KEY, null); speicher.schreib('dk_tage_' + ko.id, null); if (LAUF) laufSchliessen();   // der nächste auf diesem Handy soll nichts davon sehen
+  speicher.schreib(Statistik.SCHLUESSEL, null);   // Dein Fortschritt geht mit (wie der Verlauf)
   speicher.schreib('dk_konto', Object.keys(alle)[0] || null); speicher.schreib('dk_aktiv', Object.keys(plaene)[0] || null);
   EN = null; S.tagWahl = null; S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
 }
@@ -1346,6 +1349,7 @@ function laufVerwerfen() {
   if (LAUF.phase !== 'fertig' && LAUF.uebungen.some((u) => u.log.length)) {
     const r = ergebnis('abgebrochen');
     speicher.schreib(VERLAUF_KEY, [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40));
+    if (LAUF.plan !== 'beispiel') statistikMerken([r]);
   }
   LAUF = null; laufSichern(); wach(false);
   if (TM.buehne) { TM.buehne.weg(); TM.buehne = null; TM.gezeigt = null; }
@@ -1550,6 +1554,7 @@ function laufBeenden(status) {
   const r = ergebnis(status);
   const verlauf = [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40);
   speicher.schreib(VERLAUF_KEY, verlauf);
+  if (LAUF.plan !== 'beispiel') statistikMerken([r]);   // Dein Fortschritt: bleibt auch nach den 40 im Verlauf für Monat und Jahr
   // Heute gemachte Übungen abhaken (wenn heute dieser Trainingstag ist)
   const p = S.plan;
   if (p && p.id === LAUF.plan && tagFuer(p, heuteIndex()) === LAUF.tagNr - 1) {
@@ -1608,6 +1613,116 @@ function verlaufBlock() {
     h('div', { class: 'laeufe' }, v.slice(0, 8).map((r) => h('button', { class: 'lauf-zeile', type: 'button', onclick: () => laufBlatt(r) },
       h('b', { text: 'Training ' + r.t + ' · ' + r.tn }), h('span', { class: 'zahl', text: mmss(laufDauer(r)) }),
       h('span', { class: 'leise klein', text: datumZeit(r.s) + ' · ' + saetzeGesamt(r) + ' Sätze' + (r.st === 'abgebrochen' ? ' · vorzeitig beendet' : '') })))));
+}
+/* ---------- Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings ----------
+   Rechnung und Speicher stehen in statistik.js (reine Funktion, geprüft in app/test.js, Abschnitt 27). Hier nur Anzeige, Texte nur als textContent.
+   Auf „Heute“ eine kleine Karte mit dieser Woche; „Alles ansehen“ öffnet die Seite mit Tag, Woche, Monat und Jahr.
+   Weniger als davor bleibt neutral (kein Rot): Entlastung und Pausen gehören zum Training. Kein Vergleich mit anderen, keine Punkte. */
+function statistikMerken(liste) {
+  try { Statistik.aufnehmen((Array.isArray(liste) ? liste : []).filter((r) => r && r.k !== 'Beispiel')); } catch (e) { /* die App läuft immer weiter */ }
+}
+const FS_NAMEN = { tag: 'Tag', woche: 'Woche', monat: 'Monat', jahr: 'Jahr' };
+function fsAend(a) {
+  if (!a) return null;
+  const p = Statistik.prozentText(a);
+  return h('span', { class: 'fs-aend ' + a.richtung, 'aria-label': a.neu ? 'neu dazu' : a.richtung === 'hoch' ? 'mehr als davor, ' + p : a.richtung === 'runter' ? 'weniger als davor, ' + p : 'gleich wie davor',
+    text: Statistik.PFEIL[a.richtung] + ' ' + p });
+}
+// Kachel: Name, Zahl (Einheit klein dahinter, darf umbrechen), Veränderung und der Wert davor
+function fsKachel(name, wert, einheit, aend, text) {
+  const t = text || Statistik.zahlText;
+  return h('div', { class: 'fs-kachel' }, h('small', { text: name }),
+    h('b', null, t(wert), einheit ? h('span', { class: 'fs-einheit', text: ' ' + einheit }) : null),
+    fsAend(aend), aend ? h('small', { class: 'fs-vorher', text: 'davor ' + t(aend.vorher) + (einheit ? ' ' + einheit : '') }) : null);
+}
+function fortschrittKarte(p) {
+  if (!p || p.id === 'beispiel') return null;
+  let r;
+  try { r = Statistik.berechne(Statistik.trainings(), { ansicht: 'woche', jetzt: Date.now() }); } catch (e) { return null; }
+  const oeffnen = () => { S.fsAnsicht = 'woche'; S.fsVersatz = 0; S.fsAlle = false; geh('fortschritt'); };
+  const kopfZeile = h('div', { class: 'woche-kopf' }, h('h2', { text: 'Dein Fortschritt' }), h('button', { class: 'knopf text klein', type: 'button', onclick: oeffnen, text: 'Alles ansehen' }));
+  if (r.leer) return h('section', { class: 'block fs-karte' }, kopfZeile,
+    h('p', { class: 'leise klein', text: 'Nach deinem ersten Training siehst du hier, wie du dich steigerst: Volumen, Bestwerte und der Vergleich mit der Woche davor.' }));
+  const s = r.summe, a = r.aenderung || {}, mitKg = s.volumen > 0 || (r.vorher && r.vorher.volumen > 0);
+  return h('section', { class: 'block fs-karte' }, kopfZeile,
+    h('div', { class: 'fs-mini' },
+      h('div', { class: 'fs-kachel' }, h('small', { text: 'Trainings' }), h('b', { text: String(s.trainings) }), fsAend(a.trainings)),
+      mitKg ? h('div', { class: 'fs-kachel' }, h('small', { text: 'Volumen' }), h('b', null, Statistik.zahlText(s.volumen), h('span', { class: 'fs-einheit', text: ' kg' })), fsAend(a.volumen))
+        : h('div', { class: 'fs-kachel' }, h('small', { text: 'Wiederholungen' }), h('b', { text: Statistik.zahlText(s.wdh) }), fsAend(a.wdh)),
+      h('div', { class: 'fs-kachel' }, h('small', { text: 'Bestwerte' }), h('b', { text: String(r.neueBestwerte) }), h('span', { class: 'fs-aend gleich', text: r.neueBestwerte === 1 ? 'neuer' : 'neue' }))),
+    h('p', { class: 'leise klein', text: 'Diese Woche, ' + r.vergleich + '.' }));
+}
+function fsBalken(r) {
+  const was = r.balkenWas;
+  if (!r.balken.length || !r.balken.some((b) => b[was] > 0)) return null;
+  const max = Math.max(...r.balken.map((b) => b[was])), je = r.ansicht === 'jahr' ? 'Monat' : 'Tag', name = was === 'volumen' ? 'Volumen' : 'Sätze';
+  const top = r.balken.reduce((m, b) => (b[was] > m[was] ? b : m), r.balken[0]);
+  return h('div', { class: 'fs-diagramm' },
+    h('small', { class: 'fs-diagramm-titel', text: name + ' je ' + je }),
+    h('div', { class: 'fs-balken', role: 'img', 'aria-label': name + ' je ' + je + ', am meisten: ' + top.name + ' mit ' + Statistik.zahlText(top[was]) + (was === 'volumen' ? ' kg' : ' Sätzen'),
+      style: 'grid-template-columns:repeat(' + r.balken.length + ',minmax(0,1fr))' },
+      r.balken.map((b) => h('div', { class: 'fs-saeule' + (b.heute ? ' heute' : '') + (b.spaeter ? ' spaeter' : '') },
+        h('span', { class: 'fs-saeule-feld' }, h('i', { style: 'height:' + (b[was] > 0 ? Math.max(4, Math.round(b[was] / max * 100)) : 0) + '%' })),
+        h('small', { text: b.zeigen ? b.label : '' })))));
+}
+function fsUebung(u, r) {
+  const marke = u.rekord ? h('span', { class: 'fs-chip rekord', text: 'Neuer Bestwert' }) : u.erstesMal ? h('span', { class: 'fs-chip', text: 'Zum ersten Mal' }) : null;
+  const menge = [u.saetze + (u.saetze === 1 ? ' Satz' : ' Sätze'), u.sek ? (u.halten ? Statistik.zahlText(u.halten) + ' s' : '') : (u.wdh ? Statistik.zahlText(u.wdh) + ' Wdh' : ''),
+    u.volumen ? Statistik.zahlText(u.volumen) + ' kg' : '', r.ansicht !== 'tag' && u.mal > 1 ? u.mal + '× trainiert' : ''].filter(Boolean).join(' · ');
+  return h('div', { class: 'fs-ueb' },
+    h('div', { class: 'fs-ueb-kopf' }, h('b', { text: u.name }), marke),
+    h('div', { class: 'fs-ueb-wert' }, h('span', null, h('small', { text: 'Bester Satz ' }), h('b', { text: Statistik.satzText(u.bester, u.sek) })),
+      u.richtung ? h('span', { class: 'fs-aend ' + u.richtung, text: Statistik.PFEIL[u.richtung] + ' ' + u.diff }) : null),
+    h('small', { class: 'leise', text: menge }));
+}
+function ansichtFortschritt() {
+  const ansicht = Statistik.ANSICHTEN.indexOf(S.fsAnsicht) >= 0 ? S.fsAnsicht : 'woche';
+  let r;
+  try { r = Statistik.berechne(Statistik.trainings(), { ansicht, versatz: S.fsVersatz || 0, jetzt: Date.now() }); } catch (e) { r = Statistik.berechne([], { ansicht }); }
+  S.fsVersatz = r.versatz;
+  const neu = (wahl) => { Object.assign(S, wahl); zeichne(); };
+  const teile = [
+    h('button', { class: 'knopf text klein fs-zurueck', type: 'button', onclick: () => geh('heute'), text: '‹ Zurück zu Heute' }),
+    kopf('Aus deinen Trainings · nur auf diesem Handy', 'Dein Fortschritt'),
+    h('div', { class: 'fs-wahl', role: 'group', 'aria-label': 'Zeitraum wählen' }, Statistik.ANSICHTEN.map((id) => h('button', { type: 'button', class: 'fs-wahl-knopf',
+      'aria-pressed': id === ansicht ? 'true' : 'false', onclick: () => neu({ fsAnsicht: id, fsVersatz: 0, fsAlle: false }), text: FS_NAMEN[id] })))
+  ];
+  if (r.leer) {
+    teile.push(h('section', { class: 'block' }, h('h2', { text: 'Noch kein Training gespeichert' }),
+      h('p', { class: 'leise klein', text: 'Starte ein Training und trag Gewicht und Wiederholungen ein. Danach siehst du hier jeden Tag, wie du dich steigerst.' })));
+    return teile;
+  }
+  const s = r.summe, a = r.aenderung || {}, mitKg = s.volumen > 0 || (r.vorher && r.vorher.volumen > 0);
+  teile.push(h('section', { class: 'block fs-zeitraum' },
+    h('div', { class: 'fs-zeit' },
+      h('button', { class: 'fs-pfeil', type: 'button', 'aria-label': 'Früherer Zeitraum', disabled: !r.frueher, onclick: () => neu({ fsVersatz: r.versatz - 1, fsAlle: false }), text: '‹' }),
+      h('div', { class: 'fs-zeit-text', role: 'status' }, h('b', { text: r.titel }),
+        r.unter || r.laeuft ? h('small', { text: [r.unter, r.laeuft ? 'läuft noch' : ''].filter(Boolean).join(' · ') }) : null),
+      h('button', { class: 'fs-pfeil', type: 'button', 'aria-label': 'Späterer Zeitraum', disabled: !r.spaeter, onclick: () => neu({ fsVersatz: r.versatz + 1, fsAlle: false }), text: '›' })),
+    s.trainings ? h('div', { class: 'fs-zahlen' },
+      mitKg ? fsKachel('Volumen', s.volumen, 'kg', a.volumen) : fsKachel('Wiederholungen', s.wdh, '', a.wdh),
+      fsKachel('Trainings', s.trainings, '', a.trainings),
+      fsKachel('Sätze', s.saetze, '', a.saetze),
+      mitKg ? fsKachel('Wiederholungen', s.wdh, '', a.wdh) : fsKachel('Trainingszeit', s.sekunden, '', a.sekunden, Statistik.dauerText))
+      : h('p', { class: 'leise', text: 'In diesem Zeitraum hast du nicht trainiert.' }),
+    r.vergleich ? h('p', { class: 'leise klein', text: r.vergleich.charAt(0).toUpperCase() + r.vergleich.slice(1) + (r.vorher && !r.vorher.trainings ? ' (da war kein Training).' : '.') }) : null,
+    s.trainings && a.volumen && a.volumen.richtung === 'runter' && mitKg ? h('p', { class: 'klein fs-hinweis', text: 'Weniger als davor ist in Ordnung: Entlastungswochen, Pausen und Technik-Tage gehören zum Training.' }) : null,
+    s.ohneWerte ? h('p', { class: 'klein fs-hinweis', text: s.ohneWerte + (s.ohneWerte === 1 ? ' Satz hat' : ' Sätze haben') + ' keine Wiederholungen. Trag sie im Training ein, dann rechnet die Statistik genauer.' }) : null,
+    fsBalken(r)));
+  if (r.uebungen.length) {
+    const alle = S.fsAlle || r.uebungen.length <= 8;
+    teile.push(h('section', { class: 'block' }, h('h2', { text: 'Deine Übungen' }),
+      h('p', { class: 'leise klein', text: 'Bester Satz ' + r.uebungenVergleich + '.' }),
+      h('div', { class: 'fs-liste' }, (alle ? r.uebungen : r.uebungen.slice(0, 6)).map((u) => fsUebung(u, r))),
+      alle ? null : h('button', { class: 'knopf klein', type: 'button', onclick: () => neu({ fsAlle: true }), text: 'Alle ' + r.uebungen.length + ' Übungen zeigen' })));
+  }
+  teile.push(h('section', { class: 'block fs-info' }, h('h2', { text: 'So rechnet die App' }),
+    h('ul', { class: 'klein' },
+      h('li', { text: 'Volumen = Gewicht × Wiederholungen, zusammengezählt über alle Sätze mit Gewicht.' }),
+      h('li', { text: 'Bester Satz = das meiste Gewicht, bei gleichem Gewicht die meisten Wiederholungen. Ohne Gewicht zählen die Wiederholungen, bei Übungen auf Zeit die Sekunden.' }),
+      h('li', { text: 'Läuft der Zeitraum noch, vergleicht die App mit genauso vielen Tagen davor. So ist der Vergleich fair.' }),
+      h('li', { text: 'Gezählt wird, was du im Training einträgst. Die Statistik bleibt auf diesem Handy.' }))));
+  return teile;
 }
 // Training per E-Mail an Devin (06.11.2026): Die Mail-App öffnet sich fertig ausgefüllt, der Kunde tippt nur noch auf Senden.
 // Devins Trainer-Seite findet die Zeile DK-Lauf in seinem Postfach und trägt das Training beim passenden Kunden ein. WhatsApp bleibt als zweiter Weg.
@@ -1937,6 +2052,7 @@ async function umzugEinlesen(teil) {
     const v = vorher.concat(d[VERLAUF_KEY].filter(lauf)).filter((r) => !schon.has(r.s) && schon.add(r.s)).sort((a, b) => b.s - a.s).slice(0, 40);
     if (v.length !== vorher.length) neu++;
     speicher.schreib(VERLAUF_KEY, v);
+    statistikMerken(v);
   }
   // Trainingstage und Analyse-Entwurf: nur, wo hier noch nichts steht
   for (const [k, w] of Object.entries(d)) {
@@ -2004,6 +2120,7 @@ if ('serviceWorker' in navigator) {
 }
 (async () => {
   altesAbhakenWeg();
+  statistikMerken(verlaufListe());   // Dein Fortschritt: Trainings aus dem Verlauf übernehmen (auch die von vor dem 17.11.2026)
   gespeichertesPruefen();
   S.wartet = speicher.lies('dk_wartet', null);
   await linkEinlesen();

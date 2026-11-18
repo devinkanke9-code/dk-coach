@@ -282,7 +282,7 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
 export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status, pr, prTuer, abTuer, test }) {   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
   const LIVE = !pr;   // Live-Gym: frei laufen (WASD, Maus, zwei Knüppel), Anzeige wie im Spiel, Einrichtung der Vorlage
   const LOOKL = true;   // Look der Vorlage (Farben, Marmor mit Spiegelung, Glasdach, Schein, Qualitätsstufen) seit 10.11. nachts auch im PR-Raum; dort bleiben orangenes Licht, Gummiplatten und Scheiben
-  const LOOK = document.documentElement.dataset.look, GOLD = LOOKL || LOOK === 'gold', P = LOOKL ? FARBEN_LIVE : GOLD ? FARBEN_GOLD : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;
+  const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold' || LOOK === 'sport', P = GOLD ? FARBEN_LIVE : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;   // seit 18.11.2026 folgt der Raum der Farbwahl: Schwarz-Gold und Sport dunkel (Vorlage), Klar und Lagune hell
   let zeitWahl = null; try { zeitWahl = localStorage.getItem('dk_gym_zeit'); } catch (e) {}
   const nativNacht = GOLD, zeitNacht = zeitWahl === 'nacht' || (zeitWahl !== 'tag' && nativNacht);   // Tag oder Nacht: ohne Wahl gilt die Farbwelt (Schwarz-Gold ist Nacht)
   const TAGP = nativNacht ? (LOOKL ? AUSSEN_ABEND : AUSSEN_TAG) : P, NACHTP = nativNacht ? P : AUSSEN_NACHT;   // die Farben für draußen bei Tag und bei Nacht (Live-Gym: der helle Stand ist der Abend)
@@ -451,10 +451,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   if (LOOKL) {
     const GR = matchMedia('(pointer: coarse)').matches ? 1024 : 2048;
     const marmor = new THREE.CanvasTexture(zeichne(GR, GR, (x, b, h) => {
-      x.fillStyle = '#0b0b0d'; x.fillRect(0, 0, b, h);
+      x.fillStyle = GOLD ? '#0b0b0d' : '#E2E5EA'; x.fillRect(0, 0, b, h);   // hell: heller Marmor (18.11.)
       for (let k = 0; k < 90; k++) {   // weiche Wolken im Stein
         const px = ruheL(k, 1) * b, py = ruheL(k, 2) * h, r = (0.05 + ruheL(k, 3) * 0.22) * b, g = x.createRadialGradient(px, py, 0, px, py, r), w = ruheL(k, 4) > 0.5;
-        g.addColorStop(0, w ? 'rgba(60,54,48,0.16)' : 'rgba(0,0,0,0.35)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(px - r, py - r, 2 * r, 2 * r);
+        g.addColorStop(0, w ? (GOLD ? 'rgba(60,54,48,0.16)' : 'rgba(255,255,255,0.3)') : (GOLD ? 'rgba(0,0,0,0.35)' : 'rgba(120,128,140,0.14)')); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(px - r, py - r, 2 * r, 2 * r);
       }
       const ader = (k, farbe, breite, schritte) => {   // eine Ader: ein unruhiger Weg mit Verzweigungen, dreimal versetzt gezeichnet, damit sie über den Rand nahtlos weiterläuft
         let px = ruheL(k, 5) * b, py = ruheL(k, 6) * h, w = ruheL(k, 7) * Math.PI * 2; const weg = [[px, py]];
@@ -464,10 +464,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         }
       };
       x.lineCap = 'round'; x.lineJoin = 'round';
-      x.shadowColor = 'rgba(214,170,92,0.4)'; x.shadowBlur = b / 500;
-      for (let k = 0; k < 10; k++) ader(k, 'rgba(206,164,92,' + (0.16 + ruheL(k, 10) * 0.3).toFixed(2) + ')', b / 1500 + ruheL(k, 11) * b / 1000, 60 + Math.floor(ruheL(k, 12) * 80));
+      x.shadowColor = GOLD ? 'rgba(214,170,92,0.4)' : 'rgba(120,130,150,0.3)'; x.shadowBlur = b / 500;
+      for (let k = 0; k < 10; k++) ader(k, (GOLD ? 'rgba(206,164,92,' : 'rgba(118,126,140,') + (0.16 + ruheL(k, 10) * 0.3).toFixed(2) + ')', b / 1500 + ruheL(k, 11) * b / 1000, 60 + Math.floor(ruheL(k, 12) * 80));
       x.shadowBlur = 0;
-      for (let k = 16; k < 46; k++) ader(k, 'rgba(190,175,150,' + (0.08 + ruheL(k, 10) * 0.14).toFixed(2) + ')', b / 1400, 30 + Math.floor(ruheL(k, 12) * 50));
+      for (let k = 16; k < 46; k++) ader(k, (GOLD ? 'rgba(190,175,150,' : 'rgba(255,255,255,') + (0.08 + ruheL(k, 10) * 0.14).toFixed(2) + ')', b / 1400, 30 + Math.floor(ruheL(k, 12) * 50));
       for (let k = 0; k < 2600; k++) { x.fillStyle = 'rgba(255,240,210,' + (ruheL(k, 13) * 0.06).toFixed(3) + ')'; x.fillRect(ruheL(k, 14) * b, ruheL(k, 15) * h, 1.5, 1.5); }
     }));
     marmor.wrapS = marmor.wrapT = THREE.RepeatWrapping; marmor.anisotropy = 8;   // ungewandelt (wie das Spiegelbild schon im Farbraum des Bildschirms)
