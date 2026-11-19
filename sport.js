@@ -195,13 +195,14 @@
     }
     var io = new IntersectionObserver(function (liste) {
       liste.forEach(function (e) { if (e.isIntersecting) zeigen(e.target); });
-    }, { rootMargin: '0px 0px -24px 0px' });
+    }, { rootMargin: '0px 0px 0px 0px' });   // Ruhig und schön (19.11.2026): sobald es ins Bild kommt
     function neu() {
       var h = window.innerHeight;
       for (var i = 0; i < ansicht.children.length; i++) {
         var el = ansicht.children[i];
         if (el.dataset.spGesehen) continue;
         el.dataset.spGesehen = '1';
+        if (ansicht.classList.contains('still')) continue;   // Ruhig und schön (19.11.2026): dieselbe Seite neu gezeichnet, kein zweites Einblenden
         if (el.getBoundingClientRect().top > h - 8) { el.classList.add('sp-vor'); io.observe(el); }
       }
     }

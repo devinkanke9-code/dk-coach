@@ -100,7 +100,7 @@ body.start .code-leiste { grid-column: 1 / -1; margin: 12px 12px 0; }   /* wie d
   .st-mock, .st-fragen, .st-eigen .einfuegen { max-width: 480px; }
   .st-block:not(.st-held) { transition: transform .5s var(--feder), box-shadow .5s var(--sanft); }
   .st-block:not(.st-held):hover { transform: translateY(-6px); box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .45); }
-  .st-held h1 { background: linear-gradient(100deg, var(--held-text) 25%, var(--akzent-hell) 50%, var(--held-text) 75%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: st-glanz 8s ease-in-out infinite; }
+  .st-held h1 { background: linear-gradient(100deg, var(--held-text) 25%, var(--akzent-hell) 50%, var(--held-text) 75%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: st-glanz 8s ease-in-out 1; }   /* Ruhig und schön (19.11.2026): einmal glänzen statt endlos */
   @keyframes st-glanz { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
 }
 @media (min-width: 1024px) and (prefers-reduced-motion: reduce) { .st-held h1 { animation: none; } .st-block:not(.st-held):hover { transform: none; } }

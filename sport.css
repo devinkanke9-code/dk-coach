@@ -203,6 +203,18 @@
 .sp-finger > .sp-licht, .sp-finger > .sp-rand { opacity: 1; transition-duration: .12s; }
 .sp-finger > .sp-licht { background: radial-gradient(170px circle at var(--sp-mx, 50%) var(--sp-my, 50%), color-mix(in srgb, var(--akzent) 13%, transparent), transparent 70%); }
 .sp-finger > .sp-rand { background: radial-gradient(210px circle at var(--sp-mx, 50%) var(--sp-my, 50%), color-mix(in srgb, var(--akzent) 75%, transparent), transparent 70%); }
-.sp-vor { opacity: 0; transform: translate3d(0, 18px, 0); }
-.sp-da { transition: opacity .42s var(--sp-ruhig, cubic-bezier(.22, .61, .36, 1)), transform .52s var(--sp-ruhig, cubic-bezier(.22, .61, .36, 1)); }
+.sp-vor { opacity: 0; transform: translate3d(0, 8px, 0); }
+.sp-da { transition: opacity .3s var(--sp-ruhig, cubic-bezier(.22, .61, .36, 1)), transform .35s var(--sp-ruhig, cubic-bezier(.22, .61, .36, 1)); }
 @media (prefers-reduced-motion: reduce) { .sp-vor { opacity: 1; transform: none; } .sp-finger > .sp-licht, .sp-finger > .sp-rand { opacity: 0; } }
+
+/* Ruhig und schön (19.11.2026, Devin: „reibungslose Übergänge … keinen Reinzoom … dass die Webseite an sich besser aussieht“) */
+/* Studio-Bild etwas dunkler: Schrift direkt auf dem Hintergrund (Seitentitel, Erklärsätze, Startseite) bleibt auch vor den hellen Fenstern lesbar. Ein festes Bild, kostet beim Scrollen nichts. */
+:root[data-look="sport"] .dk-wellen-video.dk-studio { filter: brightness(.74) saturate(.92); }
+:root[data-look="sport"] #ansicht > .plan-kopf, :root[data-look="sport"] body.start .st-text { text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 0 18px rgba(0, 0, 0, .35); }
+:root[data-look="sport"] #ansicht > .plan-kopf .knopf, :root[data-look="sport"] body.start .st-text .knopf { text-shadow: none; }
+/* Erklärsätze im Seitenkopf (z. B. „Tippe auf eine Übung …“) und Untertitel der Startseite: heller und mit kräftigerem weichem Schatten statt Grau auf hellen Fenstern */
+:root[data-look="sport"] #ansicht > .plan-kopf .leise, :root[data-look="sport"] body.start .st-held .st-zeile, :root[data-look="sport"] body.start .st-frei .st-zeile { color: rgba(238, 240, 244, .9); text-shadow: 0 1px 3px rgba(0, 0, 0, .8), 0 0 14px rgba(0, 0, 0, .55); }
+/* Startseite am Handy: Abschnitte ohne Lücke, damit zwischen ihnen keine Streifen vom Hintergrund wie Nähte aussehen */
+@media (max-width: 639px) { :root[data-look="sport"] body.start .inhalt { gap: 0; } }
+/* Neuzeichnen derselben Seite (Haken, Farbwelt): nichts blendet neu ein, nur der echte Seitenwechsel (app.js setzt „still“) */
+#ansicht.still > * { animation: none !important; }

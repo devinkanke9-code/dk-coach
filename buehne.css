@@ -11,7 +11,7 @@
 .buehne.ohne::after { content: "Für diese Übung gibt es noch keine 3D-Figur."; position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--text2); }
 .buehne.fehlt::after { content: "Die 3D-Figur lädt gerade nicht. Später nochmal öffnen."; position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--text2); }
 .buehne.laedt::after { content: "3D-Figur lädt …"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--text2); pointer-events: none; }
-@media (prefers-reduced-motion: no-preference) { .buehne.wechsel canvas { animation: dk-auftritt .45s var(--sanft, ease-out); } @keyframes dk-auftritt { from { opacity: 0; transform: scale(.94); filter: blur(4px); } } }
+@media (prefers-reduced-motion: no-preference) { .buehne.wechsel canvas { animation: dk-auftritt .3s var(--sanft, ease-out); }   /* Ruhig und schön (19.11.2026): nur einblenden, kein Zoom */ @keyframes dk-auftritt { from { opacity: 0; } } }
 .buehne .tipp { position: absolute; left: 0; right: 0; bottom: 124px; text-align: center; font-size: 12px; color: var(--text2); pointer-events: none; opacity: .85; animation: dk-ausblenden .8s 4s forwards; }
 @keyframes dk-ausblenden { to { opacity: 0; } }
 .steuer { position: absolute; z-index: 3; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; gap: 8px; }
@@ -276,8 +276,8 @@ body.start .kopf-innen { max-width: 1024px; }
 .st-block.st-frei { background: var(--kachel-frei); color: var(--kachel-frei-text); --zeile: var(--kachel-frei-text2); --zw-text: var(--zweit-frei-text); --zw-rand: var(--zweit-frei-rand); }
 .st-block.st-held { background: var(--held-grund); color: var(--held-text); --zeile: var(--held-text2); padding: 40px 0 0; gap: 0; }
 .st-held .st-text { padding-inline: 16px; }
-.st-block > * { transition: opacity .7s var(--feder), transform .7s var(--feder); }
-.st-block:not(.da) > * { opacity: 0; transform: translateY(24px); }
+.st-block > * { transition: opacity .4s var(--sanft, ease-out), transform .4s var(--sanft, ease-out); }   /* Ruhig und schön (19.11.2026): kürzer und sanfter */
+.st-block:not(.da) > * { opacity: 0; transform: translateY(10px); }
 .st-block:not(.da) > :nth-child(2) { transition-delay: .08s; }
 @media (prefers-reduced-motion: reduce) { .st-block > * { transition: none; } .st-block:not(.da) > * { opacity: 1; transform: none; } }
 .st-text { display: grid; justify-items: center; gap: 8px; max-width: 620px; }

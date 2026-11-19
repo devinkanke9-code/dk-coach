@@ -376,6 +376,9 @@ function zeichne() {
   $('#wer').textContent = S.plan ? (navigator.onLine === false ? 'Offline · alles da' : vorname(S.plan.n)) : '';
   leiste();
   const ziel = $('#ansicht'); ziel.textContent = '';
+  // Ruhig und schön (19.11.2026): nur der echte Seitenwechsel blendet ein; Neuzeichnen derselben Seite (Haken, Farbwelt) bleibt ruhig
+  const ansichtSchluessel = z + '|' + (z === 'plan' ? S.ansicht : '');
+  ziel.classList.toggle('still', ansichtSchluessel === S.letzteAnsicht); S.letzteAnsicht = ansichtSchluessel;
   const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
     || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, fortschritt: ansichtFortschritt }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
@@ -580,7 +583,7 @@ function startBeobachten() {
   const bloecke = [...document.querySelectorAll('.st-block:not(.da)')];
   if (STARTSEHEN) STARTSEHEN.disconnect();
   if (!window.IntersectionObserver) { bloecke.forEach((b) => b.classList.add('da')); return; }
-  STARTSEHEN = new IntersectionObserver((liste) => liste.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('da'); STARTSEHEN.unobserve(e.target); } }), { threshold: 0.12 });
+  STARTSEHEN = new IntersectionObserver((liste) => liste.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('da'); STARTSEHEN.unobserve(e.target); } }), { threshold: 0, rootMargin: '0px 0px 12% 0px' });
   bloecke.forEach((b) => STARTSEHEN.observe(b));
   if (START3D && !STARTBUEHNE) { STARTBUEHNE = new IntersectionObserver((liste) => { if (START3D) START3D.ruhe(!liste[liste.length - 1].isIntersecting); }); STARTBUEHNE.observe(START3D.el); }
 }
