@@ -1438,6 +1438,29 @@ function umgebung(renderer, a, b) {
   return tex;
 }
 
+// Mitte der Bewegung einer Übung (19.11.2026, Devin: „gerade auf den Körper zoomst, auf die Bewegung, die gerade aktuell ausgeführt wird“). Gelenke über einen Durchlauf, jedes gewichtet mit
+// seinem Weg (mittlere quadratische Abweichung): Was sich bewegt, zieht die Mitte zu sich (Hände beim Curl, Hüfte und Knie bei der Kniebeuge, der Kopf bei Nackenübungen); ruhende
+// Gelenke zählen wenig mit, bei Halteübungen bleibt es so in der Körpermitte. groesse: wie groß der Bereich ist, in dem sich die stark bewegten Gelenke aufhalten (m), daraus der Mindestabstand.
+// Nur die Pose der Vorlage, ohne props (keine Geräte, keine Nebenwirkung). Koordinaten der Übung (Figur im Ursprung)
+export function bewegungsMitte(animation, zustand, n = 16) {
+  // Kopf als Stirn und Scheitel: der Kopf dreht um den Hals, sein Gelenkpunkt selbst wandert dabei kaum (Nackenübungen)
+  const punkte = (g) => [V(0, 0, 0.1).applyQuaternion(g.kopfQ).add(g.kopf), V(0, 0.1, 0).applyQuaternion(g.kopfQ).add(g.kopf), g.brust, g.becken, g.hand.l, g.hand.r, g.ellbogen.l, g.ellbogen.r, g.knie.l, g.knie.r, g.knoechel.l, g.knoechel.r];
+  const reihen = [];
+  try { for (let i = 0; i < n; i++) { const e = animation.pose(i / n, zustand); if (!e || !e.pose) return null; reihen.push(punkte(gelenke(e.pose)).map((p) => p.clone())); } } catch (e) { return null; }
+  const k = reihen[0].length, mittel = [], streu = [];
+  for (let j = 0; j < k; j++) {
+    const m = V(); for (const r of reihen) m.add(r[j]); m.divideScalar(n);
+    let s = 0; for (const r of reihen) s += r[j].distanceToSquared(m); mittel.push(m); streu.push(s / n);
+  }
+  // Ruhende Gelenke zählen je ein Zwanzigstel des am meisten bewegten mit (Halteübung, alles ruht: Mitte der Gelenke)
+  const sMax = Math.max(...streu), eps = Math.max(0.05 * sMax, 1e-5), gew = streu.map((s) => s + eps), mitte = V(); let summe = 0;
+  for (let j = 0; j < k; j++) { mitte.addScaledVector(mittel[j], gew[j]); summe += gew[j]; }
+  mitte.divideScalar(summe);
+  const wMax = Math.max(...gew), box = new THREE.Box3();
+  for (let j = 0; j < k; j++) if (gew[j] >= wMax * 0.25) for (const r of reihen) box.expandByPoint(r[j]);
+  const gr = box.getSize(V());
+  return { mitte, groesse: Math.max(0.3, gr.x, gr.y, gr.z) };
+}
 // Saunahut im Ablauf vor der Übung: mit eigenen Geräten durchgehen (die Szene bleibt, wie sie ist), damit Vorschaubild und Live-Ansicht
 // dasselbe zeigen. Taucht der Hut irgendwo in ein Gerät (Latzug-Stange beim Hinsetzen, Schulterpolster …), bleibt er für die Übung weg
 function hutImAblauf(animation, figur) {
@@ -1558,7 +1581,7 @@ export class Ansicht {
       this.steuerung.minDistance = 1.8; this.steuerung.maxDistance = 7;
       this.steuerung.maxPolarAngle = Math.PI * 0.53;
       this.steuerung.autoRotate = true; this.steuerung.autoRotateSpeed = 1.6;
-      this.steuerung.zoomToCursor = true;   // zwei Finger: dorthin zoomen, wo die Finger sind (bis ins Gesicht), sonst ginge es immer nur zur Körpermitte
+      this.steuerung.zoomToCursor = false;   // 19.11.2026: nicht mehr zu den Fingern (zog oft nach unten), sondern zur Bewegung der Übung (kameraFolgt, bewegungsMitte)
       canvas.addEventListener('pointerdown', () => { this.steuerung.autoRotate = false; this.drehZiel = null; if (this.beiDrehStopp) this.beiDrehStopp(); });
     }
     this.ziel = V(0, 0.85, 0);
@@ -1806,7 +1829,10 @@ export class Ansicht {
     // Live-Ansicht: Knöpfe liegen unten über dem Bild, darum Figur etwas nach oben rücken
     if (this.effekte) mitte.y -= radius * 0.16;
     this.ziel.copy(mitte); this.basisAbstand = ab;
-    if (this.steuerung) { this.steuerung.target.copy(mitte); this.steuerung.minDistance = Math.min(ab * 0.55, 0.95); this.steuerung.maxDistance = ab * 1.8; }
+    // Mitte der Bewegung und wie nah man heran darf: so nah, dass die ganze Bewegung noch ins Bild passt (19.11.2026)
+    const bw = bewegungsMitte(animation, this.zustand);
+    this.bewegMitte = bw ? bw.mitte : null; this.bewegGroesse = bw ? bw.groesse : null; this.bewegNah = bw ? Math.max(0.5, Math.min(ab * 0.5, bw.groesse * 0.75 / Math.tan(Math.min(fov, hFov) / 2))) : Math.min(ab * 0.55, 0.95);
+    if (this.steuerung) { this.steuerung.target.copy(mitte); this.steuerung.minDistance = this.bewegNah; this.steuerung.maxDistance = ab * 1.8; }
     const richt = (animation.kameraRicht || V(0.62, 0.32, 0.72)).clone().normalize();
     this.kamera.position.copy(mitte).add(richt.multiplyScalar(ab));
     this.kamera.lookAt(mitte);
@@ -1961,22 +1987,17 @@ export class Ansicht {
       }
     }
   }
-  // Reingezoomt: die Kamera bleibt an dem Körperteil, das du dir ansiehst, und geht mit ihm mit (sonst liefe das Gesicht beim Kniebeugen aus dem Bild); beim Rauszoomen
-  // wieder zur Mitte der Übung
+  // Zoom zur Bewegung (19.11.2026, Devin: „gerade auf den Körper zoomst, auf die Bewegung, die gerade aktuell ausgeführt wird … wenn du da reinzoomst, zoomst du nach unten, aber nicht
+  // zu der Übung“): Je näher die Kamera kommt, desto mehr wandert ihr Ziel von der Mitte der Übung (die für die Knöpfe unten etwas tiefer liegt) zur Mitte der Bewegung
+  // (bewegungsMitte: Hände beim Curl, Hüfte und Knie bei der Kniebeuge, der Kopf bei Nackenübungen). Beim Rauszoomen geht es wieder zur Mitte. Bis dahin zoomte es zu den Fingern
+  // (zoomToCursor) und blieb danach am nächsten Gelenk hängen, beides zog oft nach unten
   kameraFolgt(dt) {
-    const st = this.steuerung, g = this.gAktuell;
-    if (!st || !g || this.fokus) return;
-    const z = st.target, l = this.kamera.position.distanceTo(z);
-    const jetzt = [V(0, -0.09, 0.03).applyQuaternion(g.kopfQ).add(g.kopf), g.brust, g.becken, g.hand.l, g.hand.r, g.knie.l, g.knie.r, g.knoechel.l, g.knoechel.r];
-    if (this.folgePunkte && l < this.basisAbstand * 0.6) {
-      let beste = -1, min = 0.4;
-      this.folgePunkte.forEach((p, i) => { const d = p.distanceTo(z); if (d < min) { min = d; beste = i; } });
-      if (beste >= 0) { const d = jetzt[beste].clone().sub(this.folgePunkte[beste]); z.add(d); this.kamera.position.add(d); }
-    } else if (l > this.basisAbstand * 0.75 && z.distanceTo(this.ziel) > 0.003) {
-      const neu = z.clone().lerp(this.ziel, Math.min(1, dt * 2.5));
-      this.kamera.position.add(neu.clone().sub(z)); z.copy(neu);
-    }
-    this.folgePunkte = jetzt;
+    const st = this.steuerung;
+    if (!st || this.fokus) return;
+    const z = st.target, l = this.kamera.position.distanceTo(z), nah = this.basisAbstand * 0.9;
+    const u = this.bewegMitte ? glaettung((nah - l) / Math.max(0.05, nah - st.minDistance)) : 0;
+    const soll = u > 0 ? this.ziel.clone().lerp(this.bewegMitte, u) : this.ziel;
+    if (z.distanceTo(soll) > 0.002) { const neu = z.clone().lerp(soll, Math.min(1, dt * 4)); this.kamera.position.add(neu.clone().sub(z)); z.copy(neu); }
   }
   // Ein Bild des Ablaufs davor: Geräte gehen erst mit, wenn die Hände sie gegriffen haben
   introBild(sek) {

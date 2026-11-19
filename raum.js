@@ -251,7 +251,7 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
       if (view.dot(normal) > 0) return false;   // die Kamera steht hinter dem Spiegel
       renderer.getDrawingBufferSize(gr);
       const bw = Math.max(64, Math.round(gr.x * opt.skala * bremse.skala)), bh = Math.max(64, Math.round(gr.y * opt.skala * bremse.skala)), pr = renderer.getPixelRatio();
-      if (!fb || fbB !== bw || fbH !== bh) { if (fb) fb.dispose(); fb = new THREE.FramebufferTexture(bw, bh); fbB = bw; fbH = bh; uni.tSpiegel.value = fb; }
+      if (!fb || fbB !== bw || fbH !== bh) { if (fb) fb.dispose(); fb = new THREE.FramebufferTexture(bw, bh); fb.minFilter = fb.magFilter = THREE.LinearFilter; fbB = bw; fbH = bh; uni.tSpiegel.value = fb; }   // 19.11.2026: weich gefiltert (FramebufferTexture nimmt sonst den nächsten Bildpunkt, Devin: „der Spiegel ist richtig pixelig“)
       view.reflect(normal).negate(); view.add(refPos);
       rot.extractRotation(kamera.matrixWorld);
       look.set(0, 0, -1).applyMatrix4(rot).add(camPos);
@@ -725,7 +725,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
 
   /* ---------- Spiegel (09.11.2026, Devin: „Spiegel, an denen man posen kann“): Spiegelwand an der linken Wand mit echtem Spiegelbild, davor der Posing-Platz ---------- */
   const SP = halle.spiegel, spiegelXWand = -BREITE / 2 + WAND_D / 2, spiegelHoehe = 3, spiegelY = 0.5 + spiegelHoehe / 2;
-  const spiegelF = spiegelFlaeche(THREE, SP.laenge, spiegelHoehe, { skala: 0.6, innen: () => K.pos.x > halle.innen.xMin && K.pos.x < halle.innen.xMax && K.pos.z > halle.innen.zMin && K.pos.z < halle.innen.zMax && K.pos.y < WAND, tonung: GOLD ? '#f6eedb' : LOOK === 'klar' ? '#eef2fb' : '#e6fbf7', stark: 0.92 });
+  const spiegelOpt = { skala: 0.6 }, spiegelF = spiegelFlaeche(THREE, SP.laenge, spiegelHoehe, Object.assign(spiegelOpt, { innen: () => K.pos.x > halle.innen.xMin && K.pos.x < halle.innen.xMax && K.pos.z > halle.innen.zMin && K.pos.z < halle.innen.zMax && K.pos.y < WAND, tonung: GOLD ? '#f6eedb' : LOOK === 'klar' ? '#eef2fb' : '#e6fbf7', stark: 0.92 }));   // spiegelOpt.skala: beim Posen am Spiegel 1 (scharf), sonst 0,6
   spiegelF.mesh.position.set(spiegelXWand + 0.02, spiegelY, SP.z); spiegelF.mesh.rotation.y = Math.PI / 2; wandL.add(spiegelF.mesh);
   const spRahmenM = grund(ST.fassade);
   for (const [bz, bh, zc, yc] of [[SP.laenge + 0.24, 0.12, SP.z, 0.5 - 0.06], [SP.laenge + 0.24, 0.12, SP.z, 0.5 + spiegelHoehe + 0.06], [0.12, spiegelHoehe, SP.z - SP.laenge / 2 - 0.06, spiegelY], [0.12, spiegelHoehe, SP.z + SP.laenge / 2 + 0.06, spiegelY], [0.07, spiegelHoehe, SP.z - SP.laenge / 6, spiegelY], [0.07, spiegelHoehe, SP.z + SP.laenge / 6, spiegelY]]) {
@@ -971,10 +971,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const gold = new THREE.MeshStandardMaterial({ color: 0xd9b066, metalness: 1, roughness: 0.3, envMap: env || null, envMapIntensity: 1.2 }), sockelM = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.25, metalness: 0.3 });
     const v = new THREE.Vector3();
     try {
-      [[0, -3.3, 0], [6, 3.3, 1]].forEach(([nr, x, li]) => {
+      [[0, -3.3, 0], [7, 3.3, 1]].forEach(([nr, x, li]) => {   // Statuen: Front Double Biceps und Most Muscular (Nummern seit 19.11.2026 mit acht Posen)
         const p = POSEN[nr]; if (!p) return; H = 0;
         const pose = stehen(V(0, 0, 0), 0); posAlt = posNr = nr; posT = 1; posMix = 1; posAn = true; posAuto = false; posAnwenden(pose, 0);
-        a.figur.stelle(gelenke(pose)); a.figur.gruppe.updateMatrixWorld(true);
+        a.figur.stelle(mitFaust(gelenke(pose), pose)); a.figur.gruppe.updateMatrixWorld(true);
         const inv = new THREE.Matrix4().copy(a.figur.gruppe.matrixWorld).invert(), pos = [], idx = []; let o = 0;
         for (const m of a.figur.meshes) {
           if (!m.isSkinnedMesh || !m.userData.koerper) continue;   // nur der Körper: eine klassische Statue ohne Kleidung (die Kleidung ist ein Schattierer-Trick und lässt sich nicht abgießen)
@@ -997,7 +997,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   function posterMachen() {
     if (pr) return;
     const R = a.renderer, gl = R.getContext(), pxr = R.getPixelRatio(), bw = 240, bh = 360, puffer = new Uint8Array(bw * bh * 4), leinwaende = [];
-    const posterNr = [0, 2, 1, 6].filter((n) => POSEN[n]);
+    const posterNr = [0, 2, 3, 7].filter((n) => POSEN[n]);   // Front Double Biceps, Side Chest, Back Double Biceps, Most Muscular
     const kam = new THREE.PerspectiveCamera(28, bw / bh, 0.1, 40); kam.position.set(0, 1.12, 4.6); kam.lookAt(0, 1.0, 0); kam.updateMatrixWorld(true);
     const versteckt = []; for (const o of szene.children) if (o !== a.figur.gruppe && !o.isLight && o.visible) { versteckt.push(o); o.visible = false; }
     const hg = szene.background, nebel = szene.fog, altH = H, vp = new THREE.Vector4(); R.getViewport(vp);
@@ -1006,7 +1006,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       for (const nr of posterNr) {
         const p = POSEN[nr], legende = LEGENDEN[leinwaende.length % LEGENDEN.length]; H = p.dreh || 0;   // die Rückenposen zeigen den Rücken
         const pose = stehen(V(0, 0, 0), H); posAlt = posNr = nr; posT = 1; posMix = 1; posAn = true; posAuto = false; posAnwenden(pose, 0);
-        a.figur.stelle(gelenke(pose));
+        a.figur.stelle(mitFaust(gelenke(pose), pose));
         R.setRenderTarget(null); R.setViewport(0, 0, bw / pxr, bh / pxr); R.render(szene, kam);
         gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, puffer);
         const bild = new ImageData(bw, bh); for (let y = 0; y < bh; y++) bild.data.set(puffer.subarray((bh - 1 - y) * bw * 4, (bh - y) * bw * 4), y * bw * 4);   // von unten nach oben gelesen
@@ -1183,7 +1183,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (modus !== 'lauf') return modus === 'gehen';
     if (ankommt || aktiv != null || waageAktiv || spiegelAktiv) return false;
     if (gang && LOOKL) {   // 17.11. abends (Kombitest: Weg zum Gerät mit W abgebrochen, Fuß glitt bis 21 cm): die Figur behält ihr Tempo und ihre Richtung und biegt weich ab, statt auf der Stelle zu stoppen
-      const z = gang.punkte[gang.i] || F, dx = z.x - F.x, dz = z.z - F.z, l = Math.hypot(dx, dz), v = Math.min(gang.v || 0, GEH);
+      const z = gang.punkte[gang.i] || F, dx = z.x - F.x, dz = z.z - F.z, l = Math.hypot(dx, dz), v = Math.min(gang.v || 0, JOGG);
       if (l > 0.01 && v > 0.05) { gehVx = dx / l * v; gehVz = dz / l * v; gehV = v; gehDx = dx / l; gehDz = dz / l; }
     }
     gang = null; warte = 0; nachWarte = null; tuerUnterwegs = false; modusSetzen('gehen'); kameraZu(verfolgen, 0.5);
@@ -1214,6 +1214,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const blick = V(sv.blick.x, sv.blick.y, sv.blick.z), sicht = V(sv.sicht.x, sv.sicht.y, sv.sicht.z), off = sicht.clone().sub(blick);
     // Bahn der Kamera um die Figur: gemerkt werden Radius, Winkel und Höhe; an der Wand kürzt umlaufKamera den Radius in jedem Bild, so geht sie nie durch die Wand
     const bahn = { mitte: blick, r: Math.hypot(off.x, off.z), w: Math.atan2(off.x, off.z), y: sicht.y, fov: sichtStation(), versatz: sv.senken, heben: 0, hebenZiel: 0 }, start = umlaufKamera(halle, bahn);
+    // Zoom zur Bewegung (19.11.2026, Devin: „in eine Maschine geht, dass wir da so ranzoomen können … gerade auf den Körper, auf die Bewegung“): Mitte der Bewegung der Übung (figur.js
+    // bewegungsMitte) in die Halle gerechnet; beim Heranzoomen wandert das Ziel der Kamera dorthin, und sie darf so nah, dass die Bewegung gerade noch ins Bild passt (mindestens 0,6 m)
+    if (s.anim && a.bewegMitte) {
+      const c = Math.cos(s.winkel), n = Math.sin(s.winkel), b = a.bewegMitte;
+      bahn.mitte0 = blick.clone(); bahn.beweg = V(b.x * c + b.z * n + s.pos.x, b.y, -b.x * n + b.z * c + s.pos.z);
+      bahn.rNah = Math.max(0.6, Math.min(bahn.r * 0.6, (a.bewegGroesse || 0.6) * 0.75 / Math.tan(sichtStation() * Math.PI / 360)));
+    }
     kameraZu({ pos: V(start.x, start.y, start.z), blick, fov: start.fov || sichtStation() }, 1.5, () => {
       orbit = bahn; ankommt = false;
       kNr.textContent = pr ? s.u.name : 'Station ' + (i + 1) + ' von ' + N; kNr.dataset.station = i; kInhalt.textContent = ''; kName.textContent = pr ? (s.u.wert || 'Noch offen') : s.u.name; karteUnten(false, true);
@@ -1340,7 +1347,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let waageAktiv = false, waageGesperrt = false, waageZeit = 0, kreisSperre = null, kreisZeit = 0;
   // G19 (16.11., Vorgaben von 3D-Ablauf, Devin: „lass den Charakter viel natürlicher wirken“): Gehen 1,5 m/s, Joggen (Sprint, Weg zum Gerät) 2,6–2,8 m/s, Schritte aus dem zurückgelegten Weg,
   // Anlaufen und Anhalten weich, Drehen höchstens 265 °/s, im Stand Atmen und Gewichtsverlagerung
-  let gangX = 0, gangZ = -1, gangVX = 0, gangVZ = 0, haltSperre = 0, drehT = 0, zugJetzt = 1, gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, standLetzt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, JOGG = 2.8, FV = V(0, 0, 0), LEINE = 0.07; const armVers = { l: { v: 0, y: 0, s: 0 }, r: { v: 0, y: 0, s: 0 } }; let armK = 0, armVor = 1, armVX = 0, armVZ = 0, armFX = null, armFZ = 0;   // lockerer Gang (18.11.)   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
+  let gangX = 0, gangZ = -1, gangVX = 0, gangVZ = 0, haltSperre = 0, drehT = 0, zugJetzt = 1, gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, standLetzt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, GEH_V = 2.2, JOGG = 4.0, FV = V(0, 0, 0), LEINE = 0.07; const armVers = { l: { v: 0, y: 0, s: 0 }, r: { v: 0, y: 0, s: 0 } }; let armK = 0, armVor = 1, armVX = 0, armVZ = 0, armFX = null, armFZ = 0;   // lockerer Gang (18.11.)   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
   function zurWaage() {
     if (!waage || modus === 'draussen' || waageAktiv || spiegelAktiv) return;
     tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
@@ -1380,15 +1387,38 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   /* Posen (09.11.2026, Devin: „… wenn er auf der Waage ist, auch posen kann: Doppelbizeps, Rückenpose, Beinepose, Bauchmuskelpose und Most Muscular“): fünf Posen für die Waage und den Spiegel (ohne Ton).
      Eine Pose-Maschine für beide Orte: posWahl blendet weich in die Pose und dreht die Figur, wenn die Pose es braucht (Rücken), posEnde geht zurück ins Stehen. Am Spiegel wechselt es alle 3,4 s von selbst, bis man eine Pose antippt. */
   let posAn = false, posNr = 0, posAlt = 0, posT = 1, posMix = 0, posHalt = 0, posAuto = false, posGrund = 0, posChips = [], posName = null;
-  const POSEN = [   // hand: [links, rechts] je [zur Seite der Figur, hoch, nach vorn] ab dem Becken; pol: wohin die Ellbogen zeigen; neigung: Rumpf nach vorn in Grad; fuss: halbe Standbreite; fussVor: [links, rechts] Fuß nach vorn in m;
-                    // tief: Becken tiefer in m; dreh: die Figur dreht sich um (Bogenmaß); rumpfDreh: der Rumpf dreht sich (Grad, plus = nach links)
-    { name: 'Front Double Biceps', kurz: 'Bizeps vorn', hand: [[0.43, 0.8, 0.06], [-0.43, 0.8, 0.06]], pol: [[1, 0.3, -0.35], [-1, 0.3, -0.35]], neigung: 0, fuss: 0.21, fussVor: [0, 0], tief: 0, dreh: 0, rumpfDreh: 0 },
-    { name: 'Back Double Biceps', kurz: 'Biz. hinten', hand: [[0.43, 0.8, 0.06], [-0.43, 0.8, 0.06]], pol: [[1, 0.3, -0.35], [-1, 0.3, -0.35]], neigung: 6, fuss: 0.2, fussVor: [0, -0.2], tief: 0.02, dreh: Math.PI, rumpfDreh: 0 },
-    { name: 'Side Chest', kurz: 'Side Chest', hand: [[0.05, 0.52, 0.36], [-0.05, 0.54, 0.34]], pol: [[1, -0.3, 0.1], [-1, -0.3, 0.1]], neigung: 2, fuss: 0.2, fussVor: [0.3, -0.08], tief: 0.04, dreh: Math.PI / 2, rumpfDreh: -35 },
-    { name: 'Bauchmuskeln', kurz: 'Bauch', hand: [[0.11, 0.8, -0.06], [-0.11, 0.8, -0.06]], pol: [[1, 0.15, 0.4], [-1, 0.15, 0.4]], neigung: 10, fuss: 0.2, fussVor: [0.28, 0], tief: 0.04, dreh: 0, rumpfDreh: 0 },
-    { name: 'Beine', kurz: 'Beine', hand: [[0.24, 0.1, 0.1], [-0.24, 0.1, 0.1]], pol: [[1, -0.1, -0.25], [-1, -0.1, -0.25]], neigung: 3, fuss: 0.24, fussVor: [0.5, -0.12], tief: 0.09, dreh: 0, rumpfDreh: -12 },
-    { name: 'Lat Spread (Rücken)', kurz: 'Rücken', hand: [[0.2, 0.1, 0.14], [-0.2, 0.1, 0.14]], pol: [[1, 0, -0.7], [-1, 0, -0.7]], neigung: 8, fuss: 0.21, fussVor: [0, 0], tief: 0, dreh: Math.PI, rumpfDreh: 0 },
-    { name: 'Most Muscular', kurz: 'Most M.', hand: [[0.07, 0.44, 0.34], [-0.07, 0.44, 0.34]], pol: [[1, -0.2, 0.2], [-1, -0.2, 0.2]], neigung: 16, fuss: 0.22, fussVor: [0, 0], tief: 0.06, dreh: 0, rumpfDreh: 0 }
+  /* 19.11.2026 (Devin: „wie die Profi-Bodybuilder posen … Side-Chest … wie du die Gelenke trackst … Olympia“): die acht klassischen Pflichtposen in der Reihenfolge auf der Bühne,
+     Gelenk für Gelenk nach den Posing-Anleitungen (IFBB-Pflichtposen; StrengthLog „The 8 Mandatory Bodybuilding Poses“, Fitness Volt, bodybuilding.com „Posing like a pro“).
+     Statt „Beine“ (keine Pflichtpose) jetzt Front Lat Spread und Side Triceps. Neu je Pose: ferse (Ferse hoch, Wade gespannt), fussRein (Fuß zur Mitte), kopfDreh/kopfNeig (Grad),
+     hub (Schultern hoch, m), faust, flaeche (wohin die Handflächen zeigen), spann (Muskeln anspannen 0…1). Die Hände liegen jetzt im Rahmen des gedrehten Rumpfs (Side Chest, Side Triceps) */
+  const POSEN = [   // hand: [links, rechts] je [zur Seite der Figur, hoch, nach vorn] ab dem Becken (im gedrehten Rumpf); pol: wohin die Ellbogen zeigen; neigung: Rumpf nach vorn in Grad
+                    // (minus = Brust hoch, zurück); fuss: halbe Standbreite; fussVor: [links, rechts] Fuß nach vorn in m; tief: Becken tiefer in m; dreh: die Figur dreht sich (Bogenmaß; +π/2 =
+                    // rechte Seite zum Spiegel); rumpfDreh: der Rumpf dreht sich (Grad, plus = nach links)
+    // Oberarme waagerecht zur Seite, Fäuste auf Kopfhöhe, Handflächen zum Kopf; Brust hoch, Lat breit, Knie weich
+    { name: 'Front Double Biceps', kurz: 'Bizeps vorn', hand: [[0.4, 0.78, 0.04], [-0.4, 0.78, 0.04]], pol: [[1, 0.25, -0.2], [-1, 0.25, -0.2]], flaeche: [[-1, -0.2, 0.15], [1, -0.2, 0.15]],
+      neigung: -2, fuss: 0.2, fussVor: [0.04, 0], tief: 0.03, dreh: 0, rumpfDreh: 0, faust: true, spann: 1, hub: -0.01 },
+    // Fäuste an der Taille knapp über der Hüfte, Ellbogen breit und nach vorn: der Lat geht auf; Schultern unten, leicht zum Spiegel geneigt
+    { name: 'Front Lat Spread', kurz: 'Lat vorn', hand: [[0.17, 0.15, 0.03], [-0.17, 0.15, 0.03]], pol: [[1, 0, 0.45], [-1, 0, 0.45]], flaeche: [[-0.4, 0, -1], [0.4, 0, -1]],
+      neigung: 4, fuss: 0.19, fussVor: [0, 0], tief: 0.02, dreh: 0, rumpfDreh: 0, faust: true, spann: 0.9, hub: -0.02 },
+    // Rechte Seite zum Spiegel: vorderer (rechter) Arm 90° gebeugt quer vor dem Bauch, Faust zu; die linke Hand greift das rechte Handgelenk; Brust hoch, Rumpf zum Spiegel gedreht;
+    // vorderes Bein gebeugt, Knie nach vorn zum hinteren Bein, Ferse hoch (Wade); hinteres Bein gerade; der Blick geht zum Spiegel
+    { name: 'Side Chest', kurz: 'Side Chest', hand: [[-0.06, 0.28, 0.25], [0.03, 0.3, 0.22]], pol: [[1, -0.3, -0.2], [-1, -0.7, 0.1]], flaeche: [[0, 1, 0.2], [0.2, 1, -0.2]],
+      neigung: -2, fuss: 0.14, fussVor: [-0.04, 0.1], fussRein: [0, 0.05], ferse: [0, 1], tief: 0.04, dreh: Math.PI / 2, rumpfDreh: -28, kopfDreh: -40, faust: true, spann: 1 },
+    // Rücken zum Spiegel, Arme wie vorn; ein Fuß hinten auf dem Ballen (Wade), Oberkörper leicht zurück, Rückenstrecker angespannt
+    { name: 'Back Double Biceps', kurz: 'Biz. hinten', hand: [[0.42, 0.78, 0], [-0.42, 0.78, 0]], pol: [[1, 0.3, -0.1], [-1, 0.3, -0.1]], flaeche: [[-1, -0.2, 0.1], [1, -0.2, 0.1]],
+      neigung: -4, fuss: 0.2, fussVor: [0, -0.2], ferse: [0, 1], tief: 0.03, dreh: Math.PI, rumpfDreh: 0, faust: true, spann: 1 },
+    // Rücken zum Spiegel, Fäuste an der Taille, Ellbogen breit und etwas nach vorn; ein Fuß hinten auf dem Ballen, oben leicht zurückgelehnt
+    { name: 'Back Lat Spread', kurz: 'Lat hinten', hand: [[0.17, 0.15, 0], [-0.17, 0.15, 0]], pol: [[1, 0, 0.3], [-1, 0, 0.3]], flaeche: [[-0.4, 0, -1], [0.4, 0, -1]],
+      neigung: -3, fuss: 0.19, fussVor: [0, -0.15], ferse: [0, 1], tief: 0.02, dreh: Math.PI, rumpfDreh: 0, faust: true, spann: 0.9 },
+    // Linke Seite zum Spiegel: linker Arm gestreckt an der Seite, etwas nach hinten; die rechte Hand greift hinter dem Rücken das linke Handgelenk; Beine eng, vorderes Knie leicht gebeugt
+    { name: 'Side Triceps', kurz: 'Trizeps', hand: [[0.21, -0.1, -0.08], [0.12, -0.05, -0.15]], pol: [[0.3, 0, -1], [-1, 0, -0.5]], flaeche: [[-0.4, 0, -1], [0, 0.3, 1]],
+      neigung: -2, fuss: 0.12, fussVor: [0.12, -0.02], ferse: [0.5, 0], tief: 0.03, dreh: -Math.PI / 2, rumpfDreh: 20, kopfDreh: 40, faust: false, spann: 0.9 },
+    // Hände hinter dem Kopf verschränkt, Ellbogen leicht nach vorn; Bauch angespannt (leicht eingerollt), ein Bein vor, Oberschenkel gespannt
+    { name: 'Bauch und Beine', kurz: 'Bauch', hand: [[0.05, 0.72, -0.07], [-0.05, 0.72, -0.07]], pol: [[1, 0.2, 0.35], [-1, 0.2, 0.35]], flaeche: [[0, -0.3, 1], [0, -0.3, 1]],
+      neigung: 10, fuss: 0.18, fussVor: [0.2, 0], ferse: [0.2, 0], tief: 0.03, dreh: 0, rumpfDreh: 0, kopfNeig: 6, faust: false, spann: 1 },
+    // Crab: aus der Hüfte etwas vorgebeugt, Fäuste vor dem Bauch zusammen, Schultern rund nach vorn, Trapez hoch
+    { name: 'Most Muscular', kurz: 'Most M.', hand: [[0.08, 0.3, 0.3], [-0.08, 0.3, 0.3]], pol: [[1, -0.1, 0.15], [-1, -0.1, 0.15]], flaeche: [[-0.6, 0.2, -1], [0.6, 0.2, -1]],
+      neigung: 18, fuss: 0.21, fussVor: [0.1, 0], tief: 0.06, dreh: 0, rumpfDreh: 0, kopfNeig: 6, faust: true, spann: 1, hub: 0.04 }
   ];
   function posChipsFaerben() {
     posChips.forEach((b, i) => b.classList.toggle('jetzt', posAn && posNr === i));
@@ -1410,24 +1440,44 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     posAn = true; posAuto = !!auto; posHalt = 0; zielH = posGrund + POSEN[nr].dreh; posChipsFaerben();
   }
   function posEnde() { posAn = false; posAuto = false; zielH = posGrund; posChipsFaerben(); }
+  // Fäuste zu (Posen mit faust): gelenke() setzt haelt nur über haltErkennen, das im Gym nicht läuft (19.11.2026)
+  function mitFaust(g, pose) { if (pose.faust) for (const s of ['l', 'r']) if (pose.faust[s] && !g.haelt[s]) g.haelt[s] = 0.006; return g; }
   function posAnwenden(pose, dt) {   // liegt über dem Stehen: weich hinein und hinüber (jedes Bild gerufen, ohne Pose kostet es nichts)
     posMix += ((posAn ? 1 : 0) - posMix) * (STILL ? 1 : 1 - Math.exp(-dt * 3.2));
     if (!posAn && posMix < 0.002) { posMix = 0; return; }
     posT = Math.min(1, posT + dt / (STILL ? 0.01 : 0.75));
     if (posAn && posAuto && !STILL && modus === 'station') { posHalt += dt; if (posHalt > 3.4) posWahl((posNr + 1) % POSEN.length, true); }
-    const u = glatt(posT), A = POSEN[posAlt], B = POSEN[posNr], w = posMix, mix = (a, b) => a + (b - a) * u;
+    const u = glatt(posT), A = POSEN[posAlt], B = POSEN[posNr], w = posMix, mix = (a, b) => (a || 0) + ((b || 0) - (a || 0)) * u, paar = (n, i) => mix(A[n] && A[n][i], B[n] && B[n][i]);
     pose.becken.y -= mix(A.tief, B.tief) * w;   // zuerst das Becken: Alles Weitere rechnet ab dem Becken
     const vorn = V(Math.sin(H), 0, Math.cos(H)), links = V(Math.cos(H), 0, -Math.sin(H)), oben = V(0, 1, 0);
-    const ort = (o) => pose.becken.clone().addScaledVector(links, o[0]).addScaledVector(oben, o[1]).addScaledVector(vorn, o[2]);
-    const richt = (o) => links.clone().multiplyScalar(o[0]).addScaledVector(oben, o[1]).addScaledVector(vorn, o[2]);
+    // Hände und Ellbogen im Rahmen des gedrehten Rumpfs (19.11.2026): bei Side Chest und Side Triceps liegen sie so vor bzw. hinter dem Körper, wie er sich zum Spiegel dreht
+    const dreh = mix(A.rumpfDreh, B.rumpfDreh) * w * Math.PI / 180, neig = mix(A.neigung, B.neigung) * w * Math.PI / 180;
+    const vornR = vorn.clone().applyAxisAngle(oben, dreh), linksR = links.clone().applyAxisAngle(oben, dreh);
+    const ort = (o) => pose.becken.clone().addScaledVector(linksR, o[0]).addScaledVector(oben, o[1]).addScaledVector(vornR, o[2]);
+    const richt = (o) => linksR.clone().multiplyScalar(o[0]).addScaledVector(oben, o[1]).addScaledVector(vornR, o[2]);
     pose.hand.l = pose.hand.l.clone().lerp(ort(A.hand[0]).lerp(ort(B.hand[0]), u), w); pose.hand.r = pose.hand.r.clone().lerp(ort(A.hand[1]).lerp(ort(B.hand[1]), u), w);
     pose.ellbogenPol.l = pose.ellbogenPol.l.clone().lerp(richt(A.pol[0]).lerp(richt(B.pol[0]), u), w); pose.ellbogenPol.r = pose.ellbogenPol.r.clone().lerp(richt(A.pol[1]).lerp(richt(B.pol[1]), u), w);
+    if (pose.handflaeche && (A.flaeche || B.flaeche)) for (const [s, i] of [['l', 0], ['r', 1]]) {   // Handflächen: zum Kopf (Bizeps), zur Hüfte (Lat), nach oben (Griff ums Handgelenk)
+      const alt = pose.handflaeche[s].clone(), fa = A.flaeche ? richt(A.flaeche[i]).normalize() : alt, fb = B.flaeche ? richt(B.flaeche[i]).normalize() : alt;
+      pose.handflaeche = Object.assign({}, pose.handflaeche, { [s]: alt.lerp(fa.clone().lerp(fb, u), w).normalize() });
+    }
     const spreiz = (mix(A.fuss, B.fuss) - 0.11) * w;
-    pose.fuss.l = pose.fuss.l.clone().addScaledVector(links, spreiz).addScaledVector(vorn, mix(A.fussVor[0], B.fussVor[0]) * w);
-    pose.fuss.r = pose.fuss.r.clone().addScaledVector(links, -spreiz).addScaledVector(vorn, mix(A.fussVor[1], B.fussVor[1]) * w);
-    const dreh = mix(A.rumpfDreh, B.rumpfDreh) * w * Math.PI / 180, neig = mix(A.neigung, B.neigung) * w * Math.PI / 180;
+    pose.fuss.l = pose.fuss.l.clone().addScaledVector(links, spreiz - paar('fussRein', 0) * w).addScaledVector(vorn, paar('fussVor', 0) * w);
+    pose.fuss.r = pose.fuss.r.clone().addScaledVector(links, -spreiz + paar('fussRein', 1) * w).addScaledVector(vorn, paar('fussVor', 1) * w);
+    for (const [s, i] of [['l', 0], ['r', 1]]) {   // Ferse hoch: der Fuß steht auf dem Ballen, die Wade spannt (Side Chest vorn, Rückenposen hinten)
+      const f = paar('ferse', i) * w; if (f < 0.001) continue;
+      pose.fuss[s].y += 0.05 * f;
+      if (pose.fussRicht) pose.fussRicht = Object.assign({}, pose.fussRicht, { [s]: pose.fussRicht[s].clone().normalize().lerp(vorn.clone().add(V(0, -0.75, 0)).normalize(), f) });
+      pose.zehen = Object.assign({}, pose.zehen, { [s]: ((pose.zehen && pose.zehen[s]) || 0) + 38 * f });
+    }
     pose.rumpf.basis = pose.rumpf.basis.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), dreh)).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), neig));
+    const kd = mix(A.kopfDreh, B.kopfDreh) * w, kn = mix(A.kopfNeig, B.kopfNeig) * w;   // Blick zum Spiegel (Seitposen), Kopf leicht gesenkt (Bauch, Most Muscular)
+    if (kd || kn) pose.kopf = Object.assign({}, pose.kopf, { dreh: ((pose.kopf && pose.kopf.dreh) || 0) + kd, neigung: ((pose.kopf && pose.kopf.neigung) || 0) + kn });
+    const hub = mix(A.hub, B.hub) * w; if (hub) pose.schulterHub = (pose.schulterHub || 0) + hub;
+    if (mix(A.faust ? 1 : 0, B.faust ? 1 : 0) * w > 0.5) pose.faust = { l: true, r: true };
+    const sp = mix(A.spann, B.spann) * w; if (sp > (pose.spann || 0)) pose.spann = sp;
   }
+
   /* Spiegel (09.11.2026): hinlaufen (antippen) oder daraufgehen, dann dreht sich die Figur zum Spiegel und zeigt der Reihe nach die fünf Posen; Drehen und Karte runterwischen gehen wie an der Waage */
   let spiegelAktiv = false, spiegelGesperrt = false, spiegelZeit = 0;
   function zumSpiegel() {
@@ -1570,8 +1620,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const OHNE_HAND = false, STRAFE = LOOKL;   // STRAFE: W/Knüppel nach oben = vor, S = zurück, A/D = Seitschritte; die Figur dreht nur mit dem Blick
   const finger = { id: null, x: 0, y: 0, sx: 0, sy: 0, zeit: 0, weit: false };
   const zeiger = new Map(); let pinch = null;   // alle Finger auf dem Bild: zwei Finger zoomen (an der Übung, an der Waage und am Spiegel rückt die Kamera heran, beim Gehen ändert sich die Höhe wie beim Ziehen nach oben und unten)
-  const ZOOM_MIN = 0.3, ZOOM_MAX = 1.25, ZOOM_NAH = 1.5;   // Faktor auf den Radius der Bahn (orbit.r0 = der Radius zu Beginn); näher als 1,5 m an die Mitte geht die Kamera nie
-  const zoomSetzen = (z) => { if (orbit.r0 == null) orbit.r0 = orbit.r; orbit.r = Math.max(orbit.r0 * klemme(z, ZOOM_MIN, ZOOM_MAX), Math.min(orbit.r0, ZOOM_NAH)); };
+  // Faktor auf den Radius der Bahn (orbit.r0 = der Radius zu Beginn). An der Übung so nah, wie es orbit.rNah erlaubt (die Bewegung passt noch ins Bild, mindestens 0,6 m), an Waage und
+  // Spiegel 1 m. Bis 19.11.2026 nie näher als 1,5 m und immer zur Mitte: dort tat sich beim Zoomen kaum etwas (Devin: „geht einfach gar nicht“)
+  const ZOOM_MIN = 0.12, ZOOM_MAX = 1.25, ZOOM_NAH = 1.0;
+  const zoomSetzen = (z) => { if (orbit.r0 == null) orbit.r0 = orbit.r; orbit.r = Math.max(orbit.r0 * klemme(z, ZOOM_MIN, ZOOM_MAX), Math.min(orbit.r0, orbit.rNah || ZOOM_NAH)); };
   const pinchStart = () => {
     const p = [...zeiger.entries()]; if (OHNE_HAND) { finger.weit = true; return; } if (p.length !== 2 || !((modus === 'station' && orbit) || modus === 'gehen' || modus === 'lauf')) return;
     const d = Math.hypot(p[0][1].x - p[1][1].x, p[0][1].y - p[1][1].y); if (d < 20) return;
@@ -1727,7 +1779,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }
 
   /* ---------- Lampen (09.11.2026, Devin: „geile Lampen, die schon leuchten, wenn es dunkler ist“): Hängeleuchten über dem Gang und über jeder Station; bei Nacht Lichtschein, Lichtkegel und Lichtfleck auf dem Boden ---------- */
-  const lampenOrte = [];
+  const lampenOrte = []; let liveKegel = false;   // liveKegel: Live-Gym mit Lichtkegeln von der Decke (19.11.2026)
   for (let z = zAnfang - FACH; z > zEnde + 3; z -= FACH) lampenOrte.push([0, z]);   // über dem Gang, zwischen den Querschienen
   for (const s of stationen) lampenOrte.push([s.pos.x, s.pos.z]);   // über jeder Station
   for (const g of deko) lampenOrte.push([g.position.x * 0.96, g.position.z]);   // über jedem Deko-Gerät
@@ -1763,7 +1815,16 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   /* ---------- Live-Gym: Ausbau nach Devins Vorlage (10.11.2026): LED-Linien an Decke und Wänden statt Hängelampen, leuchtendes DK an der Rückwand, Leuchtschrift mit Lounge,
      Theke, Kübelpflanzen, Kurzhantel-Ablage, großes DK im Boden. Alles eigene Formen, keine fremden Marken; Sprüche sind allgemeine Sätze ---------- */
   if (LIVE) {
-    for (const o of [lampeSchnur, lampeSchirm, lampeBirne, lampeFleck, lampeKegel, lampeGlow]) o.visible = false;
+    for (const o of [lampeSchnur, lampeSchirm, lampeBirne, lampeGlow]) o.visible = false;
+    // Lichtkegel von der Decke (19.11.2026, Devin: „beim Handy sehe ich keine Lichter, die von oben runter leuchten, wenn du in den Nachtmodus bist“): Ohne Hängelampen kam das Licht
+    // nachts nur aus dem Schein der LED-Linien, und den schaltet die Qualitätsstufe am Handy als Erstes ab. Jetzt fällt über dem Gang und über jeder Station ein warmer Kegel von der
+    // Decke bis zum Boden, mit Lichtfleck unten. Einfache Flächen mit Additivmischung, unabhängig vom Schein; über den Deko-Geräten nicht (weniger Überzeichnen am Handy)
+    {
+      const hK = WAND - 0.05, warm = new THREE.Color(0xffd9a0);
+      lampeKegel.geometry.dispose(); lampeKegel.geometry = new THREE.ConeGeometry(1.5, hK, 24, 1, true); lampeKegelU.hoehe.value = hK; lampeKegelU.farbe.value.copy(warm); lampeFleckM.color.copy(warm);
+      lampenOrte.forEach(([x, z], i) => { m4.compose(V(x, hK / 2, z), qNull, V(1, 1, 1)); lampeKegel.setMatrixAt(i, m4); });
+      lampeKegel.instanceMatrix.needsUpdate = true; lampeKegel.count = lampeFleck.count = lampenOrte.length - deko.length; liveKegel = true;
+    }
     const neonM = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf6d6a0), toneMapped: false, fog: false }), linien = [], YD = WAND - 0.04;
     const strich = (x0, y0, z0, x1, y1, z1, d) => linien.push([V(x0, y0, z0), V(x1, y1, z1), d || 0.05]);
     for (let z = zAnfang - FACH / 2; z - FACH > zEnde; z -= FACH) {   // Decke: je Feld ein Rahmen über dem Gang, von den Ecken Linien zu den Schienen (wie Kassetten)
@@ -1910,7 +1971,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     palmen.material.color.copy(tonWeiss).lerp(tonPalme, z); for (const m of holzMats) m.color.copy(tonWeiss).lerp(tonHolz, z);
     if (LOOKL) deckeM.opacity = 0.18 + 0.8 * z;
     ledM.color.copy(ledBasis).multiplyScalar((LOOKL ? 0.6 : 1) * (0.55 + 0.45 * z)); scheinM.opacity = P.haloStark * (0.45 + 0.55 * z); scheinML.opacity = scheinM.opacity;
-    lampeKegelU.nacht.value = z; lampeGlowU.deckkraft.value = 0.95 * z; lampeFleckM.opacity = 0.38 * z; lampeInnenM.color.copy(lampeFarbe).multiplyScalar(0.4 + 0.6 * z);
+    lampeKegelU.nacht.value = z; if (liveKegel) lampeKegel.visible = lampeFleck.visible = z > 0.02; lampeGlowU.deckkraft.value = 0.95 * z; lampeFleckM.opacity = 0.38 * z; lampeInnenM.color.copy(lampeFarbe).multiplyScalar(0.4 + 0.6 * z);
     lichter.forEach((l, i) => { l.intensity = lichtBasis[i] * (1 - 0.3 * (z - (nativNacht ? 1 : 0))); });   // bei Nacht etwas weniger Licht auf der Figur (in Schwarz-Gold ist es schon abgestimmt)
   }
   function zeitTick(dt) {   // Übergang Tag und Nacht in 1,4 s; jedes Bild: Richtung von Sonne oder Mond im Blickraum für die Spiegelung im Meer
@@ -2024,7 +2085,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       else if (nachWarte) { const f = nachWarte; nachWarte = null; f(); }
       if (aktiv == null) {
         if (gang) {
-          const vMax = gang.tempo || (LOOKL ? 2.6 : TEMPO); let vG = vMax; zugJetzt = 1;
+          const vMax = gang.tempo || (LOOKL ? 3.2 : TEMPO); let vG = vMax; zugJetzt = 1;
           if (LOOKL && !STILL) {   // 17.11. (Fuß rutschte beim Losgehen und beim Ankommen bis 10 cm): auf dem Weg zum Gerät oder zum angetippten Punkt weich anlaufen (rund 0,4 s) und vor dem Ziel abbremsen
             let bis = 0, p = F; for (let j = gang.i; j < gang.punkte.length; j++) { bis += Math.hypot(gang.punkte[j].x - p.x, gang.punkte[j].z - p.z); p = gang.punkte[j]; }
             gang.v = Math.min(vMax, (gang.v || 0) + 7 * dt, Math.max(0.6, Math.sqrt(2 * 4 * bis))); vG = gang.v;
@@ -2048,7 +2109,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             // 17.11. nachts (wie im Spiel): Die Figur schaut, wohin du siehst. Vor geht voll, zurück langsamer (60 %), zur Seite mit Seitschritten (50 %); rennen nur nach vorn
             const rv = st > 0.01 ? (dx * Math.sin(H) + dz * Math.cos(H)) / st : 1, rs2 = Math.max(0, 1 - rv * rv);
             const fV = !STRAFE ? 1 : rv >= 0 ? rv * rv + rs2 * 0.5 : rv * rv * 0.6 + rs2 * 0.5;
-            const vZiel = st > 0.01 ? Math.min(1, st) * (sprint && (!STRAFE || rv > 0.7) ? JOGG : GEH) * fV : 0, zx = st > 0.01 ? dx / st * vZiel : 0, zz = st > 0.01 ? dz / st * vZiel : 0;
+            const vZiel = st > 0.01 ? Math.min(1, st) * (sprint && (!STRAFE || rv > 0.7) ? JOGG : GEH_V) * fV : 0, zx = st > 0.01 ? dx / st * vZiel : 0, zz = st > 0.01 ? dz / st * vZiel : 0;
             gegenEingabe = st > 0.01 && gehV > 0.05 && (dx / st * gehDx + dz / st * gehDz) < -0.3;
             const kv = Math.min(1, dt * (vZiel > gehV ? 9 : 12)); gehVx += (zx - gehVx) * kv; gehVz += (zz - gehVz) * kv; gehV = Math.hypot(gehVx, gehVz);
             if (gehV < 0.02 && !vZiel) gehV = gehVx = gehVz = 0;
@@ -2102,7 +2163,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           if (schrittL > 0.012 && !gang && vGlatt < 0.3 && (!(gehX || gehY) || gegenEingabe || zugJetzt < 0.5)) {   // 17.11. abends: auch beim Drehen im Stand (kein Schritt am Platz, die Füße tippeln mit)
             schrittL = 0; gehV = gehVx = gehVz = 0; haltSperre = 0.25; }
           // Schrittweite je Richtung (17.11. nachts, Steuerung wie im Spiel): vor wie bisher, zurück 80 %, Seitschritte kurz (rund 13 cm, die Füße gehen auseinander und wieder zusammen)
-          else schrittL += ((vGlatt > 0.08 && !(haltSperre > 0) && !(!STRAFE && !warLauf && Math.abs(winkelDiff(H, zielH)) > 0.6) && !(zugJetzt < 0.5 && vGlatt < 0.3) ? (STRAFE ? gangV * gangV * SCHRITT * klemme(vGlatt / GEH, 0.55, 1.65) * (gangV < 0 ? 0.8 : 1) + gangS2 * 0.13 * klemme(vGlatt / 0.75, 0.6, 1.25) : SCHRITT * klemme(vGlatt / GEH, 0.55, 1.65)) * Math.min(klemme(1 - drehT / 5, 0.45, 1), klemme(1 - Math.abs(winkelDiff(H, zielH)) / 1.6, 0.4, 1)) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo: Gehen rund 125, Joggen rund 145 Schritte pro Minute
+          else schrittL += ((vGlatt > 0.08 && !(haltSperre > 0) && !(!STRAFE && !warLauf && Math.abs(winkelDiff(H, zielH)) > 0.6) && !(zugJetzt < 0.5 && vGlatt < 0.3) ? (STRAFE ? gangV * gangV * SCHRITT * klemme(vGlatt / GEH, 0.55, 2.0) * (gangV < 0 ? 0.8 : 1) + gangS2 * 0.13 * klemme(vGlatt / 0.75, 0.6, 1.25) : SCHRITT * klemme(vGlatt / GEH, 0.55, 2.0)) * Math.min(klemme(1 - drehT / 5, 0.45, 1), klemme(1 - Math.abs(winkelDiff(H, zielH)) / 1.6, 0.4, 1)) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo (Takt aus dem Weg, die Füße rutschen nicht): seit 19.11.2026 (Devin: „schneller, sauber, flüssig“) Gehen 2,2 m/s mit rund 125, Rennen 4 m/s mit rund 165 Schritten pro Minute
           if (schrittL > 0.012 && weg < 1 && !versetzt) ph += Math.PI * weg / Math.max(0.25, 2 * schrittL);   // Takt aus dem Weg: die Füße schaffen genau den Weg
         } else {
           H += winkelDiff(H, zielH) * Math.min(1, dt * 11);
@@ -2269,7 +2330,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           if (d < 1.15) zurPrTuer();
           if (na !== naheTuer) { naheTuer = na; stand(); }
         }
-        a.figur.stelle(gelenke(pose)); if (a.figur.glut) a.figur.glut(0);
+        a.figur.stelle(mitFaust(gelenke(pose), pose)); if (a.figur.glut) a.figur.glut(0);
         if (hupf > 0) { hupf = Math.max(0, hupf - dt / 0.62); const u = 1 - hupf; a.figur.gruppe.position.y = Math.sin(u * Math.PI) * 0.62; } else a.figur.gruppe.position.y = 0;
         if (namensTafel) namensTafel.position.y = 2.2 + a.figur.gruppe.position.y;
         legeHalle(F, 0);
@@ -2291,7 +2352,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     } else if (modus === 'station' && orbit) {
       if (orbitZiel != null) { const d = winkelDiff(orbit.w, orbitZiel); orbit.w += d * (STILL ? 1 : Math.min(1, dt * 3)); if (Math.abs(d) < 0.01) orbitZiel = null; }   // Coach DK erklärt: die Kamera dreht zur besten Seite
       orbit.heben += (orbit.hebenZiel - orbit.heben) * (STILL ? 1 : 1 - Math.exp(-dt * 7));   // Karte unten: der Blick hebt sich zur Figur, die Kamera geht ein Stück mit
-      const p = umlaufKamera(halle, { mitte: orbit.mitte, r: orbit.r, w: orbit.w, y: orbit.y + orbit.heben * 0.35, fov: orbit.fov }); K.pos.set(p.x, p.y, p.z); K.blick.copy(orbit.mitte); K.blick.y += orbit.heben; if (p.fov) K.fov = p.fov;   // an der Wand rückt die Kamera näher heran, die Sicht weitet sich, die Figur bleibt gleich groß
+      // Zoom zur Bewegung (19.11.2026): je näher, desto mehr geht das Ziel von der Mitte (für die Karte etwas tiefer) zur Bewegung; die Höhe der Kamera über dem Ziel schrumpft mit, der Blickwinkel bleibt
+      let mitteJetzt = orbit.mitte, yJetzt = orbit.y;
+      if (orbit.beweg) {
+        const r0 = orbit.r0 || orbit.r, nah = Math.min(r0, orbit.rNah), u = glatt(klemme((r0 * 0.92 - orbit.r) / Math.max(0.05, r0 * 0.92 - nah), 0, 1));
+        mitteJetzt = orbit.mitte0.clone().lerp(orbit.beweg, u); yJetzt = mitteJetzt.y + (orbit.y - orbit.mitte0.y) * Math.max(0.2, orbit.r / r0);
+      } else if (orbit.r0 && orbit.r < orbit.r0) yJetzt = orbit.mitte.y + (orbit.y - orbit.mitte.y) * Math.max(0.35, orbit.r / orbit.r0);   // Waage, Spiegel: nah heran, ohne steil von oben
+      const p = umlaufKamera(halle, { mitte: mitteJetzt, r: orbit.r, w: orbit.w, y: yJetzt + orbit.heben * 0.35, fov: orbit.fov }); K.pos.set(p.x, p.y, p.z); K.blick.copy(mitteJetzt); K.blick.y += orbit.heben; if (p.fov) K.fov = p.fov;   // an der Wand rückt die Kamera näher heran, die Sicht weitet sich, die Figur bleibt gleich groß
     } else if (tuerSicht) {
       const z = vorTuer(), k = 1 - Math.exp(-dt * 4);   // draußen vor der Tür: die Kamera bleibt, bis die Figur hineingeht
       K.pos.lerp(z.pos, k); K.blick.lerp(z.blick, k); K.fov += (z.fov - K.fov) * k;
@@ -2344,7 +2411,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     tuerEin += (tuerEinZiel - tuerEin) * (STILL ? 1 : 1 - Math.exp(-dt * 3.4));   // Eingang: die Flügel schwingen nach innen auf
     const te = glatt(klemme(tuerEin, 0, 1)); for (const e of eingangFl) e.g.rotation.y = -e.s * te * 1.75;
     if (bodenSp) bodenSp.zeichne(a.renderer, szene, a.kamera);   // Live-Gym: das Spiegelbild im Marmorboden
-    spiegelF.zeichne(a.renderer, szene, a.kamera);   // das Spiegelbild für dieses Bild (nur wenn der Spiegel im Bild ist)
+    spiegelOpt.skala = spiegelAktiv ? 1 : 0.6; spiegelF.zeichne(a.renderer, szene, a.kamera);   // das Spiegelbild für dieses Bild (nur wenn der Spiegel im Bild ist)
   };
 
   /* ---------- Los: erst die ganze Halle von hoch oben, dann läuft die Figur durch die Tür hinein ---------- */
