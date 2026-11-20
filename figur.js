@@ -1442,9 +1442,23 @@ function umgebung(renderer, a, b) {
 // seinem Weg (mittlere quadratische Abweichung): Was sich bewegt, zieht die Mitte zu sich (Hände beim Curl, Hüfte und Knie bei der Kniebeuge, der Kopf bei Nackenübungen); ruhende
 // Gelenke zählen wenig mit, bei Halteübungen bleibt es so in der Körpermitte. groesse: wie groß der Bereich ist, in dem sich die stark bewegten Gelenke aufhalten (m), daraus der Mindestabstand.
 // Nur die Pose der Vorlage, ohne props (keine Geräte, keine Nebenwirkung). Koordinaten der Übung (Figur im Ursprung)
-export function bewegungsMitte(animation, zustand, n = 16) {
+// Fokus je Hauptmuskel (20.11.2026): Gewicht je Gelenkgruppe. Drücken: Schultern, Ellbogen, Hände; Ziehen: Schultern und Ellbogen; Bizeps und Trizeps: Ellbogen und Hände;
+// Beine: Knie und Hüfte; Waden: Knöchel; Rumpf: Brust und Becken; Nacken: Kopf
+const FOKUS = {
+  brust: { schulter: 1, ellbogen: 1, hand: 0.6, brust: 0.6 },
+  schulter_vorne: { schulter: 1, ellbogen: 1, hand: 0.5 }, schulter_seite: { schulter: 1, ellbogen: 1, hand: 0.5 }, schulter_hinten: { schulter: 1, ellbogen: 1, hand: 0.5 },
+  trizeps: { ellbogen: 1, hand: 0.8, schulter: 0.4 }, bizeps: { ellbogen: 1, hand: 0.8, schulter: 0.3 }, unterarme: { hand: 1, ellbogen: 0.6 },
+  lat: { schulter: 1, ellbogen: 1, hand: 0.4, brust: 0.4 }, oberer_ruecken: { schulter: 1, ellbogen: 1, hand: 0.4, brust: 0.4 },
+  trapez: { schulter: 1, kopf: 0.4, brust: 0.3 }, nacken: { kopf: 1, schulter: 0.2 },
+  quadrizeps: { knie: 1, becken: 0.6, knoechel: 0.3 }, gesaess: { becken: 1, knie: 0.6 }, beinbeuger: { knie: 0.8, becken: 0.8 },
+  adduktoren: { becken: 0.8, knie: 0.8 }, abduktoren: { becken: 0.8, knie: 0.8 }, waden: { knoechel: 1, knie: 0.3 },
+  bauch: { brust: 1, becken: 0.8, schulter: 0.5, kopf: 0.3 }, seitlicher_rumpf: { brust: 1, becken: 1, schulter: 0.4 }, unterer_ruecken: { brust: 0.8, becken: 1, schulter: 0.3 },
+};
+const PUNKT_GRUPPE = ['kopf', 'kopf', 'brust', 'becken', 'hand', 'hand', 'ellbogen', 'ellbogen', 'knie', 'knie', 'knoechel', 'knoechel', 'schulter', 'schulter'];
+// muskeln (Hauptmuskeln der Übung): mit Fokus. Gewicht = Fokus × (0,15 + 0,85 × Weg im Verhältnis zum meistbewegten Fokuspunkt); ohne Muskeln wie bisher (Schultern zählen dann nicht)
+export function bewegungsMitte(animation, zustand, n = 16, muskeln = null) {
   // Kopf als Stirn und Scheitel: der Kopf dreht um den Hals, sein Gelenkpunkt selbst wandert dabei kaum (Nackenübungen)
-  const punkte = (g) => [V(0, 0, 0.1).applyQuaternion(g.kopfQ).add(g.kopf), V(0, 0.1, 0).applyQuaternion(g.kopfQ).add(g.kopf), g.brust, g.becken, g.hand.l, g.hand.r, g.ellbogen.l, g.ellbogen.r, g.knie.l, g.knie.r, g.knoechel.l, g.knoechel.r];
+  const punkte = (g) => [V(0, 0, 0.1).applyQuaternion(g.kopfQ).add(g.kopf), V(0, 0.1, 0).applyQuaternion(g.kopfQ).add(g.kopf), g.brust, g.becken, g.hand.l, g.hand.r, g.ellbogen.l, g.ellbogen.r, g.knie.l, g.knie.r, g.knoechel.l, g.knoechel.r, g.schulter.l, g.schulter.r];
   const reihen = [];
   try { for (let i = 0; i < n; i++) { const e = animation.pose(i / n, zustand); if (!e || !e.pose) return null; reihen.push(punkte(gelenke(e.pose)).map((p) => p.clone())); } } catch (e) { return null; }
   const k = reihen[0].length, mittel = [], streu = [];
@@ -1453,13 +1467,16 @@ export function bewegungsMitte(animation, zustand, n = 16) {
     let s = 0; for (const r of reihen) s += r[j].distanceToSquared(m); mittel.push(m); streu.push(s / n);
   }
   // Ruhende Gelenke zählen je ein Zwanzigstel des am meisten bewegten mit (Halteübung, alles ruht: Mitte der Gelenke)
-  const sMax = Math.max(...streu), eps = Math.max(0.05 * sMax, 1e-5), gew = streu.map((s) => s + eps), mitte = V(); let summe = 0;
+  const fokus = PUNKT_GRUPPE.map((gr) => (muskeln || []).reduce((a, m) => a + ((FOKUS[m] || {})[gr] || 0), 0)), mitFokus = fokus.some((x) => x > 0);
+  const sMax = Math.max(...streu.slice(0, 12)), eps = Math.max(0.05 * sMax, 1e-5), sMaxF = Math.max(1e-9, ...streu.filter((s, j) => fokus[j] > 0));
+  const gew = mitFokus ? streu.map((s, j) => fokus[j] * (0.15 + 0.85 * s / sMaxF)) : streu.map((s, j) => (j < 12 ? s + eps : 0)), mitte = V(); let summe = 0;
   for (let j = 0; j < k; j++) { mitte.addScaledVector(mittel[j], gew[j]); summe += gew[j]; }
   mitte.divideScalar(summe);
   const wMax = Math.max(...gew), box = new THREE.Box3();
-  for (let j = 0; j < k; j++) if (gew[j] >= wMax * 0.25) for (const r of reihen) box.expandByPoint(r[j]);
+  const fMax = Math.max(...fokus);
+  for (let j = 0; j < k; j++) if (mitFokus ? fokus[j] >= fMax * 0.25 : gew[j] >= wMax * 0.25) for (const r of reihen) box.expandByPoint(r[j]);
   const gr = box.getSize(V());
-  return { mitte, groesse: Math.max(0.3, gr.x, gr.y, gr.z) };
+  return { mitte, groesse: Math.max(mitFokus ? 0.45 : 0.3, gr.x, gr.y, gr.z) };
 }
 // Saunahut im Ablauf vor der Übung: mit eigenen Geräten durchgehen (die Szene bleibt, wie sie ist), damit Vorschaubild und Live-Ansicht
 // dasselbe zeigen. Taucht der Hut irgendwo in ein Gerät (Latzug-Stange beim Hinsetzen, Schulterpolster …), bleibt er für die Übung weg
@@ -1830,7 +1847,7 @@ export class Ansicht {
     if (this.effekte) mitte.y -= radius * 0.16;
     this.ziel.copy(mitte); this.basisAbstand = ab;
     // Mitte der Bewegung und wie nah man heran darf: so nah, dass die ganze Bewegung noch ins Bild passt (19.11.2026)
-    const bw = bewegungsMitte(animation, this.zustand);
+    const bw = bewegungsMitte(animation, this.zustand, 16, muskeln);
     this.bewegMitte = bw ? bw.mitte : null; this.bewegGroesse = bw ? bw.groesse : null; this.bewegNah = bw ? Math.max(0.5, Math.min(ab * 0.5, bw.groesse * 0.75 / Math.tan(Math.min(fov, hFov) / 2))) : Math.min(ab * 0.55, 0.95);
     if (this.steuerung) { this.steuerung.target.copy(mitte); this.steuerung.minDistance = this.bewegNah; this.steuerung.maxDistance = ab * 1.8; }
     const richt = (animation.kameraRicht || V(0.62, 0.32, 0.72)).clone().normalize();
