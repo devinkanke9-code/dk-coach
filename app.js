@@ -1167,6 +1167,7 @@ function ansichtInfo() {
       sitzungen()[ko.id] ? h('button', { class: 'knopf klein', type: 'button', text: 'Nach neuem Plan suchen', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; b.textContent = 'Suche …'; const r = await standHolen(true); if (r !== 'neu') { b.disabled = false; b.textContent = 'Nach neuem Plan suchen'; toast(r === 'aktuell' ? 'Dein Plan ist aktuell.' : r === 'offline' || r === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Gerade nicht möglich. Bitte später nochmal.'); } else toast('Neuer Stand von Devin ist da'); } }) : null,
       h('button', { class: 'knopf klein', type: 'button', onclick: abmelden, text: 'Abmelden' })) : null,
     mitZugang ? uebergabeKarte() : null,
+    feedbackBlock(),   // Feedback an Devin (20.11.2026)
     installKarte(true),
     gefuehlBlock(),
     farbBlock(),
@@ -1286,7 +1287,70 @@ function tauschBlatt(u) {
       const d = UEBUNGEN[a.i];
       return h('button', { class: 'eintrag', type: 'button', onclick: () => { tauschen(u.tausch, a.i); schliesseBlatt(); toast('Getauscht: ' + d.n); zeichne(); } },
         h('b', { text: d.n + (a.orig ? ' (wie im Plan)' : '') }), h('span', { class: 'leise klein', text: (d.m || []).map((m) => MUSKEL[m] || m).join(', ') }));
-    }))]);
+    })),
+    h('button', { class: 'knopf', type: 'button', onclick: () => feedbackBlatt({ u }), text: 'Nichts passt? Devin Bescheid sagen' })]);   // Feedback an Devin (20.11.2026)
+}
+/* ---------- Feedback an Devin (20.11.2026, Devin: „Feedback-Button … das gibt es hier nicht im Fitnessstudio … wird mir über Gmail geschickt“) ----------
+   Ohne Feedback-Skript öffnet sich die Mail-App fertig ausgefüllt an KONTAKT.mail (wie „Per E-Mail an Devin“ beim Training), der Kunde tippt nur noch auf Senden.
+   Mit Feedback-Skript (kontakt.json → feedback_skript) geht es direkt in Devins Gmail, ohne Mail-App. Die Zeile DK-Feedback:…:Ende kann die Trainer-Seite später lesen. */
+const FB_ARTEN = [['geraet', 'Gerät gibt es hier nicht'], ['unklar', 'Übung ist unklar'], ['anderes', 'Etwas anderes']];
+const FB_PLATZ = { geraet: 'Zum Beispiel: Bei uns gibt es dafür eine Pendel-Kniebeuge.', unklar: 'Was ist dir unklar?', anderes: 'Deine Idee oder dein Problem …' };
+let FB_ZULETZT = 0;
+function feedbackWer() { const ko = aktivesKonto(); return ko && ko.n ? ko.n : ''; }   // nur eingeloggt: Name aus dem Zugang
+function feedbackText(f) {
+  const ko = aktivesKonto(), p = S.plan, art = (FB_ARTEN.find((a) => a[0] === f.art) || FB_ARTEN[2])[1];
+  const z = ['DK Feedback · ' + (feedbackWer() || (p && p.n ? 'Plan ' + p.n + ', nicht eingeloggt' : 'ohne Plan')), new Date().toLocaleString('de-DE'), '', 'Worum es geht: ' + art];
+  if (f.u) z.push('Übung: ' + anzeigeName(f.u));
+  if (f.ti != null && p && p.t && p.t[f.ti]) z.push('Training ' + (f.ti + 1) + ' · ' + p.t[f.ti].n);
+  z.push('', f.text || '(ohne Text)', '', 'Code für ' + KONTAKT.marke + ' (nicht ändern):',
+    'DK-Feedback:' + zuB64(new TextEncoder().encode(JSON.stringify({ v: 1, a: f.art, u: f.u ? f.u.id : null, t: f.text || '', k: ko ? ko.id : null, s: STAND }))) + ':Ende');
+  return z.join('\n');
+}
+function feedbackBetreff(f) { const art = (FB_ARTEN.find((a) => a[0] === f.art) || FB_ARTEN[2])[1]; return 'Feedback für ' + KONTAKT.marke + ': ' + art + (f.u ? ' · ' + anzeigeName(f.u) : ''); }
+const feedbackMailLink = (f) => 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(feedbackBetreff(f)) + '&body=' + encodeURIComponent(feedbackText(f).replace(/\n/g, '\r\n'));
+async function feedbackPost(daten) {   // wie briefPost: JSON als Text, keine Cookies, nichts in der Adresse
+  const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 20000);
+  try {
+    const r = await fetch(KONTAKT.feedback, { method: 'POST', body: JSON.stringify(daten), cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
+    if (!r.ok) return { ok: false };
+    try { const j = JSON.parse(await r.text()); return j && j.ok === true ? j : { ok: false }; } catch (e) { return { ok: false }; }
+  } catch (e) { return { ok: false }; } finally { clearTimeout(uhr); }
+}
+function feedbackBlatt(f = {}) {
+  const st = { art: f.u ? 'geraet' : 'anderes', text: '' }, direkt = !!KONTAKT.feedback, jetzt = () => Object.assign({}, f, st);
+  const feld = h('textarea', { class: 'eingabe', rows: '4', maxlength: '600', 'aria-label': 'Was soll Devin wissen?' });
+  const wahl = h('div', { class: 'fs-wahl fb-wahl', role: 'group', 'aria-label': 'Worum geht es?' });
+  const senden = direkt ? h('button', { class: 'knopf haupt', type: 'button', text: 'An Devin senden' }) : h('a', { class: 'knopf haupt', href: feedbackMailLink(jetzt()), text: 'An Devin senden' });
+  const neu = () => {
+    wahl.replaceChildren(...FB_ARTEN.map(([w, n]) => h('button', { class: 'fs-wahl-knopf', type: 'button', 'aria-pressed': String(st.art === w), onclick: () => { st.art = w; neu(); }, text: n })));
+    feld.placeholder = FB_PLATZ[st.art];
+    if (!direkt) senden.href = feedbackMailLink(jetzt());
+  };
+  feld.addEventListener('input', () => { st.text = feld.value.trim().slice(0, 600); if (!direkt) senden.href = feedbackMailLink(jetzt()); });
+  senden.addEventListener('click', async (e) => {
+    if (!direkt) { setTimeout(() => { schliesseBlatt(); toast('Deine Mail-App ist offen. Tippe dort auf Senden.'); }, 400); return; }
+    e.preventDefault();
+    if (Date.now() - FB_ZULETZT < 30000) { toast('Gerade gesendet. Bitte kurz warten.'); return; }
+    senden.disabled = true; senden.textContent = 'Sende …';
+    const r = navigator.onLine === false ? { ok: false } : await feedbackPost({ a: 'feedback', betreff: feedbackBetreff(jetzt()), text: feedbackText(jetzt()) });
+    if (r.ok) { FB_ZULETZT = Date.now(); schliesseBlatt(); toast('Danke! Devin hat dein Feedback.'); return; }
+    senden.disabled = false; senden.textContent = 'An Devin senden';
+    location.href = feedbackMailLink(jetzt()); toast('Direkt ging gerade nicht. Deine Mail-App ist offen, tippe dort auf Senden.');
+  });
+  const tauschen = f.u && f.u.tausch && !(LAUF && LAUF.phase !== 'fertig') && tauschOptionen(f.u).length;
+  oeffneBlatt('Feedback an Devin', f.u ? 'Zu: ' + anzeigeName(f.u) : 'Fehlt ein Gerät, ist etwas unklar oder hast du eine Idee?', [
+    h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Worum geht es?' }), wahl),
+    h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Was soll Devin wissen? (freiwillig)' }), feld),
+    senden,
+    h('p', { class: 'leise klein', text: (direkt ? 'Geht direkt an Devin.' : 'Deine Mail-App öffnet sich fertig ausgefüllt. Tippe dort nur noch auf Senden.') + (feedbackWer() ? ' Dein Name aus dem Plan steht dabei.' : '') }),
+    tauschen ? h('button', { class: 'knopf', type: 'button', onclick: () => tauschBlatt(f.u), text: 'Lieber gleich eine andere Übung wählen' }) : null
+  ]);
+  neu();
+}
+function feedbackBlock() {
+  return h('section', { class: 'block' }, h('h2', { text: 'Feedback an Devin' }),
+    h('p', { class: 'leise klein', text: 'Fehlt in deinem Studio ein Gerät, ist eine Übung unklar oder hast du eine Idee? Schreib es Devin. Bei einer Übung geht das auch direkt über „Gibt es hier nicht? Feedback“.' }),
+    h('button', { class: 'knopf', type: 'button', onclick: () => feedbackBlatt({}), text: 'Feedback schreiben' }));
 }
 function oeffneUebung(u, ti) {
   const d = u.d, p = S.plan;
@@ -1302,7 +1366,8 @@ function oeffneUebung(u, ti) {
     angepasstBlock(angepasst(p, u)), fuerDichBlock(u),
     abschnitt('So geht’s', d.t), abschnitt('Typische Fehler', d.f),
     d.v && d.v.length ? h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Vorsicht' }), h('p', { text: d.v.join(' ') })) : null,
-    !(LAUF && LAUF.phase !== 'fertig') && tauschOptionen(u).length ? h('button', { class: 'knopf', type: 'button', onclick: () => tauschBlatt(u), text: 'Gerät nicht da? Tauschen' }) : null
+    !(LAUF && LAUF.phase !== 'fertig') && tauschOptionen(u).length ? h('button', { class: 'knopf', type: 'button', onclick: () => tauschBlatt(u), text: 'Gerät nicht da? Tauschen' }) : null,
+    h('button', { class: 'knopf', type: 'button', onclick: () => feedbackBlatt({ u, ti }), text: 'Gibt es hier nicht? Feedback' })   // Feedback an Devin (20.11.2026)
   ], () => b.weg());
   b.zeige(d);
 }

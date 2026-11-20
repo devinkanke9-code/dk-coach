@@ -308,6 +308,8 @@ html.dk-wellen-an[data-look="sport"] body { background: transparent; }
 .fs-wahl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--reihe); border: 1px solid var(--rand-weich); }
 .fs-wahl-knopf { min-width: 0; min-height: 44px; padding: 0 4px; border: 0; border-radius: 12px; background: none; color: var(--text2); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .2s var(--sanft), color .2s var(--sanft); }
 .fs-wahl-knopf[aria-pressed="true"] { background: var(--knopf-voll); color: var(--auf-voll); }
+.fb-wahl { grid-template-columns: 1fr; }   /* Feedback an Devin (20.11.2026): drei Antworten untereinander */
+.fb-wahl .fs-wahl-knopf { text-align: left; padding: 0 14px; }
 .fs-zeit { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px; }
 .fs-zeit-text { display: grid; justify-items: center; text-align: center; gap: 2px; min-width: 0; }
 .fs-zeit-text b { font-size: 20px; font-weight: 700; line-height: 1.2; }

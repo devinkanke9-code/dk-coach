@@ -237,9 +237,9 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
   const zeichne = (renderer, szene, kamera) => {
     const jetzt = performance.now(), takt = jetzt - letzt; letzt = jetzt;
     let drinnen = true; try { drinnen = !opt.innen || !!opt.innen(); } catch (e) { ausgefallen = true; uni.tSpiegel.value = null; }   // ein Fehler hier darf den Bildlauf nicht anhalten; der Spiegel bleibt dunkles Glas
-    if (!opt.ohneBremse && bremse.messe(takt, letzteMitSpiegel) === 2) uni.tSpiegel.value = null;   // dauerhaft zu langsam: der Spiegel bleibt dunkles Glas (der Boden hat seine eigene Stufenregel)
+    if (!opt.ohneBremse && !opt.voll && bremse.messe(takt, letzteMitSpiegel) === 2) uni.tSpiegel.value = null;   // dauerhaft zu langsam: der Spiegel bleibt dunkles Glas (der Boden hat seine eigene Stufenregel)
     letzteMitSpiegel = false;
-    if (ausgefallen || bremse.aus || !drinnen || !opt.skala) return false;   // von außen (Einstiegsflug) liegt der Spiegel hinter der Wand
+    if (ausgefallen || (bremse.aus && !opt.voll) || !drinnen || !opt.skala) return false;   // von außen (Einstiegsflug) liegt der Spiegel hinter der Wand
     const alt = renderer.getRenderTarget(), schatten = renderer.shadowMap.autoUpdate; renderer.getViewport(vp);
     try {
       kamera.updateMatrixWorld(); kamera.matrixWorldInverse.copy(kamera.matrixWorld).invert();
@@ -250,14 +250,14 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
       view.subVectors(refPos, camPos);
       if (view.dot(normal) > 0) return false;   // die Kamera steht hinter dem Spiegel
       renderer.getDrawingBufferSize(gr);
-      const bw = Math.max(64, Math.round(gr.x * opt.skala * bremse.skala)), bh = Math.max(64, Math.round(gr.y * opt.skala * bremse.skala)), pr = renderer.getPixelRatio();
+      const bs = opt.voll ? 1 : bremse.skala, bw = Math.max(64, Math.round(gr.x * opt.skala * bs)), bh = Math.max(64, Math.round(gr.y * opt.skala * bs)), pr = renderer.getPixelRatio();   // opt.voll (20.11.): beim Posen ohne Bremse
       if (!fb || fbB !== bw || fbH !== bh) { if (fb) fb.dispose(); fb = new THREE.FramebufferTexture(bw, bh); fb.minFilter = fb.magFilter = THREE.LinearFilter; fbB = bw; fbH = bh; uni.tSpiegel.value = fb; }   // 19.11.2026: weich gefiltert (FramebufferTexture nimmt sonst den nächsten Bildpunkt, Devin: „der Spiegel ist richtig pixelig“)
       view.reflect(normal).negate(); view.add(refPos);
       rot.extractRotation(kamera.matrixWorld);
       look.set(0, 0, -1).applyMatrix4(rot).add(camPos);
       ziel.subVectors(refPos, look); ziel.reflect(normal).negate(); ziel.add(refPos);
       virt.position.copy(view); virt.up.set(0, 1, 0).applyMatrix4(rot).reflect(normal); virt.lookAt(ziel);
-      virt.far = kamera.far; virt.near = kamera.near; virt.updateMatrixWorld(); virt.projectionMatrix.copy(kamera.projectionMatrix);
+      virt.far = kamera.far; virt.near = kamera.near; virt.updateMatrixWorld(); virt.projectionMatrix.copy(kamera.projectionMatrix); virt.layers.mask = opt.nurDrinnen ? 1 : kamera.layers.mask;
       uni.textureMatrix.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
       uni.textureMatrix.value.multiply(virt.projectionMatrix).multiply(virt.matrixWorldInverse).multiply(mesh.matrixWorld);
       // schräge Nahebene: Alles hinter dem Spiegel (die Wand, draußen) bleibt weg
@@ -267,7 +267,7 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
       q.x = (Math.sign(klipp.x) + pm.elements[8]) / pm.elements[0]; q.y = (Math.sign(klipp.y) + pm.elements[9]) / pm.elements[5]; q.z = -1; q.w = (1 + pm.elements[10]) / pm.elements[14];
       klipp.multiplyScalar(2 / klipp.dot(q));
       pm.elements[2] = klipp.x; pm.elements[6] = klipp.y; pm.elements[10] = klipp.z + 1 - 0.003; pm.elements[14] = klipp.w;
-      mesh.visible = false; renderer.shadowMap.autoUpdate = false; renderer.setRenderTarget(null); renderer.setViewport(0, 0, bw / pr, bh / pr);
+      uni.tSpiegel.value = fb; mesh.visible = false; renderer.shadowMap.autoUpdate = false; renderer.setRenderTarget(null); renderer.setViewport(0, 0, bw / pr, bh / pr);
       renderer.render(szene, virt);
       if (neueFolge) renderer.copyFramebufferToTexture(fb, ursprung); else renderer.copyFramebufferToTexture(ursprung, fb);   // die Reihenfolge der Argumente hängt von der three-Fassung ab (hier r160: Ort, Textur)
       letzteMitSpiegel = true;
@@ -472,7 +472,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       for (let k = 0; k < 2600; k++) { x.fillStyle = 'rgba(255,240,210,' + (ruheL(k, 13) * 0.06).toFixed(3) + ')'; x.fillRect(ruheL(k, 14) * b, ruheL(k, 15) * h, 1.5, 1.5); }
     }));
     marmor.wrapS = marmor.wrapT = THREE.RepeatWrapping; marmor.anisotropy = 8;   // ungewandelt (wie das Spiegelbild schon im Farbraum des Bildschirms)
-    bodenSp = spiegelFlaeche(THREE, BREITE, LAENGE, bodenOpt = { skala: 0.5, ohneBremse: true, innen: () => K.pos.y < WAND && K.pos.x > -BREITE / 2 && K.pos.x < BREITE / 2 && K.pos.z < zAnfang && K.pos.z > zEnde,
+    bodenSp = spiegelFlaeche(THREE, BREITE, LAENGE, bodenOpt = { skala: 0.5, ohneBremse: true, nurDrinnen: true, innen: () => K.pos.y < WAND && K.pos.x > -BREITE / 2 && K.pos.x < BREITE / 2 && K.pos.z < zAnfang && K.pos.z > zEnde,
       uni: { marmor: { value: marmor }, wdh: { value: new THREE.Vector2(BREITE / 5, LAENGE / 5) }, an: { value: 1 }, glanzStark: { value: 0.62 } },
       stoff: (uni) => new THREE.ShaderMaterial({ uniforms: uni, fog: false, toneMapped: false,
         vertexShader: 'uniform mat4 textureMatrix; varying vec4 vT; varying vec2 vU; varying vec3 vW; void main(){ vT = textureMatrix * vec4(position, 1.0); vU = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
@@ -1347,7 +1347,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let waageAktiv = false, waageGesperrt = false, waageZeit = 0, kreisSperre = null, kreisZeit = 0;
   // G19 (16.11., Vorgaben von 3D-Ablauf, Devin: „lass den Charakter viel natürlicher wirken“): Gehen 1,5 m/s, Joggen (Sprint, Weg zum Gerät) 2,6–2,8 m/s, Schritte aus dem zurückgelegten Weg,
   // Anlaufen und Anhalten weich, Drehen höchstens 265 °/s, im Stand Atmen und Gewichtsverlagerung
-  let gangX = 0, gangZ = -1, gangVX = 0, gangVZ = 0, haltSperre = 0, drehT = 0, zugJetzt = 1, gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, standLetzt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, GEH_V = 2.2, JOGG = 4.0, FV = V(0, 0, 0), LEINE = 0.07; const armVers = { l: { v: 0, y: 0, s: 0 }, r: { v: 0, y: 0, s: 0 } }; let armK = 0, armVor = 1, armVX = 0, armVZ = 0, armFX = null, armFZ = 0;   // lockerer Gang (18.11.)   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
+  let gangX = 0, gangZ = -1, gangVX = 0, gangVZ = 0, haltSperre = 0, drehT = 0, zugJetzt = 1, gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, standLetzt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, GEH_V = 2.2, JOGG = 4.0, FV = V(0, 0, 0), LEINE = 0.07; let selbstBewegt = false, kamWVor = null; /* Gang 3 (20.11.): selbstBewegt = in diesem Bild selbst gelaufen; kamWVor = Kamerawinkel im letzten Bild */ const armVers = { l: { v: 0, y: 0, s: 0 }, r: { v: 0, y: 0, s: 0 } }; let armK = 0, armVor = 1, armVX = 0, armVZ = 0, armFX = null, armFZ = 0;   // lockerer Gang (18.11.)   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
   function zurWaage() {
     if (!waage || modus === 'draussen' || waageAktiv || spiegelAktiv) return;
     tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
@@ -2013,7 +2013,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     schildL.append(zeichne(240, 120, (x, b) => { dkZeichen(x, b / 2, 44, 64, ST.logoA, ST.logoB); x.fillStyle = '#F5F1E7'; x.font = '600 21px ' + SCHRIFT; x.textAlign = 'center'; x.fillText('C O A C H', b / 2, 104); }));
     wurzel.append(schildL);
     const tastenL = el('div', 'live-tasten'); tastenL.setAttribute('aria-hidden', 'true');
-    for (const [k, t] of STRAFE ? [['WASD', 'Laufen'], ['Maus ziehen', 'Umsehen'], ['Shift', 'Rennen'], ['E', 'Starten'], ['TAB', 'Plan']] : [['Klick', 'Hingehen'], ['WASD', 'Laufen'], ['Shift', 'Rennen'], ['E', 'Starten'], ['TAB', 'Plan']]) { const z = el('span'); z.append(el('kbd', null, k), t); tastenL.append(z); }
+    for (const [k, t] of STRAFE ? [['WASD', 'Laufen'], ['Maus ziehen', 'Umsehen'], ['E', 'Starten'], ['TAB', 'Plan']] : [['Klick', 'Hingehen'], ['WASD', 'Laufen'], ['Shift', 'Rennen'], ['E', 'Starten'], ['TAB', 'Plan']]) { const z = el('span'); z.append(el('kbd', null, k), t); tastenL.append(z); }
     wurzel.append(tastenL);
     // Runde Karte: Halle, Geräte, Waage, Weg zum nächsten Gerät; dreht mit der Kamera (vorn ist oben), N zeigt zur Rückwand der Halle
     const kc = el('canvas', 'live-karte'); kc.setAttribute('aria-hidden', 'true'); wurzel.append(kc);
@@ -2047,17 +2047,34 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
      geht es eine Stufe runter (erst Schärfe, dann Bodenspiegel, zuletzt der Schein). Hoch geht es nicht von selbst: Bei 60 Hz sieht man Reserven nicht an den Bildabständen. ---------- */
   const leuchten = LOOKL ? leuchtenBauen(THREE) : null, DPR = window.devicePixelRatio || 1, FEIN = matchMedia('(pointer: fine)').matches;
   const QS = [{ pr: 1, boden: 0, schein: false }, { pr: 1.25, boden: 0, schein: true }, { pr: 1.5, boden: 0.3, schein: true }, { pr: 2, boden: 0.4, schein: true }, { pr: 2.5, boden: 0.5, schein: true }, { pr: 3, boden: 0.5, schein: true }];
-  let qStufe = FEIN ? 4 : 3, qSumme = 0, qN = 0, qFest = false;
+  let qStufe = FEIN ? 4 : 3, qSumme = 0, qN = 0, qFest = false, qSchlecht = 0, qAb = 0;
+  const qStart = { an: LOOKL, bild: 0, t0: 0, werte: [], runden: 0, richt: 0, px: new Uint8Array(4) };   // Grafik (20.11.): Start-Messung, siehe qStartBild
   const qAnwenden = () => {
     const q = QS[qStufe]; a.renderer.setPixelRatio(Math.max(0.75, Math.min(q.pr, FEIN ? Math.max(DPR, 1.25) : DPR))); a.groesse();
     if (bodenSp) { bodenOpt.skala = q.boden; bodenSp.mesh.material.uniforms.an.value = q.boden > 0 ? 1 : 0; }
     if (leuchten) leuchten.an = q.schein;
   };
   const qMessen = (dt) => {
-    if (!(dt > 0.002 && dt < 0.25) || document.hidden || qFest) return;
-    qSumme += dt; qN++; if (qSumme < 1.5) return;
+    if (!(dt > 0.002 && dt < 0.25) || document.hidden || qFest || qStart.an || performance.now() < qAb) return;   // Grafik (20.11.): nicht während der Start-Messung und 2 s danach
+    qSumme += Math.min(dt, 0.04); qN++; if (qSumme < 1.5) return;   // ein einzelner Ruckler (z. B. ein neues Teil kommt ins Bild) zählt höchstens 40 ms
     const mittel = qSumme / qN * 1000; qSumme = 0; qN = 0;
-    if (mittel > 18.8 && qStufe > 0) { qStufe--; qAnwenden(); }
+    qSchlecht = mittel > 18.8 ? qSchlecht + 1 : 0;
+    if (qSchlecht >= 2 && qStufe > 0) { qStufe--; qAnwenden(); qSchlecht = 0; }   // erst nach zwei langsamen Abschnitten hintereinander (rund 3 s)
+  };
+  // Grafik (20.11.2026, Devin: „ab iPhone X … bevor die überhaupt starten, kriegen die direkt die passende Grafikeinstellung“): In den ersten Sekunden misst das Gym, wie lange ein
+  // ganzes Bild wirklich braucht, Rechnen UND Grafikchip (am Ende des Bildes wird ein Bildpunkt gelesen, dann ist alles fertig gezeichnet). Nach 40 Bildern zum Aufwärmen je 6 Bilder:
+  // unter 8 ms eine Stufe höher (schärfer), über 24 ms eine tiefer (so gemessen arbeiten Rechnen und Grafikchip nacheinander statt gleichzeitig, 24 ms heißt im Spiel rund 40 Bilder pro Sekunde),
+  // dann noch einmal messen (höchstens 5 Runden, nach einem Schritt nach unten nie wieder hoch). Danach passt die laufende Messung weiter auf.
+  const qStartBild = () => {
+    if (qFest || document.hidden) { qStart.an = false; return; }
+    qStart.bild++; if (qStart.bild < 40) return;
+    const gl = a.renderer.getContext(); try { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, qStart.px); } catch (e) { qStart.an = false; return; }
+    qStart.werte.push(performance.now() - qStart.t0); if (qStart.werte.length < 6) return;
+    const w = qStart.werte.slice().sort((x, y) => x - y), m = (w[2] + w[3]) / 2; qStart.werte = []; qStart.runden++; qStart.letzt = m;
+    let neu = qStufe; if (m < 8 && qStart.richt >= 0 && qStufe < QS.length - 1) { neu++; qStart.richt = 1; } else if (m > 24 && qStufe > 0) { neu--; qStart.richt = -1; }
+    if (neu !== qStufe && qStart.runden < 5) { qStufe = neu; qAnwenden(); qStart.bild = 30; return; }   // nach dem Wechsel 10 Bilder Pause, dann neu messen
+    if (neu !== qStufe) { qStufe = neu; qAnwenden(); }
+    qStart.an = false; qAb = performance.now() + 2000;
   };
   // 17.11. (Devin: „flüssig auf schwächeren Smartphones“): Steht die Figur am Handy still und nichts fährt, wird nur jedes zweite Bild gerechnet (30 statt 60 pro Sekunde).
   // Atmen, Meer und Ringe laufen weiter, nur in halber Bildrate. Sobald etwas passiert (Knüppel, Laufen, Kamera, Station), sofort wieder volle Rate. Am PC nie.
@@ -2069,10 +2086,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     return sparBild;
   };
   { const malen = a.renderer.render.bind(a.renderer); a.renderer.render = (s, k) => { if (!sparBild) malen(s, k); }; }
-  if (LOOKL) { qAnwenden(); a.beiBild = () => { if (!sparBild) leuchten.zeichne(a.renderer); if (modus === 'station' && erkAn) erkHoehe(); if (erkBild) erkBild(); }; }
+  if (LOOKL) { qAnwenden(); a.beiBild = () => { if (!sparBild) leuchten.zeichne(a.renderer); if (modus === 'station' && erkAn) erkHoehe(); if (erkBild) erkBild(); if (!sparBild && qStart.an) qStartBild(); }; }
 
   a.kameraFolgt = (dtRoh) => {
     zaehler.bilder++; if (sparen(dtRoh)) return; zaehler.gerechnet++;
+    if (qStart.an) qStart.t0 = performance.now();   // Grafik (20.11.): Start-Messung
     const dt = dtRoh + spar; spar = 0;
     zeit += dt;
     if (liveKarte) liveKarte(dt);
@@ -2085,7 +2103,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       else if (nachWarte) { const f = nachWarte; nachWarte = null; f(); }
       if (aktiv == null) {
         if (gang) {
-          const vMax = gang.tempo || (LOOKL ? 3.2 : TEMPO); let vG = vMax; zugJetzt = 1;
+          const vMax = gang.tempo || (LOOKL ? JOGG : TEMPO); /* Gang 3 (20.11.): zum Gerät so schnell wie der Sprint (vorher 3,2 m/s) */ let vG = vMax; zugJetzt = 1;
           if (LOOKL && !STILL) {   // 17.11. (Fuß rutschte beim Losgehen und beim Ankommen bis 10 cm): auf dem Weg zum Gerät oder zum angetippten Punkt weich anlaufen (rund 0,4 s) und vor dem Ziel abbremsen
             let bis = 0, p = F; for (let j = gang.i; j < gang.punkte.length; j++) { bis += Math.hypot(gang.punkte[j].x - p.x, gang.punkte[j].z - p.z); p = gang.punkte[j]; }
             gang.v = Math.min(vMax, (gang.v || 0) + 7 * dt, Math.max(0.6, Math.sqrt(2 * 4 * bis))); vG = gang.v;
@@ -2109,7 +2127,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             // 17.11. nachts (wie im Spiel): Die Figur schaut, wohin du siehst. Vor geht voll, zurück langsamer (60 %), zur Seite mit Seitschritten (50 %); rennen nur nach vorn
             const rv = st > 0.01 ? (dx * Math.sin(H) + dz * Math.cos(H)) / st : 1, rs2 = Math.max(0, 1 - rv * rv);
             const fV = !STRAFE ? 1 : rv >= 0 ? rv * rv + rs2 * 0.5 : rv * rv * 0.6 + rs2 * 0.5;
-            const vZiel = st > 0.01 ? Math.min(1, st) * (sprint && (!STRAFE || rv > 0.7) ? JOGG : GEH_V) * fV : 0, zx = st > 0.01 ? dx / st * vZiel : 0, zz = st > 0.01 ? dz / st * vZiel : 0;
+            // Gang 3 (20.11.): immer Sprint, schon ab gut einem Drittel Knüppel-Ausschlag volles Tempo (Devin: „lieber den Sprinten die ganze Zeit anhaben“, die Kunden sollen nicht lange am Handy sitzen)
+            const vZiel = st > 0.01 ? Math.min(1, st / 0.35) * JOGG * (STRAFE ? 1 : fV) : 0, zx = st > 0.01 ? dx / st * vZiel : 0, zz = st > 0.01 ? dz / st * vZiel : 0;
             gegenEingabe = st > 0.01 && gehV > 0.05 && (dx / st * gehDx + dz / st * gehDz) < -0.3;
             const kv = Math.min(1, dt * (vZiel > gehV ? 9 : 12)); gehVx += (zx - gehVx) * kv; gehVz += (zz - gehVz) * kv; gehV = Math.hypot(gehVx, gehVz);
             if (gehV < 0.02 && !vZiel) gehV = gehVx = gehVz = 0;
@@ -2118,8 +2137,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             // 17.11. abends: erst drehen, dann gehen. Zeigt der Körper (noch) nicht dorthin, wohin es geht (Wende, Seitwärts, Rückwärts), kommt er kaum voran, bis er sich gedreht hat:
             // bis 30° voll, bei 60° halb, ab 90° fast nichts. Vorher lief er mit voller Geschwindigkeit quer zur Blickrichtung, und die Füße glitten seitlich über den Boden.
             // 17.11. nachts: Mit der Steuerung wie im Spiel dreht sich der Körper nicht mehr in die Laufrichtung, er geht seitwärts und rückwärts mit eigenen Schritten. Darum gilt das hier nur noch ohne sie.
-            const zug = zugJetzt = STRAFE ? 1 : gehV > 1e-4 ? klemme((Math.cos(winkelDiff(H, Math.atan2(gehDx, gehDz))) - 0.2) / 0.6, 0.08, 1) : 1;
-            F.x += gehVx * dt * zug; F.z += gehVz * dt * zug; zielH = STRAFE ? kamW + Math.PI : st > 0.01 ? Math.atan2(dx, dz) : Math.atan2(gehDx, gehDz); bewegt = gehV / GEH; dx = gehDx; dz = gehDz;
+            const zug = zugJetzt = gehV > 1e-4 ? klemme((Math.cos(winkelDiff(H, Math.atan2(gehDx, gehDz))) - 0.2) / 0.6, 0.08, 1) : 1;
+            F.x += gehVx * dt * zug; F.z += gehVz * dt * zug; zielH = st > 0.01 ? Math.atan2(dx, dz) : Math.atan2(gehDx, gehDz); selbstBewegt = true; bewegt = gehV / GEH; dx = gehDx; dz = gehDz;
           } else {
             const tempo = TEMPO * (LIVE && sprint ? 1.75 : 1);
             F.x += dx * tempo * dt; F.z += dz * tempo * dt; zielH = Math.atan2(dx, dz); bewegt = st * tempo / TEMPO;
@@ -2137,14 +2156,16 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           F.x = klemme(F.x, -BREITE / 2 + FIGUR_RAND, BREITE / 2 - FIGUR_RAND); F.z = klemme(F.z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND);
         }
       }
-      const ausStation = warAktiv; warAktiv = aktiv != null;   // zurück von Station, Waage oder Spiegel: wie versetzt (die Merker vom Hinlaufen gelten nicht mehr)
+      const ausStation = warAktiv; warAktiv = aktiv != null; const selbstBewegtJetzt = selbstBewegt; selbstBewegt = false;   // zurück von Station, Waage oder Spiegel: wie versetzt (die Merker vom Hinlaufen gelten nicht mehr)
       if (STRAFE && modus === 'gehen' && !gang && aktiv == null) {   // wie im Spiel: auch im Stand dreht die Figur mit dem Blick (Pfeiltasten links und rechts drehen ebenfalls); die Füße tippeln dabei mit
         if (tastenDreh) { kamW -= tastenDreh * 2.2 * dt; kamHand = performance.now(); }
-        zielH = kamW + Math.PI;
+        if (kamWVor == null) kamWVor = kamW;
+        if (!selbstBewegtJetzt) zielH += winkelDiff(kamWVor, kamW);   // Gang 3 (20.11.): im Stand dreht die Figur so weit mit, wie die Kamera dreht (das Mitschrauben der Beine bleibt)
+        kamWVor = kamW;
       }
       if (aktiv == null) {
         if (LOOKL) {
-          const w = winkelDiff(H, zielH), hVor = H; H += klemme(w * Math.min(1, dt * 10), -4.0 * dt, 4.0 * dt);   // G19: höchstens 230 °/s, weich
+          const w = winkelDiff(H, zielH), hVor = H, wMax = selbstBewegtJetzt ? 5.8 : 4.0; H += klemme(w * Math.min(1, dt * (selbstBewegtJetzt ? 13 : 10)), -wMax * dt, wMax * dt);   // G19: höchstens 230 °/s, weich; Gang 3: beim Laufen bis 330 °/s
           drehT += ((dt > 0.001 ? Math.abs(winkelDiff(hVor, H)) / dt : 0) - drehT) * Math.min(1, dt * 10);   // 17.11. abends: wie schnell sich der Körper gerade dreht (rad/s, geglättet)
           const ddx = F.x - FV.x, ddz = F.z - FV.z, weg = Math.hypot(ddx, ddz); FV.set(F.x, 0, F.z);
           // Kombitest 3D-Ablauf (16.11.): Versetzt (Zurück von der Station, Waage, Spiegel, PR-Tür, Start, Prüfseite) = weiter als Rennen in einem Bild schafft: kein Schritt, kein Anhalten,
@@ -2410,11 +2431,15 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const k = glatt(tuerOffen); fluegelL.position.x = -TUER_B / 4 - k * (TUER_B / 2 + 0.05); fluegelR.position.x = TUER_B / 4 + k * (TUER_B / 2 + 0.05);
     tuerEin += (tuerEinZiel - tuerEin) * (STILL ? 1 : 1 - Math.exp(-dt * 3.4));   // Eingang: die Flügel schwingen nach innen auf
     const te = glatt(klemme(tuerEin, 0, 1)); for (const e of eingangFl) e.g.rotation.y = -e.s * te * 1.75;
-    if (bodenSp) bodenSp.zeichne(a.renderer, szene, a.kamera);   // Live-Gym: das Spiegelbild im Marmorboden
-    spiegelOpt.skala = spiegelAktiv ? 1 : 0.6; spiegelF.zeichne(a.renderer, szene, a.kamera);   // das Spiegelbild für dieses Bild (nur wenn der Spiegel im Bild ist)
+    if (bodenSp) { if (bodenOpt.skala) bodenOpt.skala = spiegelAktiv ? Math.min(0.25, QS[qStufe].boden) : QS[qStufe].boden; bodenSp.zeichne(a.renderer, szene, a.kamera); }   // Live-Gym: das Spiegelbild im Marmorboden (beim Posen kleiner, Grafik 20.11.)
+    spiegelOpt.skala = spiegelAktiv ? 1 : 0.6; spiegelOpt.voll = spiegelAktiv; spiegelF.zeichne(a.renderer, szene, a.kamera);   // das Spiegelbild für dieses Bild (nur wenn der Spiegel im Bild ist)
   };
 
   /* ---------- Los: erst die ganze Halle von hoch oben, dann läuft die Figur durch die Tür hinein ---------- */
+  // Grafik (20.11.): Teile draußen vor der Halle (Palmen, Meer, Boote, Autos, Stadt) zeichnet der Marmorboden nicht mit (Ebene 2): man sieht sie dort kaum, spart rund ein Fünftel seiner Zeichenaufrufe.
+  // Die Kamera und der Wandspiegel sehen sie weiter. Danach alle Programme gleich am Anfang übersetzen (sonst ruckt es beim ersten Blick auf jedes neue Teil und die Messung denkt, das Handy sei zu langsam)
+  if (LOOKL && bodenSp) { szene.updateMatrixWorld(true); const c = V(); szene.traverse((o) => { if (!o.isMesh || o.isSkinnedMesh) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); c.copy(g.boundingSphere.center).applyMatrix4(o.matrixWorld); if (Math.abs(c.x) > BREITE / 2 + 0.2 || c.z > zAnfang + 0.2 || c.z < zEnde - 0.2) o.layers.set(2); }); a.kamera.layers.enable(2); }
+  if (LOOKL) { try { a.renderer.compile(szene, a.kamera); } catch (e) {} }
   stand();
   wegU.bis.value = 0;
   const ausPr = !!(abTuer && prT);   // zurück aus dem PR-Raum: Die Figur steht vor der Tür, ohne Einzug
@@ -2493,7 +2518,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const jubel = (klein, gross) => { if (!offen) return; funken(); pop(klein, gross); if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} } };
   const zugang = test ? { test: {   // nur für Prüfseiten (test: true): Figur und Kamera setzen, Stufe und Bildzeiten lesen
     setze(x, z, h, w, nick, zoom) { if (aktiv == null && modus === 'gehen') { F.set(x, 0, z); H = zielH = h; kamW = w; kamNick = nick || 0; if (zoom) kamZ = zoom; const k = verfolgen(); K.pos.copy(k.pos); K.blick.copy(k.blick); K.fov = k.fov; } },
-    zeit(n) { znZiel = n; zn = n; zeitSetzen(n); zeitZeichen(); }, stufe: (n) => { if (n != null) { qStufe = n; qFest = true; qAnwenden(); } return { stufe: qStufe, pr: a.renderer.getPixelRatio() }; },
+    zeit(n) { znZiel = n; zn = n; zeitSetzen(n); zeitZeichen(); }, stufe: (n) => { if (n != null) { qStufe = n; qFest = true; qAnwenden(); } return { stufe: qStufe, pr: a.renderer.getPixelRatio(), start: { an: qStart.an, runden: qStart.runden, ms: qStart.letzt } }; },
     modus: () => modus, nahe: () => nahe, stationen: () => stationen.map((x) => ({ x: x.pos.x, z: x.pos.z })), szene, renderer: a.renderer, F: () => ({ x: F.x, z: F.z, h: H }),
     zaehler: () => ({ ...zaehler }),
     zustand: () => ({ sL: +schrittL.toFixed(3), vG: +vGlatt.toFixed(2), gv: +gehV.toFixed(2), fa: +fussAusT.toFixed(2), ss: standSchritt ? standSchritt.sd + standSchritt.t.toFixed(2) : '', wl: warLauf, st: +standT.toFixed(2), kw: +kamW.toFixed(4), ow: orbit ? +orbit.w.toFixed(4) : null, or: orbit ? +orbit.r.toFixed(3) : null, erk: !erkKnopf.hidden, erkLauf: !!erkLauf, tipp: letzterTipp }),

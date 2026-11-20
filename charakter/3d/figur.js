@@ -234,6 +234,7 @@ const brustFrei = (g) => {
 };
 
 /* ---------- Pose → Gelenkpunkte ---------- */
+// schulterMit { l, r } (0…1, Stapel 06): Anteil, um den sich der Schultergürtel mit dem gehobenen Oberarm hebt (ohne Angabe 1)
 // pose: { becken: Vector3, rumpf: {neigung, seit, drehung, basis?}, kopf: {neigung},
 //         hand: {l: V, r: V} (Mitte der Faust = wo Stange/Hantel sitzt), ellbogenPol: {l, r}, handflaeche: {l, r} (Richtung, in die die Handfläche zeigt),
 //         flach: {l: V, r: V} (Hand liegt flach auf einer Fläche, V = Richtung von der Fläche weg; hand = Handgelenk),
@@ -336,7 +337,8 @@ export function gelenke(pose) {
     if (!ziel) continue;
     const pol = (pose.ellbogenPol && pose.ellbogenPol[s]) || R.vor.clone().multiplyScalar(-1).add(R.links.clone().multiplyScalar(0.4 * sg));
     const oa = ik(schulter[s], ziel, m.oberarm, m.unterarm + 0.8 * m.griff, polStabil(pol, ziel.clone().sub(schulter[s]), polHalt(s, sg))).mitte.sub(schulter[s]).normalize();
-    const u = Math.max(0, Math.min(1, (oa.dot(R.oben) - 0.2) / 0.75)), winkel = 28 * RAD * u * u * (3 - 2 * u);
+    const mitS = pose.schulterMit && pose.schulterMit[s] != null ? pose.schulterMit[s] : 1;   // Stapel 06 (20.11.): so viel hebt sich der Schultergürtel mit (Dehnungen: Schulter bleibt tief)
+    const u = Math.max(0, Math.min(1, (oa.dot(R.oben) - 0.2) / 0.75)), winkel = 28 * RAD * u * u * (3 - 2 * u) * mitS;
     if (winkel < 0.003) continue;
     const seite = R.links.clone().multiplyScalar(sg), q = new THREE.Quaternion().setFromAxisAngle(seite.clone().cross(R.oben).normalize(), winkel);
     const punkt = brust.clone().addScaledVector(R.links, sg * 0.035).addScaledVector(R.oben, 0.009 + hubS);
