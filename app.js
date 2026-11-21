@@ -631,6 +631,7 @@ function startseite() {
     h('section', { class: 'st-block st-breit' },
       text('10 Fragen.', 'Danach baut Devin deinen Plan.', [analyseKnopf()]),
       h('div', { class: 'st-fragen', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, i) => h('i', { style: '--i:' + i })))),
+    KONTAKT.abo ? angebotBlock(analyseKnopf) : null,
     KONTAKT.ueber_mich ? h('section', { class: 'st-block st-breit st-ueber' },
       text('Über mich.', KONTAKT.ueber_mich.zeile),
       h('div', { class: 'st-ueber-text' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('p', { text: KONTAKT.ueber_mich.text }))) : null,
@@ -669,11 +670,31 @@ function codeAnsicht() {
     aktiverPlan() || aktivesKonto() ? h('button', { class: 'knopf text', type: 'button', onclick: () => { S.wartet = null; speicher.schreib('dk_wartet', null); zeichne(); }, text: 'Abbrechen' }) : null];
 }
 function abgelaufenAnsicht() {
-  const ko = aktivesKonto(), vn = vorname(ko.n);
+  const ko = aktivesKonto(), vn = vorname(ko.n), a = KONTAKT.abo;
   return [h('section', { class: 'block willkommen' }, logo(),
     h('h1', { text: (vn ? vn + ', dein' : 'Dein') + ' Zugang ist abgelaufen' }),
-    h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.' }),
+    h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? ' + (a ? 'Such dir dein Abo aus. Sobald die Zahlung da ist, schickt dir Devin deinen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' : 'Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.') }),
+    a ? weiterAbo(a) : null,
     einfuegenBlock('Neuen Link einfügen'))];
+}
+// Angebot wie im Reel (20.11.2026): Probeabo, danach Basic oder Premium. Nur mit echtem Impressum (KONTAKT.abo), Bezahl-Knöpfe nur mit PayPal-Link
+function stufeKarte(name, s, haupt, knopf) {
+  return h('div', { class: 'st-stufe' + (haupt ? ' haupt' : '') }, h('span', { class: 'st-stufe-name', text: name }),
+    h('p', { class: 'st-stufe-preis' }, h('b', { text: s.preis + ' €' }), h('span', { text: ' im Monat' })),
+    h('ul', null, s.punkte.map((p) => h('li', { text: p }))), knopf || null);
+}
+function angebotBlock(knopf) {
+  const a = KONTAKT.abo;
+  return h('section', { class: 'st-block st-breit st-angebot' },
+    h('div', { class: 'st-text' }, h('h2', { text: a.gratis + ' Monate kostenlos.' }), h('p', { class: 'st-zeile', text: 'Keine Zahlungsdaten. Jederzeit kündbar.' }), h('div', { class: 'st-knoepfe' }, knopf())),
+    h('div', { class: 'st-stufen' }, stufeKarte('Basic', a.basic), stufeKarte('Premium', a.premium, true),
+      h('p', { class: 'leise klein', text: 'Die Gratis-Monate enden von selbst. Danach kannst du weitermachen, jederzeit zum Monatsende kündbar.' })));
+}
+function weiterAbo(a) {
+  const knopf = (name, s, haupt) => s.link ? h('a', { class: 'knopf' + (haupt ? ' haupt' : ''), href: s.link, target: '_blank', rel: 'noopener noreferrer', text: name + ' zahlungspflichtig abonnieren' }) : null;
+  const ohneLink = !a.basic.link && !a.premium.link;
+  return h('div', { class: 'st-stufen weiter' }, stufeKarte('Basic', a.basic, false, knopf('Basic', a.basic)), stufeKarte('Premium', a.premium, true, knopf('Premium', a.premium, true)),
+    h('p', { class: 'leise klein', text: (ohneLink ? 'Schreib Devin, welches Abo du willst. ' : 'Zahlung über PayPal. ') + 'Das Abo läuft einen Monat, verlängert sich jeden Monat und ist jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' }));
 }
 function wartenAnsicht() {
   const ko = aktivesKonto(), vn = vorname(ko.n), geschickt = ko.analyse === 'geschickt';

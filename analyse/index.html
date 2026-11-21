@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-laEu9MWosMsnlug2a+fNAsjiQ07jpKaCE/9obscU6H0=' 'sha256-PJpMAyOhzpCSYeNw6BHaWOaJp52gKftj2mj21K2KrVk='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-laEu9MWosMsnlug2a+fNAsjiQ07jpKaCE/9obscU6H0=' 'sha256-rX2kBmcwjEVxqdfGalrHxdVG7ebxYFy00u3UR004ZP4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="dk-kein-zoom" content="1">
 <meta name="dk-wellen-video" content="../">
@@ -138,8 +138,8 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
   var EMPFAENGER = "devinkanke7@gmail.com";
   var MARKE = "Devin Kanke Coach";
   // Impressum und Datenschutz: z. B. [['Impressum', '../impressum/'], ['Datenschutz', '../datenschutz/']]. Leer = keine Links. Setzt die Hauptsitzung, sobald die Seiten online sind.
-  var RECHTLICHES = [];
-  var ABO = null;   // Monatsabo: füllt build.js aus kontakt.json, erst mit echtem Impressum und PayPal-Link
+  var RECHTLICHES = [['Impressum', '../impressum/'], ['Datenschutz', '../datenschutz/'], ['Widerruf', '../widerruf/'], ['Verträge hier kündigen', '../kuendigen/']];
+  var ABO = {"gratis":2,"basic":{"preis":"60","punkte":["Plan persönlich von Devin","App mit 3D-Übungen & Gym"],"link":null},"premium":{"preis":"80","punkte":["Alles aus Basic","Ernährung","Körper-Analyse"],"link":null}};   // Angebot wie im Reel (Probeabo, Basic, Premium): füllt build.js aus kontakt.json, erst mit echtem Impressum
   var A = ANALYSE || {}, BOGEN = A.bogen || { felder: [] }, FRAGEN = A.fragen || [], CHECK = A.gesundheit || { gruppen: [] }, EW = A.einwilligung || {}, NW = A.naehrwerte || null, ERN = A.ernaehrung || null;
   var inhalt = document.getElementById('inhalt'), zuKnopf = document.getElementById('zu');
   function objekt(x) { return x && typeof x === 'object' && !Array.isArray(x) ? x : {}; }
@@ -311,18 +311,25 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
   function rechtliches() {
     return RECHTLICHES.length ? h('p', { class: 'rechtliches' }, RECHTLICHES.map(function (r) { return h('a', { href: r[1], text: r[0] }); })) : null;
   }
-  function aboPreis() {
-    return h('p', { class: 'abo-preis' }, h('span', { class: 'leise', text: 'Regulär ' }), h('s', { class: 'leise', text: ABO.regulaer + ' €' }), h('b', { text: ' ' + ABO.jetzt + ' € im Monat' }), h('span', { class: 'klein', text: ' für die ersten ' + ABO.plaetze + ' Kunden' }));
+  // Angebot wie im Reel (20.11.2026): erst gratis und ohne Zahlungsdaten, danach Basic oder Premium
+  function euro(p) { return p + ' €'; }
+  function premiumExtra() {
+    var l = ABO.premium.punkte.filter(function (p) { return !/^alles aus/i.test(p); });
+    return l.length > 1 ? l.slice(0, -1).join(', ') + ' und ' + l[l.length - 1] : l.join('');
   }
-  // Wer erst geprüft werden muss oder noch nicht 18 ist, bekommt keinen Bezahl-Knopf: Niemand soll zahlen und dann keinen Plan bekommen
+  function aboPreis() {
+    return h('p', { class: 'abo-preis' }, h('b', { text: ABO.gratis + ' Monate kostenlos' }),
+      h('span', { class: 'klein', text: ' · ohne Zahlungsdaten · jederzeit kündbar. Danach Basic ' + euro(ABO.basic.preis) + ' oder Premium ' + euro(ABO.premium.preis) + ' im Monat.' }));
+  }
+  // Nach der Analyse bezahlt niemand: Die Gratis-Monate starten mit dem Plan. Bezahlt wird erst danach in der App (Zugang abgelaufen)
   function aboBlock() {
     if (!ABO) return null;
     var c = checkAuswahl();
-    if (c.ja.length + c.unsicher.length) return h('p', { class: 'meldung klein', text: 'Bezahlen musst du jetzt noch nicht. Devin schaut sich zuerst deinen Gesundheits-Check an und meldet sich bei dir.' });
-    if (unter18()) return h('p', { class: 'meldung klein', text: 'Du bist noch nicht 18. Für das Abo brauchst du deine Eltern, Devin meldet sich dazu bei dir.' });
-    return h('div', { class: 'abo stapel' }, h('h2', { text: 'Dein Abo' }), aboPreis(),
-      h('a', { class: 'knopf haupt', href: ABO.link, target: '_blank', rel: 'noopener noreferrer', text: 'Jetzt zahlungspflichtig abonnieren' }),
-      h('p', { class: 'leise klein', text: 'Zahlung über PayPal. Das Abo läuft einen Monat, verlängert sich jeden Monat und ist jederzeit zum Monatsende kündbar. Sobald die Zahlung da ist, schickt dir Devin deinen Plan.' }));
+    if (c.ja.length + c.unsicher.length) return h('p', { class: 'meldung klein', text: 'Devin schaut sich zuerst deinen Gesundheits-Check an und meldet sich bei dir. Kosten entstehen dir dadurch keine.' });
+    var extra = premiumExtra();
+    return h('div', { class: 'abo stapel' }, h('h2', { text: 'Deine ' + ABO.gratis + ' Gratis-Monate' }),
+      h('p', { class: 'leise', text: 'Sie starten mit deinem Plan. Du zahlst jetzt nichts und gibst keine Zahlungsdaten an. Danach enden sie von selbst, du musst nichts kündigen.' }),
+      h('p', { class: 'leise klein', text: 'Willst du danach weitermachen: Basic ' + euro(ABO.basic.preis) + ' oder Premium ' + euro(ABO.premium.preis) + (extra ? ' mit ' + extra : '') + ', jeweils im Monat und jederzeit zum Monatsende kündbar.' + (unter18() ? ' Weil du noch nicht 18 bist, brauchst du dafür deine Eltern.' : '') }));
   }
   function start() {
     var angefangen = S.schritt > 0 || [S.g, S.a, S.s].some(function (o) { return Object.keys(o).some(function (k) { return !leer(o[k]); }); });

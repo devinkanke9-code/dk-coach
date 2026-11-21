@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-laEu9MWosMsnlug2a+fNAsjiQ07jpKaCE/9obscU6H0=' 'sha256-gEYPB9lQBjlIvTwM3Ukqc3aaL4DOjbwqKNH2eH/Dwpo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Verträge hier kündigen · Devin Kanke Coach</title>
+<meta name="theme-color" content="#86CBEE"><script>try{var l=localStorage.getItem('dk_look');if(!localStorage.getItem('dk_look_start1711')){l='sport';localStorage.setItem('dk_look',l);localStorage.setItem('dk_look_start1711','1')}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':l==='sport'?'#111215':'#86CBEE'}}catch(e){document.documentElement.dataset.look='sport'}</script>
+<!-- Vorlage: build.js füllt die Platzhalter aus kontakt.json. Diese Seite entsteht nur mit echtem Impressum und PayPal-Abo. -->
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../schriften/schriften.css">
+<link rel="stylesheet" href="../stil.css">
+<link rel="stylesheet" href="../sport.css">
+<style>
+html, body { margin: 0; padding: 0; }
+.kopf a.marke { text-decoration: none; }
+.recht { gap: 12px; }
+.recht .block { display: grid; gap: 10px; }
+.recht h1 { margin: 0 0 4px; font-size: 28px; line-height: 1.15; }
+.recht p { margin: 0; font-size: 15px; line-height: 1.55; }
+.recht label { display: grid; gap: 4px; font-size: 15px; }
+.recht .zurueck { justify-self: start; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="kopf"><div class="kopf-innen"><a class="marke" href="../">Devin Kanke Coach</a></div></header>
+  <main><div class="inhalt recht">
+    <a class="knopf zurueck" href="../">← Zurück zur App</a>
+    <section class="block">
+      <h1>Verträge hier kündigen</h1>
+      <p>Das Abo endet zum Ende des laufenden Monats. Bei einem wichtigen Grund kannst du auch sofort kündigen.</p>
+      <form id="kuendigung" class="stapel" data-mail="devinkanke7@gmail.com" novalidate>
+        <label>Name <input class="eingabe" id="k-name" autocomplete="name" maxlength="120" required></label>
+        <label>E-Mail deines Abos <input class="eingabe" id="k-mail" type="email" autocomplete="email" maxlength="160" required></label>
+        <label>Art der Kündigung
+          <select class="eingabe" id="k-art"><option>Ordentliche Kündigung zum nächstmöglichen Termin</option><option>Außerordentliche Kündigung aus wichtigem Grund</option></select>
+        </label>
+        <label>Grund (nur bei außerordentlicher Kündigung) <input class="eingabe" id="k-grund" maxlength="300"></label>
+        <button class="knopf haupt" type="submit">Jetzt kündigen</button>
+      </form>
+      <p id="k-meldung" role="status"></p>
+      <p>Deine Mail-App öffnet sich mit der fertigen Kündigung, dort tippst du noch auf Senden. Du kannst auch direkt an <a href="mailto:devinkanke7@gmail.com">devinkanke7@gmail.com</a> schreiben. Das PayPal-Abo beende ich, sobald die Kündigung da ist. Du kannst es außerdem selbst in PayPal unter „Automatische Zahlungen“ beenden.</p>
+    </section>
+  </div></main>
+</div>
+<script>
+(function () {
+  var f = document.getElementById('kuendigung'), m = document.getElementById('k-meldung');
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var w = function (id) { return document.getElementById(id).value.trim(); };
+    if (!w('k-name') || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(w('k-mail'))) { m.textContent = 'Bitte trag deinen Namen und die E-Mail deines Abos ein.'; return; }
+    var jetzt = new Date().toLocaleString('de-DE');
+    var text = ['Kündigung meines Abos', '', 'Name: ' + w('k-name'), 'E-Mail: ' + w('k-mail'), 'Art: ' + w('k-art'), w('k-grund') ? 'Grund: ' + w('k-grund') : '', 'Erklärt am: ' + jetzt].filter(function (z, i) { return z || i === 1; }).join('\r\n');
+    location.href = 'mailto:' + f.dataset.mail + '?subject=' + encodeURIComponent('Kündigung Abo: ' + w('k-name')) + '&body=' + encodeURIComponent(text);
+    m.textContent = 'Deine Kündigung vom ' + jetzt + ' ist fertig. Tipp in deiner Mail-App noch auf Senden und mach am besten einen Screenshot von dieser Seite.';
+  });
+})();
+</script>
+</body>
+</html>
