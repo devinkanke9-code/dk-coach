@@ -1,5 +1,5 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = '2f8f6bd29a';
+const VERSION = 'b6ba2cab53';
 const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'status.js', 'skin-standard.jpg', 'skin-athlet.jpg', 'skin-kraftpaket.jpg', 'skin-laeufer.jpg', 'skin-gold.jpg', 'hintergrund-hoch.jpg', 'hintergrund-breit.jpg', 'hintergrund-hoch-hell.jpg', 'hintergrund-breit-hell.jpg', 'glas.js', 'gefuehl.js', 'raum.js', 'spiel.js', 'bestleistung.js', 'statistik.js', 'rang.js', 'medaille.js', 'pr-raum.js', 'relief-athlet.png', 'stil.css', 'sport.css', 'sport.js',
   'schriften/schriften.css', 'schriften/figtree.woff2', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
   'koerper.bin', 'koerper-haut.jpg', 'koerper-haut-n.jpg', 'koerper-haar.jpg', 'koerper-augen.jpg'];
