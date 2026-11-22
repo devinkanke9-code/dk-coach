@@ -362,6 +362,13 @@ html.dk-wellen-an[data-look="sport"] body { background: transparent; }
 .fs-chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--reihe); color: var(--text2); border: 1px solid var(--rand-weich); text-shadow: none; }
 .fs-chip.rekord { background: color-mix(in srgb, var(--gut) 16%, var(--reihe)); color: var(--gut); border-color: color-mix(in srgb, var(--gut) 45%, transparent); }
 .fs-info ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: var(--text2); }
+/* Statistik in der Leiste (21.11.2026): sieben Knöpfe, die Beschriftung wird auf schmalen Handys etwas kleiner, damit „Statistik“ ganz passt */
+nav.leiste div.sieben button { padding-left: 0; padding-right: 0; font-size: clamp(9.5px, 2.75vw, 11px); letter-spacing: -.01em; white-space: nowrap; }
+nav.leiste div.sieben button span { max-width: 100%; overflow: hidden; text-overflow: clip; }
+@media (max-width: 359px) { nav.leiste { left: 6px; right: 6px; padding: 4px; } nav.leiste div.sieben button { font-size: 9.5px; letter-spacing: -.02em; } }
+.fs-zeit.ohne-pfeile { grid-template-columns: minmax(0, 1fr); }
+.fs-wahl.st-wahl { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.st-wahl .fs-wahl-knopf { font-size: 14px; padding: 0 2px; }
 </style>
 </head>
 <body>

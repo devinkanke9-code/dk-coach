@@ -7,10 +7,14 @@
 // Gezählt wird nur, was der Kunde im Training eingetragen hat. Volumen = kg × Wdh über alle Sätze mit Gewicht. Übungen auf Zeit zählen als Sätze und Sekunden.
 // Schutzregeln: nur das eigene Training, kein Vergleich mit anderen, keine Punkte, kein geschätztes Maximalgewicht, nichts vom Körper.
 // Weniger als im Zeitraum davor ist kein Fehler (Entlastung, Pause): Die Seite zeigt das neutral. Alles bleibt auf diesem Handy.
+// Seit 21.11.2026 (Devin: „Statistik unten in der Leiste … digitaler Graph mit Lichtern … wie lange die schon trainiert haben … bei mir auf der Trainer-Seite auch“):
+// Ansicht „gesamt“ (seit dem ersten Training), seit() (wie lange schon), uebungVerlauf() (bester Satz je Übung über die Zeit) und archiv() (dieselbe knappe
+// Form als reine Funktion, damit die Trainer-Seite die Trainings eines Kunden länger behält als die 80 im Block Trainings). Der Speicher merkt sich dazu
+// den Tag des allerersten Trainings (b), der beim Kürzen nach 800 Tagen nicht verloren geht.
 
 export const VERSION = 1;
 export const SCHLUESSEL = 'dk_statistik';
-export const ANSICHTEN = Object.freeze(['tag', 'woche', 'monat', 'jahr']);
+export const ANSICHTEN = Object.freeze(['tag', 'woche', 'monat', 'jahr', 'gesamt']);
 // Technische Grenzen: 1200 Trainings sind bei vier pro Woche fast sechs Jahre, dazu höchstens 800 Tage zurück (Jahr und Jahr davor), höchstens 600 000 Zeichen.
 export const GRENZEN = Object.freeze({ trainings: 1200, tage: 800, uebungen: 30, saetze: 40, name: 80, kg: 1000, wdh: 3600, dauer: 6 * 3600, text: 600000, versatz: 600 });
 
@@ -84,6 +88,16 @@ function spanne(von, bis) {
   if (a.getFullYear() !== b.getFullYear()) return a.getDate() + '. ' + MONAT_KURZ[a.getMonth()] + ' ' + a.getFullYear() + ' – ' + b.getDate() + '. ' + MONAT_KURZ[b.getMonth()] + ' ' + b.getFullYear();
   if (a.getMonth() !== b.getMonth()) return a.getDate() + '. ' + MONAT_KURZ[a.getMonth()] + ' – ' + b.getDate() + '. ' + MONAT_KURZ[b.getMonth()] + ' ' + b.getFullYear();
   return a.getDate() + '.–' + b.getDate() + '. ' + MONAT_KURZ[a.getMonth()] + ' ' + b.getFullYear();
+}
+const datumMittel = (ms) => { const d = new Date(ms); return d.getDate() + '. ' + MONAT_KURZ[d.getMonth()] + ' ' + d.getFullYear(); };   // „3. Nov. 2026“
+// Wie lange schon, in der passenden Einheit: bis 30 Tage in Tagen, bis 13 Wochen in Wochen, bis 2 Jahre in Monaten, danach in Jahren
+export function dauerSeit(tage) {
+  const t = Number.isInteger(tage) && tage > 0 ? tage : 0;
+  if (t <= 30) return { zahl: t, einheit: t === 1 ? 'Tag' : 'Tage' };
+  if (t <= 91) { const w = Math.floor(t / 7); return { zahl: w, einheit: w === 1 ? 'Woche' : 'Wochen' }; }
+  if (t < 730) { const m = Math.floor(t / 30.44); return { zahl: m, einheit: m === 1 ? 'Monat' : 'Monate' }; }
+  const j = Math.floor(t / 365.25 * 10) / 10;
+  return { zahl: j, einheit: 'Jahre' };
 }
 
 /* ---------- Rechnen ---------- */
@@ -160,7 +174,7 @@ export function berechne(eingabe, opt) {
   const heute = tagAnfang(jetzt), morgen = plusTage(heute, 1);
   const liste = ordnen((Array.isArray(eingabe) ? eingabe : []).map(eintragSauber).filter(Boolean)).filter((t) => t.s < morgen);
   const aus = { ansicht, versatz, leer: !liste.length, titel: '', unter: '', laeuft: false, von: 0, bis: 0, vergleich: '', uebungenVergleich: '',
-    summe: leereSumme(), vorher: null, aenderung: null, uebungen: [], neueBestwerte: 0, balken: [], balkenWas: 'volumen', frueher: false, spaeter: false };
+    summe: leereSumme(), vorher: null, aenderung: null, uebungen: [], neueBestwerte: 0, verbessert: 0, balken: [], balkenWas: 'volumen', balkenJe: 'Tag', frueher: false, spaeter: false };
   let von, bis, vorVon = null, vorBis = null;
   if (ansicht === 'tag') {
     const tage = [...new Set(liste.map((t) => tagAnfang(t.s)))].sort((a, b) => b - a);
@@ -179,6 +193,14 @@ export function berechne(eingabe, opt) {
       : vorVon != null ? 'im Vergleich zum Trainingstag davor (' + tagText(vorVon) + ')' : '';
     aus.uebungenVergleich = 'im Vergleich zum letzten Mal';
     aus.frueher = i + 1 < tage.length; aus.spaeter = i > 0;
+  } else if (ansicht === 'gesamt') {
+    // Seit Beginn: vom Tag des ersten Trainings bis heute. Kein Zeitraum davor; je Übung zählt der Vergleich zum ersten Mal.
+    aus.versatz = versatz = 0;
+    von = liste.length ? tagAnfang(liste[0].s) : heute; bis = morgen;
+    aus.laeuft = true;
+    aus.titel = 'Seit Beginn';
+    aus.unter = liste.length ? 'seit ' + datumMittel(von) : '';
+    aus.uebungenVergleich = 'seit dem ersten Mal';
   } else {
     const d = new Date(jetzt), j = d.getFullYear(), mo = d.getMonth();
     if (ansicht === 'woche') { von = plusTage(plusTage(heute, -wochentag(heute)), 7 * versatz); bis = plusTage(von, 7); vorVon = plusTage(von, -7); }
@@ -222,6 +244,16 @@ export function berechne(eingabe, opt) {
   const davor = ansicht === 'tag' || vorVon == null ? null : uebungenIn(liste, vorVon, von);
   const frueher = liste.filter((t) => t.s < von);
   for (const x of uebungenIn(liste, von, bis).values()) {
+    if (ansicht === 'gesamt') {   // Steigerung seit dem ersten Mal: bester Satz insgesamt gegen den besten Satz beim ersten Mal
+      let erster = null;
+      for (const t of liste) { if (t.s < von || t.s >= bis) continue; const b = besterIn(t, x.name, x.sek); if (b) { erster = b; break; } }
+      x.vorher = x.mal > 1 ? erster : null;
+      x.erstesMal = false; x.rekord = false;
+      x.richtung = x.bester && x.vorher ? (besser(x.bester, x.vorher, x.sek) ? 'hoch' : besser(x.vorher, x.bester, x.sek) ? 'runter' : 'gleich') : null;
+      x.diff = x.richtung ? diffText(x.bester, x.vorher, x.sek) : '';
+      aus.uebungen.push(x);
+      continue;
+    }
     let alles = null, letztes = null, gab = false;
     for (let k = frueher.length - 1; k >= 0; k--) {
       const t = frueher[k];
@@ -241,19 +273,90 @@ export function berechne(eingabe, opt) {
   }
   aus.uebungen.sort((a, b) => b.volumen - a.volumen || b.saetze - a.saetze || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   aus.neueBestwerte = aus.uebungen.filter((x) => x.rekord).length;
-  // Säulen: Woche je Tag, Monat je Tag, Jahr je Monat (Tag: keine). Hat niemand Gewicht eingetragen, zeigen sie die Sätze.
-  if (ansicht !== 'tag') {
-    const faecher = [];
-    if (ansicht === 'woche') for (let i = 0; i < 7; i++) faecher.push([plusTage(von, i), plusTage(von, i + 1), TAG_KURZ[i], TAG_LANG[i], true]);
-    else if (ansicht === 'monat') { const m = new Date(von).getMonth(); for (let i = 0, n = tageZwischen(von, bis); i < n; i++) faecher.push([plusTage(von, i), plusTage(von, i + 1), String(i + 1), (i + 1) + '. ' + MONAT[m], i % 7 === 0]); }
-    else { const y = new Date(von).getFullYear(); for (let m = 0; m < 12; m++) faecher.push([new Date(y, m, 1).getTime(), new Date(y, m + 1, 1).getTime(), MONAT_ZEICHEN[m], MONAT[m], true]); }
-    aus.balken = faecher.map(([a, b, label, name, zeigen]) => {
-      const s = summe(liste, a, b);
-      return { label, name, zeigen, volumen: s.volumen, saetze: s.saetze, trainings: s.trainings, heute: a <= jetzt && jetzt < b, spaeter: a > jetzt };
-    });
-    aus.balkenWas = aus.balken.some((x) => x.volumen > 0) ? 'volumen' : 'saetze';
+  aus.verbessert = aus.uebungen.filter((x) => x.richtung === 'hoch').length;
+  // Verlauf für den Graphen: Woche je Tag, Monat je Tag, Jahr je Monat, Tag = die letzten 10 Trainingstage bis zu diesem,
+  // Seit Beginn je Tag (bis 2 Wochen), je Woche (bis 16 Wochen), sonst je Monat. Hat niemand Gewicht eingetragen, zeigt er die Sätze.
+  const faecher = [];
+  if (ansicht === 'tag') {
+    const tage = [...new Set(liste.filter((t) => t.s < bis).map((t) => tagAnfang(t.s)))].sort((a, b) => a - b).slice(-10);
+    for (const a of tage) faecher.push([a, plusTage(a, 1), datumKurz(a), tagLang(a), true, a === von]);
+    aus.balkenJe = 'Trainingstag';
+  } else if (ansicht === 'woche') for (let i = 0; i < 7; i++) faecher.push([plusTage(von, i), plusTage(von, i + 1), TAG_KURZ[i], TAG_LANG[i], true]);
+  else if (ansicht === 'monat') { const m = new Date(von).getMonth(); for (let i = 0, n = tageZwischen(von, bis); i < n; i++) faecher.push([plusTage(von, i), plusTage(von, i + 1), String(i + 1), (i + 1) + '. ' + MONAT[m], i % 7 === 0]); }
+  else if (ansicht === 'jahr') { const y = new Date(von).getFullYear(); for (let m = 0; m < 12; m++) faecher.push([new Date(y, m, 1).getTime(), new Date(y, m + 1, 1).getTime(), MONAT_ZEICHEN[m], MONAT[m], true]); aus.balkenJe = 'Monat'; }
+  else if (liste.length) {
+    const tg = tageZwischen(von, heute) + 1;
+    if (tg <= 14) for (let i = 0; i < tg; i++) { const a = plusTage(von, i); faecher.push([a, plusTage(a, 1), datumKurz(a), tagLang(a), true]); }
+    else if (tg <= 16 * 7) {
+      aus.balkenJe = 'Woche';
+      for (let a = plusTage(von, -wochentag(von)); a < morgen; a = plusTage(a, 7)) faecher.push([a, plusTage(a, 7), 'KW ' + kalenderwoche(a), 'KW ' + kalenderwoche(a) + ' · ' + datumKurz(a) + '–' + datumKurz(plusTage(a, 6)), true]);
+    } else {
+      aus.balkenJe = 'Monat';
+      const d = new Date(von), letzter = new Date(jetzt);
+      let y = d.getFullYear(), m = d.getMonth();
+      const n = (letzter.getFullYear() - y) * 12 + letzter.getMonth() - m + 1;
+      if (n > 40) { m += n - 40; y += Math.floor(m / 12); m %= 12; }   // höchstens die letzten 40 Monate
+      for (let i = 0; i < Math.min(n, 40); i++) {
+        const a = new Date(y, m + i, 1), b = new Date(y, m + i + 1, 1);
+        faecher.push([a.getTime(), b.getTime(), MONAT_KURZ[a.getMonth()], MONAT[a.getMonth()] + ' ' + a.getFullYear(), true]);
+      }
+    }
   }
+  aus.balken = faecher.map(([a, b, label, name, zeigen, markiert]) => {
+    const s = summe(liste, a, b);
+    return { label, name, zeigen, volumen: s.volumen, saetze: s.saetze, trainings: s.trainings,
+      heute: markiert === undefined ? a <= jetzt && jetzt < b : markiert, spaeter: a > jetzt };
+  });
+  aus.balkenWas = aus.balken.some((x) => x.volumen > 0) ? 'volumen' : 'saetze';
   return aus;
+}
+
+// Wie lange schon trainiert: vom ersten Training (oder dem gemerkten Tag des allerersten, opt.beginn) bis heute, dazu alles zusammengezählt.
+// Reine Funktion. opt: { jetzt, beginn }
+export function seit(eingabe, opt) {
+  const o = istObjekt(opt) ? opt : {};
+  const jetzt = zeitOk(o.jetzt) ? o.jetzt : Date.now(), heute = tagAnfang(jetzt), morgen = plusTage(heute, 1);
+  const liste = ordnen((Array.isArray(eingabe) ? eingabe : []).map(eintragSauber).filter(Boolean)).filter((t) => t.s < morgen);
+  const gemerkt = zeitOk(o.beginn) && o.beginn < morgen ? o.beginn : null;
+  const erstes = liste.length ? liste[0].s : null;
+  const beginn = erstes == null ? gemerkt : gemerkt != null && gemerkt < erstes ? gemerkt : erstes;
+  const s = summe(liste, -Infinity, morgen);
+  if (beginn == null) return { beginn: null, tage: 0, dauer: dauerSeit(0), datum: '', trainings: 0, trainingstage: 0, saetze: 0, wdh: 0, volumen: 0, sekunden: 0, halten: 0, letztes: null };
+  const tage = tageZwischen(beginn, heute) + 1;
+  return { beginn, tage, dauer: dauerSeit(tage), datum: datumMittel(beginn), trainings: s.trainings, trainingstage: s.tage, saetze: s.saetze, wdh: s.wdh,
+    volumen: s.volumen, sekunden: s.sekunden, halten: s.halten, letztes: liste.length ? liste[liste.length - 1].s : null };
+}
+
+// Eine Übung über die Zeit: je Trainingstag der beste Satz (höchstens die letzten 60 Tage mit dieser Übung).
+// wert = kg (wenn je Gewicht eingetragen war), sonst Wdh, bei Übungen auf Zeit Sekunden. Reine Funktion. opt: { jetzt }
+export function uebungVerlauf(eingabe, name, opt) {
+  const o = istObjekt(opt) ? opt : {};
+  const jetzt = zeitOk(o.jetzt) ? o.jetzt : Date.now(), morgen = plusTage(tagAnfang(jetzt), 1);
+  const liste = ordnen((Array.isArray(eingabe) ? eingabe : []).map(eintragSauber).filter(Boolean)).filter((t) => t.s < morgen);
+  const n = nameSauber(name);
+  const tage = new Map();
+  let sek = false;
+  for (const t of liste) {
+    if (!hat(t, n)) continue;
+    sek = !!t.u.find((x) => x[0] === n)[1];
+    const b = besterIn(t, n, sek);
+    if (!b) continue;
+    const k = tagAnfang(t.s), alt = tage.get(k);
+    if (!alt || besser(b, alt.bester, sek)) tage.set(k, { s: t.s, bester: b });
+  }
+  let punkte = [...tage.values()].sort((a, b) => a.s - b.s);
+  const mitKg = !sek && punkte.some((p) => p.bester.kg > 0);
+  const einheit = sek ? 's' : mitKg ? 'kg' : 'Wdh';
+  punkte = punkte.slice(-60).map((p) => ({ s: p.s, label: datumKurz(p.s), name: tagLang(p.s), bester: p.bester,
+    wert: sek ? p.bester.w || 0 : mitKg ? p.bester.kg || 0 : p.bester.w || 0, text: satzText(p.bester, sek) }));
+  let bester = null;
+  for (const p of punkte) if (besser(p.bester, bester ? bester.bester : null, sek)) bester = p;
+  const erster = punkte[0] || null, letzter = punkte[punkte.length - 1] || null;
+  const zwei = punkte.length > 1;
+  const richtung = zwei ? (besser(bester.bester, erster.bester, sek) ? 'hoch' : 'gleich') : null;
+  return { name: n, sek, einheit, punkte, mal: punkte.length, erster, letzter, bester,
+    steigerung: zwei ? diffText(bester.bester, erster.bester, sek) : '', richtung,
+    prozent: zwei && erster.wert > 0 ? Math.round((bester.wert - erster.wert) / erster.wert * 100) : null };
 }
 
 /* ---------- Texte (deutsch, mit Komma und Tausenderpunkt) ---------- */
@@ -301,27 +404,51 @@ const browserSpeicher = {
 let eingesetzt = null;
 export function setzeSpeicher(s) { eingesetzt = istSpeicher(s) ? s : null; }   // nur für Tests; null stellt den Browser-Speicher wieder ein
 const wahl = (s) => (istSpeicher(s) ? s : eingesetzt || browserSpeicher);
-// undefined = nicht lesbar oder von einer neueren App-Fassung (dann bleibt alles, wie es ist), sonst die geprüfte Liste (Kaputtes zählt nicht)
+// Gespeicherte Form: { v: 1, b: Start des allerersten Trainings (bleibt beim Kürzen), t: [Einträge] }.
+// lesbar() gibt { liste, b } oder undefined (neuere Fassung: dann bleibt alles, wie es ist); Kaputtes zählt nicht.
+function lesbar(o) {
+  if (!istObjekt(o) || !Array.isArray(o.t) || !Number.isInteger(o.v)) return { liste: [], b: null };
+  if (o.v > VERSION) return undefined;
+  if (o.v !== VERSION) return { liste: [], b: null };
+  return { liste: ordnen(o.t.map(eintragSauber).filter(Boolean)), b: zeitOk(o.b) ? o.b : null };
+}
 function lesen(sp) {
   let roh;
   try { roh = sp.lies(SCHLUESSEL); } catch (e) { return undefined; }
-  if (roh == null || roh === '') return [];
+  if (roh == null || roh === '') return { liste: [], b: null };
   try {
-    if (typeof roh !== 'string' || roh.length > GRENZEN.text) return [];
-    const o = JSON.parse(roh);
-    if (!istObjekt(o) || !Array.isArray(o.t) || !Number.isInteger(o.v)) return [];
-    if (o.v > VERSION) return undefined;
-    return o.v === VERSION ? ordnen(o.t.map(eintragSauber).filter(Boolean)) : [];
-  } catch (e) { return []; }
+    if (typeof roh !== 'string' || roh.length > GRENZEN.text) return { liste: [], b: null };
+    return lesbar(JSON.parse(roh));
+  } catch (e) { return { liste: [], b: null }; }
 }
-// Nur die letzten 800 Tage und 1200 Trainings; passt es trotzdem nicht, gehen die ältesten zuerst
-function kuerzen(liste, jetzt) {
-  const grenze = plusTage(tagAnfang(jetzt), -GRENZEN.tage);
+// Nur die letzten 800 Tage und 1200 Trainings (die Trainer-Seite kann weniger verlangen); passt es trotzdem nicht, gehen die ältesten zuerst
+function kuerzen(liste, jetzt, g, b) {
+  const grenze = plusTage(tagAnfang(jetzt), -g.tage);
   let l = liste.filter((x) => x.s >= grenze);
-  if (l.length > GRENZEN.trainings) l = l.slice(l.length - GRENZEN.trainings);
-  let text = JSON.stringify({ v: VERSION, t: l });
-  while (text.length > GRENZEN.text && l.length) { l = l.slice(Math.max(1, Math.ceil(l.length / 20))); text = JSON.stringify({ v: VERSION, t: l }); }
-  return { liste: l, text };
+  if (l.length > g.trainings) l = l.slice(l.length - g.trainings);
+  const form = (t) => (b != null ? { v: VERSION, b, t } : { v: VERSION, t });
+  let text = JSON.stringify(form(l));
+  while (text.length > g.text && l.length) { l = l.slice(Math.max(1, Math.ceil(l.length / 20))); text = JSON.stringify(form(l)); }
+  return { liste: l, text, archiv: form(l) };
+}
+// Reine Funktion: alte Sammlung (gespeicherte Form oder nichts) + neue Trainings → neue Sammlung. Ändert nichts an der Eingabe.
+// opt: { jetzt, trainings, text } (kleinere Grenzen, z. B. für die Trainer-Seite). Antwort { archiv, geaendert, neu }; bei einer neueren Fassung bleibt alt, wie es ist.
+export function archiv(alt, dazu, opt) {
+  const o = istObjekt(opt) ? opt : {};
+  const jetzt = zeitOk(o.jetzt) ? o.jetzt : Date.now();
+  const g = { tage: GRENZEN.tage,
+    trainings: Number.isInteger(o.trainings) && o.trainings > 0 ? Math.min(o.trainings, GRENZEN.trainings) : GRENZEN.trainings,
+    text: Number.isInteger(o.text) && o.text > 1000 ? Math.min(o.text, GRENZEN.text) : GRENZEN.text };
+  const a = alt == null ? { liste: [], b: null } : lesbar(alt);
+  if (a === undefined) return { archiv: alt, geaendert: false, neu: 0 };
+  const neuListe = (Array.isArray(dazu) ? dazu : []).map(eintragSauber).filter(Boolean);
+  const alles = ordnen(a.liste.concat(neuListe));
+  const erstes = alles.length ? alles[0].s : null;
+  const b = a.b != null && (erstes == null || a.b <= erstes) ? a.b : erstes;
+  const { liste: l, text, archiv: aus } = kuerzen(alles, jetzt, g, b);
+  const vorher = new Map(a.liste.map((x) => [x.s, JSON.stringify(x)]));
+  const gleich = b === a.b && l.length === a.liste.length && l.every((x) => vorher.get(x.s) === JSON.stringify(x));
+  return { archiv: gleich && istObjekt(alt) ? alt : aus, geaendert: !gleich, neu: l.filter((x) => !vorher.has(x.s)).length, text };
 }
 // Trainings dazunehmen (Verlauf-Einträge aus app.js oder eigene Form). Schreibt nur, wenn sich etwas ändert.
 // opt: { speicher, jetzt }. Antwort { ok, neu } (neu = so viele Trainings kamen dazu). Wirft nie.
@@ -331,15 +458,16 @@ export function aufnehmen(liste, opt) {
     const sp = wahl(o.speicher), jetzt = zeitOk(o.jetzt) ? o.jetzt : Date.now();
     const alt = lesen(sp);
     if (alt === undefined) return { ok: false, neu: 0 };
-    const vorher = new Map(alt.map((x) => [x.s, JSON.stringify(x)]));
-    const dazu = (Array.isArray(liste) ? liste : []).map(eintragSauber).filter(Boolean);
-    const { liste: l, text } = kuerzen(ordnen(alt.concat(dazu)), jetzt);
-    if (l.length === alt.length && l.every((x) => vorher.get(x.s) === JSON.stringify(x))) return { ok: true, neu: 0 };
-    const neu = l.filter((x) => !vorher.has(x.s)).length;
-    return sp.schreibe(SCHLUESSEL, text) !== false ? { ok: true, neu } : { ok: false, neu: 0 };
+    const r = archiv({ v: VERSION, b: alt.b, t: alt.liste }, liste, { jetzt });
+    if (!r.geaendert) return { ok: true, neu: 0 };
+    return sp.schreibe(SCHLUESSEL, r.text) !== false ? { ok: true, neu: r.neu } : { ok: false, neu: 0 };
   } catch (e) { return { ok: false, neu: 0 }; }
 }
 // Alle gemerkten Trainings, geprüft und nach Zeit sortiert. Wirft nie.
 export function trainings(speicher) {
-  try { return lesen(wahl(speicher)) || []; } catch (e) { return []; }
+  try { const a = lesen(wahl(speicher)); return a ? a.liste : []; } catch (e) { return []; }
+}
+// Start des allerersten Trainings (auch wenn es schon aus der Liste gekürzt ist), sonst null. Wirft nie.
+export function beginn(speicher) {
+  try { const a = lesen(wahl(speicher)); return a ? (a.b != null ? a.b : a.liste.length ? a.liste[0].s : null) : null; } catch (e) { return null; }
 }

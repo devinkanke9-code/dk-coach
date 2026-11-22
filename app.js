@@ -11,6 +11,7 @@ import * as Status from './status.js';   // Status (18.11.2026): eigener Charakt
 import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 import * as Statistik from './statistik.js';   // Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings, nur auf diesem Handy
+import * as Grafik from './statistik-grafik.js';   // Statistik (21.11.2026): Leucht-Graph, auch in der Trainer-Seite
 const K = window.DKKompakt;   // kompakt.js: Code, Verschlüsselung, Analyse-Format (gleich wie in der Trainer-Seite)
 // Nie in einer fremden Seite (13.11.2026): Steckt die App in einem Rahmen (iframe), zeigt sie nichts und startet nicht.
 // Sonst könnte eine fremde Seite sie unsichtbar überdecken und den Kunden Knöpfe tippen lassen. Per <meta> lässt sich frame-ancestors nicht setzen.
@@ -358,6 +359,7 @@ const BEREICHE = [
   ['heute', 'Heute', '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><circle cx="12" cy="15" r="1.6"/>'],
   ['plan', 'Plan', '<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12h6M9 15.5h4"/>'],
   ['uebungen', 'Übungen', '<circle cx="12" cy="5" r="2"/><path d="M12 7v6M8 21l4-8 4 8M7 10l5 1 5-1"/>'],
+  ['statistik', 'Statistik', '<path d="M4 20h16"/><path d="M5 16l4.2-4.6 3.3 3 6.5-7.4"/><circle cx="19" cy="7" r="1.6"/>'],   // Statistik (21.11.2026, Devin: „unten bei der Leiste steht Statistik“)
   ['rang', 'Rang', '<path d="M12 3l7 3v5.5c0 4.4-2.9 7.7-7 9.5-4.1-1.8-7-5.1-7-9.5V6z"/><path d="M12 8l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z"/>'],
   ['status', 'Status', '<circle cx="12" cy="7.6" r="3.6"/><path d="M4.6 21c.8-4.6 3.8-7.3 7.4-7.3s6.6 2.7 7.4 7.3"/>'],
   ['info', 'Infos', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>']
@@ -366,8 +368,9 @@ function leiste() {
   const n = $('#leiste'); n.textContent = '';
   $('nav.leiste').hidden = !S.plan;
   n.style.gridTemplateColumns = 'repeat(' + BEREICHE.length + ', 1fr)';
+  n.classList.toggle('sieben', BEREICHE.length > 6);   // sieben Knöpfe: Schrift etwas kleiner, damit „Statistik“ auch auf schmalen Handys passt
   for (const [id, name, icon] of BEREICHE) {
-    const b = h('button', { type: 'button', 'aria-current': (S.ansicht === 'fortschritt' ? 'heute' : S.ansicht) === id ? 'page' : null, onclick: () => geh(id) });   // Fortschritt gehört zu „Heute“
+    const b = h('button', { type: 'button', 'aria-current': (S.ansicht === 'fortschritt' ? 'statistik' : S.ansicht) === id ? 'page' : null, onclick: () => geh(id) });   // die alte Seite Fortschritt ist jetzt Statistik
     b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon + '</svg>';
     b.append(h('span', { text: name })); n.append(b);
   }
@@ -401,7 +404,7 @@ function zeichne() {
   const ansichtSchluessel = z + '|' + (z === 'plan' ? S.ansicht : '');
   ziel.classList.toggle('still', ansichtSchluessel === S.letzteAnsicht); S.letzteAnsicht = ansichtSchluessel;
   const ansicht = { laedt: laedtAnsicht, code: codeAnsicht, pausiert: pausiertAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
-    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, fortschritt: ansichtFortschritt }[S.ansicht] || ansichtHeute;
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, statistik: ansichtStatistik, fortschritt: ansichtStatistik }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
@@ -1778,11 +1781,13 @@ function verlaufBlock() {
 /* ---------- Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings ----------
    Rechnung und Speicher stehen in statistik.js (reine Funktion, geprüft in app/test.js, Abschnitt 27). Hier nur Anzeige, Texte nur als textContent.
    Auf „Heute“ eine kleine Karte mit dieser Woche; „Alles ansehen“ öffnet die Seite mit Tag, Woche, Monat und Jahr.
+   Seit 21.11.2026 eigene Seite „Statistik“ in der Leiste: wie lange schon dabei, Leucht-Graph (statistik-grafik.js), „Gesamt“ seit dem ersten Training,
+   je Übung antippen = Verlauf des besten Satzes. Dieselbe Rechnung und derselbe Graph stehen in der Trainer-Seite beim Kunden.
    Weniger als davor bleibt neutral (kein Rot): Entlastung und Pausen gehören zum Training. Kein Vergleich mit anderen, keine Punkte. */
 function statistikMerken(liste) {
   try { Statistik.aufnehmen((Array.isArray(liste) ? liste : []).filter((r) => r && r.k !== 'Beispiel')); } catch (e) { /* die App läuft immer weiter */ }
 }
-const FS_NAMEN = { tag: 'Tag', woche: 'Woche', monat: 'Monat', jahr: 'Jahr' };
+const FS_NAMEN = { tag: 'Tag', woche: 'Woche', monat: 'Monat', jahr: 'Jahr', gesamt: 'Gesamt' };
 function fsAend(a) {
   if (!a) return null;
   const p = Statistik.prozentText(a);
@@ -1800,7 +1805,7 @@ function fortschrittKarte(p) {
   if (!p || p.id === 'beispiel') return null;
   let r;
   try { r = Statistik.berechne(Statistik.trainings(), { ansicht: 'woche', jetzt: Date.now() }); } catch (e) { return null; }
-  const oeffnen = () => { S.fsAnsicht = 'woche'; S.fsVersatz = 0; S.fsAlle = false; geh('fortschritt'); };
+  const oeffnen = () => { S.fsAnsicht = 'woche'; S.fsVersatz = 0; S.fsAlle = false; geh('statistik'); };
   const kopfZeile = h('div', { class: 'woche-kopf' }, h('h2', { text: 'Dein Fortschritt' }), h('button', { class: 'knopf text klein', type: 'button', onclick: oeffnen, text: 'Alles ansehen' }));
   if (r.leer) return h('section', { class: 'block fs-karte' }, kopfZeile,
     h('p', { class: 'leise klein', text: 'Nach deinem ersten Training siehst du hier, wie du dich steigerst: Volumen, Bestwerte und der Vergleich mit der Woche davor.' }));
@@ -1813,53 +1818,89 @@ function fortschrittKarte(p) {
       h('div', { class: 'fs-kachel' }, h('small', { text: 'Bestwerte' }), h('b', { text: String(r.neueBestwerte) }), h('span', { class: 'fs-aend gleich', text: r.neueBestwerte === 1 ? 'neuer' : 'neue' }))),
     h('p', { class: 'leise klein', text: 'Diese Woche, ' + r.vergleich + '.' }));
 }
-function fsBalken(r) {
-  const was = r.balkenWas;
-  if (!r.balken.length || !r.balken.some((b) => b[was] > 0)) return null;
-  const max = Math.max(...r.balken.map((b) => b[was])), je = r.ansicht === 'jahr' ? 'Monat' : 'Tag', name = was === 'volumen' ? 'Volumen' : 'Sätze';
-  const top = r.balken.reduce((m, b) => (b[was] > m[was] ? b : m), r.balken[0]);
+function fsGraph(r, animieren) {
+  if (!r.balken.length) return null;
+  const was = r.balkenWas, istVol = was === 'volumen', name = istVol ? 'Volumen' : 'Sätze';
+  const menge = (v) => Statistik.zahlText(v) + (istVol ? ' kg' : v === 1 ? ' Satz' : ' Sätze');
+  const daten = r.balken.map((b) => ({ label: b.label, name: b.name, wert: b[was], zeigen: b.zeigen, markiert: b.heute, spaeter: b.spaeter,
+    text: b[was] > 0 ? menge(b[was]) + (b.trainings > 1 ? ' · ' + b.trainings + ' Trainings' : '') : b.trainings ? '1 Training ohne Werte' : 'kein Training' }));
+  const spitze = Math.max(0, ...r.balken.map((b) => b[was]));
   return h('div', { class: 'fs-diagramm' },
-    h('small', { class: 'fs-diagramm-titel', text: name + ' je ' + je }),
-    h('div', { class: 'fs-balken', role: 'img', 'aria-label': name + ' je ' + je + ', am meisten: ' + top.name + ' mit ' + Statistik.zahlText(top[was]) + (was === 'volumen' ? ' kg' : ' Sätzen'),
-      style: 'grid-template-columns:repeat(' + r.balken.length + ',minmax(0,1fr))' },
-      r.balken.map((b) => h('div', { class: 'fs-saeule' + (b.heute ? ' heute' : '') + (b.spaeter ? ' spaeter' : '') },
-        h('span', { class: 'fs-saeule-feld' }, h('i', { style: 'height:' + (b[was] > 0 ? Math.max(4, Math.round(b[was] / max * 100)) : 0) + '%' })),
-        h('small', { text: b.zeigen ? b.label : '' })))));
+    h('div', { class: 'lg-kopf' }, h('small', { text: name + ' je ' + r.balkenJe }), spitze ? h('b', { text: 'Spitze ' + menge(spitze) }) : null),
+    Grafik.leuchtGraph(daten, { titel: name + ' je ' + r.balkenJe + ' · ' + r.titel, wertText: menge, achsenText: fsKurz, animieren,
+      leerText: r.ansicht === 'tag' ? 'Noch kein Training mit Werten' : 'In diesem Zeitraum kein Training' }));
 }
+// Zahlen am Rand des Graphen kurz: 2.500, 12,5k
+const fsKurz = (v) => (v >= 10000 ? String(Math.round(v / 100) / 10).replace('.', ',') + 'k' : Statistik.zahlText(v));
+const stWert = (name, wert, unter) => h('div', { class: 'st-wert' }, h('small', { text: name }), h('b', { text: wert }), unter ? h('small', { text: unter }) : null);
 function fsUebung(u, r) {
   const marke = u.rekord ? h('span', { class: 'fs-chip rekord', text: 'Neuer Bestwert' }) : u.erstesMal ? h('span', { class: 'fs-chip', text: 'Zum ersten Mal' }) : null;
   const menge = [u.saetze + (u.saetze === 1 ? ' Satz' : ' Sätze'), u.sek ? (u.halten ? Statistik.zahlText(u.halten) + ' s' : '') : (u.wdh ? Statistik.zahlText(u.wdh) + ' Wdh' : ''),
     u.volumen ? Statistik.zahlText(u.volumen) + ' kg' : '', r.ansicht !== 'tag' && u.mal > 1 ? u.mal + '× trainiert' : ''].filter(Boolean).join(' · ');
-  return h('div', { class: 'fs-ueb' },
+  return h('button', { class: 'fs-ueb st-ueb-knopf', type: 'button', onclick: () => fsVerlaufBlatt(u.name), 'aria-label': u.name + ', Verlauf ansehen' },
     h('div', { class: 'fs-ueb-kopf' }, h('b', { text: u.name }), marke),
     h('div', { class: 'fs-ueb-wert' }, h('span', null, h('small', { text: 'Bester Satz ' }), h('b', { text: Statistik.satzText(u.bester, u.sek) })),
       u.richtung ? h('span', { class: 'fs-aend ' + u.richtung, text: Statistik.PFEIL[u.richtung] + ' ' + u.diff }) : null),
-    h('small', { class: 'leise', text: menge }));
+    h('small', { class: 'leise', text: menge }),
+    h('span', { class: 'st-mehr', text: 'Verlauf ansehen ›' }));
 }
-function ansichtFortschritt() {
+// Eine Übung über die Zeit: je Training der beste Satz als Leucht-Graph, dazu erstes Mal, Bestwert und Steigerung
+function fsVerlaufBlatt(name) {
+  let v;
+  try { v = Statistik.uebungVerlauf(Statistik.trainings(), name, { jetzt: Date.now() }); } catch (e) { return; }
+  const einheit = (x) => (v.einheit === 'kg' ? Statistik.kgText(x) : Statistik.zahlText(x) + (v.einheit === 's' ? ' s' : ' Wdh'));
+  const daten = v.punkte.map((p, i) => ({ label: p.label, name: p.name, wert: p.wert, text: p.text, zeigen: true, markiert: i === v.punkte.length - 1 }));
+  const steigerung = v.richtung === 'hoch' ? Statistik.PFEIL.hoch + ' ' + v.steigerung : v.mal > 1 ? 'gleich' : '–';
+  oeffneBlatt(name, v.einheit === 'kg' ? 'Bestes Gewicht je Training' : v.einheit === 's' ? 'Längste Zeit je Training' : 'Meiste Wiederholungen je Training', [
+    h('div', { class: 'st-verlauf' },
+      Grafik.leuchtGraph(daten, { titel: 'Verlauf ' + name, wertText: einheit, abNull: false, achsenText: (x) => (v.einheit === 'kg' ? Statistik.kgText(x).replace(' kg', '') : fsKurz(x)), animieren: true,
+        leerText: 'Noch kein Satz mit Werten' }),
+      h('div', { class: 'st-verlauf-werte' },
+        stWert('Erstes Mal', v.erster ? v.erster.text : '–', v.erster ? v.erster.label : ''),
+        stWert('Bestwert', v.bester ? v.bester.text : '–', v.bester ? v.bester.label : ''),
+        stWert('Steigerung', steigerung, v.prozent > 0 ? '+' + v.prozent + ' %' : '')),
+      h('p', { class: 'leise klein', text: v.mal === 1 ? 'Einmal mit Werten trainiert. Ab dem zweiten Mal siehst du hier deine Steigerung.'
+        : v.mal + '× mit Werten trainiert. Je Training zählt der beste Satz: das meiste Gewicht, bei gleichem Gewicht die meisten Wiederholungen.' }))]);
+}
+// Wie lange schon dabei: vom ersten Training bis heute, dazu alles zusammengezählt
+function fsSeit(liste) {
+  let z;
+  try { z = Statistik.seit(liste, { jetzt: Date.now(), beginn: Statistik.beginn() }); } catch (e) { return null; }
+  if (!z.beginn) return null;
+  const zahl = Number.isInteger(z.dauer.zahl) ? String(z.dauer.zahl) : String(z.dauer.zahl).replace('.', ',');
+  return h('section', { class: 'block' }, h('div', { class: 'st-seit' },
+    h('div', { class: 'st-seit-zahl', text: zahl }),
+    h('div', { class: 'st-seit-text' }, h('b', { text: z.dauer.einheit + ' dabei' }), h('small', { text: 'Erstes Training am ' + z.datum })),
+    h('div', { class: 'st-seit-werte' },
+      stWert('Trainings', Statistik.zahlText(z.trainings)),
+      z.volumen ? stWert('kg bewegt', z.volumen >= 100000 ? fsKurz(z.volumen) : Statistik.zahlText(z.volumen)) : stWert('Sätze', Statistik.zahlText(z.saetze)),
+      stWert('trainiert', Statistik.dauerText(z.sekunden)))));
+}
+function ansichtStatistik() {
   const ansicht = Statistik.ANSICHTEN.indexOf(S.fsAnsicht) >= 0 ? S.fsAnsicht : 'woche';
-  let r;
-  try { r = Statistik.berechne(Statistik.trainings(), { ansicht, versatz: S.fsVersatz || 0, jetzt: Date.now() }); } catch (e) { r = Statistik.berechne([], { ansicht }); }
+  let liste = [], r;
+  try { liste = Statistik.trainings(); r = Statistik.berechne(liste, { ansicht, versatz: S.fsVersatz || 0, jetzt: Date.now() }); } catch (e) { r = Statistik.berechne([], { ansicht }); }
   S.fsVersatz = r.versatz;
+  // Der Graph zeichnet sich nur, wenn sich der Zeitraum wirklich ändert (nicht bei jedem Neuzeichnen, z. B. Farbwelt oder Haken)
+  const schluessel = ansicht + '|' + r.versatz, animieren = S.fsGezeichnet !== schluessel;
+  S.fsGezeichnet = schluessel;
   const neu = (wahl) => { Object.assign(S, wahl); zeichne(); };
-  const teile = [
-    h('button', { class: 'knopf text klein fs-zurueck', type: 'button', onclick: () => geh('heute'), text: '‹ Zurück zu Heute' }),
-    kopf('Aus deinen Trainings · nur auf diesem Handy', 'Dein Fortschritt'),
-    h('div', { class: 'fs-wahl', role: 'group', 'aria-label': 'Zeitraum wählen' }, Statistik.ANSICHTEN.map((id) => h('button', { type: 'button', class: 'fs-wahl-knopf',
-      'aria-pressed': id === ansicht ? 'true' : 'false', onclick: () => neu({ fsAnsicht: id, fsVersatz: 0, fsAlle: false }), text: FS_NAMEN[id] })))
-  ];
+  const teile = [kopf('Aus deinen Trainings · nur auf diesem Handy', 'Statistik'), fsSeit(liste),
+    h('div', { class: 'fs-wahl st-wahl', role: 'group', 'aria-label': 'Zeitraum wählen' }, Statistik.ANSICHTEN.map((id) => h('button', { type: 'button', class: 'fs-wahl-knopf',
+      'aria-pressed': id === ansicht ? 'true' : 'false', onclick: () => neu({ fsAnsicht: id, fsVersatz: 0, fsAlle: false }), text: FS_NAMEN[id] })))];
   if (r.leer) {
     teile.push(h('section', { class: 'block' }, h('h2', { text: 'Noch kein Training gespeichert' }),
       h('p', { class: 'leise klein', text: 'Starte ein Training und trag Gewicht und Wiederholungen ein. Danach siehst du hier jeden Tag, wie du dich steigerst.' })));
     return teile;
   }
-  const s = r.summe, a = r.aenderung || {}, mitKg = s.volumen > 0 || (r.vorher && r.vorher.volumen > 0);
+  const s = r.summe, a = r.aenderung || {}, mitKg = s.volumen > 0 || (r.vorher && r.vorher.volumen > 0), gesamt = ansicht === 'gesamt';
   teile.push(h('section', { class: 'block fs-zeitraum' },
-    h('div', { class: 'fs-zeit' },
-      h('button', { class: 'fs-pfeil', type: 'button', 'aria-label': 'Früherer Zeitraum', disabled: !r.frueher, onclick: () => neu({ fsVersatz: r.versatz - 1, fsAlle: false }), text: '‹' }),
+    h('div', { class: 'fs-zeit' + (gesamt ? ' ohne-pfeile' : '') },
+      gesamt ? null : h('button', { class: 'fs-pfeil', type: 'button', 'aria-label': 'Früherer Zeitraum', disabled: !r.frueher, onclick: () => neu({ fsVersatz: r.versatz - 1, fsAlle: false }), text: '‹' }),
       h('div', { class: 'fs-zeit-text', role: 'status' }, h('b', { text: r.titel }),
-        r.unter || r.laeuft ? h('small', { text: [r.unter, r.laeuft ? 'läuft noch' : ''].filter(Boolean).join(' · ') }) : null),
-      h('button', { class: 'fs-pfeil', type: 'button', 'aria-label': 'Späterer Zeitraum', disabled: !r.spaeter, onclick: () => neu({ fsVersatz: r.versatz + 1, fsAlle: false }), text: '›' })),
+        r.unter || (r.laeuft && !gesamt) ? h('small', { text: [r.unter, r.laeuft && !gesamt ? 'läuft noch' : ''].filter(Boolean).join(' · ') }) : null),
+      gesamt ? null : h('button', { class: 'fs-pfeil', type: 'button', 'aria-label': 'Späterer Zeitraum', disabled: !r.spaeter, onclick: () => neu({ fsVersatz: r.versatz + 1, fsAlle: false }), text: '›' })),
+    fsGraph(r, animieren),
     s.trainings ? h('div', { class: 'fs-zahlen' },
       mitKg ? fsKachel('Volumen', s.volumen, 'kg', a.volumen) : fsKachel('Wiederholungen', s.wdh, '', a.wdh),
       fsKachel('Trainings', s.trainings, '', a.trainings),
@@ -1867,13 +1908,13 @@ function ansichtFortschritt() {
       mitKg ? fsKachel('Wiederholungen', s.wdh, '', a.wdh) : fsKachel('Trainingszeit', s.sekunden, '', a.sekunden, Statistik.dauerText))
       : h('p', { class: 'leise', text: 'In diesem Zeitraum hast du nicht trainiert.' }),
     r.vergleich ? h('p', { class: 'leise klein', text: r.vergleich.charAt(0).toUpperCase() + r.vergleich.slice(1) + (r.vorher && !r.vorher.trainings ? ' (da war kein Training).' : '.') }) : null,
+    gesamt && r.verbessert ? h('p', { class: 'leise klein', text: 'Seit deinem ersten Training hast du dich in ' + (r.verbessert === 1 ? 'einer Übung' : r.verbessert + ' Übungen') + ' gesteigert.' }) : null,
     s.trainings && a.volumen && a.volumen.richtung === 'runter' && mitKg ? h('p', { class: 'klein fs-hinweis', text: 'Weniger als davor ist in Ordnung: Entlastungswochen, Pausen und Technik-Tage gehören zum Training.' }) : null,
-    s.ohneWerte ? h('p', { class: 'klein fs-hinweis', text: s.ohneWerte + (s.ohneWerte === 1 ? ' Satz hat' : ' Sätze haben') + ' keine Wiederholungen. Trag sie im Training ein, dann rechnet die Statistik genauer.' }) : null,
-    fsBalken(r)));
+    s.ohneWerte ? h('p', { class: 'klein fs-hinweis', text: s.ohneWerte + (s.ohneWerte === 1 ? ' Satz hat' : ' Sätze haben') + ' keine Wiederholungen. Trag sie im Training ein, dann rechnet die Statistik genauer.' }) : null));
   if (r.uebungen.length) {
     const alle = S.fsAlle || r.uebungen.length <= 8;
     teile.push(h('section', { class: 'block' }, h('h2', { text: 'Deine Übungen' }),
-      h('p', { class: 'leise klein', text: 'Bester Satz ' + r.uebungenVergleich + '.' }),
+      h('p', { class: 'leise klein', text: 'Bester Satz ' + r.uebungenVergleich + '. Antippen zeigt den Verlauf.' }),
       h('div', { class: 'fs-liste' }, (alle ? r.uebungen : r.uebungen.slice(0, 6)).map((u) => fsUebung(u, r))),
       alle ? null : h('button', { class: 'knopf klein', type: 'button', onclick: () => neu({ fsAlle: true }), text: 'Alle ' + r.uebungen.length + ' Übungen zeigen' })));
   }
@@ -1882,7 +1923,8 @@ function ansichtFortschritt() {
       h('li', { text: 'Volumen = Gewicht × Wiederholungen, zusammengezählt über alle Sätze mit Gewicht.' }),
       h('li', { text: 'Bester Satz = das meiste Gewicht, bei gleichem Gewicht die meisten Wiederholungen. Ohne Gewicht zählen die Wiederholungen, bei Übungen auf Zeit die Sekunden.' }),
       h('li', { text: 'Läuft der Zeitraum noch, vergleicht die App mit genauso vielen Tagen davor. So ist der Vergleich fair.' }),
-      h('li', { text: 'Gezählt wird, was du im Training einträgst. Die Statistik bleibt auf diesem Handy.' }))));
+      h('li', { text: '„Gesamt“ zählt alles seit deinem ersten Training und vergleicht jede Übung mit dem ersten Mal.' }),
+      h('li', { text: 'Gezählt wird, was du im Training einträgst. Die Statistik bleibt auf diesem Handy. Schickst du Devin dein Training, sieht er sie auch.' }))));
   return teile;
 }
 // Training per E-Mail an Devin (06.11.2026): Die Mail-App öffnet sich fertig ausgefüllt, der Kunde tippt nur noch auf Senden.
