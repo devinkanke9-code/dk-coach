@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-laEu9MWosMsnlug2a+fNAsjiQ07jpKaCE/9obscU6H0=' 'sha256-rX2kBmcwjEVxqdfGalrHxdVG7ebxYFy00u3UR004ZP4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-laEu9MWosMsnlug2a+fNAsjiQ07jpKaCE/9obscU6H0=' 'sha256-byEwxR1P7BfyoIDncpQOVCEs6sTq/nmyiVea4k/8NEo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="dk-kein-zoom" content="1">
 <meta name="dk-wellen-video" content="../">
@@ -148,6 +148,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
     var alt = JSON.parse(localStorage.getItem(SPEICHER) || 'null');
     if (alt && alt.v === 11) { S.g = objekt(alt.g); S.a = objekt(alt.a); S.s = objekt(alt.s); S.e = objekt(alt.e); S.schritt = Math.max(0, +alt.schritt || 0); S.gesendet = !!alt.gesendet; S.t = +alt.t || null; }
     else if (alt && alt.a) { S.a = objekt(alt.a); if (S.a.ziel) S.a.ziele = [S.a.ziel]; delete S.a.ziel; }   // Entwurf von vor dem 06.11.2026: Antworten bleiben, es geht mit „Über dich“ weiter
+    if (S.gesendet && S.t && Date.now() - S.t > 30 * 864e5) { localStorage.removeItem(SPEICHER); S.g = {}; S.a = {}; S.s = {}; S.e = {}; S.t = null; S.gesendet = false; S.schritt = 0; }   // 30 Tage nach dem Senden: Antworten weg vom Handy (19.11.2026)
   } catch (e) {}
   function speichern() { try { localStorage.setItem(SPEICHER, JSON.stringify({ v: 11, g: S.g, a: S.a, s: S.s, e: S.e, t: S.t, schritt: S.schritt, gesendet: S.gesendet })); } catch (e) {} }
   function aendern() { S.t = null; S.gesendet = false; speichern(); }   // neue Antwort = neue Analyse (gleiche Zeit nur für dieselben Antworten, so erkennt Devins Seite doppelt Geschicktes)
@@ -636,7 +637,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
     return h('section', { class: 'block start' },
       h('img', { class: 'logo', src: '../icon.svg', alt: '' }),
       h('h1', { text: 'Danke!' }),
-      h('p', { class: 'leise', text: 'Hat sich deine Mail-App geöffnet? Dann tipp dort noch auf Senden. Devin schaut sich deine Antworten an und schickt dir deinen Link und deinen Code.' }),
+      h('p', { class: 'leise', text: 'Hat sich deine Mail-App geöffnet? Dann tipp dort noch auf Senden. Devin schaut sich deine Antworten an und schickt dir deinen Link und deinen Code. Deine Antworten bleiben höchstens 30 Tage auf diesem Handy (falls die Mail hängt), dann löschen sie sich von selbst.' }),
       mailKnopf('Mail nochmal öffnen', 'knopf haupt'),
       aboBlock(),
       ABO ? rechtliches() : null,

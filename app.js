@@ -85,6 +85,8 @@ async function linkEinlesen() {
   const z = /[#&]z=([A-Za-z0-9_-]+)/.exec(location.hash), m = /[#&]p=([A-Za-z0-9_-]+)/.exec(location.hash);
   const u = /[#&]umzug=([A-Za-z0-9_-]+)/.exec(location.hash);   // Umzug von der alten Adresse (06.11.2026)
   if (u) return ohneCode(u[1], umzugEinlesen);
+  const c = /[#&]c=([0-9-]{8,14})(?![0-9])/.exec(location.hash);   // kurzer Link mit Code (21.11.2026)
+  if (c && K.appCodeGueltig(c[1])) return codeLinkEinlesen(K.appCodeNormal(c[1]));
   if (!z && !m) return false;
   if (!z) return ohneCode(m[1], planEinlesen);
   linkAusAdresse();
@@ -147,7 +149,14 @@ async function zugangEinlesen(teil) {
   for (const c of new Set(Object.values(konten()).map((k) => k.code).filter(Boolean))) {   // Code schon bekannt? Dann ohne Eingabe
     let d = null;
     try { d = await K.entpacken(c, teil); } catch (e) { continue; }
-    if (linkDatenOk(d)) { anmelden(d, c, teil); return true; }
+    if (!linkDatenOk(d)) continue;
+    if (typeof freiFuer === 'function' && !(await freiFuer(c))) {   // Schalter „aus“ bei Devin: der Link geht nicht auf (typeof: app/test.js prüft zugangEinlesen allein)
+      gesehen(teil);
+      if (konten()[d.k]) { sperren(d.k); speicher.schreib('dk_konto', d.k); speicher.schreib('dk_aktiv', d.k); }
+      toast('Dein Zugang ist gerade ausgeschaltet. Schreib Devin.');
+      return true;
+    }
+    anmelden(d, c, teil); return true;
   }
   S.wartet = teil; speicher.schreib('dk_wartet', teil);
   return true;
@@ -164,24 +173,26 @@ function anmelden(d, code, teil) {
   if (alt && alt.t > d.t) return;   // älterer Link (z. B. der Start-Link vom Home-Bildschirm) überschreibt nie einen neueren Stand
   // a: 3 = nur Gesundheits-Check (die 10 Fragen kamen schon über die Seite „Analyse für dich“), 2 = Analyse in 10 Fragen, 1 = alle Fragen
   const form = d.a === 3 ? 'gesundheit' : d.a === 2 ? 'kurz' : d.a ? 'lang' : (alt && alt.form) || null;
-  alle[d.k] = { id: d.k, n: (d.n || '').slice(0, 120), bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,
+  alle[d.k] = { id: d.k, n: (typeof d.n === 'string' && d.n ? d.n : (alt && alt.n) || '').slice(0, 120), bis: d.bis || '', code: K.appCodeAnzeige(code), t: d.t, plan: !!d.p, warten: !!d.w,   // ohne Namen (Code-Briefkasten): der vom Link bleibt
     analyse: d.p || (alt && alt.form && alt.form !== form) ? null : (alt && alt.analyse) || null, form,   // andere Abfrage als vorher: nicht mehr „schon geschickt“
     c: d.c === 0 ? null : d.c && d.c.v === 1 ? d.c : (alt && alt.c) || null,   // Charakter von Devin: nur Zahlen und Farben, kein Foto. Ein Link ohne Charakter lässt den alten stehen, 0 nimmt ihn weg
-    g: /^(weiblich|maennlich|divers)$/.test(d.g || '') ? d.g : null };   // Geschlecht, das Devin eingetragen hat (die 10 Fragen fragen es nicht): für die Fragen nur für Frauen im Gesundheits-Check
+    g: /^(weiblich|maennlich|divers)$/.test(d.g || '') ? d.g : (!d.g && alt && alt.g) || null };   // Geschlecht, das Devin eingetragen hat (die 10 Fragen fragen es nicht): für die Fragen nur für Frauen im Gesundheits-Check. Ohne Angabe (Code-Briefkasten) bleibt das vom Link
   speicher.schreib('dk_konten', alle);
+  if (!alt && typeof farbeNachLogin === 'function') farbeNachLogin();   // Devin, 21.11.2026: „wenn du dann eingeloggt bist, dass du direkt schwarz-gold siehst“
   if (d.p) {
     // Neuer Plan (anderes Erstelldatum) = Woche 1 ab heute; nur geändert = die Wochen zählen weiter
     const plaene = speicher.lies('dk_plaene', {}), vorher = plaene[d.k];
     const sauber = K.planSauber(d.p);
     plaene[d.k] = Object.assign(sauber, { id: d.k, importiert: (vorher && vorher.d === sauber.d && vorher.importiert) || isoHeute() });
     speicher.schreib('dk_plaene', plaene);
+    const ana = speicher.lies('dk_analyse10', null);   // Analyse von der Seite „Analyse für dich“: Devin hat sie (der Plan ist da), also weg vom Handy (19.11.2026)
+    if (ana && ana.gesendet) speicher.schreib('dk_analyse10', null);
   }
   dauerhaft();
   const vn = vorname(d.n);
   if (!alt) toast('Hi' + (vn ? ' ' + vn : '') + '! Du bist eingeloggt.');
   else if (alt.t !== d.t) toast(d.p && !alt.plan ? 'Dein Plan ist da!' : d.p ? 'Neuer Stand von Devin ist da' : 'Aktualisiert');
   S.tagWahl = null; S.ansicht = 'heute';
-  if (typeof sitzungSichern === 'function') sitzungSichern(code, d.k).catch(() => {});   // typeof: app/test.js prüft anmelden allein
 }
 // Nachricht von Devin einfügen: für die App vom Home-Bildschirm, die Links aus WhatsApp nicht selbst öffnet
 // Code in Devins Nachricht: neu 12 Ziffern (1234-5678-9012), ältere 8 (1234-5678). Erst hinter „Code:“ suchen, sonst die erste passende Ziffernfolge
@@ -205,7 +216,15 @@ async function textEinlesen(text) {
   if (c) {
     let d = null;
     try { d = await K.entpacken(c, z[1]); } catch (e) {}
-    if (linkDatenOk(d)) { anmelden(d, c, z[1]); zeichne(); fotosVorladen(); return; }
+    if (linkDatenOk(d)) {
+      if (!(await freiFuer(c))) { toast(CODE_TEXTE.aus); return; }
+      anmelden(d, c, z[1]); zeichne(); fotosVorladen(); return;
+    }
+    if (KONTAKT.briefkasten) {   // Link kaputt oder abgeschnitten: Der Code allein reicht
+      const aus = await codeHolen(c);
+      if (aus === 'ok') { gesehen(z[1]); zeichne(); fotosVorladen(); toast('Fertig, du bist eingeloggt.'); return; }
+      if (aus === 'aus' || aus === 'erneuert' || aus === 'abgelaufen') { toast(CODE_TEXTE[aus]); return; }
+    }
   }
   await zugangEinlesen(z[1]); zeichne(); fotosVorladen();
 }
@@ -358,8 +377,10 @@ function geh(id) { S.ansicht = id; zeichne(); window.scrollTo(0, 0); }
 window.addEventListener('dk-look', () => { const y = window.scrollY; zeichne(); window.scrollTo(0, y); });
 // Was die App zeigt: Code-Eingabe, Sperre nach Ablauf, Analyse, Warten auf den Plan, der Plan selbst oder Willkommen
 function zustand() {
+  if (S.laedt) return 'laedt';   // kurzer Link: Plan wird gerade geholt
   if (S.wartet) return 'code';
   const ko = aktivesKonto(), p = aktiverPlan();
+  if (ko && ko.aus) return 'pausiert';   // Schalter „aus“ bei Devin (Code-Briefkasten, 19.11.2026)
   if (ko && (!p || p.id === ko.id)) {
     if (abgelaufen(ko)) return 'abgelaufen';
     if (!ko.plan) return ko.warten || ko.analyse === 'geschickt' ? 'warten' : 'analyse';
@@ -373,13 +394,13 @@ function zeichne() {
   document.body.classList.toggle('start', z === 'willkommen' && !installiert());
   if (z !== 'willkommen') startWeg();
   S.plan = z === 'plan' ? aktiverPlan() : null;
-  $('#wer').textContent = S.plan ? (navigator.onLine === false ? 'Offline · alles da' : vorname(S.plan.n)) : '';
+  $('#wer').textContent = S.plan ? (navigator.onLine === false ? 'Offline · alles da' : vorname(S.plan.n || (S.konto && S.konto.id === S.plan.id ? S.konto.n : ''))) : '';   // Plan aus dem Briefkasten: ohne Namen
   leiste();
   const ziel = $('#ansicht'); ziel.textContent = '';
   // Ruhig und schön (19.11.2026): nur der echte Seitenwechsel blendet ein; Neuzeichnen derselben Seite (Haken, Farbwelt) bleibt ruhig
   const ansichtSchluessel = z + '|' + (z === 'plan' ? S.ansicht : '');
   ziel.classList.toggle('still', ansichtSchluessel === S.letzteAnsicht); S.letzteAnsicht = ansichtSchluessel;
-  const ansicht = { code: codeAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
+  const ansicht = { laedt: laedtAnsicht, code: codeAnsicht, pausiert: pausiertAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
     || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, fortschritt: ansichtFortschritt }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
@@ -394,107 +415,67 @@ function zeichne() {
 /* ---------- Willkommen ---------- */
 /* ---------- Code-Leiste (07.11.2026, Devin: „eine Leiste, wo du auf der Webseite deinen Code direkt eingeben kannst … als Erstes gezeigt“) ----------
    Der Kunde tippt nur den Code aus Devins Nachricht. Die Seite fragt den Code-Briefkasten (Google-Skript in Devins Konto) mit einer Prüfsumme
-   des Codes, nie mit dem Code selbst, und bekommt den verschlüsselten Zugang zurück, genau den Teil, der sonst im Link nach #z= steht.
-   Danach läuft alles wie beim Link: Code schließt auf, anmelden(). Der Briefkasten kennt nur Zugänge, die Devin per Gmail geschickt hat. */
+   des Codes, nie mit dem Code selbst, und bekommt den verschlüsselten Plan zurück. Danach läuft alles wie beim Link: Code schließt auf, anmelden(). */
 
-/* ---------- Einmalcode und Sitzung (16.11.2026, Devin: „Der Code ist ein Einmalcode mit begrenzter Gültigkeit, sicher serverseitig geprüft … Halte danach eine sichere Sitzung aktiv“) ----------
-   Der Briefkasten (Google-Skript, Version 3) gibt einen Code genau einmal heraus, nur in den ersten 14 Tagen nach Devins Mail, und dazu einen langen Sitzungsschlüssel.
-   Der Schlüssel liegt nur auf diesem Handy (nie in der Adresse) und holt neue Pläne für genau dieses Konto. Den Plan öffnet weiterhin nur der Code (bleibt wie bisher auf dem Handy).
-   Älterer Briefkasten ohne Version 3: Die App fällt auf den alten Weg (?k=) zurück, alles geht wie vorher. */
-const sitzungen = () => { const s = speicher.lies('dk_sitzungen', {}); return s && typeof s === 'object' && !Array.isArray(s) ? s : {}; };
-function sitzungSetzen(k, t, zeit) { const s = sitzungen(); if (t) s[k] = { t: String(t), zeit: Number(zeit) || 0 }; else delete s[k]; speicher.schreib('dk_sitzungen', s); }
+/* ---------- Code-Briefkasten, Fassung 4 (19.11.2026, Devin: „dass wirklich der Login … perfekt abgelaufen wird“, „so eine Leiste … an und aus … steuern“) ----------
+   Der Briefkasten kennt jeden Code, sobald Devin ihn in der Trainer-Seite erstellt: kein Freischalten, keine Mail nötig, auch 12 Ziffern und Codes per WhatsApp.
+   Ein Code geht beliebig oft (Safari, App vom Home-Bildschirm, neues Handy): Das iPhone trennt Safari und Home-Bildschirm-App, ein Einmalcode sperrte dort aus.
+   Sperren geht über Devins Schalter an/aus: Dann sagt der Briefkasten „aus“, die App sperrt und löscht den Plan vom Handy (Code und eigene Trainings bleiben,
+   schaltet Devin wieder an, kommt der Plan von selbst zurück). Ohne Internet bleibt alles, wie es ist (offline zuerst): Die Sperre greift beim nächsten Öffnen mit Internet.
+   Gefragt wird nur mit der Prüfsumme des Codes. Im Briefkasten liegt nur der verschlüsselte Plan, ohne Name und andere persönliche Daten (die kommen nur mit dem Link).
+   Briefkasten vor Fassung 4 (ohne doPost): Die App fällt auf den alten Weg (?k=) zurück, alles geht wie vorher. */
 async function pruefsummeVon(salz, text) {
   const roh = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salz + text));
   return Array.from(new Uint8Array(roh), (b) => b.toString(16).padStart(2, '0')).join('');
 }
-async function briefPost(daten) {   // POST mit JSON als Text: kein Vorab-Check des Browsers, keine Cookies, nichts in der Adresse
-  if (!KONTAKT.briefkasten) return { ok: false, grund: 'aus' };
-  const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 20000);
+async function briefFragen(daten, ms) {   // POST mit JSON als Text: kein Vorab-Check des Browsers, keine Cookies, nichts in der Adresse
+  if (!KONTAKT.briefkasten) return { ok: false, grund: 'ohne' };
+  if (navigator.onLine === false) return { ok: false, grund: 'netz' };
+  const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), ms || 20000);
   try {
     const r = await fetch(KONTAKT.briefkasten, { method: 'POST', body: JSON.stringify(daten), cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
     if (!r.ok) return { ok: false, grund: 'netz' };
     const text = await r.text();
-    try { const j = JSON.parse(text); return j && typeof j === 'object' && !Array.isArray(j) ? j : { ok: false, grund: 'alt' }; } catch (e) { return { ok: false, grund: 'alt' }; }   // Briefkasten vor Version 3
+    try { const j = JSON.parse(text); return j && typeof j === 'object' && !Array.isArray(j) ? j : { ok: false, grund: 'alt' }; } catch (e) { return { ok: false, grund: 'alt' }; }   // vor Fassung 4: HTML „doPost nicht gefunden“
   } catch (e) { return { ok: false, grund: 'netz' }; } finally { clearTimeout(uhr); }
 }
-// Nach einem Login über den Link (Code eingetippt oder gespeichert): einmal beim Briefkasten einlösen, dann hat auch dieses Handy eine Sitzung
-async function sitzungSichern(code, k) {
-  if (!KONTAKT.briefkasten || !code || sitzungen()[k] || navigator.onLine === false) return;
-  const r = await briefPost({ a: 'einloesen', k: await pruefsummeVon('dk-zugang|', K.appCodeNormal(code)) });
-  if (!r.ok || typeof r.t !== 'string' || typeof r.z !== 'string') return;
-  let d = null; try { d = await K.entpacken(code, r.z); } catch (e) {}
-  if (d && d.k === k) sitzungSetzen(k, r.t, r.zeit);
+async function codeFrage(code) { const z = K.appCodeNormal(code); return { k: await pruefsummeVon('dk-zugang|', z), l: z.length }; }
+// Darf dieser Code gerade rein? Nein nur, wenn der Briefkasten ausdrücklich „aus“ sagt. Kein Netz, alter Briefkasten, noch nicht eingetragen: ja (offline zuerst).
+async function freiFuer(code) {
+  if (!KONTAKT.briefkasten || navigator.onLine === false) return true;
+  const r = await briefFragen(Object.assign({ a: 'stand', t: Date.now() + 864e5 }, await codeFrage(code)), 8000);   // t in der Zukunft: nur an/aus, kein Plan
+  return !(r.ok && r.an === false);
 }
-// Neuer Stand von Devin (neuer Plan, gleicher Code): beim Öffnen, bei Rückkehr in die App und wenn das Internet wiederkommt. Nie mitten im Training oder Gym.
+// Devin hat den Zugang ausgeschaltet: Plan vom Handy, das Konto bleibt mit Code (schaltet er wieder an, kommt der Plan von selbst zurück)
+function sperren(id) {
+  kontoSetzen(id, { aus: Date.now() });
+  const plaene = speicher.lies('dk_plaene', {}); delete plaene[id]; speicher.schreib('dk_plaene', plaene);
+  if (LAUF && LAUF.plan === id) laufSchliessen();
+  S.tagWahl = null;
+}
+// Neuer Stand oder Sperre von Devin: beim Öffnen, bei Rückkehr in die App und wenn das Internet wiederkommt. Nie mitten im Training oder Gym.
 let STAND_ZULETZT = 0;
-async function standHolen(vonHand) {
-  const ko = aktivesKonto(), s = ko && sitzungen()[ko.id];
-  if (!ko || !ko.code || !s) return 'kein';
+async function zugangPruefen(vonHand) {
+  const ko = aktivesKonto();
+  if (!ko || !ko.code || !KONTAKT.briefkasten) return 'kein';
   if (navigator.onLine === false) return 'offline';
   if (!vonHand && (Date.now() - STAND_ZULETZT < 60000 || document.querySelector('.raum, .tm, .blatt.offen'))) return 'warte';
   STAND_ZULETZT = Date.now();
-  const r = await briefPost({ a: 'stand', t: s.t, seit: s.zeit || 0 });
-  if (!r.ok) { if (r.grund === 'sitzung') sitzungSetzen(ko.id, null); return r.grund || 'netz'; }
-  if (!r.neu) return 'aktuell';
+  const hatPlan = !!speicher.lies('dk_plaene', {})[ko.id];
+  const r = await briefFragen(Object.assign({ a: 'stand', t: hatPlan || !ko.plan ? ko.t || 0 : 0 }, await codeFrage(ko.code)));   // Plan fehlt (war aus): ganz neu holen
+  if (!r.ok) return r.grund || 'netz';   // alt, unbekannt (noch nicht eingetragen), netz, pause: nichts ändern
+  if (r.an === false) { sperren(ko.id); zeichne(); return 'aus'; }
+  const warAus = !!ko.aus;
+  if (warAus) kontoSetzen(ko.id, { aus: null });
+  if (r.erneuert || !r.neu || typeof r.z !== 'string') { if (warAus) zeichne(); return r.erneuert ? 'erneuert' : 'aktuell'; }
   let d = null; try { d = await K.entpacken(ko.code, r.z); } catch (e) {}
-  if (!linkDatenOk(d) || d.k !== ko.id) return 'passt-nicht';
-  sitzungSetzen(ko.id, s.t, r.zeit);
+  if (!linkDatenOk(d) || d.k !== ko.id) { if (warAus) zeichne(); return 'passt-nicht'; }
   if (!vonHand && document.querySelector('.raum, .tm, .blatt.offen')) { STAND_ZULETZT = 0; return 'warte'; }   // inzwischen ein Training geöffnet: später
   const ansichtVorher = S.ansicht;
   anmelden(d, ko.code, r.z);
   if (!vonHand) S.ansicht = ansichtVorher;   // von selbst: die Seite bleibt, wo man war
   zeichne(); fotosVorladen();
   return 'neu';
-}
-// iPhone: Safari und die App vom Home-Bildschirm haben getrennte Speicher. Übergabe-Code (8 Ziffern, 10 Minuten, einmal) bringt das Konto in die App.
-function uebergabeKarte() {
-  const ko = aktivesKonto(), s = ko && sitzungen()[ko.id];
-  if (!ko || !s || !ko.code || !KONTAKT.briefkasten || !istIos || installiert()) return null;
-  const aus = h('div', { class: 'stapel', role: 'status' });
-  const knopf = h('button', { class: 'knopf', type: 'button', text: 'Übergabe-Code erstellen', onclick: async () => {
-    knopf.disabled = true; knopf.textContent = 'Erstelle …'; aus.textContent = '';
-    const z = new Uint32Array(2); crypto.getRandomValues(z);
-    const ziffern = String(z[0] % 10000).padStart(4, '0') + String(z[1] % 10000).padStart(4, '0');
-    let b = ''; try { b = await K.verpacken(ziffern, { c: K.appCodeNormal(ko.code), k: ko.id }); } catch (e) {}
-    const r = b ? await briefPost({ a: 'uebergabe', t: s.t, u: await pruefsummeVon('dk-uebergabe|', ziffern), b }) : { ok: false };
-    knopf.disabled = false; knopf.textContent = 'Neuen Übergabe-Code erstellen';
-    if (!r.ok) { aus.append(h('p', { class: 'klein', text: r.grund === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Das hat nicht geklappt. Bitte nochmal versuchen.' })); return; }
-    aus.append(h('p', { class: 'uebergabe-code', text: ziffern.slice(0, 4) + '-' + ziffern.slice(4) }),
-      h('p', { class: 'leise klein', text: 'Gilt 10 Minuten und nur einmal. Öffne jetzt die App auf dem Home-Bildschirm und gib ihn dort bei „Übergabe-Code aus Safari?“ ein.' }));
-  } });
-  return h('section', { class: 'block' }, h('h2', { text: 'Weiter in der App vom Home-Bildschirm' }),
-    h('p', { class: 'leise klein', text: 'Auf dem iPhone hat die App vom Home-Bildschirm einen eigenen Speicher. Mit einem Übergabe-Code nimmst du dein Konto einmal mit, ohne neuen Code von Devin.' }), knopf, aus);
-}
-function uebergabeEingabe() {
-  if (!KONTAKT.briefkasten || !installiert()) return null;
-  const status = h('p', { class: 'klein', role: 'status' });
-  let laeuft = false;
-  const feld = h('input', { class: 'eingabe code-feld', id: 'uebergabe-feld', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '9', placeholder: '0000-0000', 'aria-describedby': 'uebergabe-hilfe',
-    oninput: (e) => { const n = String(e.target.value).replace(/\D/g, '').slice(0, 8); e.target.value = (n.match(/\d{1,4}/g) || []).join('-'); if (n.length === 8) los(); },   // Übergabe-Code: 8 Ziffern (kein Kunden-Code)
-    onkeydown: (e) => { if (e.key === 'Enter') los(); } });
-  const knopf = h('button', { class: 'knopf haupt', type: 'button', text: 'Übernehmen', onclick: () => los() });
-  async function los() {
-    if (laeuft) return;
-    const n = K.appCodeNormal(feld.value);
-    if (n.length !== 8) { status.textContent = 'Der Übergabe-Code hat 8 Ziffern, zum Beispiel 4821-7730.'; return; }
-    laeuft = true; knopf.disabled = true; status.textContent = 'Prüfe …';
-    const r = await briefPost({ a: 'uebergabe-holen', u: await pruefsummeVon('dk-uebergabe|', n) });
-    if (r.ok && typeof r.b === 'string' && typeof r.z === 'string') {
-      let innen = null, d = null;
-      try { innen = await K.entpacken(n, r.b); } catch (e) {}
-      if (innen && typeof innen.c === 'string') { try { d = await K.entpacken(innen.c, r.z); } catch (e) {} }
-      if (linkDatenOk(d) && d.k === innen.k) {
-        sitzungSetzen(d.k, r.t, r.zeit); anmelden(d, innen.c, r.z);
-        zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast('Fertig, du bist eingeloggt.'); return;
-      }
-    }
-    laeuft = false; knopf.disabled = false;
-    status.textContent = r.grund === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : r.grund === 'pause' ? 'Zu viele Versuche. Bitte in 10 Minuten nochmal.' : 'Der Übergabe-Code passt nicht oder ist abgelaufen (10 Minuten). Erstell in Safari unter Infos einen neuen.';
-    feld.select();
-  }
-  return h('section', { class: 'block code-leiste' }, h('label', { class: 'lbl', for: 'uebergabe-feld', text: 'Übergabe-Code aus Safari?' }),
-    h('p', { class: 'leise klein', id: 'uebergabe-hilfe', text: 'Schon in Safari eingeloggt? Dort unter Infos „Übergabe-Code erstellen“ und hier eingeben.' }),
-    h('div', { class: 'code-reihe' }, feld, knopf), status);
 }
 // Offline klar anzeigen
 function netzAnzeigen() {
@@ -503,53 +484,86 @@ function netzAnzeigen() {
   if (el) return;
   document.body.append(h('div', { id: 'netz-hinweis', class: 'netz-hinweis', role: 'status' }, h('b', { text: 'Offline' }), h('span', { text: ' · Dein Plan geht trotzdem. Neues kommt, sobald du wieder online bist.' })));
 }
+const CODE_TEXTE = {
+  netz: 'Keine Verbindung. Bitte mit Internet nochmal versuchen.',
+  unbekannt: 'Diesen Code kennt die Seite nicht. Prüf die Ziffern in Devins Nachricht. Hat er ihn gerade erst erstellt? Dann tipp gleich nochmal auf Einloggen.',
+  'passt-nicht': 'Der Code passt nicht. Schau nochmal in Devins Nachricht.',
+  aus: 'Dein Zugang ist gerade ausgeschaltet. Schreib Devin, dann schaltet er ihn wieder an.',
+  erneuert: 'Für dich gibt es einen neuen Code. Nimm den Code aus Devins neuester Nachricht.',
+  abgelaufen: 'Dieser Code ist abgelaufen. Bitte Devin um einen neuen Code.',
+  pause: 'Zu viele falsche Versuche mit alten Codes. Bitte in 10 Minuten nochmal.'
+};
 async function codeHolen(code) {
-  const ziffern = K.appCodeNormal(code);
-  const pruefsumme = await pruefsummeVon('dk-zugang|', ziffern);
-  const v3 = await briefPost({ a: 'einloesen', k: pruefsumme });
-  let teil = '', schluessel = '', zeit = 0;
-  if (v3.ok && typeof v3.z === 'string') { teil = v3.z.trim(); schluessel = typeof v3.t === 'string' ? v3.t : ''; zeit = Number(v3.zeit) || 0; }
-  else if (v3.grund !== 'alt') return { benutzt: 'benutzt', 'zu-alt': 'abgelaufen', abgelaufen: 'abgelaufen', pause: 'pause', unbekannt: 'unbekannt' }[v3.grund] || 'netz';
-  const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 15000);
-  if (!teil) try {
-    const r = await fetch(KONTAKT.briefkasten + '?k=' + pruefsumme, { cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
-    if (!r.ok) return 'netz';
-    teil = (await r.text()).trim();
-  } catch (e) { return 'netz'; } finally { clearTimeout(uhr); }
+  const ziffern = K.appCodeNormal(code), frage = await codeFrage(ziffern);
+  let r = await briefFragen(Object.assign({ a: 'holen' }, frage));
+  if (!r.ok && r.grund === 'unbekannt') { await new Promise((ok) => setTimeout(ok, 3500)); r = await briefFragen(Object.assign({ a: 'holen' }, frage)); }   // gerade erst erstellt: einmal nachfassen
+  let teil = '';
+  if (r.ok && typeof r.z === 'string') teil = r.z.trim();
+  else if (r.grund === 'alt') {   // Briefkasten vor Fassung 4: GET wie bisher
+    const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 20000);
+    try {
+      const g = await fetch(KONTAKT.briefkasten + '?k=' + frage.k, { cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
+      if (!g.ok) return 'netz';
+      teil = (await g.text()).trim();
+    } catch (e) { return 'netz'; } finally { clearTimeout(uhr); }
+  } else return { aus: 'aus', abgelaufen: 'abgelaufen', erneuert: 'erneuert', pause: 'pause', unbekannt: 'unbekannt' }[r.grund] || 'netz';
   if (!teil || teil === 'leer' || !/^[A-Za-z0-9_-]{20,}$/.test(teil)) return 'unbekannt';
   let d = null;
   try { d = await K.entpacken(ziffern, teil); } catch (e) {}
   if (!linkDatenOk(d)) return 'passt-nicht';
-  if (schluessel) sitzungSetzen(d.k, schluessel, zeit);   // vor anmelden: sonst löst sitzungSichern den Code ein zweites Mal ein
+  if (konten()[d.k] && konten()[d.k].aus) kontoSetzen(d.k, { aus: null });   // der Code geht wieder: Devin hat angeschaltet
   anmelden(d, ziffern, teil);
   return 'ok';
 }
-function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann heißt die Leiste „Neuen Plan holen“
+/* Kurzer Link mit Code (21.11.2026, Devin: „ein kleiner Link … der Kunde gibt einmal den Code ein und dann direkt wird das funktionieren … er kriegt direkt seinen Trainingsplan“):
+   devin-kanke.com/#c=<Code>. Antippen reicht: Die App holt den Plan mit dem Code beim Briefkasten, wie die Code-Leiste. Ist der Code gerade erst erstellt, fasst sie
+   noch zweimal nach (der Briefkasten holt Devins Entwurf in Sekunden ab). Kein Netz oder ein anderer Grund: Code-Leiste mit dem Code vorbelegt und einem klaren Satz.
+   Steht das Konto schon auf diesem Handy, geht der Link ohne Netz auf (Neues holt zugangPruefen). Den Code nimmt die App aus der Adresszeile, außer in Safari am iPhone:
+   Dort nimmt „Zum Home-Bildschirm“ den Link mit, und die App vom Home-Bildschirm loggt damit beim ersten Start von selbst ein. */
+async function codeLinkEinlesen(ziffern) {
+  linkAusAdresse();
+  const da = Object.values(konten()).find((k) => k && k.code && K.appCodeNormal(k.code) === ziffern);
+  if (da && !da.aus) { speicher.schreib('dk_konto', da.id); speicher.schreib('dk_aktiv', da.id); S.codeLink = null; S.codeFehler = null; return true; }
+  S.codeLink = ziffern; S.codeFehler = null; S.laedt = true; zeichne();
+  let aus = await codeHolen(ziffern);
+  for (let i = 0; i < 2 && aus === 'unbekannt'; i++) { await new Promise((ok) => setTimeout(ok, 4000)); aus = await codeHolen(ziffern); }
+  S.laedt = false;
+  if (aus === 'ok') { S.codeLink = null; fotosVorladen(); return true; }
+  S.codeFehler = aus;   // die Code-Leiste zeigt den Code und den Grund; kommt das Internet wieder, versucht die App es von selbst nochmal
+  return true;
+}
+function laedtAnsicht() {
+  return [h('section', { class: 'block willkommen', 'aria-busy': 'true' }, logo(), h('h1', { text: 'Einen Moment …' }),
+    h('p', { class: 'leise', role: 'status', text: 'Dein Plan wird geladen. Das dauert nur ein paar Sekunden.' }))];
+}
+// Nach dem ersten Einloggen auf diesem Handy: Schwarz-Gold (Devin, 21.11.2026). Wer danach selbst umschaltet, behält seine Wahl.
+function farbeNachLogin() {
+  try { localStorage.setItem('dk_look', 'gold'); } catch (e) {}
+  const root = document.documentElement;
+  if (root.dataset.look === 'gold') return;
+  root.dataset.look = 'gold';
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = '#060608';
+  try { window.dispatchEvent(new CustomEvent('dk-look', { detail: 'gold' })); } catch (e) {}
+}
+function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann heißt die Leiste „Neuer Code von Devin?“
   if (!KONTAKT.briefkasten) return null;
-  const status = h('p', { class: 'klein', role: 'status' });
+  const status = h('p', { class: 'klein', role: 'status', text: !art && S.codeFehler ? CODE_TEXTE[S.codeFehler] || CODE_TEXTE.netz : null });   // kurzer Link ging nicht: warum
   let laeuft = false;
   const feld = h('input', { class: 'eingabe code-feld', id: 'code-start', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '14', placeholder: '0000-0000-0000',
+    value: !art && S.codeLink ? K.appCodeAnzeige(S.codeLink) : null,
     'aria-describedby': 'code-start-hilfe',
     oninput: (e) => { if (codeTippen(e.target) === 12) los(); },
     onkeydown: (e) => { if (e.key === 'Enter') los(); } });
   const knopfText = art === 'zugang' ? 'Einlösen' : 'Einloggen';   // unter Infos ist man schon eingeloggt (Gesamttest 13.11.2026)
   const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: knopfText });
-  const TEXTE = {
-    netz: 'Keine Verbindung. Bitte mit Internet nochmal versuchen.',
-    unbekannt: 'Diesen Code kennt die Seite noch nicht. Hat Devin ihn gerade erst geschickt? Dann versuch es in 5 Minuten nochmal, oder öffne den Link aus seiner Nachricht.',
-    'passt-nicht': 'Der Code passt nicht. Schau nochmal in Devins Nachricht.',
-    benutzt: 'Dieser Code wurde schon benutzt. Auf diesem Handy schon eingeloggt? Dann ist alles da. Neues Handy: Bitte Devin um einen neuen Code.',
-    abgelaufen: 'Dieser Code ist abgelaufen. Bitte Devin um einen neuen Code.',
-    pause: 'Zu viele Versuche. Bitte in 10 Minuten nochmal.'
-  };
   async function los() {
     if (laeuft) return;
     if (!K.appCodeGueltig(feld.value)) { status.textContent = CODE_FALSCH; return; }
     laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; status.textContent = '';
     const aus = await codeHolen(feld.value);
-    if (aus === 'ok') { zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast(art === 'zugang' ? 'Fertig, dein Plan ist auf dem neuesten Stand.' : 'Fertig, du bist eingeloggt.'); return; }
+    if (aus === 'ok') { S.codeLink = null; S.codeFehler = null; zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast(art === 'zugang' ? 'Fertig, dein Plan ist auf dem neuesten Stand.' : 'Fertig, du bist eingeloggt.'); return; }
     laeuft = false; knopf.disabled = false; knopf.textContent = knopfText;
-    status.textContent = TEXTE[aus] || TEXTE.netz;
+    status.textContent = CODE_TEXTE[aus] || CODE_TEXTE.netz;
     feld.select();
   }
   return h('section', { class: 'block code-leiste' },
@@ -557,12 +571,26 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
     h('p', { class: 'leise klein', id: 'code-start-hilfe', text: art === 'zugang' ? 'Neue Pläne kommen von selbst, sobald du online bist. Hat Devin dir einen neuen Code geschickt? Dann hier eingeben.' : 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
     h('div', { class: 'code-reihe' }, feld, knopf), status);
 }
+function pausiertAnsicht() {   // Schalter „aus“ bei Devin: kein Plan, nur ein klarer Satz und „Nochmal prüfen“
+  const ko = aktivesKonto(), vn = vorname(ko.n);
+  const knopf = h('button', { class: 'knopf haupt', type: 'button', text: 'Nochmal prüfen', onclick: async () => {
+    knopf.disabled = true; knopf.textContent = 'Prüfe …';
+    const r = await zugangPruefen(true);
+    if (r === 'neu' || r === 'aktuell' || r === 'erneuert') return;
+    knopf.disabled = false; knopf.textContent = 'Nochmal prüfen';
+    toast(r === 'aus' ? 'Noch ausgeschaltet. Schreib Devin.' : r === 'offline' || r === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Gerade nicht möglich. Bitte später nochmal.');
+  } });
+  return [h('section', { class: 'block willkommen' }, logo(),
+    h('h1', { text: (vn ? vn + ', dein' : 'Dein') + ' Zugang ist pausiert' }),
+    h('p', { class: 'leise', text: 'Devin hat deinen Zugang gerade ausgeschaltet. Schreib ihm, wenn du weitermachen willst. Sobald er ihn wieder anschaltet, ist dein Plan von selbst wieder da.' }),
+    knopf, h('button', { class: 'knopf text', type: 'button', onclick: abmelden, text: 'Abmelden' }))];
+}
 function willkommen() {
-  return [uebergabeEingabe(), codeLeiste(), h('section', { class: 'block willkommen' },
+  return [codeLeiste(), h('section', { class: 'block willkommen' },
     h('img', { class: 'logo', src: 'icon.svg', alt: '' }),
     h('h1', { text: 'Dein Trainingsplan' }),
     h('p', { class: 'leise', text: installiert()
-      ? 'Kopier die Nachricht von Devin (Link und Code) und füg sie hier ein. Danach bleibst du eingeloggt, auch ohne Internet.'
+      ? (KONTAKT.briefkasten ? 'Gib oben deinen Code von Devin ein. Oder kopier seine Nachricht und füg sie hier ein. Danach bleibst du eingeloggt, auch ohne Internet.' : 'Kopier die Nachricht von Devin (Link und Code) und füg sie hier ein. Danach bleibst du eingeloggt, auch ohne Internet.')
       : 'Öffne den Link, den dir Devin geschickt hat, und gib deinen Code ein. Danach ist dein Plan hier gespeichert und funktioniert auch ohne Internet.' }),
     einfuegenBlock(),
     h('button', { class: 'knopf text', type: 'button', onclick: beispiel, text: 'Beispielplan ansehen' })),
@@ -658,9 +686,17 @@ function codeAnsicht() {
     laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; fehler.textContent = '';
     let d = null;
     try { d = await K.entpacken(feld.value, S.wartet); } catch (e) {}
-    if (linkDatenOk(d)) { anmelden(d, feld.value, S.wartet); zeichne(); window.scrollTo(0, 0); fotosVorladen(); return; }
+    let grund = '';
+    if (linkDatenOk(d)) {
+      if (await freiFuer(feld.value)) { anmelden(d, feld.value, S.wartet); zeichne(); window.scrollTo(0, 0); fotosVorladen(); return; }
+      grund = 'aus';
+    } else if (KONTAKT.briefkasten) {   // Link kaputt oder abgeschnitten (Instagram schneidet nach 1000 Zeichen ab): Der Code allein reicht
+      const teil = S.wartet, aus = await codeHolen(feld.value);
+      if (aus === 'ok') { gesehen(teil); zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast('Fertig, du bist eingeloggt.'); return; }
+      if (aus === 'aus' || aus === 'erneuert' || aus === 'abgelaufen' || aus === 'netz') grund = aus;
+    }
     laeuft = false; knopf.disabled = false; knopf.textContent = 'Einloggen';
-    fehler.textContent = 'Der Code passt nicht zu diesem Link. Schau nochmal in Devins Nachricht.';
+    fehler.textContent = grund ? CODE_TEXTE[grund] : 'Der Code passt nicht zu diesem Link. Prüf die Ziffern in Devins Nachricht. Ist der Link abgeschnitten? Dann gib den Code oben auf devin-kanke.com ein.';
     feld.select();
   }
   return [h('section', { class: 'block willkommen' }, logo(),
@@ -768,10 +804,22 @@ function anFeld(f, ohneLabel) {   // ohneLabel: die Überschrift stellt die Frag
       oninput: (e) => setze(f.typ === 'zahl' ? (e.target.value === '' ? null : +e.target.value) : e.target.value) });
   return h('div', { class: 'feld' }, h('label', { for: id, class: ohneLabel ? 'versteckt' : null, text: titel }), hilfe, f.einheit ? h('div', { class: 'mit-einheit' }, inp, h('span', { text: f.einheit })) : inp);
 }
+// Fragen nur für Frauen brauchen das Geschlecht. Kommt der Zugang über die Code-Leiste, kennt die App es nicht (es liegt bewusst nicht im Code-Briefkasten):
+// dann fragt der Check einmal selbst. Die Antwort bleibt auf dem Handy und geht mit dem Check an Devin, der Plan ändert sich dadurch nicht (19.11.2026).
+const GESCHLECHT_FRAGEN = ANALYSE.screening.some((f) => f.nur_wenn && f.nur_wenn.geschlecht);
+const geschlechtFragen = () => GESCHLECHT_FRAGEN && !(aktivesKonto() || {}).g;   // Devin hat es nicht mitgeschickt (Code-Leiste): die App fragt
+const geschlechtFehlt = () => geschlechtFragen() && !/^(weiblich|maennlich|divers)$/.test(EN.a.geschlecht || '');
+function geschlechtFrage() {
+  return h('div', { class: 'frage geschlecht-frage', role: 'group', 'aria-labelledby': 'scr-geschlecht' }, h('span', { id: 'scr-geschlecht', text: 'Ein paar Fragen sind nur für Frauen. Du bist …' }),
+    h('div', { class: 'janein' }, [['weiblich', 'Frau'], ['maennlich', 'Mann'], ['divers', 'Divers']].map(([w, t], i) => h('label', null,
+      h('input', { type: 'radio', name: 'scr_geschlecht', id: 'scr_geschlecht_' + i, checked: EN.a.geschlecht === w, onchange: () => { EN.a.geschlecht = w; entwurfSichern(); zeichne(); } }),
+      h('span', { class: 'nein', text: t })))));
+}
 function anGesundheit() {
   const OPT = [[true, 'Ja', 'ja'], [false, 'Nein', 'nein'], ['weiss_nicht', 'Weiß nicht', 'ja']];
   return [h('section', { class: 'block' }, h('h2', { text: 'Gesundheits-Check' }),
     h('p', { class: 'leise klein', text: 'Ehrlich antworten, das schützt dich. „Weiß nicht“ ist okay, dann klärt Devin das mit dir. Bei manchen Antworten brauchst du vor dem Training eine ärztliche Freigabe.' }),
+    geschlechtFragen() ? geschlechtFrage() : null,
     ANALYSE.screening.filter((f) => frageAktiv(f)).map((f) => h('div', { class: 'frage' }, h('span', { text: f.frage }),
       h('div', { class: 'janein' }, OPT.map(([w, t, c], i) => h('label', null,
         h('input', { type: 'radio', name: 'scr_' + f.id, id: 'scr_' + f.id + '_' + i, checked: EN.s[f.id] === w, onchange: () => { EN.s[f.id] = w; entwurfSichern(); if (STEUER_S.has(f.id)) zeichne(); } }),
@@ -865,6 +913,7 @@ function analyseAnsicht() {
       toast(akt.a.felder.some((x) => x.typ === 'auswahl' || x.typ === 'mehrfach') ? 'Tipp an, was passt. Oder tipp nochmal auf Weiter.' : 'Ein Satz reicht schon. Oder tipp nochmal auf Weiter.');
       return;
     }
+    if (akt.art === 'gesundheit' && geschlechtFehlt()) { toast('Bitte oben antippen: Frau, Mann oder divers.'); return; }   // sonst fehlten Fragen nur für Frauen
     if (akt.art === 'gesundheit') { const offen = ANALYSE.screening.filter((f) => frageAktiv(f) && EN.s[f.id] === undefined).length; if (offen) { toast('Bitte jede Frage beantworten (' + offen + ' offen)'); return; } }
     gehZu(EN.schritt + 1);
   };
@@ -1185,9 +1234,8 @@ function ansichtInfo() {
       h('p', { class: 'klein', text: 'Eingeloggt als ' + (ko.n || 'Kunde') + (ko.bis ? ' · bis ' + datumDe(ko.bis) + (tageBis(ko) >= 0 ? ' (noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag)' : ' Tage)') : '') : ' · ohne Ablauf') }),
       h('p', { class: 'leise klein', text: 'Neuer Link von Devin? Einfach öffnen, der Code ist gespeichert. In der App vom Home-Bildschirm: Nachricht kopieren und hier einfügen.' }),
       einfuegenBlock('Neuen Link einfügen'),
-      sitzungen()[ko.id] ? h('button', { class: 'knopf klein', type: 'button', text: 'Nach neuem Plan suchen', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; b.textContent = 'Suche …'; const r = await standHolen(true); if (r !== 'neu') { b.disabled = false; b.textContent = 'Nach neuem Plan suchen'; toast(r === 'aktuell' ? 'Dein Plan ist aktuell.' : r === 'offline' || r === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Gerade nicht möglich. Bitte später nochmal.'); } else toast('Neuer Stand von Devin ist da'); } }) : null,
+      ko.code && KONTAKT.briefkasten ? h('button', { class: 'knopf klein', type: 'button', text: 'Nach neuem Plan suchen', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; b.textContent = 'Suche …'; const r = await zugangPruefen(true); if (r === 'neu') { toast('Neuer Stand von Devin ist da'); return; } if (r === 'aus') return; b.disabled = false; b.textContent = 'Nach neuem Plan suchen'; toast(r === 'aktuell' || r === 'unbekannt' ? 'Dein Plan ist aktuell.' : r === 'erneuert' ? CODE_TEXTE.erneuert : r === 'offline' || r === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Gerade nicht möglich. Bitte später nochmal.'); } }) : null,
       h('button', { class: 'knopf klein', type: 'button', onclick: abmelden, text: 'Abmelden' })) : null,
-    mitZugang ? uebergabeKarte() : null,
     feedbackBlock(),   // Feedback an Devin (20.11.2026)
     installKarte(true),
     gefuehlBlock(),
@@ -1210,7 +1258,6 @@ function abmelden(e) {
   const b = e.currentTarget;
   if (!b.dataset.sicher) { b.dataset.sicher = '1'; b.textContent = 'Wirklich abmelden? Nochmal tippen'; return; }
   const ko = aktivesKonto(), alle = konten(), plaene = speicher.lies('dk_plaene', {});
-  const sz = sitzungen()[ko.id]; if (sz) { briefPost({ a: 'abmelden', t: sz.t }).catch(() => {}); sitzungSetzen(ko.id, null); }   // Sitzung auch auf dem Server löschen
   delete alle[ko.id]; delete plaene[ko.id];
   speicher.schreib('dk_konten', alle); speicher.schreib('dk_plaene', plaene); speicher.schreib(entwurfKey(ko), null);
   speicher.schreib(VERLAUF_KEY, null); speicher.schreib('dk_tage_' + ko.id, null); if (LAUF) laufSchliessen();   // der nächste auf diesem Handy soll nichts davon sehen
@@ -2191,6 +2238,7 @@ function gespeichertesPruefen() {
   for (const id of istObjekt(alle) ? Object.keys(alle) : []) if (K.idOk(id) && istObjekt(alle[id])) neuK[id] = Object.assign(alle[id], { id, n: typeof alle[id].n === 'string' ? alle[id].n.slice(0, 120) : '', bis: /^\d{4}-\d{2}-\d{2}$/.test(alle[id].bis || '') ? alle[id].bis : '' });
   if (JSON.stringify(neuK) !== JSON.stringify(alle)) speicher.schreib('dk_konten', neuK);
   for (const k of ['dk_aktiv', 'dk_konto']) { const v = speicher.lies(k, null); if (v != null && !K.idOk(v)) speicher.schreib(k, null); }
+  if (speicher.lies('dk_sitzungen', null) != null) speicher.schreib('dk_sitzungen', null);   // Sitzungen der Fassung 3 (16.11.2026) gibt es nicht mehr
 }
 // Sofort neue Fassung (16.11.2026, Devin: „es ist tatsächlich noch nicht online“): Die App kommt aus dem Offline-Speicher, eine neue Fassung lädt im Hintergrund.
 // Übernimmt sie, lädt die App einmal neu, sobald nichts offen ist (kein Gym, Training oder Blatt; der Plan steckt im #-Teil und bleibt).
@@ -2221,7 +2269,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => {
     reg = r;
     r.addEventListener('updatefound', () => { const n = r.installing; if (n) n.addEventListener('statechange', wartet); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { zurueck = Date.now(); pruefen(); standHolen().catch(() => {}); } else jetztNeu(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { zurueck = Date.now(); pruefen(); } else jetztNeu(); });
     window.addEventListener('online', pruefen);
     pruefen(); wartet();
   }).catch(() => {});
@@ -2239,8 +2287,9 @@ if ('serviceWorker' in navigator) {
   gymAusLink();
   umzugPruefen();
   netzAnzeigen();
-  standHolen().catch(() => {});
+  zugangPruefen().catch(() => {});
 })();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') zugangPruefen().catch(() => {}); });   // zurück in der App: Neues oder Schalter „aus“
 window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { zeichne(); window.scrollTo(0, 0); fotosVorladen(); } });
-window.addEventListener('online', () => { zeichne(); umzugPruefen(); netzAnzeigen(); standHolen().catch(() => {}); });
+window.addEventListener('online', () => { zeichne(); umzugPruefen(); netzAnzeigen(); zugangPruefen().catch(() => {}); if (S.codeLink && !S.laedt) codeLinkEinlesen(S.codeLink).then(() => { zeichne(); window.scrollTo(0, 0); }); });
 window.addEventListener('offline', () => { zeichne(); netzAnzeigen(); });
