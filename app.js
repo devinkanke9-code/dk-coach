@@ -709,28 +709,28 @@ function abgelaufenAnsicht() {
   const ko = aktivesKonto(), vn = vorname(ko.n), a = KONTAKT.abo;
   return [h('section', { class: 'block willkommen' }, logo(),
     h('h1', { text: (vn ? vn + ', dein' : 'Dein') + ' Zugang ist abgelaufen' }),
-    h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? ' + (a ? 'Such dir dein Abo aus. Sobald die Zahlung da ist, schickt dir Devin deinen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' : 'Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.') }),
+    h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? ' + (a && a.link ? 'Schließ das Abo ab. Sobald die Zahlung da ist, bekommst du deinen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' : 'Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.') }),
     a ? weiterAbo(a) : null,
     einfuegenBlock('Neuen Link einfügen'))];
 }
-// Angebot wie im Reel (20.11.2026): Probeabo, danach Basic oder Premium. Nur mit echtem Impressum (KONTAKT.abo), Bezahl-Knöpfe nur mit PayPal-Link
-function stufeKarte(name, s, haupt, knopf) {
-  return h('div', { class: 'st-stufe' + (haupt ? ' haupt' : '') }, h('span', { class: 'st-stufe-name', text: name }),
-    h('p', { class: 'st-stufe-preis' }, h('b', { text: s.preis + ' €' }), h('span', { text: ' im Monat' })),
-    h('ul', null, s.punkte.map((p) => h('li', { text: p }))), knopf || null);
+// Angebot (21.11.2026): Gratis-Zeit, danach ein Preis im Monat. Nur mit echtem Impressum (KONTAKT.abo), Bezahl-Knopf nur mit PayPal-Link
+function gratisZeit(a) { return a.gratis === 1 ? '1 Monat' : a.gratis + ' Monate'; }
+function aboKarte(a, name, knopf) {
+  return h('div', { class: 'st-stufe haupt' }, h('span', { class: 'st-stufe-name', text: name }),
+    h('p', { class: 'st-stufe-preis' }, h('b', { text: a.preis + ' €' }), h('span', { text: ' im Monat' })),
+    h('ul', null, a.punkte.map((p) => h('li', { text: p }))), knopf || null);
 }
 function angebotBlock(knopf) {
   const a = KONTAKT.abo;
   return h('section', { class: 'st-block st-breit st-angebot' },
-    h('div', { class: 'st-text' }, h('h2', { text: a.gratis + ' Monate kostenlos.' }), h('p', { class: 'st-zeile', text: 'Keine Zahlungsdaten. Jederzeit kündbar.' }), h('div', { class: 'st-knoepfe' }, knopf())),
-    h('div', { class: 'st-stufen' }, stufeKarte('Basic', a.basic), stufeKarte('Premium', a.premium, true),
-      h('p', { class: 'leise klein', text: 'Die Gratis-Monate enden von selbst. Danach kannst du weitermachen, jederzeit zum Monatsende kündbar.' })));
+    h('div', { class: 'st-text' }, h('h2', { text: gratisZeit(a) + ' kostenlos.' }), h('p', { class: 'st-zeile', text: 'Keine Zahlungsdaten. Jederzeit kündbar.' }), h('div', { class: 'st-knoepfe' }, knopf())),
+    h('div', { class: 'st-stufen eins' }, aboKarte(a, 'Danach'),
+      h('p', { class: 'leise klein', text: 'Die Gratis-Zeit endet von selbst. Danach kannst du für ' + a.preis + ' € im Monat weitermachen, jederzeit zum Monatsende kündbar.' })));
 }
 function weiterAbo(a) {
-  const knopf = (name, s, haupt) => s.link ? h('a', { class: 'knopf' + (haupt ? ' haupt' : ''), href: s.link, target: '_blank', rel: 'noopener noreferrer', text: name + ' zahlungspflichtig abonnieren' }) : null;
-  const ohneLink = !a.basic.link && !a.premium.link;
-  return h('div', { class: 'st-stufen weiter' }, stufeKarte('Basic', a.basic, false, knopf('Basic', a.basic)), stufeKarte('Premium', a.premium, true, knopf('Premium', a.premium, true)),
-    h('p', { class: 'leise klein', text: (ohneLink ? 'Schreib Devin, welches Abo du willst. ' : 'Zahlung über PayPal. ') + 'Das Abo läuft einen Monat, verlängert sich jeden Monat und ist jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' }));
+  const knopf = a.link ? h('a', { class: 'knopf haupt', href: a.link, target: '_blank', rel: 'noopener noreferrer', text: 'Zahlungspflichtig abonnieren' }) : null;
+  return h('div', { class: 'st-stufen eins weiter' }, aboKarte(a, 'Weitermachen', knopf),
+    h('p', { class: 'leise klein', text: (a.link ? 'Zahlung über PayPal. ' : 'Schreib Devin, dass du weitermachen willst. ') + 'Das Abo kostet ' + a.preis + ' € im Monat, verlängert sich jeden Monat und ist jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' }));
 }
 function wartenAnsicht() {
   const ko = aktivesKonto(), vn = vorname(ko.n), geschickt = ko.analyse === 'geschickt';
