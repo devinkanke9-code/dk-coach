@@ -567,7 +567,7 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
     feld.select();
   }
   return h('section', { class: 'block code-leiste' },
-    h('label', { class: 'lbl', for: 'code-start', text: art === 'zugang' ? 'Neuer Code von Devin?' : 'Code von Devin?' }),
+    h('label', { class: 'lbl', for: 'code-start', text: art === 'zugang' ? 'Neuer Code von Devin?' : 'Schon Kunde? Code von Devin' }),
     h('p', { class: 'leise klein', id: 'code-start-hilfe', text: art === 'zugang' ? 'Neue Pläne kommen von selbst, sobald du online bist. Hat Devin dir einen neuen Code geschickt? Dann hier eingeben.' : 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
     h('div', { class: 'code-reihe' }, feld, knopf), status);
 }
@@ -638,7 +638,11 @@ function startseite() {
   return [
     codeLeiste(),
     h('section', { class: 'st-block st-held da' },
-      text(KONTAKT.marke, 'Dein Plan. Von Devin.', [analyseKnopf(), zweit('Beispiel ansehen', beispiel)], true),
+      (() => {   // Kunden-Test 22.11.2026: „oben weiß ich nicht, was das ist“, der Preis stand erst ganz unten
+        const t = text(KONTAKT.marke, 'Dein Trainingsplan. Von Devin.', [analyseKnopf(), zweit('Beispiel ansehen', beispiel)], true);
+        if (KONTAKT.abo) t.append(h('p', { class: 'st-preis', text: gratisZeit(KONTAKT.abo) + ' kostenlos, danach ' + KONTAKT.abo.preis + ' € im Monat.' }));
+        return t;
+      })(),
       START3D ? h('div', { class: 'st-buehne' }, START3D.el) : null),
     h('section', { class: 'st-block st-frei st-breit' },
       text('Dein Gym. In 3D.', 'Von Gerät zu Gerät. Am Ende wartet die Tür.', [zweit('Gym betreten', gymZeigen)]),
@@ -657,7 +661,7 @@ function startseite() {
         h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training 1' }), h('h3', { text: 'Ganzkörper A' })),
         h('div', { class: 'ueb-liste' }, zeigeZeile('Beinpresse', 3, '10–12', '90–120', 'beinpresse'), zeigeZeile('Latzug', 3, '10–12', '90–120', 'latzug_breit'), zeigeZeile('Brustpresse', 3, '10–12', '90–120', 'brustpresse_maschine'))))),
     h('section', { class: 'st-block st-breit' },
-      text('10 Fragen.', 'Danach baut Devin deinen Plan.', [analyseKnopf()]),
+      text('Deine Analyse.', '18 kurze Schritte. Danach baut Devin deinen Plan.', [analyseKnopf()]),   // Kunden-Test 22.11.2026: „10 Fragen“ passte nicht zur Analyse (18 Schritte)
       h('div', { class: 'st-fragen', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, i) => h('i', { style: '--i:' + i })))),
     KONTAKT.abo ? angebotBlock(analyseKnopf) : null,
     KONTAKT.ueber_mich ? h('section', { class: 'st-block st-breit st-ueber' },
@@ -725,7 +729,7 @@ function angebotBlock(knopf) {
   return h('section', { class: 'st-block st-breit st-angebot' },
     h('div', { class: 'st-text' }, h('h2', { text: gratisZeit(a) + ' kostenlos.' }), h('p', { class: 'st-zeile', text: 'Keine Zahlungsdaten. Jederzeit kündbar.' }), h('div', { class: 'st-knoepfe' }, knopf())),
     h('div', { class: 'st-stufen eins' }, aboKarte(a, 'Danach'),
-      h('p', { class: 'leise klein', text: 'Die Gratis-Zeit endet von selbst. Danach kannst du für ' + a.preis + ' € im Monat weitermachen, jederzeit zum Monatsende kündbar.' })));
+      h('p', { class: 'leise klein', text: 'Die Gratis-Zeit endet von selbst. Danach kannst du für ' + a.preis + ' € im Monat weitermachen, jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' })));
 }
 function weiterAbo(a) {
   const knopf = a.link ? h('a', { class: 'knopf haupt', href: a.link, target: '_blank', rel: 'noopener noreferrer', text: 'Zahlungspflichtig abonnieren' }) : null;
@@ -1958,7 +1962,7 @@ function timerZeigen() {
   const el = TM.el; el.textContent = '';
   el.append(h('div', { class: 'tm-in' }, LAUF.phase === 'fertig' ? timerFertig() : timerLaeuft()));
   const stelle = LAUF.phase + ':' + LAUF.ue + ':' + LAUF.satz;
-  if (TM.stelle !== stelle) { TM.stelle = stelle; el.scrollTop = 0; el.classList.remove('still'); }
+  if (TM.stelle !== stelle) { TM.stelle = stelle; TM.frage = false; el.scrollTop = 0; el.classList.remove('still'); }   // Kunden-Test 22.11.2026: „Training jetzt beenden?“ blieb beim nächsten Satz offen
   timerTick();
 }
 // Die Bühne bleibt über alle Sätze dieselbe (eine 3D-Ansicht), nur die Übung wechselt
@@ -1999,10 +2003,14 @@ function timerLaeuft() {
     const s = u.log[u.log.length - 1];
     const kg = h('input', { class: 'eingabe', id: 'tm-kg', inputmode: 'decimal', autocomplete: 'off', placeholder: '–', value: s.kg, 'aria-label': 'Gewicht in kg', oninput: (e) => eintragen('kg', e.target.value) });
     const wdh = h('input', { class: 'eingabe', id: 'tm-wdh', inputmode: 'numeric', autocomplete: 'off', placeholder: '–', value: s.wdh, 'aria-label': u.sek ? 'Gehalten in Sekunden' : 'Wiederholungen', oninput: (e) => eintragen('wdh', e.target.value) });
-    if (pause && !gymFeier) teile.push(ring('tm-ring', [h('small', { text: 'Pause' }), h('div', { class: 'tm-zeit', id: 'tm-uhr', text: mmss(LAUF.pauseZiel) })], 'pause'));
-    else if (!pause) teile.push(h('div', { class: 'tm-feier' }, h('div', { class: 'tm-haken', html: HAKEN }), h('small', { text: 'Letzter Satz geschafft' }), h('p', { class: 'tm-mini', text: 'Trag ihn noch ein, dann bist du durch.' })));
-    teile.push(h('div', { class: 'tm-karte' }, h('small', { class: 'tm-label', text: 'Satz ' + u.log.length + (feier || letzter ? ' · ' + u.name : '') + ' eintragen' }),
-      h('div', { class: 'tm-eingabe' }, h('label', null, kg, h('span', { text: 'kg' })), h('label', null, wdh, h('span', { text: u.sek ? 'Sekunden' : 'Wdh' })))));
+    // Kunden-Test 22.11.2026: Das Eintragen lag unter dem großen Pause-Ring, auf dem Handy erst nach Scrollen sichtbar, und niemand wusste,
+    // dass es sich von selbst speichert. Jetzt steht es direkt unter den Werten, mit dem Satz dazu.
+    const eintrag = h('div', { class: 'tm-karte' }, h('small', { class: 'tm-label', text: 'Satz ' + u.log.length + (feier || letzter ? ' · ' + u.name : '') + ' eintragen' }),
+      h('div', { class: 'tm-eingabe' }, h('label', null, kg, h('span', { text: 'kg' })), h('label', null, wdh, h('span', { text: u.sek ? 'Sekunden' : 'Wdh' }))),
+      h('p', { class: 'leise klein tm-speichert', text: 'Speichert sich von selbst. Was du nicht weißt, lässt du einfach leer.' }));
+    if (pause && !gymFeier) teile.push(eintrag, ring('tm-ring', [h('small', { text: 'Pause' }), h('div', { class: 'tm-zeit', id: 'tm-uhr', text: mmss(LAUF.pauseZiel) })], 'pause'));
+    else if (!pause) teile.push(h('div', { class: 'tm-feier' }, h('div', { class: 'tm-haken', html: HAKEN }), h('small', { text: 'Letzter Satz geschafft' }), h('p', { class: 'tm-mini', text: 'Trag ihn noch ein, dann bist du durch.' })), eintrag);
+    else teile.push(eintrag);
     if (gymFeier) teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: gymStationFertig, text: 'Station geschafft' }));
     else if (pause) {
       const nu = LAUF.satz < u.saetze - 1 ? { u, s: LAUF.satz + 2 } : { u: LAUF.uebungen[LAUF.ue + 1], s: 1 };
@@ -2037,7 +2045,7 @@ function timerLaeuft() {
   if (TM.frage) teile.push(h('div', { class: 'tm-frage' }, h('p', { text: 'Training jetzt beenden? Die fertigen Sätze bleiben gespeichert.' }),
     h('div', { class: 'tm-zwei' }, h('button', { class: 'knopf', type: 'button', onclick: () => { TM.frage = false; timerZeigen(); }, text: 'Weitermachen' }),
       h('button', { class: 'knopf', type: 'button', style: 'border-color:var(--stopp);color:var(--stopp)', onclick: () => laufBeenden('abgebrochen'), text: 'Beenden' }))));
-  else teile.push(h('button', { class: 'knopf text tm-ende', type: 'button', onclick: () => { TM.frage = true; timerZeigen(); }, text: 'Training vorzeitig beenden' }));
+  else teile.push(h('button', { class: 'knopf text tm-ende', type: 'button', onclick: () => { TM.frage = true; timerZeigen(); const x = TM.el && TM.el.querySelector('.tm-frage'); if (x) x.scrollIntoView({ block: 'center' }); }, text: 'Training vorzeitig beenden' }));
   return teile;
 }
 function timerFertig() {

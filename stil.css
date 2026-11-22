@@ -1008,6 +1008,7 @@ nav.leiste button.dk-druck { transform: scale(1.04); }
 .schritte button:first-child::before { left: -10px; }
 .schritte button:last-child::before { right: -10px; }
 :where(input, textarea, select) { position: relative; z-index: 1; }
+.tm-eingabe label span { z-index: 2; }   /* Kunden-Test 22.11.2026: „kg“ und „Wdh“ lagen hinter dem Eingabefeld und waren unsichtbar */
 .dk-wellen { overflow: visible; }
 .dk-rahmen { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; }
 /* Check-up 07.11.2026: Hinweis „Wischen zum Drehen“ auf der 3D-Bühne war in Klar knapp zu blass (4,46 : 1) */

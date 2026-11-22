@@ -299,7 +299,7 @@
    * Umbrüche und Leerzeichen im Code stören nicht: Mail-Programme und WhatsApp brechen lange Zeilen um. */
   var S_WERT = { ja: true, nein: false, unsicher: 'weiss_nicht' };
   var G_FELDER = ['name', 'alter', 'geschlecht', 'groesse_cm', 'gewicht_kg', 'beruf'];
-  var NICHT_AUS_A = G_FELDER.concat(['ziel', 'ziele', 'ziele_weitere', '__proto__', 'constructor', 'prototype']);   // Grunddaten nur aus g, Ziele nur aus der Liste
+  var NICHT_AUS_A = G_FELDER.concat(['ziel', 'ziele', 'ziele_weitere', 'mail', '__proto__', 'constructor', 'prototype']);   // Grunddaten nur aus g, Ziele nur aus der Liste
   function objekt(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
   function analyseSeiteLesen(text) {
     var m = /DK-Analyse(10|11):([A-Za-z0-9_-]+):Ende/.exec(String(text || '').replace(/\s+/g, ''));
@@ -316,7 +316,11 @@
     if (ziele.length) a.ziel = ziele[0];
     if (ziele.length > 1) a.ziele_weitere = ziele.slice(1);
     if (objekt(d.s)) Object.keys(d.s).forEach(function (id) { if (/^[a-z0-9_]{1,60}$/.test(id) && id !== '__proto__' && typeof d.s[id] === 'string' && hat.call(S_WERT, d.s[id])) s[id] = S_WERT[d.s[id]]; });
-    return { v: 11, t: zeitOk(d.t), a: a, s: s, e: d.e.eltern === true ? { einwilligung: true, eltern: true } : { einwilligung: true } };
+    var r = { v: 11, t: zeitOk(d.t), a: a, s: s, e: d.e.eltern === true ? { einwilligung: true, eltern: true } : { einwilligung: true } };
+    // E-Mail für den Zugang (22.11.2026, Senden-Knopf): Die Analyse kommt dann aus Devins eigenem Konto, die Adresse des Kunden steht hier (und im Reply-To). Nur gültig und klein geschrieben
+    var mail = typeof d.g.mail === 'string' ? d.g.mail.trim().toLowerCase() : '';
+    if (mail.length <= 120 && /^[^\s@<>()",;:\\]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(mail)) r.mail = mail;
+    return r;
   }
 
   var API = { planKompakt: planKompakt, planCode: planCode, base64url: base64url, kundenId: kundenId,

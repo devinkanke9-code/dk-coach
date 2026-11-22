@@ -67,7 +67,7 @@ function ohneKarte(o) {
   return h('section', { class: 'block st-ich' },
     h('h2', { text: 'Dein eigener Charakter' }),
     h('p', { class: 'klein', text: 'Devin kann dir eine eigene 3D-Figur bauen: mit deiner Größe, deinem Gewicht und deinem Körperfett, auf Wunsch mit deinem Gesicht aus Fotos.' }),
-    h('p', { class: 'leise klein', text: 'Frag ihn danach. Deine Figur kommt mit seinem nächsten Link und ist dann sofort hier.' }));
+    h('p', { class: 'leise klein', text: 'Frag Devin danach. Deine Figur kommt mit seinem nächsten Link und ist dann sofort hier.' }));
 }
 
 // o: { h, plan, eigen, lies, schreib, toast, neu, vorladen }
