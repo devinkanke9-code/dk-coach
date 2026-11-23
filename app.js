@@ -208,6 +208,8 @@ function codeTippen(feld) {
   return n.length;
 }
 const CODE_FALSCH = 'Der Code hat 12 Ziffern, zum Beispiel 4821-7730-1956. Ältere Codes haben 8.';
+// Kunden-Test 23.11.2026: „Da steht 12 Ziffern, und ich hab 12 getippt.“ Jetzt sagt die Meldung, wie viele Ziffern im Feld stehen.
+const codeFalsch = (wert) => { const n = K.appCodeNormal(wert).length; return n ? 'Da stehen ' + n + (n === 1 ? ' Ziffer. ' : ' Ziffern. ') + CODE_FALSCH : 'Gib den Code aus Devins Nachricht ein, zum Beispiel 4821-7730-1956.'; };
 async function textEinlesen(text) {
   text = String(text || '');
   const z = /[#&]z=([A-Za-z0-9_-]+)/.exec(text), p = /[#&]p=([A-Za-z0-9_-]+)/.exec(text);
@@ -231,7 +233,12 @@ async function textEinlesen(text) {
 }
 function einfuegenBlock(titel) {
   const feld = h('textarea', { class: 'eingabe', rows: '3', placeholder: 'Nachricht von Devin hier einfügen', 'aria-label': 'Nachricht von Devin' });
-  const offen = h('div', { class: 'stapel', hidden: true }, feld, h('button', { class: 'knopf haupt', type: 'button', onclick: () => textEinlesen(feld.value), text: 'Übernehmen' }));
+  // Kunden-Test 23.11.2026: Bei Unsinn kam nur ein kurzer Hinweis unten, „es passiert gar nichts“. Jetzt bleibt die Meldung unter dem Feld stehen.
+  const meldung = h('p', { class: 'klein', role: 'status', hidden: true });
+  const offen = h('div', { class: 'stapel', hidden: true }, feld, h('button', { class: 'knopf haupt', type: 'button', onclick: () => {
+    if (!/[#&][zp]=/.test(feld.value)) { meldung.textContent = feld.value.trim() ? 'Darin ist kein Link von Devin. Kopier seine ganze Nachricht mit dem Link und füg sie hier ein.' : 'Füg zuerst Devins Nachricht hier ein.'; meldung.hidden = false; feld.focus(); return; }
+    meldung.hidden = true; textEinlesen(feld.value);
+  }, text: 'Übernehmen' }), meldung);
   return h('div', { class: 'stapel einfuegen' }, h('button', { class: 'knopf', type: 'button', onclick: async () => {
     let t = '';
     try { t = navigator.clipboard && navigator.clipboard.readText ? await navigator.clipboard.readText() : ''; } catch (e) {}   // das Handy fragt vorher
@@ -485,7 +492,7 @@ function netzAnzeigen() {
   let el = document.getElementById('netz-hinweis');
   if (navigator.onLine !== false) { if (el) el.remove(); return; }
   if (el) return;
-  document.body.append(h('div', { id: 'netz-hinweis', class: 'netz-hinweis', role: 'status' }, h('b', { text: 'Offline' }), h('span', { text: ' · Dein Plan geht trotzdem. Neues kommt, sobald du wieder online bist.' })));
+  document.body.append(h('div', { id: 'netz-hinweis', class: 'netz-hinweis', role: 'status' }, h('b', { text: 'Offline' }), h('span', { text: Object.keys(speicher.lies('dk_plaene', {}) || {}).length ? ' · Dein Plan geht trotzdem. Neues kommt, sobald du wieder online bist.' : ' · Gerade kein Internet. Sobald du wieder online bist, geht es weiter.' })));
 }
 const CODE_TEXTE = {
   netz: 'Keine Verbindung. Bitte mit Internet nochmal versuchen.',
@@ -555,14 +562,14 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
   const feld = h('input', { class: 'eingabe code-feld', id: 'code-start', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '14', placeholder: '0000-0000-0000',
     value: !art && S.codeLink ? K.appCodeAnzeige(S.codeLink) : null,
     'aria-describedby': 'code-start-hilfe',
-    oninput: (e) => { if (codeTippen(e.target) === 12) los(); },
+    oninput: (e) => { const buchstaben = /[^\d\s-]/.test(e.target.value); if (codeTippen(e.target) === 12) los(); else if (buchstaben) status.textContent = 'Der Code hat nur Ziffern, Buchstaben gehören nicht dazu.'; },   // Kunden-Test 23.11.2026
     onkeydown: (e) => { if (e.key === 'Enter') los(); } });
   const knopfText = art === 'zugang' ? 'Einlösen' : 'Einloggen';   // unter Infos ist man schon eingeloggt (Gesamttest 13.11.2026)
   const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: knopfText });
   async function los() {
     if (laeuft) return;
-    if (!K.appCodeGueltig(feld.value)) { status.textContent = CODE_FALSCH; return; }
-    laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; status.textContent = '';
+    if (!K.appCodeGueltig(feld.value)) { status.textContent = codeFalsch(feld.value); return; }
+    laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; status.textContent = 'Einen Moment, das dauert ein paar Sekunden.';
     const aus = await codeHolen(feld.value);
     if (aus === 'ok') { S.codeLink = null; S.codeFehler = null; zeichne(); window.scrollTo(0, 0); fotosVorladen(); toast(art === 'zugang' ? 'Fertig, dein Plan ist auf dem neuesten Stand.' : 'Fertig, du bist eingeloggt.'); return; }
     laeuft = false; knopf.disabled = false; knopf.textContent = knopfText;
@@ -629,7 +636,9 @@ function beispielEnde() {
 function startseite() {
   if (installiert()) return willkommen();
   $('#wer').append(h('a', { class: 'knopf haupt st-nav', href: 'analyse/', text: 'Analyse' }));
-  const analyseKnopf = () => h('a', { class: 'knopf haupt', href: 'analyse/', text: 'Analyse starten' });
+  // Kunden-Test 23.11.2026: Wer die Analyse verlassen hatte, sah wieder „Analyse starten“ und dachte, alles ist weg. Die Antworten liegen noch auf dem Handy (analyse.html → dk_analyse10).
+  const angefangen = (() => { const a = speicher.lies('dk_analyse10', null); return !!(a && !a.gesendet && a.schritt > 0); })();
+  const analyseKnopf = () => h('a', { class: 'knopf haupt', href: 'analyse/', text: angefangen ? 'Analyse weitermachen' : 'Analyse starten' });
   const zweit = (text, fn) => h('button', { class: 'knopf zweit', type: 'button', onclick: fn, text });
   const text = (titel, zeile, knoepfe, h1) => h('div', { class: 'st-text' }, h(h1 ? 'h1' : 'h2', { text: titel }), h('p', { class: 'st-zeile', text: zeile }), knoepfe ? h('div', { class: 'st-knoepfe' }, knoepfe) : null);
   const d = UEBUNGEN[START_FIGUR], dU = UEBUNGEN[START_UEBUNG];
@@ -664,14 +673,14 @@ function startseite() {
         h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training 1' }), h('h3', { text: 'Ganzkörper A' })),
         h('div', { class: 'ueb-liste' }, zeigeZeile('Beinpresse', 3, '10–12', '90–120', 'beinpresse'), zeigeZeile('Latzug', 3, '10–12', '90–120', 'latzug_breit'), zeigeZeile('Brustpresse', 3, '10–12', '90–120', 'brustpresse_maschine'))))),
     h('section', { class: 'st-block st-breit' },
-      text('Deine Analyse.', '18 kurze Schritte. Danach baut Devin deinen Plan.', [analyseKnopf()]),   // Kunden-Test 22.11.2026: „10 Fragen“ passte nicht zur Analyse (18 Schritte)
+      text('Deine Analyse.', 'Muskeln, abnehmen oder fitter werden: 18 kurze Schritte, danach baut Devin deinen Plan.', [analyseKnopf()]),   // Kunden-Test 22.11.2026: „10 Fragen“ passte nicht zur Analyse (18 Schritte)
       h('div', { class: 'st-fragen', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, i) => h('i', { style: '--i:' + i })))),
     KONTAKT.abo ? angebotBlock(analyseKnopf) : null,
     KONTAKT.ueber_mich ? h('section', { class: 'st-block st-breit st-ueber' },
       text('Über mich.', KONTAKT.ueber_mich.zeile),
       h('div', { class: 'st-ueber-text' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('p', { text: KONTAKT.ueber_mich.text }))) : null,
     h('section', { class: 'st-block st-eigen st-breit' },
-      text('Du hast schon einen Plan?', 'Öffne den Link aus Devins Nachricht oder füg sie hier ein.'),
+      text('Du hast schon einen Plan?', 'Öffne den Link aus Devins Nachricht. Oder kopier die ganze Nachricht und füg sie hier ein.'),   // Kunden-Test 23.11.2026
       einfuegenBlock(),
       h('details', { class: 'st-install' }, h('summary', { text: 'Als App aufs Handy' }), installKarte(true))),
     h('footer', { class: 'st-fuss' }, h('span', { text: KONTAKT.marke }), rechtlichesLinks())
@@ -689,7 +698,7 @@ function codeAnsicht() {
   const knopf = h('button', { class: 'knopf haupt', type: 'button', onclick: () => los(), text: 'Einloggen' });
   async function los() {
     if (laeuft) return;
-    if (!K.appCodeGueltig(feld.value)) { fehler.textContent = CODE_FALSCH; return; }
+    if (!K.appCodeGueltig(feld.value)) { fehler.textContent = codeFalsch(feld.value); return; }
     laeuft = true; knopf.disabled = true; knopf.textContent = 'Prüfe …'; fehler.textContent = '';
     let d = null;
     try { d = await K.entpacken(feld.value, S.wartet); } catch (e) {}
@@ -970,7 +979,7 @@ function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
   const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
   if (p.id === 'beispiel') teile.push(h('div', { class: 'st-beispiel' }, h('span', { text: 'Das ist ein Beispiel.' }), h('button', { class: 'knopf klein', type: 'button', onclick: beispielEnde, text: 'Zur Startseite' })));
-  if (p.id === 'beispiel') { const leiste = codeLeiste(); if (leiste) teile.push(leiste); }   // wer erst das Beispiel ansieht und dann Devins Code bekommt, findet die Leiste auch hier (07.11.2026)
+  // Kunden-Test 23.11.2026: Die Code-Karte mitten im Beispiel verwirrte Neue („ich hab doch gar keinen Code“). Wer später Devins Code bekommt, findet sie unter Infos und auf der Startseite.
   const ko = aktivesKonto();
   if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
   if (p.id !== 'beispiel') teile.push(Rang.kurzKarte({ h, oeffnen: () => geh('rang') }));
@@ -1094,7 +1103,9 @@ function ruhetagKarte(p, wt, heute) {
     h('p', { class: 'leise klein', text: 'Erholung gehört zum Training. Schlaf gut, iss genug, beweg dich locker.' }),
     naechster ? h('div', { class: 'naechstes' },
       h('span', null, h('small', { text: 'Nächstes Training · ' + WOCHENTAGE[naechster.wt] }), h('b', { text: p.t[naechster.ti].n })),
-      h('button', { class: 'knopf klein', type: 'button', 'aria-label': 'Nächstes Training ansehen', onclick: () => { S.tagWahl = naechster.wt; zeichne(); }, text: 'Ansehen' })) : null);
+      h('button', { class: 'knopf klein', type: 'button', 'aria-label': 'Nächstes Training ansehen', onclick: () => { S.tagWahl = naechster.wt; zeichne(); }, text: 'Ansehen' })) : null,
+    // Kunden-Test 23.11.2026: Am Ruhetag fand niemand das Gym. Es geht jetzt auch hier hinein, mit den Geräten des nächsten Trainings.
+    naechster ? h('div', { class: 'aktionen' }, h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, naechster.ti), text: 'Ins Gym gehen' })) : null);
 }
 // Große Muskeln an zwei Tagen direkt hintereinander? Dann ein Tipp (wie in der Trainer-Seite)
 const GROSSE_MUSKELN = ['brust', 'lat', 'oberer_ruecken', 'quadrizeps', 'beinbeuger', 'gesaess'];
@@ -1182,6 +1193,7 @@ function tagBlock(p, t, ti) {
           h('td', { class: 'z', 'data-l': 'Sätze', text: satzZahl(p, u) }), h('td', { class: 'z', 'data-l': istSek(u) ? 'Zeit' : 'Wdh', text: bereich(u.wdh, istSek(u) ? 'sek' : '') }),
           h('td', { class: 'z', 'data-l': 'Reserve', text: bereich(u.rir) }), h('td', { class: 'z', 'data-l': 'Pause', text: u.pause.length ? pauseText(u) : '' }));
       })))),
+    t.u.some((roh) => uebung(roh).rir) ? h('p', { class: 'leise klein', text: 'Reserve: So viele Wiederholungen würdest du am Ende des Satzes noch schaffen.' }) : null,   // Kunden-Test 23.11.2026
     h('div', { class: 'aktionen' }, startKnopf(p, ti, 'Diese Einheit starten')));
 }
 
@@ -2073,6 +2085,9 @@ function timerLaeuft() {
     else teile.push(ring('tm-ring', [h('small', { text: 'Satz ' + (LAUF.satz + 1) }), h('div', { class: 'tm-zeit', id: 'tm-uhr', text: '0:00' })], 'satz'));
     const vor = letztesMal(u, LAUF.satz), info = [];
     if (vor) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Letztes Mal ' }), (vor[0] != null ? String(vor[0]).replace('.', ',') + ' kg' : '–') + ' × ' + (vor[1] != null ? vor[1] + (u.sek ? ' s' : '') : '–')));
+    // Kunden-Test 23.11.2026: „Was heißt Reserve?“ und „Welches Gewicht soll ich nehmen?“ Beim ersten Satz einer Übung steht es jetzt hier.
+    if (!vor && !u.sek && LAUF.satz === 0) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Erstes Mal ' }), 'Nimm so viel Gewicht, dass alle Wiederholungen sauber gehen. War es leicht, nimm nächstes Mal etwas mehr.'));
+    if (u.rir && LAUF.satz === 0) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Reserve ' + u.rir + ' ' }), 'heißt: Hör auf, wenn noch ' + u.rir + ' Wiederholungen gehen würden.'));
     if (u.tipp) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Technik ' }), u.tipp));
     (u.angepasst || []).forEach((x) => info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Angepasst wegen ' + x.name + ' ' }), x.grund)));
     if (u.vorsicht) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Vorsicht ' }), u.vorsicht));

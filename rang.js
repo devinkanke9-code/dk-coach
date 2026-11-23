@@ -108,7 +108,7 @@ export function ansicht(c) {
     h('p', { class: 'klein leise', text: st.naechstes ? 'Noch ' + punkteWort(st.naechstes.fehlt) + ' bis „' + st.naechstes.titel + '“' : 'Du bist ganz oben angekommen.' }),
     h('div', { class: 'rang-zahlen' },
       h('div', null, h('b', { text: String(st.einheiten) }), h('small', { text: st.einheiten === 1 ? 'Training' : 'Trainings' })),
-      h('div', null, h('b', { text: String(st.serieWochen) }), h('small', { text: 'Wochen-Serie' })),
+      h('div', null, h('b', { text: String(st.serieWochen) }), h('small', { text: 'Wochen am Stück' })),
       h('div', null, h('b', { text: st.dieseWoche + '/' + st.wochenZiel }), h('small', { text: 'Diese Woche' }))));
   const regeln = h('section', { class: 'block' }, h('h2', { text: 'So sammelst du Punkte' }),
     h('ul', { class: 'rang-regeln' }, [
@@ -134,7 +134,8 @@ export function ansicht(c) {
         h('span', { class: 'rm-pfad-text' }, h('b', { text: l.titel }), h('span', { class: 'klein leise', text: jetzt ? 'Hier bist du' + (st.naechstes ? ' · noch ' + punkteWort(st.naechstes.fehlt) : '') : drin ? 'Geschafft' : 'ab ' + l.ab + ' Punkten' })),
         jetzt ? balken(h, st.anteil) : null);
     }).reverse()));
-  const pr = h('section', { class: 'block' }, h('h2', { text: 'Deine PRs' }),
+  const pr = h('section', { class: 'block' }, h('h2', { text: 'Deine Bestwerte (PRs)' }),
+    h('p', { class: 'klein leise', text: 'PR heißt persönlicher Rekord: dein bester Satz bei einer Übung. Im PR-Raum stehen sie alle.' }),   // Kunden-Test 23.11.2026: „Was ist ein PR?“
     h('button', { class: 'knopf haupt', type: 'button', onclick: c.prRaum, text: 'In den PR-Raum' }),
     h('div', { class: 'stapel' }, B.stand().map((x) => karte(c, x, min))),
     h('p', { class: 'klein leise pr-hinweis', text: (min === 1 ? 'Auch ein einzelner Maximalversuch zählt, wenn du willst. Das ist deine Entscheidung.' : 'Es zählt dein bester sauberer Satz ab ' + min + ' Wiederholungen. Einzelne Maximalversuche sind in deinem Plan nicht freigegeben.') + ' Sätze aus dem Training trägt die App selbst ein. Schwere Sätze nur mit Sicherung oder jemandem, der aufpasst. PRs bringen keine Punkte.' }));
