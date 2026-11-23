@@ -71,6 +71,58 @@ function ohneKarte(o) {
     h('p', { class: 'leise klein', text: 'Frag Devin danach. Deine Figur kommt mit seinem nächsten Link und ist dann sofort hier.' }));
 }
 
+// Deine Ernährung (23.11.2026, Devin: „Mit einem Status … wo du dein Gewicht verändern kannst“). Die Zahlen kommen aus dem Plan (Feld e, kompakt.js),
+// gerechnet von engine.js ernaehrungFuer in Devins Plan. Ändert der Kunde sein Gewicht, rechnet die App so weiter, wie Analyse neu es festgelegt hat:
+// kcal + je_kg × Unterschied, Eiweiß je kg (bei Übergewicht höchstens bis zum Bezugsgewicht), Kohlenhydrate als Rest, Fett und Trinken bleiben.
+// Mehr als 15 % Unterschied zur Analyse: Die Zahlen bleiben wie im Plan, Devin soll neu rechnen.
+const gewichtSchluessel = (p) => 'dk_gewicht_' + (p && p.id ? p.id : 'beispiel');
+export function essenFuer(e, kg) {
+  const basis = typeof e.kg === 'number' ? e.kg : kg, d = kg - basis;
+  const kc = Math.round((e.kc + (typeof e.jk === 'number' ? e.jk * d : 0)) / 10) * 10;
+  let ew = Array.isArray(e.ew) ? e.ew : null;
+  if (d !== 0 && Array.isArray(e.ek) && e.ek.length === 2) { const bez = typeof e.eb === 'number' && e.eb < basis ? Math.min(kg, e.eb) : kg; ew = [Math.round(e.ek[0] * bez), Math.round(e.ek[1] * bez)]; }
+  let kh = typeof e.kh === 'number' ? e.kh : null;
+  if (d !== 0 && kh != null && ew && typeof e.ft === 'number') { const rest = (kc - (ew[0] + ew[1]) / 2 * 4 - e.ft * 9) / 4; kh = rest > 0 ? Math.round(rest / 5) * 5 : null; }
+  return { kc, ew, ft: typeof e.ft === 'number' ? e.ft : null, kh, tr: typeof e.tr === 'number' ? e.tr : null };
+}
+const ZIEL_SATZ = { d: 'Etwas unter deinem Bedarf, damit du langsam Fett verlierst.', p: 'Etwas über deinem Bedarf, damit Muskeln wachsen können.', e: 'Ungefähr dein Bedarf an einem normalen Tag.' };
+const zahlText = (x) => komma(x, x % 1 ? 1 : 0);
+function essenKarte(o) {
+  const { h } = o, e = o.plan.e, basis = typeof e.kg === 'number' ? e.kg : null;
+  const gemerkt = o.lies(gewichtSchluessel(o.plan), null), jetztKg = gemerkt && typeof gemerkt.kg === 'number' ? gemerkt.kg : basis;
+  const zuWeit = !!(basis && jetztKg && Math.abs(jetztKg - basis) > basis * 0.15);
+  const w = essenFuer(e, zuWeit || !jetztKg ? (basis || 0) : jetztKg);
+  const feld = (wert, was) => h('div', { class: 'st-zahl' }, h('b', { text: wert }), h('span', { text: was }));
+  const ber = (a) => (a[0] === a[1] ? String(a[0]) : a[0] + '–' + a[1]);
+  const eingabe = h('input', { class: 'eingabe', id: 'st-gewicht', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: jetztKg ? zahlText(jetztKg) : '', 'aria-describedby': 'st-gewicht-hilfe' });
+  const rechnen = () => {
+    const kg = Number(String(eingabe.value).trim().replace(',', '.'));
+    if (!(kg >= 30 && kg <= 250)) { o.toast('Bitte dein Gewicht in kg eintragen, zum Beispiel 78,5.'); eingabe.focus(); return; }
+    o.schreib(gewichtSchluessel(o.plan), { kg: Math.round(kg * 10) / 10, t: Date.now() });
+    o.toast('Neu gerechnet'); o.neu();
+  };
+  eingabe.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') rechnen(); });
+  const hd = e.hd;
+  const hand = hd ? h('div', { class: 'st-hand' }, h('b', { text: 'Ohne Zählen, pro Mahlzeit' + (hd.m ? ' (' + hd.m + '× am Tag)' : '') }),
+    h('ul', null, [[hd.e, 'Handfläche', 'Handflächen', 'Eiweiß'], [hd.g, 'Faust', 'Fäuste', 'Gemüse oder Obst'], [hd.k, 'Hand voll', 'Hände voll', 'Kohlenhydrate'], [hd.f, 'Daumen', 'Daumen', 'Fett']]
+      .filter((x) => x[0] > 0).map((x) => h('li', { text: zahlText(x[0]) + ' ' + (x[0] <= 1 ? x[1] : x[2]) + ' ' + x[3] }))),
+    hd.a ? h('p', { class: 'leise klein', text: hd.a }) : null) : null;
+  return h('section', { class: 'block status-essen' },
+    h('h2', { text: 'Deine Ernährung' }),
+    h('p', { class: 'leise klein', text: (ZIEL_SATZ[e.ar] || ZIEL_SATZ.e) + (e.rk ? ' So kannst du Fett verlieren und trotzdem Muskeln aufbauen.' : '') }),
+    h('div', { class: 'st-zahlen' },
+      feld(w.kc.toLocaleString('de-DE') + ' kcal', 'Kalorien'),
+      w.ew ? feld(ber(w.ew) + ' g', 'Eiweiß') : null,
+      w.kh != null ? feld(w.kh + ' g', 'Kohlenhydrate') : null,
+      w.ft != null ? feld(w.ft + ' g', 'Fett') : null,
+      w.tr ? feld('ab ' + komma(Math.round(w.tr / 100) / 10, 1) + ' l', 'Trinken') : null),
+    hand,
+    Array.isArray(e.sc) && e.sc.length ? h('div', { class: 'st-schritte' }, h('b', { text: 'Deine ersten Schritte' }), h('ul', null, e.sc.map((s) => h('li', { text: s[1] })))) : null,
+    h('label', { class: 'lbl', for: 'st-gewicht', text: 'Dein Gewicht heute (kg)' }),
+    h('div', { class: 'code-reihe' }, eingabe, h('button', { class: 'knopf', type: 'button', onclick: rechnen, text: 'Neu rechnen' })),
+    h('p', { class: 'leise klein', id: 'st-gewicht-hilfe', text: zuWeit ? 'Das sind mehr als 15 % Unterschied zu deiner Analyse (' + zahlText(basis) + ' kg). Die Zahlen bleiben wie im Plan: Sag Devin Bescheid, dann rechnet er neu.' : 'Ändert sich dein Gewicht, trag es hier ein. Die App rechnet mit. Das bleibt nur auf diesem Handy.' }),
+    h('p', { class: 'leise klein', text: 'Eine Orientierung für gesunde Menschen, kein Ernährungsplan vom Arzt.' }));
+}
 // o: { h, plan, eigen, lies, schreib, toast, neu, vorladen }
 export function ansicht(o) {
   // Figur überall (23.11.2026): o.jetzt und o.waehlen kommen aus figurwahl.js (eine Wahl je Kunde, gilt im Gym, beim Training und in den Übungen)
@@ -87,6 +139,7 @@ export function ansicht(o) {
     h('span', { class: 'st-name', text: name }));
   return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Status' })),
     o.eigen ? eigenKarte(o) : ohneKarte(o),
+    o.plan && o.plan.e ? essenKarte(o) : null,
     // 23.11.2026: hieß „st-wahl“ wie die Zeitraum-Wahl der Statistik (stil.css: Raster mit 5 Spalten), dadurch waren die Figuren eingequetscht. Eigener Name, keine Regel nötig.
     h('section', { class: 'block status-gymwahl' }, h('h2', { text: 'Wer trainiert im Gym?' }),
       h('div', { class: 'st-figuren' },

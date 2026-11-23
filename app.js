@@ -674,7 +674,7 @@ function startseite() {
         h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training 1' }), h('h3', { text: 'Ganzkörper A' })),
         h('div', { class: 'ueb-liste' }, zeigeZeile('Beinpresse', 3, '10–12', '90–120', 'beinpresse'), zeigeZeile('Latzug', 3, '10–12', '90–120', 'latzug_breit'), zeigeZeile('Brustpresse', 3, '10–12', '90–120', 'brustpresse_maschine'))))),
     h('section', { class: 'st-block st-breit' },
-      text('Deine Analyse.', 'Muskeln, abnehmen oder fitter werden: 18 kurze Schritte, danach baut Devin deinen Plan.', [analyseKnopf()]),   // Kunden-Test 22.11.2026: „10 Fragen“ passte nicht zur Analyse (18 Schritte)
+      text('Deine Analyse.', 'Muskeln, abnehmen oder fitter werden: 16 kurze Schritte, danach baut Devin deinen Plan.', [analyseKnopf()]),   // Kunden-Test 22.11.2026: „10 Fragen“ passte nicht zur Analyse (18 Schritte)
       h('div', { class: 'st-fragen', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, i) => h('i', { style: '--i:' + i })))),
     KONTAKT.abo ? angebotBlock(analyseKnopf) : null,
     KONTAKT.ueber_mich ? h('section', { class: 'st-block st-breit st-ueber' },
@@ -946,6 +946,9 @@ function beispiel() {
   const p = { v: 1, id: 'beispiel', n: 'Beispiel', z: 'muskelaufbau', l: 2, s: 'Ganzkörper 2×', d: isoHeute(), importiert: isoHeute(), w: ['e', 'a', 'a', 'a', 'a', 'd'], ft: [0, 3],
     t: [t('Ganzkörper A', 50, [[nimm('beinpresse'), 3, [10, 12], [2, 3], [90, 120]], [nimm('latzug_breit'), 3, [10, 12], [2, 3], [90, 120]], [nimm('brustpresse_maschine'), 3, [10, 12], [2, 3], [90, 120]], [nimm('kabelrudern_sitzend'), 3, [10, 12], [2, 3], [90, 120]], [nimm('butterfly_maschine'), 2, [12, 15], [2, 3], [60, 90]], [nimm('trizepsdruecken_kabel'), 2, [12, 15], [2, 3], [60, 90]], [nimm('bauchmaschine_crunch'), 2, [12, 15], [2, 3], [60, 90]]]),
       t('Ganzkörper B', 45, [[nimm('kh_rumaenisches_kreuzheben'), 3, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_schulterdruecken_sitzend'), 3, [8, 12], [2, 3], [90, 120]], [nimm('split_squat'), 2, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_seitheben'), 2, [12, 15], [2, 3], [60, 90]]])],
+    // Status „Deine Ernährung“ (23.11.2026): erfundene Nährwerte im Format von Feld e (kompakt.js), Mann mit 80 kg, Muskelaufbau
+    e: { v: 1, kc: 2900, er: 2640, ar: 'p', jk: 33, ew: [128, 176], ek: [1.6, 2.2], eb: 80, ft: 95, fm: 64, kh: 360, tr: 1410, kg: 80,
+      sc: [['wasser', 'Trink zu jeder Mahlzeit ein großes Glas Wasser.'], ['eiweiss', 'Plane zu jeder Mahlzeit eine Eiweißquelle ein, zum Beispiel Quark, Eier, Fleisch oder Linsen.']], hd: { e: 1, g: 1, k: 1, f: 1, m: 4 } },
     pr: 'Schaffst du in allen Sätzen die obere Wiederholungszahl mit 2 Wiederholungen Reserve, nimm beim nächsten Mal etwas mehr Gewicht.', h: ['Beispiel mit erfundenen Daten.'], ab: [] };
   const plaene = speicher.lies('dk_plaene', {}); plaene[p.id] = p; speicher.schreib('dk_plaene', plaene); speicher.schreib('dk_aktiv', p.id);
   S.tagWahl = null; zeichne();

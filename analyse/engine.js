@@ -1049,16 +1049,24 @@
     if (!palStufe) fehlt.push('Alltag (Job, Schule)');
     if (!F[fid] || !F.gesamtumsatz) fehlt.push('Formeln');
     if (!fehlt.length) {
-      var gu = erwachsen ? F.mifflin_st_jeor(k.gewicht_kg, k.groesse_cm, k.alter, g) : F.schofield_10_17(k.gewicht_kg, g);
       var pal = Math.min(palStufe.wert + sportZuschlag(RC.pal_sport_zuschlag, k.tage), RC.pal_max || 2.4);
-      var erh = F.gesamtumsatz(gu, pal), ziel = erh;
       var nurErhalt = !erwachsen || /kein Defizit/.test(aktion);
-      if (k.ziel === 'fettabbau' && !nurErhalt && F.kalorien_fettabbau && k.alter >= ((ZA.fettabbau || {}).ab_alter || 18)) ziel = F.kalorien_fettabbau(gu, pal, k.alter, g);
-      if (k.ziel === 'muskelaufbau' && erwachsen && F.kalorien_muskelaufbau && k.alter >= ((ZA.muskelaufbau || {}).ab_alter || 18)) ziel = F.kalorien_muskelaufbau(gu, pal, k.alter);
-      res.kalorien = { grundumsatz: runde(gu, 10), erhaltung: runde(erh, 10), ziel: runde(ziel, 10), pal: Math.round(pal * 100) / 100,
+      // „Bedarf statt Plus“ (Devin 23.11.2026): Wer Muskeln aufbauen UND abnehmen will und übergewichtig ist (BMI ab 25, rechner.json → ziel_anpassung.muskelaufbau.mit_fettabbau),
+      // bekommt genau den Bedarf, kein Plus (Rekomposition). Gilt im Plan und auf der Analyse-Seite gleich, denn beide rechnen hier.
+      var rek = (ZA.muskelaufbau || {}).mit_fettabbau, rekomp = !!(rek && arr(k.ziele_weitere).indexOf('fettabbau') >= 0 && b != null && b >= rek.ab_bmi);
+      // Dieselbe Rechnung für jedes Gewicht (23.11.2026): so sagt je_kg, wie sich das Ziel mit dem Gewicht ändert (Feld e im Plan, Status in der App), ohne Alter, Größe oder Geschlecht weiterzugeben
+      var rechne = function (kg) {
+        var gu = erwachsen ? F.mifflin_st_jeor(kg, k.groesse_cm, k.alter, g) : F.schofield_10_17(kg, g), erh = F.gesamtumsatz(gu, pal), ziel = erh;
+        if (k.ziel === 'fettabbau' && !nurErhalt && F.kalorien_fettabbau && k.alter >= ((ZA.fettabbau || {}).ab_alter || 18)) ziel = F.kalorien_fettabbau(gu, pal, k.alter, g);
+        if (k.ziel === 'muskelaufbau' && erwachsen && F.kalorien_muskelaufbau && k.alter >= ((ZA.muskelaufbau || {}).ab_alter || 18)) ziel = rekomp ? erh : F.kalorien_muskelaufbau(gu, pal, k.alter);
+        return { gu: gu, erh: erh, ziel: ziel };
+      };
+      var r0 = rechne(k.gewicht_kg), gu = r0.gu, erh = r0.erh, ziel = r0.ziel;
+      res.kalorien = { grundumsatz: runde(gu, 10), erhaltung: runde(erh, 10), ziel: runde(ziel, 10), pal: Math.round(pal * 100) / 100, je_kg: Math.round((rechne(k.gewicht_kg + 1).ziel - ziel) * 10) / 10,
         art: ziel < erh - 1 ? 'defizit' : ziel > erh + 1 ? 'plus' : 'erhaltung', formel: (arr(RC.formeln).filter(function (f) { return f.id === fid; })[0] || {}).name || fid };
       if (!erwachsen && ZA.unter_18 && ZA.unter_18.hinweis) res.hinweise.unshift(ZA.unter_18.hinweis);
       if (k.ziel === 'fettabbau' && res.kalorien.art === 'erhaltung' && erwachsen) res.hinweise.unshift('Ein sicheres Kaloriendefizit ist hier nicht möglich: lieber mehr Bewegung im Alltag, bei Bedarf eine Ernährungsfachkraft fragen.');
+      if (k.ziel === 'muskelaufbau' && rekomp && erwachsen) { res.kalorien.rekomposition = true; if (rek.hinweis) res.hinweise.unshift(rek.hinweis); }
       var ge = (arr(RC.formeln).filter(function (f) { return f.id === 'gesamtumsatz'; })[0] || {}).hinweis;
       if (ge) res.hinweise.unshift(ge);
       if (M.fett_g_pro_kg_min != null && M.fett_prozent_energie_min != null && M.kcal_pro_g) {
@@ -1091,6 +1099,25 @@
     if (k.alter != null && k.alter >= 19 && M.ballaststoffe_g_min) res.ballaststoffe_g = M.ballaststoffe_g_min;
     if (ja(k, 'medikamente')) res.hinweise.unshift('Du nimmst Medikamente: Stimm die Werte mit deinem Arzt ab.');
     if (/empfehlen/.test(aktion)) res.hinweise.unshift('BMI ' + fmt(b) + ' (' + kat.label + '): ' + aktion + '.');
+    // Ernährungs-Check (Devin 23.11.2026): die 2 ersten Schritte aus „Was passt gerade zu deinem Essen?“ (sonst Eiweiß, Gemüse, Trinken) und Hand-Portionen für alle,
+    // die nicht zählen. Nur mit Zahlen: Bei einer Sperre (Essstörung, Arzt, unter 10, starkes Unter- oder Übergewicht) gibt es auch keine Schritte und keine Portionen.
+    var ES = RC.erste_schritte, HP = RC.hand_portionen;
+    if (res.status === 'zahlen' && ES && ES.texte) {
+      var muster = arr(k.essen_muster), sIds = arr(ES.reihenfolge).filter(function (id) { return muster.indexOf(id) >= 0; });
+      arr(ES.auffuellen).forEach(function (id) { if (sIds.indexOf(id) < 0) sIds.push(id); });
+      var veg = k.ernaehrungsform === 'vegan' || k.ernaehrungsform === 'vegetarisch' || k.ernaehrungsform === 'pescetarisch' ? '_' + k.ernaehrungsform : '';
+      res.schritte = sIds.slice(0, 2).map(function (id) {
+        var t = id === 'alkohol' && !erwachsen ? ES.texte.alkohol_unter_18 : id === 'eiweiss' ? ES.texte['eiweiss' + veg] || ES.texte.eiweiss : ES.texte[id];
+        if (id === 'eiweiss' && veg !== '_vegan' && arr(k.unvertraeglichkeiten).indexOf('laktose') >= 0 && ES.texte.laktose_zusatz) t += ES.texte.laktose_zusatz;
+        return { id: id, text: t };
+      }).filter(function (s) { return !!s.text; });
+    }
+    if (res.status === 'zahlen' && HP && HP.pro_mahlzeit && g && HP.pro_mahlzeit[g] && (k.essen_zaehlen === 'grob' || k.essen_zaehlen === 'nein')) {
+      // Anpassen nur für Erwachsene mit echtem Defizit oder Plus (unter 18 und bei „Bedarf statt Plus“ kein Weglassen und kein Dazunehmen)
+      var anp = erwachsen && res.kalorien && ((k.ziel === 'fettabbau' && res.kalorien.art === 'defizit') || (k.ziel === 'muskelaufbau' && res.kalorien.art === 'plus'));
+      res.hand = { pro_mahlzeit: HP.pro_mahlzeit[g], mahlzeiten: HP.mahlzeiten || 3, anpassen: anp ? (HP.anpassen || {})[k.ziel] || null : null };
+    }
+    if (res.status === 'zahlen' && k.gewicht_trend === 'gleich') res.gewicht_gleich = true;   // dann isst er gerade ungefähr seinen Bedarf
     return res;
   }
 

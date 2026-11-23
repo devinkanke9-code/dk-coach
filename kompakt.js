@@ -56,6 +56,7 @@
       ki: p.ki_text && p.ki_text.einleitung || ''
     };
     if (bs.length) aus.bs = bs;
+    var nw = ernaehrungKompakt(p.ernaehrung, kunde); if (nw) aus.e = nw;   // Nährwerte für App und Status (23.11.2026)
     return aus;
   }
   function base64url(bytes) {
@@ -153,6 +154,57 @@
     return a.length ? a : undefined;
   }
   function datum(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : ''; }
+  /* ---------- Nährwerte im Plan (23.11.2026, Feld e) ----------
+   * Für „Deine Nährwerte“ in der App und für Status (neues Gewicht → neue Werte). Nur, wenn die Rechnung Zahlen gibt (keine Sperre wie Essstörung).
+   * Kein Alter, keine Größe, kein Geschlecht: jk sagt, wie sich das Kalorienziel je kg ändert. Kurze Schlüssel wie im übrigen Plan:
+   *   v 1 · kc Kalorienziel kcal/Tag · er Bedarf (Erhaltung) · ar d|p|e (Defizit, Plus, Erhaltung) · rk 1 = „Bedarf statt Plus“ · jk kcal je kg Gewicht
+   *   ew [g, g] Eiweiß pro Tag · ek [g/kg, g/kg] Eiweiß je kg Bezugsgewicht · eb Bezugsgewicht Eiweiß (bei Übergewicht kleiner als kg) · ft Fett g · fm Fett mindestens g
+   *   kh Kohlenhydrate g · tr Trinken ml (Mindestmenge) · kg Gewicht der Analyse · sc [[id, Text], …] die 2 ersten Schritte
+   *   hd { e, g, k, f, m, a } Hand-Portionen pro Mahlzeit (Eiweiß, Gemüse, Kohlenhydrate, Fett, Mahlzeiten am Tag, Satz zum Anpassen), nur für alle, die nicht zählen */
+  function ernaehrungKompakt(er, kunde) {
+    if (!er || er.status !== 'zahlen' || !er.kalorien || !er.kalorien.ziel) return undefined;
+    var k = er.kalorien, e = { v: 1, kc: k.ziel, er: k.erhaltung, ar: k.art === 'defizit' ? 'd' : k.art === 'plus' ? 'p' : 'e' };
+    if (k.rekomposition) e.rk = 1;
+    if (typeof k.je_kg === 'number') e.jk = k.je_kg;
+    if (er.eiweiss) { e.ew = er.eiweiss.g_tag; e.ek = er.eiweiss.g_pro_kg; e.eb = er.eiweiss.bezug_kg; }
+    if (er.fett_g) e.ft = er.fett_g;
+    if (er.fett_min_g) e.fm = er.fett_min_g;
+    if (er.kohlenhydrate_g) e.kh = er.kohlenhydrate_g;
+    if (er.trinken_ml) e.tr = er.trinken_ml;
+    if (+kunde.gewicht_kg) e.kg = +kunde.gewicht_kg;
+    if ((er.schritte || []).length) e.sc = er.schritte.slice(0, 2).map(function (s) { return [s.id, s.text]; });
+    if (er.hand && er.hand.pro_mahlzeit) { var p = er.hand.pro_mahlzeit; e.hd = { e: p.eiweiss, g: p.gemuese, k: p.kohlenhydrate, f: p.fett, m: er.hand.mahlzeiten }; if (er.hand.anpassen) e.hd.a = er.hand.anpassen; }
+    return e;
+  }
+  function ernaehrungSauber(e) {   // Feld e beim Einlesen in der App: nur Zahlen in sinnvollen Grenzen, Texte begrenzt, sonst weg
+    if (!e || typeof e !== 'object' || e.v !== 1 || typeof e.kc !== 'number' || !(e.kc >= 800 && e.kc <= 8000)) return undefined;
+    var aus = { v: 1, kc: Math.round(e.kc) };
+    var paar = function (x, von, bis) { return Array.isArray(x) && x.length === 2 && x.every(function (y) { return typeof y === 'number' && isFinite(y) && y >= von && y <= bis; }) && x[0] <= x[1] ? [x[0], x[1]] : undefined; };
+    if (typeof e.er === 'number' && e.er >= 800 && e.er <= 8000) aus.er = Math.round(e.er);
+    if (e.ar === 'd' || e.ar === 'p' || e.ar === 'e') aus.ar = e.ar;
+    if (e.rk === 1) aus.rk = 1;
+    if (typeof e.jk === 'number' && e.jk >= 0 && e.jk <= 100) aus.jk = Math.round(e.jk * 10) / 10;
+    var ew = paar(e.ew, 0, 600), ek = paar(e.ek, 0, 4);
+    if (ew) aus.ew = ew;
+    if (ek) aus.ek = ek;
+    var kgOk = function (v) { return typeof v === 'number' && v >= 20 && v <= 400; };   // Reihenfolge wie in ernaehrungKompakt
+    if (kgOk(e.eb)) aus.eb = Math.round(e.eb * 10) / 10;
+    ['ft', 'fm', 'kh'].forEach(function (s) { if (typeof e[s] === 'number' && e[s] > 0 && e[s] <= 1500) aus[s] = Math.round(e[s]); });
+    if (typeof e.tr === 'number' && e.tr > 0 && e.tr <= 8000) aus.tr = Math.round(e.tr);
+    if (kgOk(e.kg)) aus.kg = Math.round(e.kg * 10) / 10;
+    if (Array.isArray(e.sc)) {
+      var sc = e.sc.slice(0, 2).filter(function (x) { return Array.isArray(x) && typeof x[0] === 'string' && /^[a-z_]{2,30}$/.test(x[0]) && typeof x[1] === 'string' && x[1]; }).map(function (x) { return [x[0], x[1].slice(0, 300)]; });
+      if (sc.length) aus.sc = sc;
+    }
+    if (e.hd && typeof e.hd === 'object') {
+      var hd = {};
+      ['e', 'g', 'k', 'f'].forEach(function (s) { if (typeof e.hd[s] === 'number' && e.hd[s] >= 0 && e.hd[s] <= 6) hd[s] = e.hd[s]; });
+      if (Number.isInteger(e.hd.m) && e.hd.m >= 1 && e.hd.m <= 8) hd.m = e.hd.m;
+      if (typeof e.hd.a === 'string' && e.hd.a) hd.a = e.hd.a.slice(0, 300);
+      if (['e', 'g', 'k', 'f'].every(function (s) { return s in hd; })) aus.hd = hd;
+    }
+    return aus;
+  }
   function planSauber(p) {
     if (!p || typeof p !== 'object' || p.v !== 1 || !Array.isArray(p.t) || !p.t.length) return null;
     if (!p.t.every(function (t) { return t && typeof t === 'object' && Array.isArray(t.u); })) return null;
@@ -198,6 +250,7 @@
     if (datum(p.importiert)) aus.importiert = datum(p.importiert);
     if (Array.isArray(p.wf)) { var wf = texte(p.wf, 8, 200); if (wf.length) aus.wf = wf; }
     if (Array.isArray(p.bs)) { var bs = liste(p.bs, 8).map(function (x) { return typeof x === 'string' ? x.slice(0, 120) : ''; }); if (bs.some(Boolean)) aus.bs = bs; }
+    var nw = ernaehrungSauber(p.e); if (nw) aus.e = nw;   // Nährwerte (23.11.2026)
     return aus;
   }
 
