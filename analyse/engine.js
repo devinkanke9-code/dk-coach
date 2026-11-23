@@ -141,6 +141,100 @@
     }
     return { id: 'wiedereinstieg', eigen: true, we: true, name: 'Wiedereinstieg: ' + ctx.grenzen.we.stufe.name, beschreibung: 'Plan nach schriftlicher Freigabe, ohne Belastung der betroffenen Stelle, soweit vorgegeben.', tage_aufbau: aufbau, namen: namen };
   }
+  /* ---------- Schlaf-Stufe (22.11.2026, regeln_training.json → schlaf_plan) ----------
+   * Devin: Plan-Bauer um Angaben erweitern, die bisher nichts geändert haben. Stufe aus schlaf_stunden (Jugendliche: eigene Grenzen); schlaf_qualitaet bis 3 =
+   * eine Stufe schlechter; angekreuzte Warnzeichen = Hinweis „ärztlich abklären“. Regeln und Quellen: aufwaermen_cardio.json → schlaf_erholung_plan.
+   * Ohne Angabe oder ohne den Block schlaf_plan: null, dann ändert sich nichts am Plan. */
+  function schlafStufe(W, k) {
+    var S = W.regeln && W.regeln.schlaf_plan, st = arr(S && S.stufen);
+    if (!S || !st.length || !k) return null;
+    var T = S.texte || {}, h = +k.schlaf_stunden, hat = k.schlaf_stunden != null && k.schlaf_stunden !== '' && isFinite(h) && h > 0;
+    var zeichen = arr(k.schlaf_warnzeichen).filter(function (x) { return x && x !== 'nichts' && x !== 'keins' && x !== 'keine'; });
+    if (!hat && !zeichen.length) return null;
+    var jugend = k.alter != null && k.alter !== '' && +k.alter <= (S.jugend_bis_alter != null ? S.jugend_bis_alter : 17);
+    var s = null, schlechter = false, hinweise = [], warnungen = [];
+    if (hat) {
+      var i = st.length - 1;
+      for (var n = 0; n < st.length; n++) { var gz = st[n][jugend ? 'jugend' : 'erwachsene']; if (gz && (gz.streng ? h > gz.ab : h >= gz.ab)) { i = n; break; } }
+      var q = +k.schlaf_qualitaet;
+      schlechter = k.schlaf_qualitaet != null && k.schlaf_qualitaet !== '' && isFinite(q) && q >= 1 && q <= (S.qualitaet_schlechter_bis || 3);
+      if (schlechter) i = Math.min(i + 1, st.length - 1);
+      s = st[i];
+      var fuell = function (t) { return String(t || '').replace('{stunden}', String(Math.round(h * 10) / 10).replace('.', ',')).replace('{qualitaet}', String(q)); };
+      if (s.text) hinweise.push((fuell(schlechter ? T.wert_qualitaet : T.wert) + ' ' + s.text).trim());
+      if (s.text_fettabbau && k.ziel === 'fettabbau') hinweise.push(s.text_fettabbau);
+      if (s.regel && s.regel.tipps && T.tipps) {
+        var sv = ((W.aufwaermen_cardio || {}).schlaf_erholung_plan || {}).schlaf_verbessern, alleTipps = arr(sv && sv.tipps);
+        var wahl = arr((S.tipps || {})[jugend ? 'jugend' : 'erwachsene']).map(function (anfang) {
+          return alleTipps.filter(function (t) { return String(t.text).indexOf(anfang) === 0; })[0];
+        }).filter(Boolean).map(function (t) { return t.text; });
+        if (wahl.length) hinweise.push(T.tipps.replace('{tipps}', wahl.join(' ')));
+      }
+      if (s.warnung) warnungen.push(fuell(s.warnung));
+      if (s.warnung_fettabbau && k.ziel === 'fettabbau') warnungen.push(s.warnung_fettabbau);
+    }
+    if (zeichen.length) { if (T.warnzeichen) hinweise.push(T.warnzeichen); if (T.warnzeichen_trainer) warnungen.push(T.warnzeichen_trainer); }
+    return { id: s ? s.id : null, name: s ? s.name : '', stunden: hat ? h : null, jugend: jugend, qualitaet_schlechter: schlechter, warnzeichen: zeichen,
+      regel: (s && s.regel) || {}, hinweise: hinweise, warnungen: warnungen };
+  }
+  // Sätze kürzen nach Schlaf-Stufe, am FERTIGEN Plan (nach Auswahl, Zeit-Kürzung und „Plan verbessern“): Die Übungen bleiben, wie sie ohne Schlaf-Angabe wären,
+  // es fallen nur Sätze weg (sonst füllt der Generator die gesparte Zeit mit neuen Übungen auf, und „Plan verbessern“ entscheidet anders).
+  // tage = plan.tage, volS = Wochen-Volumen mit Schlaf-Stufe. Gibt die Zahl der gestrichenen Sätze zurück.
+  //  A. Start am unteren Rand: große Übungen kürzen, solange jeder ihrer Hauptmuskeln über dem Ziel bleibt (meiste Sätze zuerst). Schwerpunkt und Extra bleiben.
+  //  B. Stufe „Zu wenig“ und schlechter: dazu 1 Satz pro Übung weniger. Nie unter der Mindestzahl Sätze pro Übung, nie unter der Mindestdosis pro Muskel und Woche
+  //     und nie so weit, dass die Plan-Prüfung „wenig Reiz“ meldet (dann würde „Plan verbessern“ wieder auffüllen). Leichter Tag, Reha, Dehnen, Cardio bleiben.
+  function schlafAnpassen(W, k, tage, grenzen, volS) {
+    var sr = grenzen.schlaf && grenzen.schlaf.regel;
+    if (!sr || sr.volumen !== 'unten') return 0;
+    var R = W.regeln, minSatz = (R.saetze_pro_uebung && R.saetze_pro_uebung.min) || 2, minMuskel = +sr.min_saetze_muskel_woche || 4;
+    var CL = W.plan_checkliste || {}, def = arr(CL.punkte).filter(function (d) { return d.id === 'volumen'; })[0];
+    var unterA = (def && def.werte && def.werte.gelb_unter_anteil_ziel) || 0.5;
+    var gross = arr(CL.muskeln_gross || ['brust', 'lat', 'oberer_ruecken', 'quadrizeps', 'beinbeuger', 'gesaess']);
+    var boden = Math.max(minMuskel, volS.ziel * unterA);
+    var ist = volumenIst(W, tage), weg = 0, liste = [];
+    arr(tage).forEach(function (tag) {
+      if (tag.leicht || tag.typ === LEICHTER_TAG) return;
+      arr(tag.uebungen).forEach(function (u) {
+        var ex = u.eigen ? null : W.index[u.id];
+        if (ex && !bewegungsform(W, ex)) liste.push({ u: u, ex: ex, fest: /^(Schwerpunkt|Extra)/.test(u.notiz || ''), klein: ex.rolle === 'isolation' || /^rumpf|^isolation|^wade|^tragen/.test(ex.muster) });
+      });
+    });
+    // Gleichgewicht Ziehen/Drücken (Plan-Prüfung druecken_ziehen) darf durch das Kürzen nicht kippen
+    var zd = zugDruck(W, { tage: tage }), zArt = arr(grenzen.ziehenMind).length > 0, zdDef = arr(CL.punkte).filter(function (d) { return d.id === 'druecken_ziehen'; })[0];
+    var anteil = (zdDef && zdDef.werte && zdDef.werte.gelb_ziehen_unter_anteil_druecken) || 0.8;
+    function zieht(x) { return /_ziehen$/.test(x.ex.muster || ''); }
+    function kuerzen(x, untergrenze, primBoden, sekBoden) {
+      if (x.u.saetze - 1 < untergrenze) return false;
+      if (zieht(x) && zd.ziehen - 1 < (zArt ? zd.druecken : zd.druecken * anteil)) return false;
+      var prim = arr(x.ex.muskel_primaer), sek = arr(x.ex.muskel_sekundaer);
+      if (prim.some(function (m) { return (ist[m] || 0) - 1 < primBoden; })) return false;
+      // Nebenmuskeln: große Muskeln bleiben über dem Boden; kein anderer Muskel, der die Mindestdosis hat, fällt darunter
+      if (sek.some(function (m) { var v = ist[m] || 0; return gross.indexOf(m) >= 0 ? v - 0.5 < sekBoden : (v >= minMuskel && v - 0.5 < minMuskel); })) return false;
+      x.u.saetze -= 1; weg++;
+      if (zieht(x)) zd.ziehen -= 1; else if (/_druecken$/.test(x.ex.muster || '')) zd.druecken -= 1;
+      prim.forEach(function (m) { ist[m] = (ist[m] || 0) - 1; });
+      sek.forEach(function (m) { ist[m] = (ist[m] || 0) - 0.5; });
+      return true;
+    }
+    // Eine Runde: A (große Übungen Richtung Ziel kürzen, meiste Sätze zuerst), dann B (1 Satz pro Übung weniger; erst alles außer Ziehen, dann Ziehen,
+    // damit beim Ziehen klar ist, wie viel Drücken noch übrig ist)
+    function runde(zielR, mitKlein, grossMinR, bodenR, mitB) {
+      var weiter = true;
+      while (weiter) {
+        weiter = liste.filter(function (x) { return !x.fest && (!x.klein || mitKlein) && arr(x.ex.muskel_primaer).length; })
+          .sort(function (p, q) { return q.u.saetze - p.u.saetze; })
+          .some(function (x) { return kuerzen(x, x.klein ? minSatz : grossMinR, Math.max(zielR, bodenR), bodenR); });
+      }
+      if (mitB) [false, true].forEach(function (zug) { liste.forEach(function (x) { if (zieht(x) === zug) for (var i = 0; i < +sr.satz_weniger; i++) kuerzen(x, minSatz, bodenR, bodenR); }); });
+    }
+    var normalMin = k.level >= 3 ? Math.max(3, minSatz) : minSatz;
+    if (sr.volumen_max != null) {   // „Viel zu wenig“: erst genau wie „Zu wenig“, dann weiter Richtung Haltedosis (so hat die schlechtere Stufe nie mehr Sätze)
+      var zielU = Math.round(volS.bereich[0] * volS.faktorZiel * volS.faktorGruppe), bodenU = Math.max(minMuskel, zielU * unterA);
+      runde(zielU, false, normalMin, bodenU, !!+sr.satz_weniger);
+      runde(volS.ziel, !!sr.saetze_min_2, sr.saetze_min_2 ? minSatz : normalMin, boden, false);
+    } else runde(volS.ziel, false, normalMin, boden, !!+sr.satz_weniger);
+    return weg;
+  }
   function einschraenkungen(W, k, gruppen, scr) {
     scr = scr || { beschwerden: [], zusatz: [], rirMin: 0 };
     var lim = {}; GELENKE.forEach(function (g) { lim[g] = 2; });
@@ -246,11 +340,17 @@
       if (s.level_max != null) levelMax = Math.min(levelMax, s.level_max);
       if (s.wdh) { wdh = wdh ? [Math.max(wdh[0], s.wdh[0]), Math.min(wdh[1], s.wdh[1])] : s.wdh.slice(); if (wdh[0] > wdh[1]) wdh = [wdh[1], wdh[1]]; }
     }
+    var schlaf = schlafStufe(W, k);   // 22.11.2026: Schlaf wirkt im Plan (regeln_training.json → schlaf_plan)
+    if (schlaf) {
+      if (k.schlaf_kuerzung_aus) schlaf.ohneVolumen = true;   // erster Durchgang in erstellePlan: Volumen-Ziel wie ohne Schlaf-Angabe, gekürzt wird am fertigen Plan
+      if (schlaf.regel.rir_min != null) rirMin = Math.max(rirMin, schlaf.regel.rir_min);
+      hinweise = hinweise.concat(schlaf.hinweise);
+    }
     var mNamen = {}; Object.keys(W.merkmale || {}).forEach(function (m) { mNamen[m] = W.merkmale[m].name; });
     return { merkmalLimit: mLim, merkmalHinweis: mHinweis, merkmalHinweisArt: mHinweisArt, merkmalNamen: mNamen, staerken: staerken, arten: arten, trainerHinweise: trainerHinweise,
       artPflicht: artPflicht, artMuskelTage: artMuskelTage, ziehenMind: ziehenMind,
       pflichtFreigabe: pflichtFreigabe, gelenkLimit: lim, musterMeiden: meiden, idsMeiden: idsMeiden, musterAnpassen: anpassen, hinweise: hinweise, arzt: arzt,
-      volumenFaktor: faktor, rirMin: rirMin, levelMax: levelMax, wdh: wdh, we: weGrenze };
+      volumenFaktor: faktor, rirMin: rirMin, levelMax: levelMax, wdh: wdh, we: weGrenze, schlaf: schlaf };
   }
 
   /* ---------- 3. Übungsauswahl ---------- */
@@ -700,6 +800,8 @@
     if (lo > hi) { lo = exb[0]; hi = exb[1]; }
     var rir = (R.rir && (R.rir[lvl] || R.rir[k.level])) || [2, 3];
     rir = [Math.max(rir[0], grenzen.rirMin), Math.max(rir[1], grenzen.rirMin)];
+    var srI = grenzen.schlaf && grenzen.schlaf.regel;   // wenig Schlaf: freie Grundübungen mit mehr Reserve
+    if (srI && srI.rir_min_frei_grund != null && ex.rolle === 'grund' && !maschinenUebung(ex)) rir = [Math.max(rir[0], srI.rir_min_frei_grund), Math.max(rir[1], srI.rir_min_frei_grund)];
     var pause = (R.pause_sek && (R.pause_sek[ex.rolle === 'grund' ? 'grund' : 'isolation'])) || [60, 120];
     var form = bewegungsform(W, ex);
     if (form && ex.wdh_bereich) return { wdh: ex.wdh_bereich.slice(), einheit: ex.einheit || 'wdh', rir: form.ohne_rir ? null : rir, pause: (form.pause_sek || pause).slice() };   // Reha, Dehnen, Cardio: Dosis aus der Übung
@@ -718,7 +820,10 @@
     var v = W.regeln.volumen_saetze_pro_muskel_woche[String(k.level)];
     if (!v) throw new Error('Wissensbasis: kein Wochenvolumen für Level ' + k.level);
     var f = (W.regeln.volumen_faktor_ziel || {})[k.ziel] || 1;
-    var ziel = mitte([v.min, v.max]) * f * grenzen.volumenFaktor;
+    // wenig Schlaf: Ziel am unteren Rand der Spanne, Stufe „Viel zu wenig“: Haltedosis. Nicht im ersten Durchgang von erstellePlan (ohneVolumen), dort wird wie ohne Schlaf-Angabe gebaut.
+    var srV = grenzen.schlaf && !grenzen.schlaf.ohneVolumen && grenzen.schlaf.regel;
+    var ziel = (srV && srV.volumen === 'unten' ? v.min : mitte([v.min, v.max])) * f * grenzen.volumenFaktor;
+    if (srV && srV.volumen_max != null) ziel = Math.min(ziel, srV.volumen_max);
     return { ziel: Math.round(ziel), bereich: [v.min, v.max], faktorZiel: f, faktorGruppe: grenzen.volumenFaktor };
   }
 
@@ -1004,7 +1109,28 @@
   }
 
   /* ---------- 6. Plan bauen ---------- */
+  // Schlaf (22.11.2026): Bei wenig Schlaf entsteht der Plan erst genau so wie ohne Schlaf-Angabe (gleiche Übungen, gleiche Zeit-Kürzung, gleiches „Plan verbessern“),
+  // nur Reserve, Hinweise und Warnungen sind schon dabei. Ganz zum Schluss fallen Sätze weg (schlafAnpassen). So bleiben die Übungen gleich, und die Zahl der
+  // gestrichenen Sätze im Hinweis stimmt. Ohne Schlaf-Angabe oder ausgeschlafen: unverändert der alte Weg.
   function erstellePlan(W, kundeIn, optionen) {
+    var s = kundeIn && !kundeIn.schlaf_kuerzung_aus ? schlafStufe(W, kundeIn) : null;
+    if (!s || s.regel.volumen !== 'unten') return erstellePlanRoh(W, kundeIn, optionen);
+    var kRoh = JSON.parse(JSON.stringify(kundeIn)); kRoh.schlaf_kuerzung_aus = true;
+    var plan = erstellePlanRoh(W, kRoh, optionen);
+    if (!plan || plan.status === 'stopp' || plan.status === 'fehler' || !arr(plan.tage).length) return plan;
+    var ctx = kontext(W, kundeIn), volS = wochenVolumen(W, ctx.kunde, ctx.grenzen);
+    var weg = schlafAnpassen(W, ctx.kunde, plan.tage, ctx.grenzen, volS);
+    if (plan.volumen) plan.volumen.ziel_pro_muskel = volS.ziel;
+    if (plan.schlaf) plan.schlaf.saetze_weniger = weg;
+    if (weg) {
+      var T = (W.regeln.schlaf_plan && W.regeln.schlaf_plan.texte) || {}, text = weg === 1 ? T.gekuerzt_1 : String(T.gekuerzt_n || '').replace('{n}', weg);
+      var i = arr(plan.hinweise).indexOf(s.hinweise[0]);
+      if (text && Array.isArray(plan.hinweise)) plan.hinweise.splice(i >= 0 ? i + 1 : plan.hinweise.length, 0, text);
+    }
+    planNachrechnen(W, plan);
+    return plan;
+  }
+  function erstellePlanRoh(W, kundeIn, optionen) {
     optionen = optionen || {};
     var k = JSON.parse(JSON.stringify(kundeIn));
     k.level = +k.level || 1; k.tage = +k.tage || 3; k.alter = k.alter != null && k.alter !== '' ? +k.alter : null;
@@ -1061,6 +1187,7 @@
     var split = krafttageBegrenzen(W, k, weSplit || waehleSplit(W, k, warnungen), warnungen, ag);
     splitPruefen(W, k, split, warnungen);
     var vol = wochenVolumen(W, k, grenzen);
+    if (grenzen.schlaf) arr(grenzen.schlaf.warnungen).forEach(function (t) { warnungen.push(t); });
     var R = W.regeln;
     var zeitSatz = R.zeit_pro_satz_sek || { grund: 45, isolation: 35 };
     var maxUeb = (R.uebungen_pro_einheit && R.uebungen_pro_einheit.max) || 8;
@@ -1367,6 +1494,7 @@
       ernaehrung: ernaehrung(W, k, scr, gruppen),
       ki_text: null
     };
+    if (grenzen.schlaf && grenzen.schlaf.id) plan.schlaf = { stufe: grenzen.schlaf.id, name: grenzen.schlaf.name, stunden: grenzen.schlaf.stunden, jugend: grenzen.schlaf.jugend, qualitaet_schlechter: grenzen.schlaf.qualitaet_schlechter, saetze_weniger: 0 };
     plan.qualitaet = pruefeQualitaet(W, plan);
     // Plan verbessern (18.11.2026): jeden neuen Plan gleich gegen die A-Lizenz-Checkliste prüfen und nachbessern, was gelb oder rot ist (Liste in plan.verbessert)
     if (!optionen.ohneVerbessern) {
@@ -2385,6 +2513,7 @@
     planAusVorlage: planAusVorlage,
     startVorlagen: startVorlagen,
     maschinenUebung: maschinenUebung,
+    schlafStufe: schlafStufe,   // Schlaf wirkt im Plan (22.11.2026)
     LEICHTER_TAG: LEICHTER_TAG,
     frageAktiv: frageAktiv,
     bmi: bmi,
