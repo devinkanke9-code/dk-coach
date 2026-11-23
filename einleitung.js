@@ -32,6 +32,14 @@ let R4 = false;
 // Runde 5 (24.11.2026): hohe Bank mit Hanteln (erst hinlegen, dann greifen), Copenhagen, Hantel am Körper, Fuß am Bodenrohr. Für Übungen in OHNE_R5
 // bleibt der Stand von Runde 4
 let R5 = false;
+// Runde 6 (24.11.2026): gezielt die Übungen, die im Ablauf noch über 7 cm eintauchen. Für Übungen in OHNE_R6 bleibt der Stand von Runde 5
+let R6 = false;
+const OHNE_R6 = new Set([]);
+// Runde 6: Einstieg fest je Übung, wo die Bewertung des Planers einen Einstieg verwirft, der in der Messung (Hülle) deutlich weniger eintaucht
+// (Latzug-Maschine: seitlich auf den Sitz 6,6 cm statt von vorn durch die Knierolle 8,9 cm)
+const EINSTIEG_R6 = new Map([
+  ['klimmzug:{"art":"latzug","maschine":true}', 'seitlichL0.1/0.03'],
+]);
 const OHNE_R5 = new Set([
   "schulterdruecken:{\"last\":\"kettlebell\"}",   // kettlebell_schulterdruecken
   "kreuzheben:{\"art\":\"rumaenisch\",\"last\":\"kurzhanteln\"}",   // kh_rumaenisches_kreuzheben
@@ -1135,7 +1143,9 @@ export function baueEinleitung(anim, ger, z, kamera) {
   R4 = R3 && !(anim && OHNE_R4.has(anim.schluessel));
   const r4 = R4;
   R5 = R4 && !(anim && OHNE_R5.has(anim.schluessel));
-  const r5 = R5;   // gilt auch später in pose() (dort wird ALT wieder gesetzt, falls inzwischen ein anderer Ablauf gebaut wurde)
+  const r5 = R5;
+  R6 = R5 && !(anim && OHNE_R6.has(anim.schluessel));
+  const r6 = R6;   // gilt auch später in pose() (dort wird ALT wieder gesetzt, falls inzwischen ein anderer Ablauf gebaut wurde)
   QAKT = null;   // Geräte dieses Ablaufs erst, wenn sie bekannt sind (unten)
   const obj = Object.values(z).filter((o) => o && o.isObject3D);
   const hanteln = ['kh_l', 'kh_r', 'kb'].filter((n) => z[n] && z[n].isObject3D);
@@ -1359,6 +1369,8 @@ export function baueEinleitung(anim, ger, z, kamera) {
     for (const b of [0.2, 0.27, 0.34]) for (const v of [0.02, 0.12, 0.22]) { const p = ueberSitz(Gp, gg, b, v, 0.4); p.stoss = bewerten(p); if (!best || p.stoss < best.stoss) best = p; }
     // Zuletzt die Arme von oben auf das Pult legen: erst die Hände etwas anheben und die Ellbogen nach oben, sonst fegen die Arme von der Seite durch das Pult (Befund 6.11.: Unterarm 4–5 cm darin)
     best.schritte.splice(best.schritte.length - 1, 0, { ziel: Object.assign({}, Gp, { hand: seiten((k) => Gp.hand[k].clone().add(V(0, 0.1, 0))), ellbogenPol: seiten((k, sg) => V(sg * 0.5, 1, 0)) }), d: 0.3, verzug: 0.2 });
+    // Runde 6: mit Hanteln stehen sie beim Hinsetzen senkrecht auf den Oberschenkeln (Scott-Curl; Befund 23.11.: mit den Händen flach auf den Beinen lag die linke Hantel quer, 8 cm im rechten Oberschenkel)
+    if (r6 && hanteln.length) { for (const i of [2, 3]) best.schritte[i] = Object.assign({}, best.schritte[i], { ziel: hantelnAufBeinen(best.schritte[i].ziel) }); }
     if (w0 > 0.03 && best.stoss < w0 - 0.02) plaene[0] = best;
   }
   // Vorlage kann den Stehplatz verschieben (Wand, Rahmen oder Rollen genau dort, wo das Becken der Startpose ist) und dem letzten Schritt einen Bogen geben (Fuß hinauf auf die Bank)
@@ -1392,6 +1404,12 @@ export function baueEinleitung(anim, ger, z, kamera) {
         schritte: [{ ziel: duck, d: 0.9 }, { ziel: Gp, d: DAUER.greifen + 0.4, verzug: 0.35 }] });
     }
   }
+  // Runde 6: Stange hinter dem Rücken, Startpose kniend (Bulgarian an der Multipresse; Befund 23.11.: die Stange liegt in der Startpose auf 1,01 m, die Figur lief
+  // aufrecht hinein, 10,6 cm im Hosenbund): vor der Stange ankommen, sie hinter dem Rücken, und unter ihr in die Startpose sinken
+  if (r6 && art === 'knien' && z.lh && !z.seil && !kabel && !hanteln.length && z.lh.position.y > 0.8 && z.lh.position.y < 1.6 && z.lh.position.clone().sub(gg.brust).dot(waag(gg.R.vor)) < 0) {
+    const k = plaene[0];
+    for (const d of [0.16, 0.22, 0.28]) plaene.push({ name: 'vorStange' + d, blick: k.blick, stand: k.stand.clone().addScaledVector(k.blick, d), schritte: k.schritte.map((x) => Object.assign({}, x, { d: x.d + 0.3 })) });
+  }
   if (Q.length && !hanteln.length && !z.lh) {
     if (art === 'sitzen' && auflage(Q, gg.becken) > 0.2) for (const sg of [1, -1])   // seitlich nur auf einen Sitz
       for (const zurueck of [0.03, 0.1]) for (const heben of [0.1, 0.03]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, heben));
@@ -1412,8 +1430,26 @@ export function baueEinleitung(anim, ger, z, kamera) {
     if (((art === 'bauchlage' || art === 'seitlage') && gg.becken.y >= 0.5 && Math.min(gg.knoechel.l.y, gg.knoechel.r.y) < 0.4) || anim.einstiegVorgebeugt) for (const d of [0.32, 0.45, ...(anim.einstiegVorgebeugt ? [0.6] : [])]) plaene.push(vorgebeugt(Gp, gg, d));
   }
   if (!alt && art === 'sitzen' && z.lh && !z.seil && !hanteln.length && gg.R.oben.y < 0.95 && z.lh.position.y > gg.brust.y) for (const d of [0.22, 0.3, 0.38]) plaene.push(unterStange(Gp, gg, d));
+  // Runde 6: Stange am Boden quer über dem Becken (Glute Bridge mit Langhantel; Befund 23.11.: beim Zurücklegen ging der Bauch 8 cm durch die Stange): wie unter ein
+  // Polster, im Langsitz mit den Beinen unter der Stange durch, dann zurücklegen
+  if (r6 && art === 'rueckenlage' && z.lh && !z.seil && !hanteln.length && z.lh.position.y < 0.45) for (const d of [0.62, 0.75, 0.88]) plaene.push(langsitz(Gp, gg, Q, d));
+  // Runde 6: Füße liegen in der Startpose erhöht (Rudern umgekehrt mit erhöhten Füßen; Befund 23.11.: beim Hinlegen gingen die Füße 9,5 cm durch die Kante der Ablage):
+  // die Füße im Bogen über die Kante hinauf
+  if (r6 && art === 'rueckenlage' && plaene[0].name === 'rueckenlage' && gg.becken.y < 0.45 && Math.min(gg.knoechel.l.y, gg.knoechel.r.y) > 0.15) {
+    const k = plaene[0], i = k.schritte.findIndex((x) => x.ziel.fuss && Math.min(x.ziel.fuss.l.y, x.ziel.fuss.r.y) > 0.15);
+    if (i >= 0) plaene[0] = Object.assign({}, k, { schritte: k.schritte.map((x, j) => (j === i ? Object.assign({}, x, { heben: 0.25 }) : x)) });
+  }
   if (eigen) plaene.length = 1;
   if (anim.standVersatz && !kabel && !latzug) for (const p of plaene) p.stand = p.stand.clone().add(anim.standVersatz);
+  // Runde 6: Stange tief vor den Beinen (Rudern vorgebeugt an der Multipresse; Befund 23.11.: aufrecht am Stehplatz der Startpose steckten die Oberschenkel 7 cm in der Stange):
+  // weiter hinten ankommen, bis aufrecht und halb eingedreht nichts mehr eintaucht, und erst mit dem Vorbeugen herantreten
+  if (r6 && art === 'stehen' && z.lh && !z.seil && !kabel && !latzug && !hanteln.length && z.lh.position.y > 0.3 && z.lh.position.y < 1.0 && z.lh.position.clone().sub(gg.becken).dot(plaene[0].blick) > 0) {
+    const k = plaene[0], w = winkelVon(k.blick), frei = new Float32Array(Q.length * NG);
+    for (let i = 0; i <= 6; i++) {
+      const P = k.stand.clone().addScaledVector(k.blick, -0.04 * i);
+      if (i === 6 || stoss([stehen(P, w), stehen(P, w + 0.7), stehen(P, w - 0.7)], Q, frei) < 0.01) { k.stand = P; break; }
+    }
+  }
   // Stange vor der Brust (Frontkniebeuge; Befund 6.11.: am Stehplatz der Startpose steht der Körper fast an der Stange, die Schultern liefen beim Eindrehen
   // 4 cm hinein): bis 20 cm weiter hinten ankommen, bis aufrecht und halb eingedreht nichts mehr eintaucht, und erst mit dem Greifen an die Stange treten
   if (art === 'stehen' && z.lh && !z.seil && !kabel && !latzug && !hanteln.length && z.lh.position.y > 1.0 && z.lh.position.y < 1.6 && z.lh.position.clone().sub(gg.kopf).dot(waag(gg.R.vor)) > 0) {
@@ -1554,6 +1590,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
       if (wert(p) < wert(plan) - (plan === klass ? WM : 0)) plan = p;
     }
   }
+  if (r6 && anim && EINSTIEG_R6.has(anim.schluessel)) { const p = plaene.find((q) => q.name === EINSTIEG_R6.get(anim.schluessel)); if (p) { if (!p.weg) p.weg = weg(p); plan = p; } }
   // Geräte am Kopf (Vorlage ablaufGeraete, Nacken 18.11.2026): die Vorlage darf den gewählten Einstieg ergänzen (Scheibe aufheben, Band anlegen, Gurt einhaken) und setzt diese Geräte im
   // ganzen Ablauf selbst: setze(t, g), t = Zeit ab dem ersten Schritt (beim Hinlaufen negativ). Bis dahin hingen sie bis zum Greifen dort in der Luft, wo der Kopf in der Startpose ist
   const eigeneGeraete = anim.ablaufGeraete ? anim.ablaufGeraete(plan, { Gp, gg, stehen, sitzen, haendeAufBeinen, haendeNeben, vollstaendig, z }) : null;
@@ -1699,17 +1736,20 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // Handtuch (Rolle am Ellbogen, Tuch zwischen den Händen): hängt nicht in der Luft, bis die Figur es in der Hand hat
   const tuch = z.tuch && z.tuch.isObject3D ? z.tuch : null;
   if (tuch) tuch.visible = false;
+  // Runde 6: Band über dem Rücken (Liegestütz mit Band) ebenso: erst mit dem Greifen da (Befund 23.11.: es hing in der Startpose über dem Boden, der Rücken legte sich beim Hinlegen 14 cm hinein)
+  const rueckenBand = r6 && z.b1 && z.b1.isObject3D ? z.b1 : null;
   return {
     dauer, tStart: G.t, griffPlan,
     // Pose zur Zeit sek (setzt bis zum Aufstehen auch die Hanteln); gehtMit: ab wann die Geräte mit den Händen mitgehen (Hanteln nach
     // dem Aufstehen, sonst nach dem Greifen)
     pose(sek) {
-      ALT = alt; R3 = r3; R4 = r4; R5 = r5;
+      ALT = alt; R3 = r3; R4 = r4; R5 = r5; R6 = r6;
       let x = sek, p = null;
       for (const teil of teile) { if (x <= teil.d) { p = teil.bild(teil.d > 0 ? x / teil.d : 1); break; } x -= teil.d; }
       if (!p) p = teile[teile.length - 1].bild(1);
       if (auf && sek < tMit) halten(sek, p);
       if (tuch) tuch.visible = sek >= Math.min(tMit, tGriff);
+      if (rueckenBand && sek < Math.min(tMit, tGriff)) for (const m of z.b1_kette || [rueckenBand]) m.visible = false;
       const ende = 1 - glatt((sek - (dauer - 0.45)) / 0.4);   // die letzten 0,45 s ohne Eingriff: der Ablauf endet genau in der Startpose der Übung (sonst Sprung bei der Übergabe)
       return ueberBoden(ueberBodenteilen(Object.assign({}, p, griffStand(sek)), alt ? [] : hantelAmBoden.length && sek < haeltAb ? FLACH.concat(hantelAmBoden) : FLACH, ende, Q), ende);
     },
