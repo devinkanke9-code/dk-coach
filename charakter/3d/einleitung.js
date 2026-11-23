@@ -940,7 +940,7 @@ function auflageBauch(Q, m, unter) {
 // Startpose ins Polster und kippte von dort in die Pose). Wie im Studio: Liegen die Oberschenkel waagerecht, neben dem Gerät stehen, auf das
 // Polster steigen und aufrecht knien, dann nach vorn ablegen. Stehen die Beine schräg auf einer Fußplatte, von hinten auf die Platte steigen,
 // Becken ans Polster, der Körper gestreckt in einer Linie mit den Beinen (oberer Umkehrpunkt), dann abbeugen. sg: Seite (1 = links des Geräts)
-function aufBauchlage(Gp, gg, Q, sg) {
+function aufBauchlage(Gp, gg, Q, sg, boden = 0) {   // boden: der äußere Fuß steht so hoch (Trittstufe)
   const kopf = waag(gg.R.oben), w = winkelVon(kopf), links = V(kopf.z, 0, -kopf.x), mitte = (a, b) => a.clone().add(b).multiplyScalar(0.5);
   const km = mitte(gg.knie.l, gg.knie.r), hm = mitte(gg.huefte.l, gg.huefte.r), fm = mitte(gg.knoechel.l, gg.knoechel.r), T = km.clone().sub(hm);
   if (Math.abs(T.y) < 0.5 * T.length()) {
@@ -968,7 +968,7 @@ function aufBauchlage(Gp, gg, Q, sg) {
     const halb = stehen(Mb, w, { hoch: Mb.y - 0.975, neigung: 10 });
     halb.becken = Mb.clone();
     const hi = Mb.clone().addScaledVector(links, -sg * MASS.hueftBreite).add(V(0, -0.02, 0));
-    halb.fuss = seiten((s) => (s === innen ? kniet.fuss[s].clone() : Mb.clone().addScaledVector(links, sg * 0.06).setY(FY)));
+    halb.fuss = seiten((s) => (s === innen ? kniet.fuss[s].clone() : Mb.clone().addScaledVector(links, sg * 0.06).setY(FY + boden)));
     halb.kniePol = seiten((s) => (s === innen ? Ki.clone().sub(hi.clone().add(kniet.fuss[s]).multiplyScalar(0.5)).normalize() : halb.kniePol[s]));
     halb.fussRicht = seiten((s) => (s === innen ? kniet.fussRicht[s].clone() : halb.fussRicht[s]));
     halb.zehen = seiten((s) => (s === innen ? (kniet.zehen[s] || 0) : 0));
@@ -1000,6 +1000,18 @@ function aufBauchlage(Gp, gg, Q, sg) {
 // Kniepolster (Klimmzug- und Dip-Maschine mit Unterstützung; Befund 5.11.: die Figur stand beim Ankommen im Polster). Wie im Studio: vor
 // dem Polster stehen, Rücken zur Maschine, rückwärts auf die beiden Trittstufen neben dem Polster steigen, Stange bzw. Griffe fassen, dann ein
 // Knie nach dem anderen auf das Polster setzen. Unter einer Stange bleibt der Kopf darunter (in den Knien)
+// Geräte-Umbau 24.11.2026 (Seal-Rudern, Vorlage trittstufe): über die Trittstufe neben der hohen Bank. Hinter der Stufe stehen, hinaufsteigen,
+// dann wie bei den anderen hohen Polstern (aufBauchlage): ein Knie aufs Polster, das zweite darüber, aufrecht knien, nach vorn ablegen;
+// zuletzt greifen die Hände die Hanteln, die auf ihrem Block unter der Bank liegen
+function ueberTrittstufe(Gp, gg, Q, T) {
+  const kopf = waag(gg.R.oben), w = winkelVon(kopf), links = V(kopf.z, 0, -kopf.x), S = T.mitte;
+  const sg = Math.sign(S.clone().sub(gg.becken).dot(links)) || 1, p = aufBauchlage(Gp, gg, Q, sg, S.y + 0.01);   // 1 cm über der Stufe: beim Abheben drücken die Zehen kurz nach unten
+  if (!p) return null;
+  p.name = 'trittstufe'; p.stand = S.clone().setY(0).addScaledVector(kopf, -(T.tiefe / 2 + 0.3));
+  p.schritte[0] = Object.assign({}, p.schritte[0], { steigen: Object.assign({}, p.schritte[0].steigen, { bogen: 0.18, fussDreh: true }) });   // erstes Knie: Fuß höher über die Polsterkante, er dreht erst, wenn er abhebt (vorher tauchten die Zehen in Stufe und Polster)
+  p.schritte.unshift({ ziel: stehen(S, w, { hoch: S.y + 0.01 }), d: 1.1, steigen: { erst: sg > 0 ? 'l' : 'r', bogen: 0.12 } });
+  return p;
+}
 function aufKniepolster(Gp, gg, Q, art) {
   const blick = waag(gg.R.vor), w = winkelVon(blick), links = V(blick.z, 0, -blick.x), mitte = (a, b) => a.clone().add(b).multiplyScalar(0.5);
   const km = mitte(gg.knie.l, gg.knie.r), h = auflageBauch(Q, km, km.y + 0.02);
@@ -1148,7 +1160,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
   const r6 = R6;   // gilt auch später in pose() (dort wird ALT wieder gesetzt, falls inzwischen ein anderer Ablauf gebaut wurde)
   QAKT = null;   // Geräte dieses Ablaufs erst, wenn sie bekannt sind (unten)
   const obj = Object.values(z).filter((o) => o && o.isObject3D);
-  const hanteln = ['kh_l', 'kh_r', 'kb'].filter((n) => z[n] && z[n].isObject3D);
+  const hanteln = anim.hantelnAufBlock ? [] : ['kh_l', 'kh_r', 'kb'].filter((n) => z[n] && z[n].isObject3D);   // hantelnAufBlock (Seal-Rudern): die Hanteln liegen am Platz, gegriffen wird im Liegen
   // Startzeitpunkt: Stange vom Boden (Kreuzheben) unten; Stange im Ständer dort, wo der Körper am aufrechtesten ist bzw. im Liegen oben
   // Griffachse der Kurzhanteln (setzen erst die props) vorher kennen, damit die Hand am Ende so greift wie in der Übung
   if (!z.griffAchse) { const e0 = anim.pose(0, z); if (e0.props) e0.props(gelenke(e0.pose), z); }
@@ -1280,6 +1292,8 @@ export function baueEinleitung(anim, ger, z, kamera) {
   if (eigen && eigen.ruhe && G.erg.props) { G.erg.props(gelenke(eigen.ruhe), z); for (const o of obj) o.updateMatrixWorld(true); }
 
   // Geräte als Hindernisse; erlaubt ist, was die Startpose selbst berührt (Sitz, Polster, Griffe)
+  // einstiegOffen (Vorlage, Geräte-Umbau 24.11.2026): bewegliche Teile stehen beim Einstieg offen (Rückenstrecker: Oberschenkelpolster zur Seite geschwenkt)
+  if (anim.einstiegOffen) { anim.einstiegOffen(z); for (const o of obj) o.updateMatrixWorld(true); }
   const Q = quader(ger, new Set(hanteln.map((n) => z[n])));
   // Runde 3 (23.11.2026): niedrige, frei liegende Stangen bis 35 cm (Fußstütze vor Brust- und Schulterpresse) übersteigt die Figur: Der Fuß hebt
   // sich darüber, Schienbein und Fuß zählen dort beim Planen nicht, im Bodenraster sind sie begehbar. Bis dahin lief der Weg seitlich um die
@@ -1426,7 +1440,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
     // Hoher Sitz unter dem Becken, Beine nach vorn hinauf oder lang (Beinpresse, Beinbeuger sitzend): seitlich hinsetzen, dann die Beine hinauf und eindrehen.
     // Davor stehen Rahmen, Rolle oder Plattform; weiter vorn absetzen, wo hinten eine schräge Lehne steht
     if ((art === 'rueckenlage' || art === 'sonst') && gg.becken.y > 0.45 && auflage(Q, gg.becken) > 0.3)
-      for (const sg of [1, -1]) for (const zurueck of [0.03, -0.06, -0.12]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, 0.1, art === 'rueckenlage' ? waag(gg.R.oben).negate() : null));
+      for (const sg of [1, -1]) for (const zurueck of [0.03, -0.06, -0.12, ...(anim.seitlichVorn || [])]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, 0.1, art === 'rueckenlage' ? waag(gg.R.oben).negate() : null));   // seitlichVorn (Vorlage, Wadenheben an der Beinpresse): auch weiter vorn auf die Sitzkante
     if (((art === 'bauchlage' || art === 'seitlage') && gg.becken.y >= 0.5 && Math.min(gg.knoechel.l.y, gg.knoechel.r.y) < 0.4) || anim.einstiegVorgebeugt) for (const d of [0.32, 0.45, ...(anim.einstiegVorgebeugt ? [0.6] : [])]) plaene.push(vorgebeugt(Gp, gg, d));
   }
   if (!alt && art === 'sitzen' && z.lh && !z.seil && !hanteln.length && gg.R.oben.y < 0.95 && z.lh.position.y > gg.brust.y) for (const d of [0.22, 0.3, 0.38]) plaene.push(unterStange(Gp, gg, d));
@@ -1439,6 +1453,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
     const k = plaene[0], i = k.schritte.findIndex((x) => x.ziel.fuss && Math.min(x.ziel.fuss.l.y, x.ziel.fuss.r.y) > 0.15);
     if (i >= 0) plaene[0] = Object.assign({}, k, { schritte: k.schritte.map((x, j) => (j === i ? Object.assign({}, x, { heben: 0.25 }) : x)) });
   }
+  if (anim.trittstufe && art === 'bauchlage') { const p = ueberTrittstufe(Gp, gg, Q, anim.trittstufe); if (p) plaene.splice(0, plaene.length, p); }
   if (eigen) plaene.length = 1;
   if (anim.standVersatz && !kabel && !latzug) for (const p of plaene) p.stand = p.stand.clone().add(anim.standVersatz);
   // Runde 6: Stange tief vor den Beinen (Rudern vorgebeugt an der Multipresse; Befund 23.11.: aufrecht am Stehplatz der Startpose steckten die Oberschenkel 7 cm in der Stange):

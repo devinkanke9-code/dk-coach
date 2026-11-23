@@ -416,7 +416,7 @@ export function kniebeuge(o = {}) {
       if (last === 'kettlebell') z.kb = ger.kettlebell();
       if (last === 'kurzhanteln') khAufbauen(ger, z);
       if (last === 'multipresse') schienenAufbauen(ger, z);
-      if (o.box) ger.box(0.42, BOX_H, 0.38, V(0, BOX_H / 2, -0.35), ger.mPolster);
+      if (o.box) ger.box(0.42, BOX_H, 0.38, V(0, BOX_H / 2, last === 'goblet' ? -0.39 : -0.35), ger.mPolster);   // Goblet (Geräte-Umbau 24.11.2026): Box 4 cm weiter hinten, sonst streifte der Fuß beim Hinlaufen ihre Vorderkante (7,3 cm); das Gesäß tippt weiter auf
       // Sicherungsablagen: zwei Rohre längs neben der Figur, Oberkante knapp 2 cm unter der Griffstange am tiefsten Punkt (Stange unten auf 0,927 m); der vordere Pfosten steht dort, wo der Ablauf den Ständer aufstellt
       if (o.ablagen) for (const sx of [-1, 1]) {
         ger.box(0.05, 0.03, 0.74, V(sx * 0.6, 0.88, -0.07), ger.mMetall);
@@ -1442,6 +1442,7 @@ export function wadenheben(o = {}) {
           if (z.wk) r2_wadenStellen(z, g);   // DK Line: Hebel, Seil und Stapel
         } };
     },
+    seitlichVorn: art === 'beinpresse' ? [-0.2, -0.28] : undefined,   // Geräte-Umbau 24.11.2026: im Ablauf davor auch weiter vorn seitlich auf die Sitzkante (Gesäß ging sonst 7,8 cm in den Sitz)
     blick: V(0, 0.55, 0), abstand: 2.9, kameraRicht: anWand ? V(-1, 0.25, 0.5) : V(1, 0.25, 0.5), dauer: art === 'einbeinstand' ? STATISCH : undefined   // an der Wand: Blick von der freien Seite, die Wand steht dahinter (bis 5.11. verdeckte sie die Figur ganz)
   };
 }
@@ -2063,9 +2064,15 @@ function rumpfmaschineBauen(ger, z, becken, bauch) {
     r2_polsterIn(ger, h, 0.4, 0.26, 0.08, V(0, pad.y, pad.z));
     // Gurtpolster über den Oberschenkeln, Fußplatte
     const knie = V(0, becken.y + 0.06, becken.z + 0.38);   // Gurtpolster nah am Knie: Bauch und Brust beugen sich frei darüber
-    for (const sx of [-1, 1]) ger.holm(V(sx * 0.3, becken.y - 0.06, becken.z), V(sx * 0.3, knie.y + 0.12, knie.z), 0.05);
-    for (const sx of [-1, 1]) ger.holm(V(sx * 0.3, knie.y + 0.12, knie.z), V(sx * 0.22, knie.y + 0.07, knie.z), 0.04);   // Polster seitlich gehalten, kein Rohr quer vor dem Bauch
-    ger.polsterGeformt(0.46, 0.07, 0.14, knie.clone().add(V(0, 0.06, 0)));   // liegt auf den Oberschenkeln, drückt nicht hinein
+    const arm = {}, steg = {};
+    for (const sx of [-1, 1]) arm[sx] = ger.holm(V(sx * 0.3, becken.y - 0.06, becken.z), V(sx * 0.3, knie.y + 0.12, knie.z), 0.05);
+    for (const sx of [-1, 1]) steg[sx] = ger.holm(V(sx * 0.3, knie.y + 0.12, knie.z), V(sx * 0.22, knie.y + 0.07, knie.z), 0.04);   // Polster seitlich gehalten, kein Rohr quer vor dem Bauch
+    const gurt = ger.polsterGeformt(0.46, 0.07, 0.14, knie.clone().add(V(0, 0.06, 0)));   // liegt auf den Oberschenkeln, drückt nicht hinein
+    // Geräte-Umbau 24.11.2026: das Polster schwenkt mit dem rechten Arm (zur Kamera hin) um dessen Fuß zur Seite weg (senkrechte Achse); der linke Arm
+    // bleibt stehen und hält es geschlossen. Im Ablauf davor steht es offen, die Figur setzt sich von vorn, dann schwenkt es über die Oberschenkel zurück
+    const schwenk = new THREE.Group(); schwenk.position.set(0.3, becken.y - 0.06, becken.z); ger.gruppe.add(schwenk); schwenk.updateMatrixWorld(true);
+    for (const o of [arm[1], steg[1], gurt]) schwenk.attach(o);
+    z.gurtSchwenk = schwenk;
     for (const sx of [-1, 1]) ger.holm(V(sx * 0.2, 0.04, becken.z + 0.5), V(sx * 0.2, 0.05, becken.z + 0.5), 0.05);
     ger.box(0.52, 0.03, 0.3, V(0, 0.065, becken.z + 0.5), ger.mGummi);   // Fußplatte (Oberkante 0,08)
   }
@@ -4056,11 +4063,16 @@ export function rudern(o = {}) {
 
 const RU_SV = [0.025, -0.015];   // Langhantelrudern vorgebeugt: Schulterblatt-Gleiten unten (+ vor) und oben (− zusammen) in m, figur.js pose.schulterVor
 // Seal-Rudern: bäuchlings auf einer hohen Bank (Kopf nach -z), Arme hängen senkrecht, Kurzhanteln im Hammergriff zur Hüfte ziehen
+const SEAL_STUFE = { mitte: V(-0.42, 0.38, 0.75), breite: 0.36, tiefe: 0.5 };   // Oberkante Mitte der Trittstufe (neben der Bank bei den Knien, auf der Seite weg von der Kamera)
 function sealRudern() {
   return {
     aufbau(ger) {
       ger.box(0.28, 0.08, 1.6, V(0, 0.8, 0.3), ger.mPolster);   // schmal: Oberarme hängen frei daneben
       for (const sz of [-0.35, 0.95]) { ger.box(0.06, 0.76, 0.06, V(0, 0.38, sz), ger.mRahmen); ger.box(0.4, 0.04, 0.06, V(0, 0.02, sz), ger.mRahmen); }
+      // Geräte-Umbau 24.11.2026: Trittstufe neben dem hinteren Teil der Bank (38 cm, die Figur steigt im Ablauf darüber auf die Bank) und je ein Block unter den Hanteln:
+      // sie liegen in der Startpose darauf, die Figur greift sie erst, wenn sie liegt (die Hände hängen 41 cm über dem Boden, vom Boden aufheben ging nicht)
+      ger.box(SEAL_STUFE.breite, SEAL_STUFE.mitte.y, SEAL_STUFE.tiefe, V(SEAL_STUFE.mitte.x, SEAL_STUFE.mitte.y / 2, SEAL_STUFE.mitte.z), ger.mRahmen);
+      for (const sx of [-1, 1]) ger.box(0.36, 0.316, 0.24, V(sx * 0.245, 0.158, -0.17), ger.mRahmen);
       const z = {}; khAufbauen(ger, z); return z;
     },
     pose(t) {
@@ -4074,7 +4086,8 @@ function sealRudern() {
           fuss: seiten((s, sg) => V(0, 0.91, 0.3 + BEIN * 0.995).add(L(sg, 0.1))), kniePol: seiten(() => V(0, -1, 0)), fussRicht: seiten(() => V(0, -0.72, 0.7)) },   // Füße hängen locker über das Bankende, etwa 45° gestreckt (vorher 75°)
         props(g, z) { kurzhantelnAn(z, g, 'hammer'); } };
     },
-    blick: V(0, 0.7, 0), abstand: 3.4, kameraRicht: V(1, 0.3, 0.2)
+    blick: V(0, 0.7, 0), abstand: 3.4, kameraRicht: V(1, 0.3, 0.2),
+    trittstufe: SEAL_STUFE, hantelnAufBlock: true   // für den Ablauf davor (einleitung.js)
   };
 }
 
@@ -4787,6 +4800,17 @@ function anDenSchlaefen(pose, pol = true) {
 }
 // Rumpf, Teil 3 und weitere (rumpfNeu, rumpfMehr weiter unten): Sit-up, Crunch auf der Negativbank, Rückenstrecker-Maschine mit Händen an den Schläfen statt verschränkter Arme
 // (bei dieser kräftigen Figur gingen die verschränkten Unterarme 4,5–5,5 cm in Brust und Bauch und ineinander), Fahrrad-Crunch: Hände an den Schläfen wie oben, der Ellbogen-Pol bleibt
+// Geräte-Umbau 24.11.2026 (Rückenstrecker-Maschine): im Ablauf davor steht das Oberschenkelpolster zur Seite geschwenkt (die Figur kam sonst von keiner Seite
+// frei auf den Sitz: vorn 9,1 cm in der Rolle); im letzten Schritt schwenkt es über die Oberschenkel zurück
+const GURT_OFFEN = 95 * RAD;
+function gurtSchwenkAblauf(b) {
+  b.einstiegOffen = (z) => { if (z.gurtSchwenk) { z.gurtSchwenk.rotation.set(0, GURT_OFFEN, 0); z.gurtSchwenk.updateMatrixWorld(true); } };
+  b.ablaufGeraete = (plan, h) => {
+    const T = nkZeiten(plan.schritte), n = plan.schritte.length;
+    return (t) => { const s = h.z.gurtSchwenk; if (!s) return; const u = t < T[n - 1] ? 0 : Math.min(1, nkAnteil(t, T, n - 1)); s.rotation.set(0, GURT_OFFEN * (1 - u), 0); s.updateMatrixWorld(true); };
+  };
+  return b;
+}
 function schlaefenStatt(b, pol = true) {
   const p0 = b.pose;
   b.pose = function (t, z) { const e = p0.call(this, t, z); if (e && e.pose) anDenSchlaefen(e.pose, pol); return e; };
@@ -4825,7 +4849,7 @@ export function rumpfuebung(o = {}) {
   if (art === 'fahrrad') return schlaefenStatt(rumpfNeu(art), false);
   if (art === 'vup') return vUpSauber();
   if (['schultertippen', 'mountain', 'lsitz'].includes(art)) return rumpfNeu(art);
-  if (art === 'rueckenstrecker_maschine') return schlaefenStatt(rumpfMehr(art), 'vorn');
+  if (art === 'rueckenstrecker_maschine') return gurtSchwenkAblauf(schlaefenStatt(rumpfMehr(art), 'vorn'));
   if (['plank_knie', 'body_saw', 'rollout_stehend', 'reverse_crunch', 'knieheben_haengend', 'hollow_rock', 'bauchmaschine'].includes(art)) return rumpfMehr(art);
   const band = art === 'pallof' && o.last === 'band';
   return {
@@ -5665,7 +5689,7 @@ function rumpfMehr(art) {
         : seiten((s, sg) => gekreuzt(k, sg));   // Arme vor der Brust gekreuzt
       return { pose: { becken, rumpf: r, wirbel: w, kopf: { neigung: bauch ? 15 : -5 }, hand, handflaeche: bauch ? seiten((s, sg) => k.R.links.clone().multiplyScalar(-sg)) : seiten(() => k.R.vor.clone().negate()),
           ellbogenPol: seiten((s, sg) => bauch ? V(sg * 0.4, -1, 0.5) : gekreuztPol(k, sg)), fuss: seiten((s, sg) => V(sg * 0.13, bauch ? FY : 0.08 + FY, bauch ? 0.36 : 0.42)), kniePol: seiten((s, sg) => V(sg * 0.2, 1, 1)) },
-        props(g, z) { z.rm.hebel.quaternion.copy(hebelQ); z.rm.dk.stelle([Math.PI / 2 - hebelW]); } };   // DK Line: Hebelwinkel (von +z nach +y) bewegt Nocke, Seil und Stapel
+        props(g, z) { if (nkAblaufProps(g, z)) return; if (z.gurtSchwenk) z.gurtSchwenk.rotation.set(0, 0, 0); z.rm.hebel.quaternion.copy(hebelQ); z.rm.dk.stelle([Math.PI / 2 - hebelW]); } };   // Rückenstrecker: im Ablauf davor setzt gurtSchwenkAblauf das Polster   // DK Line: Hebelwinkel (von +z nach +y) bewegt Nocke, Seil und Stapel
     },
     blick: V(0, 0.6, 0), abstand: 3.4, kameraRicht: V(1, 0.4, 0.3),
     dauer: art === 'plank_knie' ? STATISCH : art === 'hollow_rock' ? [0.9, 0.1, 0.9, 0.1] : art === 'body_saw' ? [1.2, 0.2, 1.2, 0.2] : undefined
