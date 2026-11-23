@@ -21,6 +21,30 @@ const drehY = (w) => new THREE.Quaternion().setFromAxisAngle(Y, w);
 const kurz = (w) => Math.atan2(Math.sin(w), Math.cos(w));
 const GENAU = () => ({ l: true, r: true, ablauf: true });   // ablauf: Hände und Körper stehen schon so, wie gelenke() sie gerechnet hat
 const UM_Y = new THREE.Quaternion().setFromAxisAngle(Y, Math.PI);
+// 22.11.2026: Alter Weg. Für Übungen in ALTER_WEG (Schlüssel wie anim.schluessel aus bewegungen.js) rechnet der Ablauf genau wie vor dem 21.11.
+// (Kapseln, Bewertung, Abrücken, Drehen, Schritte, Hanteln). Dort war der neue Weg in der Messung (intro-huelle) tiefer im Gerät als der alte
+let ALT = false;
+// 23.11.2026 (Runde 3): Neuerungen der dritten Runde gelten, wenn R3 wahr ist; für Übungen in OHNE_R3 bleibt der Stand der zweiten Runde
+let R3 = false;
+const OHNE_R3 = new Set([
+  "sonderkniebeuge:{\"art\":\"sissy_bank\",\"standVersatz\":[0,0,0.3]}",   // sissy_bank_kniebeuge
+  "beincurl:{\"art\":\"stehend\",\"standVersatz\":[0,0,-0.2]}",   // beincurl_stehend_einbeinig
+  "rumpfuebung:{\"art\":\"bauchmaschine\",\"standVersatz\":[0.12,0,0]}",   // bauchmaschine_crunch
+]);
+const ALTER_WEG = new Set([
+  "trizeps:{\"art\":\"dips\",\"assistiert\":true}",   // dips_assistiert
+  "klimmzug:{\"art\":\"zusatzgewicht\"}",   // klimmzug_zusatzgewicht
+  "beinmaschine:{\"art\":\"beinpresse\",\"lehne\":60,\"standVersatz\":[0,0,-0.22]}",   // beinpresse
+  "rudern:{\"art\":\"tbar\"}",   // t_bar_rudern
+  "schulterheben:{\"ablaufBand\":\"stange\",\"art\":\"frontheben\",\"last\":\"kabel\"}",   // kabel_frontheben
+  "schulterheben:{\"art\":\"seitheben\",\"sitzend\":true,\"standVersatz\":[0,0,0.1]}",   // kurzhantel_seitheben_sitzend
+  "beinmaschine:{\"art\":\"beinpresse\",\"einbeinig\":true,\"lehne\":60,\"standVersatz\":[0,0,-0.22]}",   // beinpresse_einbeinig
+  "beinmaschine:{\"art\":\"strecker\",\"einbeinig\":true}",   // beinstrecker_einbeinig
+  "kabelstand:{\"art\":\"kickback_bein\",\"last\":\"maschine\"}",   // glute_kickback_maschine
+  "wadenheben:{\"art\":\"esel\",\"einstiegVorgebeugt\":true}",   // esel_wadenheben
+  "schulterzug:{\"art\":\"wandengel\"}",   // wandengel
+  "bankdruecken:{\"last\":\"langhantel\",\"neigung\":-15}",   // negativ_bankdruecken_langhantel
+]);
 const DAUER = { gehen: 1.1, drehen: 0.35, aufheben: 0.7, setzen: 0.9, legen: 1.0, greifen: 0.8, eindrehen: 1.1, rutschen: 0.8 };   // Sekunden (gehen: je Meter)
 
 /* ---------- Posen ---------- */
@@ -160,6 +184,36 @@ function ueberBoden(p, anteil = 1) {
     p = Object.assign({}, p, { fuss: neu });
   }
   return p;
+}
+// 21.11.2026: Flache Bodenteile (Rohre des Bodenrahmens bis 13 cm hoch). Der Planer lässt die Füße darüber laufen, sie traten dabei aber
+// 3–4 cm in die Rohre (Befund 21.11.: viele Maschinen, auch beim Umdrehen und Hinsetzen). Kreuzt der Fuß ein Rohr, hebt er sich mit flacher
+// Sohle darüber (er steigt hinüber oder steht kurz darauf). Steht er längs auf einem Rohr (das mittlere Rohr unter dem Sitz liegt genau auf
+// dem Weg zum Platz), setzt er sich daneben: angehoben drückte sonst das Knie nach vorn in den Sitz
+function ueberBodenteilen(p, flach, anteil = 1, Q = null) {
+  if (!flach.length || anteil <= 0 || !p.fuss || !p.fuss.l || !p.fuss.r) return p;
+  const g = gelenke(p); let neu = null;
+  for (const s of ['l', 'r']) {
+    const sohle = Math.min(g.ferse[s].y, g.ballen[s].y) - 0.038, fr = waag(g.zehe[s].clone().sub(g.ferse[s])), fm = g.ferse[s].clone().lerp(g.zehe[s], 0.5);
+    let hoch = 0; const weg = V();
+    for (const q of flach) {
+      if (sohle > q.top) continue;
+      let d = Infinity; for (let i = 0; i <= 4; i++) { const P = g.ferse[s].clone().lerp(g.zehe[s], i / 4); d = Math.min(d, abstand2(P.x, P.z, q.grund)); }
+      const zone = q.uebersteigen ? 0.05 + 0.4 * q.top : 0.05, ueber = zone - d; if (ueber <= 0) continue;   // halbe Fußbreite 4,5 cm, dazu 0,5 cm Luft (Stange zum Übersteigen: der Fuß hebt sich schon vorher)
+      const hz = [0, 1, 2].filter((i) => Math.abs(q.ax[i].y) < 0.5).sort((a, b) => q.h[b] - q.h[a]), lang = waag(q.ax[hz[0]]);
+      if (q.uebersteigen) hoch = Math.max(hoch, (q.top + 0.01 - sohle) * glatt(ueber / (zone - 0.03)));
+      else if (hz.length === 2 && Math.abs(lang.dot(fr)) > 0.45) {   // längs oder schräg: quer zum Rohr daneben setzen
+        const n = V(lang.z, 0, -lang.x), o = fm.clone().sub(q.c).setY(0).dot(n), sg = Math.abs(o) > 0.005 ? Math.sign(o) : Math.sign(fm.clone().sub(g.becken).setY(0).dot(n)) || 1;
+        weg.addScaledVector(n, sg * (q.h[hz[1]] + 0.065) - o);
+      } else hoch = Math.max(hoch, (q.top + 0.004 - sohle) * Math.min(1, ueber / 0.02));
+    }
+    if (hoch > 0.002 || weg.lengthSq() > 1e-6) { neu = neu || { l: p.fuss.l, r: p.fuss.r }; neu[s] = p.fuss[s].clone().addScaledVector(weg, anteil); neu[s].y += hoch * anteil; }
+  }
+  if (!neu) return p;
+  const q = Object.assign({}, p, { fuss: neu });
+  // Drückt das angehobene Bein Knie oder Schienbein in Sitz, Polster oder Rahmen (vor dem Sitz von Beinstrecker und Rückenstrecker 2–3 cm
+  // tiefer als ohne), bleibt der Fuß, wo er war
+  if (Q && Q.length) { const bein = (x) => { const t = tiefen(gelenke(x), Q); let m = 0; for (let k = 0; k < Q.length; k++) m = Math.max(m, t[NG * k + 3], t[NG * k + 4]); return m; }; if (bein(q) > bein(p) + 0.005) return p; }
+  return q;
 }
 // Zwischen zwei vollständigen Posen; hand: eigener Anteil für die Hände (sie greifen zuletzt); vorne: die Hantel in beiden Händen geht in der Mitte so weit vor dem Körper
 function mische(A, B, u, hand = u, vorne = 0) {
@@ -335,6 +389,8 @@ function uebergang(von, s) {
     if (s.bogen) p.becken.y += s.bogen * Math.sin(Math.PI * g);
     if (s.handHoch) p.hand = seiten((k) => p.hand[k].clone().add(V(0, s.handHoch * Math.sin(Math.PI * h), 0)));   // Vorlage: die Hand geht im Bogen über eine Kante
     if (s.aussen) { const R = rumpfRahmen(p.rumpf), w = s.aussen * Math.sin(Math.PI * h); p.hand = seiten((k, sg) => p.hand[k].clone().addScaledVector(R.links, sg * w)); }
+    // vorHand (21.11.2026): die Hände gehen in der Mitte so weit nach vorn (Hanteln vor die Oberschenkel: erst vom Bein weg, dann davor; seitlich daneben gingen sie 3–5 cm hindurch)
+    if (s.vorHand) { const R = rumpfRahmen(p.rumpf), w = s.vorHand * Math.sin(Math.PI * h); p.hand = seiten((k) => p.hand[k].clone().addScaledVector(R.vor, w)); }
     if (s.heben) { const hb = s.heben * Math.sin(Math.PI * Math.min(1, g / (s.hebenBis || 1))); for (const k of ['l', 'r']) p.fuss[k].y += hb; }
     return s.dreh ? drehePose(p, s.dreh.m, -s.dreh.w * (1 - g)) : p;
   };
@@ -349,19 +405,26 @@ function quader(ger, aus) {
   ger.gruppe.traverse((m) => {
     if (!m.isMesh || !m.visible || !m.geometry) return;
     for (let o = m; o; o = o.parent) if (aus.has(o)) return;
+    const q = quaderTeil(m); if (q) liste.push(q);
+  });
+  return liste;
+}
+// Ein Teil als Quader (Weltlage muss aktuell sein); null bei leerer Form oder flach am Boden
+function quaderTeil(m) {
+  {
+    if (!m.geometry) return null;
     const geo = m.geometry; if (!geo.boundingBox) geo.computeBoundingBox();
     const b = geo.boundingBox, e = m.matrixWorld.elements, gr = b.getSize(V());
     const ax = [V(e[0], e[1], e[2]), V(e[4], e[5], e[6]), V(e[8], e[9], e[10])];
     const h = [gr.x / 2 * ax[0].length(), gr.y / 2 * ax[1].length(), gr.z / 2 * ax[2].length()];
-    if (!(h[0] + h[1] + h[2] > 0) || !h.every(Number.isFinite)) return;
+    if (!(h[0] + h[1] + h[2] > 0) || !h.every(Number.isFinite)) return null;
     ax.forEach((a) => a.normalize());
     const c = b.getCenter(V()).applyMatrix4(m.matrixWorld), ecken = [];
     for (const i of [-1, 1]) for (const j of [-1, 1]) for (const k of [-1, 1]) ecken.push(c.clone().addScaledVector(ax[0], i * h[0]).addScaledVector(ax[1], j * h[1]).addScaledVector(ax[2], k * h[2]));
     const ys = ecken.map((p) => p.y), top = Math.max(...ys), bot = Math.min(...ys);
-    if (top < 0.03) return;
-    liste.push({ c, ax, h, r: Math.hypot(h[0], h[1], h[2]), top, bot, grund: huelle(ecken) });
-  });
-  return liste;
+    if (top < 0.03) return null;
+    return { c, ax, h, r: Math.hypot(h[0], h[1], h[2]), top, bot, grund: huelle(ecken), m };
+  }
 }
 // Konvexe Hülle im Grundriss (x, z), gegen den Uhrzeigersinn
 function huelle(pkte) {
@@ -383,13 +446,45 @@ function abstand2(x, z, poly) {
   }
   return innen ? -best : best;
 }
-// Körper als Kapseln (Mittellinie, Radius, Gruppe 0 Becken und Bauch | 1 Brust, Schultern, Kopf | 2 Arme | 3 Beine);
-// Füße dürfen auf flache Bodenteile (Rahmen, Platten)
-const NG = 4, bauch = (g) => g.becken.clone().lerp(g.brust, 0.5);
+// Körper als Kapseln (Mittellinie, Radius, Gruppe 0 Becken und Bauch | 1 Brust, Schultern, Kopf | 2 Arme | 3 Oberschenkel | 4 Unterschenkel | 5 Füße);
+// Füße dürfen auf flache Bodenteile (Rahmen, Platten). 21.11.2026: Ober-, Unterschenkel und Füße je eigene Gruppe (bis dahin eine): Lagen in der Startpose
+// die Oberschenkel auf dem Sitz, war dort für das ganze Bein so viel erlaubt, dass Schienbein und Knie beim Herantreten und Umdrehen 5–7 cm durch die
+// Vorderkante von Sitz oder Bank gingen (Befund 21.11.: Beinstrecker, Brustpresse, Bankdrücken, Schulterpresse und viele mehr). Auch das Schienbein
+// übergeht flache Bodenteile (seine Kugel am Knöchel reicht bis 2 cm über den Boden und stieß sonst überall an den Bodenrahmen)
+const NG = 6, bauch = (g) => g.becken.clone().lerp(g.brust, 0.5);
 // Maße an der echten Haut abgeglichen (huelle.js, 31.10.): Bauch steht 14–17 cm, Brust bis 24,5 cm vor der Linie Becken → Brust, der
 // Rücken 11–12 cm dahinter, darum liegen die Rumpf-Kapseln etwas vor der Linie; Oberschenkel 10–12 cm, Schienbein 6 cm, Deltamuskel 7 cm
 const vorn = (p, g, d) => p.clone().addScaledVector(g.R.vor, d);
+// 21.11.2026: Wade. Die Haut der Wade steht im Stand bis 11 cm hinter der Linie Knie → Knöchel (gemessen an koerper.bin), die Kapsel des
+// Schienbeins reicht nur 6 cm: Vor Sitz und Bank meinte der Ablauf, die Beine seien frei, die Waden steckten aber 4–6 cm in der Kante.
+// Eine zweite Kapsel liegt darum hinter dem oberen Schienbein (hinten = weg von der Seite, zu der das Knie zeigt)
+// Vorderseite des Beins: dorthin zeigt das Knie (bei gestrecktem Bein nach vorn wie der Rumpf), senkrecht zur Achse a
+function kniePolVon(g, s, a) {
+  let h = g.knie[s].clone().sub(g.huefte[s].clone().add(g.knoechel[s]).multiplyScalar(0.5)); h.addScaledVector(a, -h.dot(a));
+  if (h.lengthSq() < 0.0004) { h = g.R.vor.clone(); h.addScaledVector(a, -h.dot(a)); }
+  return h.normalize();
+}
+function wade(g, s) {
+  const K = g.knie[s], F = g.knoechel[s], h = kniePolVon(g, s, F.clone().sub(K).normalize()).negate();
+  return [K.clone().lerp(F, 0.25).addScaledVector(h, 0.045), K.clone().lerp(F, 0.62).addScaledVector(h, 0.04)];
+}
+// Ebenso der vordere Oberschenkel: die Haut steht dort bis 13 cm vor der Linie Hüfte → Knie, die Kapsel reicht 9,5 cm (Befund 21.11.: vor
+// dem Beinhalter der Negativbank und vor Polstern ging der Oberschenkel 7–9 cm hinein, der Ablauf sah 4 cm)
+function quadrizeps(g, s) {
+  const H = g.huefte[s], K = g.knie[s], h = kniePolVon(g, s, K.clone().sub(H).normalize());
+  return [H.clone().lerp(K, 0.3).addScaledVector(h, 0.035), H.clone().lerp(K, 0.8).addScaledVector(h, 0.03)];
+}
+// 23.11.2026: Deltamuskel. Die Haut der Schulter steht 3 cm weiter außen als die Kapseln (gemessen an koerper.bin, 30,6 statt 27,5 cm von der
+// Mitte): beim Vorbeigehen an Pfosten und Hebeln (Brust- und Schulterpresse) streifte die Schulter 5 cm, der Ablauf sah nichts
+function delta(g, s) { const sg = s === 'l' ? 1 : -1, S = g.schulter[s], E = g.ellbogen[s]; return [S.clone().addScaledVector(g.R.links, sg * 0.03), S.clone().lerp(E, 0.35).addScaledVector(g.R.links, sg * 0.025)]; }
 const KAPSELN = [
+  [(g) => [vorn(g.becken, g, 0.03), vorn(bauch(g), g, 0.04)], 0.14, 0], [(g) => [g.huefte.l, g.huefte.r], 0.09, 0], [(g) => [vorn(bauch(g), g, 0.05), vorn(g.brust, g, 0.06)], 0.175, 1], [(g) => [g.kopf, g.kopf], 0.11, 1],
+  [(g) => [g.schulter.l, g.schulter.r], 0.07, 1],
+  ...['l', 'r'].flatMap((s) => [[(g) => [g.schulter[s], g.ellbogen[s]], 0.06, 2], [(g) => [g.ellbogen[s], g.hand[s]], 0.045, 2], [(g) => delta(g, s), 0.065, 1],
+    [(g) => [g.huefte[s], g.knie[s]], 0.095, 3], [(g) => quadrizeps(g, s), 0.09, 3], [(g) => [g.knie[s], g.knoechel[s]], 0.06, 4, true], [(g) => wade(g, s), 0.06, 4], [(g) => [g.ferse[s], g.zehe[s]], 0.04, 5, true]])
+];
+// Kapseln wie bis 21.11. (alter Weg): Beine eine Gruppe, keine Wade, kein vorderer Oberschenkel, das Schienbein zählt auch flache Bodenteile
+const KAPSELN_ALT = [
   [(g) => [vorn(g.becken, g, 0.03), vorn(bauch(g), g, 0.04)], 0.14, 0], [(g) => [g.huefte.l, g.huefte.r], 0.09, 0], [(g) => [vorn(bauch(g), g, 0.05), vorn(g.brust, g, 0.06)], 0.175, 1], [(g) => [g.kopf, g.kopf], 0.11, 1],
   [(g) => [g.schulter.l, g.schulter.r], 0.07, 1],
   ...['l', 'r'].flatMap((s) => [[(g) => [g.schulter[s], g.ellbogen[s]], 0.06, 2], [(g) => [g.ellbogen[s], g.hand[s]], 0.045, 2],
@@ -408,12 +503,12 @@ function tiefeIn(p, r, q) {
 // Getrennt nach Gruppen, damit z. B. Arme auf dem Armpolster nicht erlauben, dass die Beine hindurchgehen
 function tiefen(g, Q) {
   const aus = new Float32Array(Q.length * NG);
-  for (const [f, r, gr, fuss] of KAPSELN) {
+  for (const [f, r, gr, fuss] of ALT ? KAPSELN_ALT : KAPSELN) {
     const [A, B] = f(g), n = Math.max(1, Math.ceil(A.distanceTo(B) / 0.05));
     for (let i = 0; i <= n; i++) {
       _p.copy(A).lerp(B, i / n);
       for (let k = 0; k < Q.length; k++) {
-        if (fuss && Q[k].top < 0.09) continue;
+        if (fuss && (Q[k].top < 0.09 || Q[k].uebersteigen)) continue;
         const t = tiefeIn(_p, r, Q[k]);
         if (t > aus[NG * k + gr]) aus[NG * k + gr] = t;
       }
@@ -470,7 +565,7 @@ function raster(Q) {
   const frei = new Float32Array(NZ * NZ).fill(1), weich = new Uint8Array(NZ * NZ), niedrig = new Float32Array(NZ * NZ).fill(1);
   for (const q of Q) {
     if (q.bot > 1.85) continue;
-    const flach = q.top < 0.13, r = flach ? 0.1 : q.top < 0.75 ? 0.19 : 0.26;
+    const flach = q.top < 0.13 || q.uebersteigen, r = flach ? 0.1 : q.top < 0.75 ? 0.19 : ALT ? 0.26 : 0.31;   // 23.11.2026: oben 31 statt 26 cm (Schultern und hängende Arme streiften beim Vorbeigehen Pfosten und Hebel 3–5 cm)
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [x, z] of q.grund) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     const i0 = Math.max(0, Math.floor((x0 - r + FELD) / ZELLE)), i1 = Math.min(NZ - 1, Math.ceil((x1 + r + FELD) / ZELLE));
@@ -543,15 +638,15 @@ function anlauf(P, wEnde, W, R, Q, erlaubt) {
   if (!kand.length) return null;
   kand.sort((a, b) => a.kosten - b.kosten);
   let best = null;
-  for (const c of kand.slice(0, 10)) {
+  for (const c of kand.slice(0, R3 ? 24 : 10)) {   // Runde 3: mehr Anläufe prüfen
     const richt = winkelVon(V(P.x - c.q.x, 0, P.z - c.q.z)), posen = [];
     for (let s = 0.1, i = 0; s <= c.L + 1e-6; s += 0.08, i++) posen.push(gehend(c.q.clone().lerp(P, s / c.L), richt, i, c.L - s));
     const dw = kurz(wEnde - richt);
     for (const u of [0.5, 1]) posen.push(stehen(P, richt + dw * u));
     c.stoss = Math.max(stoss(posen, Q, erlaubt), quer(P, c.q, c.L, R));
-    c.wert = c.kosten + 12 * c.stoss;
+    c.wert = c.kosten + (R3 ? 40 : 12) * c.stoss;   // Runde 3: Eintauchen zählt mehr als ein Umweg (1 cm = 40 cm Weg)
     if (!best || c.wert < best.wert) best = c;
-    if (c.stoss < 0.015) break;
+    if (c.stoss < (ALT ? 0.015 : 0.006)) break;   // 23.11.2026: neuer Weg strenger (Schultern und Arme streiften Pfosten und Hebel)
   }
   // Rasterweg zurückverfolgen, dann Ecken abkürzen, wo die Sicht frei ist, und runden
   const zellen = []; for (let k = best.k; k >= 0; k = W.von[k]) zellen.unshift(mitteVon(k));
@@ -583,7 +678,8 @@ function klassisch(art, G, Gp, gg, hantel = false, frei = false, sitzVersatz = 0
   if (art === 'sitzen') {
     const blick = waag(gg.R.vor);
     return { name: art, blick, abruecken: true, stand: gg.becken.clone().add(blick.clone().multiplyScalar(0.2)),
-      schritte: hantel ? [{ ziel: hantelnAufBeinen(Gp, hantel === 'beide', Gp.kelch), d: DAUER.setzen, aussen: 0.1 }, { ziel: Gp, d: DAUER.greifen, aussen: 0.06 }]
+      // 21.11.2026: hängen die Hände in der Startpose neben dem Sitz (Curl, Seitheben), gehen die Hanteln außen um den Oberschenkel herum (mit 6 cm gingen sie 6–8 cm hindurch)
+      schritte: hantel ? [{ ziel: hantelnAufBeinen(Gp, hantel === 'beide', Gp.kelch), d: DAUER.setzen, aussen: 0.1 }, ALT ? { ziel: Gp, d: DAUER.greifen, aussen: 0.06 } : { ziel: Gp, d: DAUER.greifen + 0.2, aussen: Math.min(gg.hand.l.y, gg.hand.r.y) < gg.huefte.l.y + 0.1 ? 0.16 : 0.06 }]
         : [{ ziel: haendeAufBeinen(Gp), d: DAUER.setzen }, { ziel: Gp, d: DAUER.greifen, verzug: 0.35 }] };
   }
   if (art === 'rueckenlage') {
@@ -634,7 +730,7 @@ function klassisch(art, G, Gp, gg, hantel = false, frei = false, sitzVersatz = 0
   }
   const blick = waag(gg.R.vor);
   return { name: art, blick, stand: art === 'stehen' ? fussMitte.clone().add(blick.clone().multiplyScalar(-0.03)) : gg.becken.clone(),
-    schritte: [{ ziel: Gp, d: DAUER.greifen + 0.3, verzug: hantel ? 0 : 0.35, aussen: hantel && art !== 'stehen' ? 0.12 : 0 }] };
+    schritte: [{ ziel: Gp, d: DAUER.greifen + 0.3, verzug: hantel ? 0 : 0.35, aussen: hantel && art !== 'stehen' ? 0.12 : 0, vorHand: !ALT && hantel === true && art === 'stehen' ? 0.08 : 0 }] };
 }
 // Erhöhter Stand: Box oder Stufe unter den Zehen der Startpose (Oberkante 1–7 cm unter dem Zehenpunkt, mindestens 5 cm hoch)
 function plattformUnter(gg, Q) {
@@ -686,12 +782,12 @@ function seitlichSetzen(Gp, gg, sg, zurueck, heben, vorRicht = null) {
 // Über den Sitz steigen (wie im Studio an Maschinen mit Polster, Rolle oder Stange vor den Oberschenkeln, die beim Stehen vor dem Sitz
 // in den Beinen stünden): hinter dem Sitz stehen, über den Sitz steigen (Füße links und rechts davon), aufrecht hinsetzen, die Beine
 // unter Polster oder Rolle in ihre Lage bringen. Gibt die Posen; der Latzug nutzt sie auch (dort mit eigenem Greifen)
-function ueberSitzPosen(Gp, gg, fussBreit = 0.2, fussVor = 0.02, stehBreit = 0.27) {
+function ueberSitzPosen(Gp, gg, fussBreit = 0.2, fussVor = 0.02, stehBreit = 0.27, breitbeinig = false) {
   const blick = waag(gg.R.vor), w = winkelVon(blick), quer = V(blick.z, 0, -blick.x), q = drehY(w), B = gg.becken;
   const stand = B.clone().setY(0).addScaledVector(blick, -0.53), ueber = B.clone().setY(0).addScaledVector(blick, -0.1);
   const breit = (p, d, v = 0) => { p.fuss = seiten((s, sg) => ueber.clone().addScaledVector(blick, v).addScaledVector(quer, sg * d).setY(FY)); return p; };
-  const steht = breit(stehen(ueber, w, { tief: 0.04 }), stehBreit);   // über dem Sitz, die Füße daneben
-  steht.kniePol = seiten((s, sg) => V(sg * 0.35, 0, 1).applyQuaternion(q));
+  const steht = breit(stehen(ueber, w, { tief: breitbeinig ? 0.08 : 0.04 }), stehBreit);   // über dem Sitz, die Füße daneben
+  steht.kniePol = seiten((s, sg) => (breitbeinig ? V(sg * 1, 0, 0.4) : V(sg * 0.35, 0, 1)).applyQuaternion(q));   // Runde 3: breitbeinig, Knie nach außen über die Sitzkanten (Schienbein und Wade streiften sie 6 cm)
   const aufrecht = { basis: q.clone() }, sitzt = (fuss, pol) => Object.assign({}, Gp, { rumpf: aufrecht, kopf: { neigung: 0 }, fuss, fussRicht: seiten((s, sg) => V(sg * 0.1, 0, 1).applyQuaternion(q)), kniePol: pol, zehen: {}, fussFlaeche: seiten(() => null) });
   const unten = haendeAufBeinen(sitzt(seiten((s, sg) => B.clone().addScaledVector(blick, fussVor).addScaledVector(quer, sg * fussBreit).setY(FY)), seiten((s, sg) => V(sg * 0.25, 0.4, 1).applyQuaternion(q))));
   const fuesse = haendeAufBeinen(sitzt(seiten((s) => Gp.fuss[s].clone()), seiten((s) => Gp.kniePol[s].clone())));
@@ -707,6 +803,18 @@ function ueberSitz(Gp, gg, fussBreit, fussVor, breit = 0.32) {
 // Rückenlage mit Polster oder Hebel über dem Becken (Hip-Thrust-Maschine): weiter hinten absetzen (auf der Bank, sonst am Boden),
 // Beine lang nach vorn unter dem Polster durchschieben, bis zur Kante der Bank vorrutschen, mit langen Beinen unter das Polster
 // rutschen und zurücklegen, dann die Füße heranziehen
+// 23.11.2026: Unter der Stange (Schrägbank mit Langhantel oder Multipresse; Befund 21.11.: beim Zurücklehnen ging die Stange 12 cm durch Brust
+// und Rücken, denn aufrecht sitzend ist der Kopf dort, wo sie hängt). Wie im Studio: vorn auf den Sitz setzen (d weiter zu den Füßen hin), so
+// zurücklehnen, dass der Kopf vor der Stange bleibt und unter ihr durchgeht, dann auf der Lehne hinaufrutschen und greifen
+function unterStange(Gp, gg, d) {
+  const blick = waag(gg.R.vor), w = winkelVon(blick), weg = blick.clone().multiplyScalar(d);
+  const m = gg.becken.clone().add(weg); m.y -= 0.02;
+  const sitz = haendeAufBeinen(sitzen(m, w, 0.42));
+  sitz.rumpf = { basis: drehY(w).multiply(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), 12 * RAD)) };   // etwas vorgebeugt, der Kopf vor der Stange
+  const unten = haendeAufBeinen(Gp), vorn = haendeAufBeinen(Object.assign({}, Gp, { becken: Gp.becken.clone().add(weg).setY(Gp.becken.y - 0.05), fuss: seiten((s) => sitz.fuss[s].clone()), kniePol: sitz.kniePol, fussRicht: sitz.fussRicht, zehen: {}, fussFlaeche: seiten(() => null) }));
+  return { name: 'unterStange' + d, blick, abruecken: true, stand: m.clone().setY(0).addScaledVector(blick, 0.22),
+    schritte: [{ ziel: sitz, d: DAUER.setzen }, { ziel: vorn, d: DAUER.legen + 0.2 }, { ziel: unten, d: DAUER.rutschen + 0.2 }, { ziel: Gp, d: DAUER.greifen, verzug: 0.35 }] };
+}
 function langsitz(Gp, gg, Q, d) {
   const blick = waag(gg.R.oben).negate(), w = winkelVon(blick), q = drehY(w), B = gg.becken;
   const m = B.clone().sub(blick.clone().multiplyScalar(d)), bank = auflage(Q, m);
@@ -950,6 +1058,10 @@ function aufhebePlan(stand, winkel, z, halter, Q) {
 /* ---------- Einleitung bauen ---------- */
 // anim = Vorlage, z = ihre Geräte, ger = Geraete, kamera = Richtung der Kamera (dorthin ist Platz zum Anlaufen)
 export function baueEinleitung(anim, ger, z, kamera) {
+  ALT = !!(anim && ALTER_WEG.has(anim.schluessel));
+  const alt = ALT;
+  R3 = !ALT && !(anim && OHNE_R3.has(anim.schluessel));
+  const r3 = R3;   // gilt auch später in pose() (dort wird ALT wieder gesetzt, falls inzwischen ein anderer Ablauf gebaut wurde)
   QAKT = null;   // Geräte dieses Ablaufs erst, wenn sie bekannt sind (unten)
   const obj = Object.values(z).filter((o) => o && o.isObject3D);
   const hanteln = ['kh_l', 'kh_r', 'kb'].filter((n) => z[n] && z[n].isObject3D);
@@ -970,7 +1082,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
     const y0 = stangeY(L0), y1 = stangeY(L1);
     if (Math.min(y0, y1) < 0.3) G = y0 <= y1 ? L0 : L1;
     else if (stehend) G = Math.abs(L1.g.becken.y - L0.g.becken.y) > 0.05 ? (L1.g.becken.y > L0.g.becken.y ? L1 : L0) : (y0 <= y1 ? L0 : L1);
-    else if (k0 === 'rueckenlage') G = y1 > y0 ? L1 : L0;
+    else if (k0 === 'rueckenlage' || (!ALT && k0 === 'sitzen' && L0.g.R.oben.y < 0.95)) G = y1 > y0 ? L1 : L0;   // 23.11.2026: auch schräg zurückgelehnt (Schrägbank) oben anfangen; unten lag die Stange 3 cm über der Brust, jeder Einstieg ging durch sie hindurch
   } else if (k0 === 'bauchlage' && k1 === 'bauchlage') G = L1.g.becken.y > L0.g.becken.y + 0.02 ? L1 : L0;   // Liegestütz: oben anfangen (bleibt das Becken, wie beim Vierfüßler: vorn, Bein noch unten)
   else if (stehend && k0 !== 'stehen') G = L1;   // ohne Last aus der Hocke (Kniebeuge): aufrecht anfangen
   if (anim.ablaufT === 1) G = L1;   // Vorlage will oben anfangen (Hantel über dem Kopf: erst hoch, dann die erste Wiederholung; von unten ginge sie durch den Körper)
@@ -996,7 +1108,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // zugreifen, zurücklehnen. Die Stange hängt so hoch, wie das Seil in der Startpose lang ist; der Hut bleibt beim Hinsetzen hinter ihr
   let latzug = null;
   if (z.lh && z.seil && art === 'sitzen' && z.lh.position.y > gg.kopf.y) {
-    const { blick, stand, steht, unten, fuesse } = ueberSitzPosen(Gp, gg);
+    const { blick, stand, steht, unten, fuesse } = alt ? ueberSitzPosen(Gp, gg) : ueberSitzPosen(Gp, gg, 0.27, 0.02, 0.32, r3);   // 23.11.2026: breiter über den Sitz steigen und sitzen (Waden und Knie streiften die Sitzkante)
     const seilE = [V(0, 0.5, 0), V(0, -0.5, 0)].map((p) => p.applyMatrix4(z.seil.matrixWorld)), rolle = seilE[0].y > seilE[1].y ? seilE[0] : seilE[1];
     const greif = Object.assign({}, fuesse, { hand: seiten((s) => gg.hand[s].clone().add(V(0, 0, rolle.z - z.lh.position.z))), handflaeche: seiten((s) => Gp.handflaeche[s].clone()), ellbogenPol: seiten((s) => Gp.ellbogenPol[s].clone()), kopf: { neigung: -12 }, flach: { l: null, r: null }, greift: GENAU() });
     const erg = anim.pose(G.t, z); if (erg.props) erg.props(gelenke(greif), z);   // Stange und Seil hängen in Ruhe dort
@@ -1085,13 +1197,50 @@ export function baueEinleitung(anim, ger, z, kamera) {
 
   // Geräte als Hindernisse; erlaubt ist, was die Startpose selbst berührt (Sitz, Polster, Griffe)
   const Q = quader(ger, new Set(hanteln.map((n) => z[n])));
+  // Runde 3 (23.11.2026): niedrige, frei liegende Stangen bis 35 cm (Fußstütze vor Brust- und Schulterpresse) übersteigt die Figur: Der Fuß hebt
+  // sich darüber, Schienbein und Fuß zählen dort beim Planen nicht, im Bodenraster sind sie begehbar. Bis dahin lief der Weg seitlich um die
+  // Fußstütze herum, Schulter und Arm streiften Pfosten und Hebel, oder das Schienbein ging durch die Stange
+  const vonVorlage = (m) => { for (let o = m; o; o = o.parent) if (obj.includes(o)) return true; return false; };   // Griffe, Stangen und Bänder der Vorlage übersteigt sie nicht
+  if (r3) for (const q of Q) if (!vonVorlage(q.m) && q.top >= 0.13 && q.top < 0.35 && q.bot > 0.08 && Math.min(...[0, 1, 2].filter((i) => Math.abs(q.ax[i].y) < 0.5).map((i) => q.h[i])) < 0.04) q.uebersteigen = true;
   QAKT = Q;   // für haendeAufBeinen (Ellbogen nicht ins Gerät)
-  const erlaubtEnde = tiefen(gg, Q).map((t) => t + 0.015);
-  const bewerten = (plan) => {
-    let von = stehen(plan.stand, winkelVon(plan.blick)); const posen = [von];
-    for (const s of plan.schritte) { const f = uebergang(von, s); for (const u of s.dreh ? [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] : [0.2, 0.4, 0.6, 0.8]) posen.push(f(u)); von = s.ziel; }   // Eindrehen feiner: die Beine streifen nur kurz
-    return stoss(posen, Q, erlaubtEnde);
+  const erlaubtEnde = tiefen(gg, Q).map((t) => t + 0.015), FREI = new Float32Array(Q.length * NG).fill(0.015);
+  const DREH = Array.from({ length: 8 }, (_, k) => k * Math.PI / 4);
+  // Umdrehen auf der Stelle; mit Blick w0: von „Gesicht zum Gerät“ über die freiere Seite nach w0 (so dreht die Zeitleiste, siehe drehen), sonst alle Richtungen
+  const drehStoss = (P, w0 = null) => {
+    if (w0 == null) return stoss(DREH.map((w) => stehen(P, w)), Q, FREI);
+    const t = [0, 1, 2, 3, 4].map((k) => [stoss([stehen(P, w0 + k * Math.PI / 4)], Q, FREI), stoss([stehen(P, w0 - k * Math.PI / 4)], Q, FREI)]);
+    return Math.min(Math.max(...t.map((x) => x[0])), Math.max(...t.map((x) => x[1])));
   };
+  // flache, schmale Bodenteile (Rohre des Bodenrahmens): die Füße steigen darüber (ueberBodenteilen). Breite Platten nicht: Auf ihnen stand die Figur sonst mit gebeugten Knien 10 cm höher (Beinbeuger stehend: Oberschenkel im Polster)
+  const FLACH = Q.filter((q) => (q.uebersteigen || (q.top >= 0.03 && q.top < 0.13)) && (q.uebersteigen || q.top < 0.09 || Math.min(...[0, 1, 2].filter((i) => Math.abs(q.ax[i].y) < 0.5).map((i) => q.h[i])) < 0.06)
+    && Q.indexOf(q) >= 0 && erlaubtEnde[NG * Q.indexOf(q) + 4] < 0.016 && erlaubtEnde[NG * Q.indexOf(q) + 5] < 0.016);   // nicht, was der Fuß in der Startpose berührt (Fußschlaufe am Kabel)
+  const WADE = FREI.map((x, k) => (k % NG === 4 ? 0 : x));   // Schienbein und Wade vor Sitz und Bank ohne Berührung (Polster gibt nicht nach)
+  // 21.11.2026: Erlaubt ist unterwegs nur, was die Pose am Anfang bzw. am Ende des Schritts selbst berührt, gleitend dazwischen. Bis dahin
+  // galt im ganzen Ablauf, was die Startpose berührt: Knie und Oberschenkel liegen dort auf Sitz oder Kniepolster, also durften sie auf dem
+  // ganzen Weg 5–9 cm hindurchgehen (Befund 21.11.: Hinsetzen an Maschinen, Knien auf dem Polster der Klimmzug- und Dip-Maschine)
+  const kontakt = new Map(), beruehrt = (p) => { let t = kontakt.get(p); if (!t) { t = p === Gp ? erlaubtEnde.map((x) => x - 0.015) : tiefen(gelenke(p), Q); kontakt.set(p, t); } return t; };
+  // Ergebnis: tiefste Stelle; mit summe = true dazu ein Drittel des mittleren Eintauchens je Bild (so unterscheiden sich Einstiege, die alle am
+  // Ende gleich tief greifen: wer unterwegs länger in Teilen steckt, verliert)
+  const schrittStoss = (von, schritte, summe = false) => {
+    let max = 0, kA = beruehrt(von), sum = 0, n = 0;
+    for (const s of schritte) {
+      const f = uebergang(von, s), kB = beruehrt(s.ziel);
+      for (const u of s.dreh ? [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] : [0.2, 0.4, 0.6, 0.8]) {   // Eindrehen feiner: die Beine streifen nur kurz
+        const t = tiefen(gelenke(f(u)), Q), w = glatt(u);
+        let bild = 0;
+        for (let k = 0; k < t.length; k++) { const x = t[k] - Math.max(kA[k] * (1 - w), kB[k] * w) - 0.015; if (x > bild) bild = x; }
+        max = Math.max(max, bild); sum += bild; n++;
+      }
+      von = s.ziel; kA = kB;
+    }
+    return summe && n ? max + sum / n / 3 : max;
+  };
+  // Am Stehplatz selbst ist nichts erlaubt (bis 21.11. galt dort, was die Startpose berührt: Vor dem Wadenheben-Sitz stand die Figur mit den Oberschenkeln 7 cm im Kniepolster)
+  const bewerten = ALT ? (plan) => {   // alter Weg: im ganzen Ablauf gilt, was die Startpose berührt
+    let von = stehen(plan.stand, winkelVon(plan.blick)); const posen = [von];
+    for (const s of plan.schritte) { const f = uebergang(von, s); for (const u of s.dreh ? [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] : [0.2, 0.4, 0.6, 0.8]) posen.push(f(u)); von = s.ziel; }
+    return stoss(posen, Q, erlaubtEnde);
+  } : (plan) => { const st = stehen(plan.stand, winkelVon(plan.blick)); return Math.max(stoss([st], Q, FREI), schrittStoss(st, plan.schritte, true)); };
   // Wo die Figur vor dem Gerät steht, wohin sie schaut und wie sie in die Startpose kommt: der klassische Einstieg, außer ein anderer
   // taucht deutlich weniger in die Geräte ein (Hanteln und Langhantel: immer klassisch)
   // Hanteln: welche Hand hält welche (Startpose; beide Hände nah an einer Hantel: Goblet, Kettlebell, Überzug)
@@ -1102,6 +1251,18 @@ export function baueEinleitung(anim, ger, z, kamera) {
   }
   const hantelArt = hanteln.length ? (Object.values(halter).includes('beide') ? 'beide' : true) : false;
   const plaene = [eigen || kabel || latzug || klassisch(art, G, Gp, gg, hantelArt, !griffEnde.l && !griffEnde.r, anim.sitzVersatz || 0)];
+  // 21.11.2026: Rückenlage auf der Bank. Der Platz zum Hinsetzen lag dort, wo das Becken in der Rückenlage liegt; davor (22 cm) stand die Figur
+  // dann noch über der Bank, Schienbeine und Waden 6 cm im Polster (Befund 21.11.: Bankdrücken, Fliegende, Stirndrücken, Überzug). Wie im
+  // Studio setzt sie sich weiter vorn ans Ende der Bank (bis 21 cm) und rutscht beim Zurücklegen auf ihren Platz
+  if (!ALT && art === 'rueckenlage' && plaene[0].name === 'rueckenlage' && auflage(Q, gg.becken) > 0.2) {
+    const w = winkelVon(plaene[0].blick), frei = (p) => { const st = stehen(p.stand, w); return Math.max(stoss([st], Q, WADE), schrittStoss(st, p.schritte.slice(0, 1)), drehStoss(p.stand.clone().setY(0)) - 0.01); };   // dort auch Raum zum Umdrehen (Negativbank: vorn steht der Beinhalter)
+    let best = { p: plaene[0], x: frei(plaene[0]) };
+    for (let v = 0.03; best.x > 0.004 && v < 0.215; v += 0.03) {
+      const p = klassisch(art, G, Gp, gg, hantelArt, !griffEnde.l && !griffEnde.r, (anim.sitzVersatz || 0) + v), x = frei(p);
+      if (x < best.x - 0.003) best = { p, x };
+    }
+    if (best.x < 0.01) plaene[0] = best.p;   // nur, wenn es dort wirklich frei ist (sonst bleibt der alte Platz)
+  }
   // Hanteln oder Stange im Sitzen: der Einstieg steht schon vor dem Aufheben fest (aufgehoben wird am Standplatz), darum hier wählen. Steht ein Pult oder
   // Polster so vor den Oberschenkeln, dass das Hinsetzen von vorn in es hineinläuft (Scott-Bank, Befund 6.11.: Oberschenkel 8–10 cm im Pult), steigt die Figur von hinten über den Sitz
   if (anim.ueberSitz && (hanteln.length || (z.lh && !z.seil)) && art === 'sitzen' && !eigen && !kabel && !latzug && auflage(Q, gg.becken) > 0.2 && auflage(Q, gg.becken) < 0.6) {
@@ -1156,6 +1317,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
       for (const sg of [1, -1]) for (const zurueck of [0.03, -0.06, -0.12]) plaene.push(seitlichSetzen(Gp, gg, sg, zurueck, 0.1, art === 'rueckenlage' ? waag(gg.R.oben).negate() : null));
     if (((art === 'bauchlage' || art === 'seitlage') && gg.becken.y >= 0.5 && Math.min(gg.knoechel.l.y, gg.knoechel.r.y) < 0.4) || anim.einstiegVorgebeugt) for (const d of [0.32, 0.45, ...(anim.einstiegVorgebeugt ? [0.6] : [])]) plaene.push(vorgebeugt(Gp, gg, d));
   }
+  if (!alt && art === 'sitzen' && z.lh && !z.seil && !hanteln.length && gg.R.oben.y < 0.95 && z.lh.position.y > gg.brust.y) for (const d of [0.22, 0.3, 0.38]) plaene.push(unterStange(Gp, gg, d));
   if (eigen) plaene.length = 1;
   if (anim.standVersatz && !kabel && !latzug) for (const p of plaene) p.stand = p.stand.clone().add(anim.standVersatz);
   // Stange vor der Brust (Frontkniebeuge; Befund 6.11.: am Stehplatz der Startpose steht der Körper fast an der Stange, die Schultern liefen beim Eindrehen
@@ -1167,38 +1329,83 @@ export function baueEinleitung(anim, ger, z, kamera) {
       if (i === 5 || stoss([stehen(P, w), stehen(P, w + 0.7), stehen(P, w - 0.7)], Q, frei) < 0.01) { k.stand = P; break; }
     }
   }
-  const abgerueckt = new Map();   // gleiche Lage und gleiches Hinsetzen (Varianten, die sich erst beim Eindrehen unterscheiden): nur einmal rechnen
-  for (const p of plaene) {
-    // Vor dem Sitz: so weit abrücken (bis 20 cm), wie es das Eintauchen beim Stehen, Umdrehen und Hinsetzen verringert (sonst streift
-    // beim Umdrehen der innere Fuß den Sitz oder der Fuß steht auf dem Bodenrahmen); nur, wenn es mindestens 1 cm bringt
-    if (p.abruecken) {
-      const schluessel = p.name.split('/')[0];
-      if (!abgerueckt.has(schluessel)) {
-        const w = winkelVon(p.blick), P0 = p.stand.clone(), setzen = p.schritte[0];
-        const pruefen = (P) => { const st = stehen(P, w), f = uebergang(st, setzen); return stoss([st, stehen(P, w + 1.2), stehen(P, w - 1.2), f(0.25), f(0.5)], Q, erlaubtEnde); };
-        let best = 0, bestWert = pruefen(P0);
-        const wert0 = bestWert;
-        if (wert0 >= 0.01) for (let i = 1; i <= 5; i++) { const x = pruefen(P0.clone().add(p.blick.clone().multiplyScalar(0.04 * i))); if (x < bestWert - 0.002) { bestWert = x; best = i; } }
-        abgerueckt.set(schluessel, bestWert < wert0 - 0.01 ? 0.04 * best : 0);
-      }
-      p.stand.add(p.blick.clone().multiplyScalar(abgerueckt.get(schluessel)));
+  // 21.11.2026 (Devin: „geht beim Hinsetzen nicht durch die Maschine“): wie ein Mensch im Studio. (1) Sitzplatz: vor dem Sitz so weit
+  // abrücken (bis 18 cm), dass im Stehen Schienbein und Wade nicht in der Vorderkante stecken und das Hinsetzen frei beginnt (bis dahin nur
+  // bei 1 cm Gewinn, und Umdrehen zählte mit). (2) Drehplatz: ist am Platz kein Raum zum Umdrehen (Füße und Schienbeine kreisten 5–7 cm
+  // durch Sitz, Bank oder Stange, und schon das letzte Stück des Wegs ging hinein), läuft die Figur dorthin, wo Raum ist (davor, dahinter
+  // oder daneben), dreht sich dort um und geht ein, zwei kleine Schritte auf ihren Platz (vor dem Sitz rückwärts, an die Stange vorwärts)
+  // Schritte von A nach B (Blick w): je Schritt bis 25 cm, der Fuß auf der Seite der Richtung zuerst
+  const schritteZu = (A, B, w) => {
+    const n = Math.max(1, Math.ceil(A.distanceTo(B) / 0.25)), d = B.clone().sub(A).setY(0), links = V(Math.cos(w), 0, -Math.sin(w)), erst = d.dot(links) < -0.02 ? 'r' : 'l', liste = [];
+    for (let i = 1; i <= n; i++) liste.push({ ziel: stehen(A.clone().lerp(B, i / n), w), d: 0.3 + 1.1 * A.distanceTo(B) / n, steigen: { bogen: 0.05, erst: i % 2 ? erst : (erst === 'l' ? 'r' : 'l') } });
+    return liste;
+  };
+  const drehPlatz = (p) => {
+    const w = winkelVon(p.blick), S = p.stand.clone().setY(0), d0 = drehStoss(S, w);
+    const quer = V(p.blick.z, 0, -p.blick.x), amPlatz = stoss([stehen(S, w)], Q, FREI);
+    if (d0 < 0.01 || amPlatz > 0.01) return;   // nur auf einen freien Platz zugehen (steht schon der Platz im Gerät, hilft es nicht)
+    let best = null;
+    for (const r of [p.blick, p.blick.clone().negate(), quer, quer.clone().negate()]) for (let i = 1; i <= (r === p.blick || r.dot(p.blick) < -0.5 ? 8 : 5); i++) {
+      const P = S.clone().addScaledVector(r, 0.05 * i), x = drehStoss(P, w) + 0.04 * 0.05 * i;
+      // nicht vor hohen Teilen drehen (Negativbank: vor dem Beinhalter ging der Oberschenkel beim Drehen hinein, der Planer sah es zu schwach)
+      if (Q.some((q) => q.top > 0.6 && q.bot < 1.0 && abstand2(P.x, P.z, q.grund) < 0.35)) continue;
+      if (best && x >= best.x) continue;
+      // der Weg vom Drehplatz zum Platz: aufrecht mit Blick w, nicht tiefer als am Platz selbst
+      if (stoss([0.25, 0.5, 0.75, 1].map((u) => stehen(P.clone().lerp(S, u), w)), Q, FREI) > 0.01) continue;
+      best = { P, x };
     }
+    if (!best || best.x > d0 - 0.015) return;   // Runde 3: schon ab 0,5 cm Gewinn einen Schritt früher drehen
+    const extra = schritteZu(best.P, S, w);
+    p.schritte = [...extra, ...p.schritte];
+    if (p.griffNach) p.griffNach += extra.length;
+    p.stand = best.P;
+  };
+  const sitzGeprueft = new Map();   // gleiche Lage und gleiches Hinsetzen (Varianten, die sich erst beim Eindrehen unterscheiden): nur einmal rechnen
+  const sitzPlatz = (p) => {
+    const schluessel = p.name.split('/')[0];
+    if (!sitzGeprueft.has(schluessel)) {
+      const w = winkelVon(p.blick), P0 = p.stand.clone(), setzen = p.schritte[0];
+      const pruefen = (P) => { const st = stehen(P, w); return Math.max(stoss([st], Q, WADE), schrittStoss(st, [setzen])); };
+      let best = 0, bestWert = Infinity;
+      for (let i = 0; i <= 6; i++) { const x = pruefen(P0.clone().addScaledVector(p.blick, 0.03 * i)); if (x < bestWert - 0.002) { bestWert = x; best = i; } if (x < 0.004) break; }
+      sitzGeprueft.set(schluessel, 0.03 * best);
+    }
+    p.stand.addScaledVector(p.blick, sitzGeprueft.get(schluessel));
+  };
+  const abgerueckt = new Map();   // alter Weg: bis 20 cm abrücken, nur wenn es mindestens 1 cm bringt
+  const abruecken = (p) => {
+    const schluessel = p.name.split('/')[0];
+    if (!abgerueckt.has(schluessel)) {
+      const w = winkelVon(p.blick), P0 = p.stand.clone(), setzen = p.schritte[0];
+      const pruefen = (P) => { const st = stehen(P, w), f = uebergang(st, setzen); return stoss([st, stehen(P, w + 1.2), stehen(P, w - 1.2), f(0.25), f(0.5)], Q, erlaubtEnde); };
+      let best = 0, bestWert = pruefen(P0);
+      const wert0 = bestWert;
+      if (wert0 >= 0.01) for (let i = 1; i <= 5; i++) { const x = pruefen(P0.clone().add(p.blick.clone().multiplyScalar(0.04 * i))); if (x < bestWert - 0.002) { bestWert = x; best = i; } }
+      abgerueckt.set(schluessel, bestWert < wert0 - 0.01 ? 0.04 * best : 0);
+    }
+    p.stand.add(p.blick.clone().multiplyScalar(abgerueckt.get(schluessel)));
+  };
+  for (const p of plaene) {
+    if (ALT) { if (p.abruecken) abruecken(p); p.stoss = bewerten(p); continue; }
+    if (p.abruecken) sitzPlatz(p);
+    if (p !== eigen && p !== kabel && !hanteln.length && (p.abruecken || art === 'sitzen' || art === 'rueckenlage')) drehPlatz(p);   // mit Hanteln nicht: aufgehoben wird am Platz, die Schritte trügen die Hände nicht mit
     p.stoss = bewerten(p);
   }
 
   // Anlauf: von der Seite (quer zur Kamera), bleibt auf der Bodenscheibe. Ist der gerade Weg frei, bleibt er; sonst um die Geräte herum
   const kh = waag(kamera || V(0.62, 0.32, 0.72)), seitlich = V(kh.z, 0, -kh.x);
   const startVon = (stand, sg) => { const s = stand.clone().setY(0).add(kh.clone().multiplyScalar(-0.25)).add(seitlich.clone().multiplyScalar(1.4 * sg)); if (V(s.x, 0, s.z).length() > 1.9) s.setLength(1.9); return s; };
-  let R = null, QW = Q; const W = {};   // QW: Hindernisse beim Laufen (mit den Hanteln am Boden)
+  let R = null, QW = Q, nHantelAb = Infinity; const W = {};   // QW: Hindernisse beim Laufen (mit den Hanteln am Boden)
   const weg = (plan) => {
     const wEnde = winkelVon(plan.blick), P = plan.stand.clone().setY(0), start = plan.von || startVon(P, 1);   // von (ablaufEigen): Anlauf von dort (Pull-Through: quer zum Seil, nicht an ihm entlang)
-    const erlaubt = tiefen(gelenke(stehen(P, wEnde)), QW).map((t) => t + 0.015);   // beim Laufen zählt nur, was die Figur am Standpunkt berührt
+    const erlaubt = tiefen(gelenke(stehen(P, wEnde)), QW).map((t, i) => (i >= NG * nHantelAb ? 0.015 : t + 0.015));   // beim Laufen zählt nur, was die Figur am Standpunkt berührt
     const gerade = [], meter = start.distanceTo(P), richt = winkelVon(P.clone().sub(start));
     for (let s = 0, i = 0; s <= meter; s += 0.08, i++) gerade.push(gehend(start.clone().lerp(P, s / meter), richt, i, meter - s));
     for (const u of [0.5, 1]) gerade.push(stehen(P, richt + kurz(wEnde - richt) * u));
     let stossGerade = QW.length ? stoss(gerade, QW, erlaubt) : 0;
-    if (stossGerade >= 0.015) { if (!R) R = raster(QW); stossGerade = Math.max(stossGerade, quer(P, start, meter, R)); }
-    if (stossGerade < 0.015 || plan.von) return { punkte: [start, P], stoss: stossGerade, laenge: meter };
+    const wegFrei = alt ? 0.015 : 0.006;
+    if (stossGerade >= wegFrei) { if (!R) R = raster(QW); stossGerade = Math.max(stossGerade, quer(P, start, meter, R)); }
+    if (stossGerade < wegFrei || plan.von) return { punkte: [start, P], stoss: stossGerade, laenge: meter };
     if (!R) R = raster(QW);
     let best = null;
     for (const sg of [1, -1]) {
@@ -1212,7 +1419,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
       const a = anlauf(P, wEnde, W[sg], R, QW, erlaubt);
       if (!a) continue;
       a.punkte[0] = s;
-      a.wert = a.laenge + 12 * a.stoss + (sg < 0 ? 0.4 : 0);
+      a.wert = a.laenge + (R3 ? 40 : 12) * a.stoss + (sg < 0 ? 0.4 : 0);
       if (!best || a.wert < best.wert) best = a;
     }
     // Langhantel: neuer Weg nur, wenn er klar besser ist (dieser Ablauf soll bleiben, wie er war)
@@ -1220,7 +1427,10 @@ export function baueEinleitung(anim, ger, z, kamera) {
   };
   // Einstieg wählen: Eintauchen beim Einsteigen und auf dem letzten Stück des Wegs zusammen
   const hinten = (p) => (p.stand.clone().sub(gg.becken).setY(0).dot(kh) < -0.1 ? 0.015 : 0);
-  const klass = plaene[0], wert = (p) => Math.max(p.stoss, p.weg.stoss) + hinten(p);
+  // Vorbeugen und Langsitz: weiter weg nur, wenn es deutlich mehr bringt (je 10 cm weiter 1,5 cm Abzug; Esel-Wadenheben und Hip-Thrust-Maschine
+  // nahmen sonst den weitesten Einstieg, bei dem Bauch bzw. Gesäß in Polster gingen, die der Planer zu schwach sieht)
+  const weiter = (p) => { if (alt) return 0; const m = /^(vorgebeugt|langsitz)([d.]+)$/.exec(p.name); return m ? 0.15 * Math.max(0, +m[2] - (m[1] === 'langsitz' ? 0.35 : 0.32)) : 0; };
+  const klass = plaene[0], wert = (p) => Math.max(p.stoss, p.weg.stoss) + hinten(p) + weiter(p);
   // Hanteln (immer der klassische Einstieg): wo liegen sie am Boden; beim Hinlaufen weicht die Figur ihnen aus. Aufgehoben wird am Standpunkt, ist dort kein Platz
   // (vor einer Bank, unter einem Polster), bis 60 cm davor, dahinter oder daneben; danach ein, zwei Schritte zum Standpunkt
   let auf = null;
@@ -1233,16 +1443,21 @@ export function baueEinleitung(anim, ger, z, kamera) {
       if (auf.wahl.verstoss < 0.005) break;
     }
     for (const n of hanteln) { z[n].position.copy(auf.ablage[n].p); z[n].quaternion.copy(auf.ablage[n].q); z[n].updateMatrixWorld(true); }
-    QW = quader(ger, new Set());
+    // 23.11.2026: die Hanteln am Boden zuletzt in der Liste (nHantelAb), damit beim Laufen ihr Berühren am Standplatz nicht erlaubt ist: die Füße
+    // traten sonst im Vorbeigehen 4 cm in die Hanteln (Schulterdrücken und Curl im Sitzen)
+    if (alt) QW = quader(ger, new Set());
+    else { const ohne = quader(ger, new Set(hanteln.map((n) => z[n]))), mit = []; for (const n of hanteln) z[n].traverse((m) => { const q = m.isMesh && m.visible ? quaderTeil(m) : null; if (q) mit.push(q); }); QW = [...ohne, ...mit]; nHantelAb = ohne.length; }
   }
   klass.weg = weg(auf ? Object.assign({}, klass, { stand: auf.A }) : klass);
   let plan = klass;
   // Unter einer Stange in Körperhöhe und vor einer Stufe oder Box wird immer verglichen (der Planer erlaubt am Standplatz, was die Startpose berührt: dort liegt die Stange erst nach dem
   // Untertreten auf dem Körper, und der Fuß steht erst nach dem Hinaufsteigen auf der Stufe, nicht schon in ihr)
-  if (wert(klass) > 0.03 || plaene.some((p) => p.name.startsWith('ducken') || p.name.startsWith('aufsteigen'))) {
-    for (const p of plaene.slice(1).filter((p) => p.stoss < wert(klass) - 0.02).sort((a, b) => a.stoss - b.stoss).slice(0, 3)) {
+  // 21.11.2026: Schwellen 3 bzw. 2 cm auf 1,5 cm (die Bewertung zählt seit 21.11. genauer, Waden und Schritte eingeschlossen; Rudern unter dem Tisch: der Kopf ging 5 cm durch die Stange, obwohl ein freier Einstieg bereitlag)
+  const WS = ALT ? 0.03 : 0.015, WM = ALT ? 0.02 : 0.015;   // alter Weg: Schwellen 3 und 2 cm
+  if (wert(klass) > WS || plaene.some((p) => p.name.startsWith('ducken') || p.name.startsWith('aufsteigen'))) {
+    for (const p of plaene.slice(1).filter((p) => p.stoss < wert(klass) - WM).sort((a, b) => a.stoss - b.stoss).slice(0, 3)) {
       p.weg = weg(p);
-      if (wert(p) < wert(plan) - (plan === klass ? 0.02 : 0)) plan = p;
+      if (wert(p) < wert(plan) - (plan === klass ? WM : 0)) plan = p;
     }
   }
   // Geräte am Kopf (Vorlage ablaufGeraete, Nacken 18.11.2026): die Vorlage darf den gewählten Einstieg ergänzen (Scheibe aufheben, Band anlegen, Gurt einhaken) und setzt diese Geräte im
@@ -1254,9 +1469,28 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // Zeitleiste
   const teile = [], b = bahn(plan.weg.punkte, winkel), meter = b.laenge;
   const tGehen = Math.max(0.6, meter * DAUER.gehen);
-  teile.push({ d: tGehen, bild: (u) => { const w = glatt(u) * 0.7 + u * 0.3, s = w * meter; return stehen(b.punkt(s), b.richtung(s), { phase: (s / 0.44) * Math.PI, schritt: 0.2 * Math.min(1, u * 5, (1 - u) * 5) }); } });
+  teile.push({ d: tGehen, bild: (u) => { const w = glatt(u) * 0.7 + u * 0.3, s = w * meter; return stehen(b.punkt(s), b.richtung(s), { phase: (s / 0.44) * Math.PI, schritt: 0.2 * Math.min(1, u * 5, (1 - u) * 5, alt ? 1 : (meter - s) / 0.3) }); } });   // 21.11.2026: zuletzt kürzere Schritte nach dem Rest des Wegs, wie geprüft (gehend); bis dahin griff der letzte lange Schritt vor dem Sitz 5 cm in die Kante
   const richtung = b.richtung(meter), dw = kurz(winkel - richtung), ankunft = auf ? auf.A : stand;
-  teile.push({ d: DAUER.drehen, bild: (u) => stehen(ankunft, richtung + dw * glatt(u)) });
+  // 21.11.2026: Umdrehen am Platz, ohne durch Sitz, Bank oder Stange zu fegen (Befund 21.11.: beim Drehen um das Becken kreisten Füße und
+  // Schienbeine 5–7 cm durch die Vorderkante). Ist dafür kein Raum, dreht die Figur andersherum oder in einem kleinen Bogen vom Gerät weg,
+  // wie ein Mensch, der beim Umdrehen einen halben Schritt zur Seite macht
+  const drehBild = (A, w0, dwx, v) => (u) => stehen(A.clone().addScaledVector(v, Math.sin(Math.PI * glatt(u))), w0 + dwx * glatt(u));
+  let dreh = { dw, v: V(), d: DAUER.drehen };
+  if (!ALT) {
+    const erlaubtA = tiefen(gelenke(stehen(ankunft, winkel)), QW).map((t) => t + 0.015);
+    const pruef = (dwx, v) => stoss([0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map(drehBild(ankunft, richtung, dwx, v)), QW, erlaubtA);
+    let best = { x: pruef(dw, V()), dw, v: V() };
+    if (best.x > 0.008) {
+      const quer = V(blick.z, 0, -blick.x), alt = Math.abs(dw) > 1.2 ? [dw, dw - Math.sign(dw) * 2 * Math.PI] : [dw];
+      for (const dwx of alt) for (const r of [blick, blick.clone().negate(), quer, quer.clone().negate()]) for (const a of [0, 0.08, 0.15, 0.22]) {
+        if (!a && dwx === dw) continue;
+        const v = r.clone().multiplyScalar(a), x = pruef(dwx, v) + 0.02 * a + (dwx !== dw ? 0.003 : 0);
+        if (x < best.x - 0.003) best = { x, dw: dwx, v };
+      }
+    }
+    dreh = { dw: best.dw, v: best.v, d: DAUER.drehen * Math.max(1, 1.2 * Math.abs(best.dw) / Math.PI) + 1.5 * best.v.length() };
+  }
+  teile.push({ d: dreh.d, bild: drehBild(ankunft, richtung, dreh.dw, dreh.v) });
   let vorher = stehen(ankunft, winkel), haeltAb = Infinity, tMit = Infinity;
   // Hanteln: in die Hocke, greifen, aufstehen (und vom Platz zum Aufheben ein, zwei Schritte zum Standpunkt)
   if (auf) {
@@ -1281,13 +1515,16 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // aus der Lage am Boden in die Haltung der Übung gedreht (kein Sprung beim Greifen)
   const halten = (sek, p) => {
     if (sek < haeltAb) { for (const n of hanteln) { z[n].position.copy(auf.ablage[n].p); z[n].quaternion.copy(auf.ablage[n].q); } return; }
-    const g = gelenke(p), w = glatt((sek - haeltAb) / DAUER.aufheben), erg = anim.pose(G.t, z);
+    // 23.11.2026: beim Aufstehen hängt die Hantel erst wie am Boden (so prüft sie aufhebePlan) und dreht sich erst in der zweiten Hälfte in die
+    // Haltung der Übung; gleichmäßig gedreht ging sie beim Spider-Curl und Wadenheben im Sitzen 9 cm durch den Oberschenkel
+    const g = gelenke(p), w0 = glatt((sek - haeltAb) / DAUER.aufheben), w1 = glatt((sek - haeltAb - 0.5 * DAUER.aufheben) / (0.5 * DAUER.aufheben)), erg = anim.pose(G.t, z);
     if (erg.props) erg.props(g, z);
     for (const n of hanteln) {
       const a = auf.ablage[n], h = auf.halter[n], halt = h === 'beide' ? g.hand.l.clone().add(g.hand.r).multiplyScalar(0.5) : g.hand[h].clone();
       // Kurzhantel ist symmetrisch: um 180° gedreht sieht sie gleich aus, also zur näheren der beiden Lagen drehen (sonst schwenkt sie quer durchs Bein)
       const qU = z[n].quaternion.clone(), offU = z[n].position.clone().sub(halt);
       if (n !== 'kb' && h !== 'beide') { const um = qU.clone().multiply(UM_Y); if (Math.abs(um.dot(a.q)) > Math.abs(qU.dot(a.q))) qU.copy(um); }
+      const w = alt || n === 'kb' || h === 'beide' ? w0 : w1;   // Kettlebell und Hantel in beiden Händen wie bisher
       z[n].position.copy(halt).add(a.off.clone().lerp(offU, w));
       z[n].quaternion.copy(a.q).slerp(qU, w);
     }
@@ -1315,6 +1552,33 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // Griff am Ende quer zum Körper und die Hanteln auf den Knien: Die Ellbogen bleiben unten. Zur Seite weg läge der Unterarm auf dem Weg längs zum Griff, und die Hand kippte im Bildtakt hin und her (bis 3.11. beim Wadenheben im Sitzen)
   const knieQuer = auf && art === 'sitzen' && griffEnde.l && Math.abs(griffEnde.l.dot(gg.R.links)) > 0.9 && Math.abs(gg.hand.l.y - gg.huefte.l.y - 0.07) < 0.13;
   if (knieQuer) for (const s of schritte) if (s.ziel !== Gp) s.ziel = Object.assign({}, s.ziel, { ellbogenPol: seiten((k, sg) => gg.R.links.clone().multiplyScalar(sg * 0.35).addScaledVector(gg.R.oben, -1).addScaledVector(gg.R.vor, -0.3)) });
+  // 21.11.2026 (Devin: „Hanteln liegen beim Sitzen auf dem Oberschenkel auf, nicht darin“): Weg der Hanteln in einer Hand. Sie gehen ab dem
+  // Aufstehen mit der Hand (props der Vorlage); auf dem Weg zum Sitzen, Hinlegen und in die Startpose gingen sie 3–9 cm durch Oberschenkel,
+  // Hüfte oder Brust. Je Schritt wird darum gerechnet, wie die Hände ausweichen (seitlich, nach oben, nach vorn), und der Weg genommen, auf dem
+  // die Hanteln am wenigsten in den Körper gehen
+  if (!ALT && auf && hanteln.length && !Object.values(auf.halter).includes('beide')) {
+    const KOERPER = KAPSELN.filter((k) => k[2] !== 2);
+    const hantelTief = (p) => {
+      const g = gelenke(p), erg = anim.pose(G.t, z); if (erg.props) erg.props(g, z);
+      const boxen = []; for (const n of hanteln) { z[n].updateMatrixWorld(true); z[n].traverse((m) => { const b = m.isMesh ? quaderTeil(m) : null; if (b) boxen.push(b); }); }
+      let max = 0;
+      for (const [f, r] of KOERPER) { const [A, B] = f(g), n = Math.max(1, Math.ceil(A.distanceTo(B) / 0.04)); for (let i = 0; i <= n; i++) { _p.copy(A).lerp(B, i / n); for (const q of boxen) max = Math.max(max, tiefeIn(_p, r, q)); } }
+      return max;
+    };
+    const WEGE = [{}, { aussen: 0.16 }, { aussen: 0.16, handHoch: 0.1 }, { handHoch: 0.12 }, { aussen: 0.1, handHoch: 0.08, vorHand: 0.08 }, { vorHand: 0.12 }, { aussen: 0.24, handHoch: 0.05 }, { vorHand: 0.1, handHoch: 0.12 }];
+    let von = vorher;
+    for (const s of schritte) {
+      const pruef = (o) => { const st = Object.assign({}, s, { aussen: 0, handHoch: 0, vorHand: 0 }, o), f = uebergang(von, st); let m = 0; for (const u of [0.15, 0.3, 0.45, 0.6, 0.75, 0.9]) m = Math.max(m, hantelTief(f(u))); return m; };
+      const jetzt = pruef({ aussen: s.aussen || 0, handHoch: s.handHoch || 0, vorHand: s.vorHand || 0 });
+      if (jetzt > 0.012) {
+        let best = { x: jetzt, o: null };
+        for (const o of WEGE) { const x = pruef(o) + 0.04 * ((o.aussen || 0) + (o.handHoch || 0) + (o.vorHand || 0)); if (x < best.x - 0.005) best = { x, o }; }
+        if (best.o) Object.assign(s, { aussen: 0, handHoch: 0, vorHand: 0 }, best.o);
+      }
+      von = s.ziel;
+    }
+    props(G);
+  }
   const tSchritte0 = teile.reduce((a, x) => a + x.d, 0);   // ab hier die Schritte (Zeit für eigeneGeraete)
   for (const s of schritte) { teile.push({ d: s.d, bild: uebergang(vorher, s) }); vorher = s.ziel; }
   if (dannStart) { const st = { ziel: dannStart, d: 0.9 }; teile.push({ d: st.d, bild: uebergang(vorher, st) }); vorher = dannStart; }
@@ -1342,13 +1606,14 @@ export function baueEinleitung(anim, ger, z, kamera) {
     // Pose zur Zeit sek (setzt bis zum Aufstehen auch die Hanteln); gehtMit: ab wann die Geräte mit den Händen mitgehen (Hanteln nach
     // dem Aufstehen, sonst nach dem Greifen)
     pose(sek) {
+      ALT = alt; R3 = r3;
       let x = sek, p = null;
       for (const teil of teile) { if (x <= teil.d) { p = teil.bild(teil.d > 0 ? x / teil.d : 1); break; } x -= teil.d; }
       if (!p) p = teile[teile.length - 1].bild(1);
       if (auf && sek < tMit) halten(sek, p);
       if (tuch) tuch.visible = sek >= Math.min(tMit, tGriff);
       const ende = 1 - glatt((sek - (dauer - 0.45)) / 0.4);   // die letzten 0,45 s ohne Eingriff: der Ablauf endet genau in der Startpose der Übung (sonst Sprung bei der Übergabe)
-      return ueberBoden(Object.assign({}, p, griffStand(sek)), ende);
+      return ueberBoden(ueberBodenteilen(Object.assign({}, p, griffStand(sek)), alt ? [] : FLACH, ende, Q), ende);
     },
     // eigene Geräte (oben): immer, mit der Zeit dieses Bilds in z.ablaufZeit (die props der Vorlage setzen sie damit)
     gehtMit: (sek) => { if (eigeneGeraete) { z.ablaufZeit = sek - tSchritte0; return true; } return sek >= Math.min(tMit, tGriff); },

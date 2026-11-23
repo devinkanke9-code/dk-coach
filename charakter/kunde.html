@@ -1,4 +1,4 @@
-<!doctype html><html lang="de"><head><meta charset=utf-8><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-STJk6KBTS7X1TpAUbIcXSC6F3R5MzwqByE9IOchPTzs=' 'sha256-jO3ka7+Lam8MIsWwhD2D+Ic/9O9TeUn/KuodoJ40TOQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Mein Charakter · Devin Kanke Coach</title>
+<!doctype html><html lang="de"><head><meta charset=utf-8><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-STJk6KBTS7X1TpAUbIcXSC6F3R5MzwqByE9IOchPTzs=' 'sha256-ek88Ll0LNW2xy7Kk+UAULrSa+E0RD/TTrP0j5bHHunY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Mein Charakter · Devin Kanke Coach</title>
 <script type="importmap">{ "imports": { "three": "../vendor/three.module.min.js" } }</script>
 <style>
 /* Eine Bühne wie ein Spielerprofil: Figur groß im unscharfen Studio, Stats daneben, Knöpfe darunter. Darunter (am Handy) bzw. daneben (breit) die Zahlen dazu.
@@ -335,11 +335,17 @@ const komma = (x, n = 1) => (+x).toLocaleString('de-DE', { minimumFractionDigits
 const ku = await import('./kurzform.js');
 const lies = (k, st) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : st; } catch (err) { return st; } };
 const VORSCHAU = /[#&]c=/.test(location.hash);
+// Figur überall (23.11.2026, Devin: „du hast den Skin dir erstellt, aber dann wird er nicht gespeichert“): Was der Kunde hier einstellt (Jetzt, Minimum, Maximum, Körperfett-Regler),
+// bleibt auf dem Handy (figurwahl.js, je Konto) und trainiert so im Gym, beim Training und in den Übungen. „Jetzt“ ist Devins Stand. Nur in der App, nie in Devins Vorschau (#c=)
+const schreib = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (err) { /* dann gilt es nur für diesen Besuch */ } };
+const KONTO = VORSCHAU ? null : lies('dk_konten', {})[lies('dk_konto', '')] || null;
+let FW = null; if (KONTO) { try { FW = await import('../figurwahl.js'); } catch (err) { FW = null; } }
+const MEINE = FW ? FW.eigene({ plan: null, konto: KONTO, lies }) : null;   // { c, basis, wahl, … }: basis = Ausgangs-Charakter (Devins oder der behaltene ältere)
 async function kundenCharakter() {
   const m = /[#&]c=([A-Za-z0-9_-]+)/.exec(location.hash);
   if (m) { try { return await ku.ausText(m[1]); } catch (err) { return null; } }
   const konto = lies('dk_konten', {})[lies('dk_konto', '')];
-  return (konto && konto.c) || null;
+  return (MEINE && MEINE.basis) || (konto && konto.c) || null;
 }
 const D = ku.auspacken(await kundenCharakter());
 document.body.classList.add('kunde');
@@ -349,7 +355,29 @@ document.body.classList.add('kunde');
   const m = document.createElement('input'); m.type = 'checkbox'; m.id = 'muetze'; m.checked = D.muetze; felder.append(m);
   document.body.append(felder);
 }
-const speichernSpaeter = () => {}, merke = () => {}, zeigeNachstellen = () => {}, farbenZeigen = () => {};
+const merke = () => {}, zeigeNachstellen = () => {}, farbenZeigen = () => {};
+let sichernUhr = 0, tippUhr = 0, gelesen = false;   // gelesen: erst speichern, wenn die eigene Einstellung wieder auf der Figur ist (wahlZurueck)
+const speichernSpaeter = () => { if (!FW || !KONTO || D.leer || !gelesen) return; clearTimeout(sichernUhr); sichernUhr = setTimeout(sichern, 400); };
+function sichern() {
+  clearTimeout(sichernUhr);
+  if (!FW || !KONTO || D.leer || !gelesen) return;
+  const monate = +$('monate').value, w = standWerte(stand, monate), wahl = stand === 'jetzt' ? null : { stand, monate, fett: stand === 'regler' ? reglerFett : null };
+  if (!FW.meineSpeichern({ lies, schreib, konto: KONTO, wahl, gewicht: w.gewicht, fett: w.fett })) return;
+  $('tipp').textContent = wahl ? 'Gespeichert. So trainiert dein Charakter im Gym.' : 'Gespeichert. Wieder Devins Stand.'; $('tipp').style.opacity = 1;
+  clearTimeout(tippUhr); tippUhr = setTimeout(() => { $('tipp').style.opacity = 0; }, 3500);
+}
+// Die eigene Einstellung wieder zeigen (Stand, Monate, Regler), danach speichert jede Änderung
+function wahlZurueck() {
+  const w = MEINE && MEINE.wahl;
+  if (w && /^(min|max|regler)$/.test(w.stand)) {
+    stand = w.stand; wandelDauer = 0.6;
+    if ([1, 3, 6, 12].includes(+w.monate)) $('monate').value = String(+w.monate);
+    if (w.stand === 'regler') { reglerFett = Math.max(6, Math.min(45, +w.fett || 15)); $('fett-regler').value = reglerFett; }
+    for (const b of document.querySelectorAll('[data-stand]')) b.setAttribute('aria-pressed', String(b.dataset.stand === w.stand));
+    zeigeZahlen();
+  }
+  gelesen = true;
+}
 if (VORSCHAU) $('zurueck').hidden = true;
 const vorname = String(D.name || '').trim().split(/\s+/)[0];
 if (vorname) $('untertitel').textContent = vorname + ', dein Stand und deine Ziele';
@@ -358,7 +386,7 @@ if (vorname) $('untertitel').textContent = vorname + ', dein Stand und deine Zie
 /* ---------- Zahlen ---------- */
 // Spanne je Monat aus den Trainingsjahren (bekannte Faustformeln für Naturalathleten: im ersten Jahr am meisten, danach immer weniger). Frauen rund 60 %, Plantreue kürzt beides. Mehr als die natürliche Grenze geht nicht
 const proMonat = (jahre) => (jahre < 1 ? [0.45, 1.0] : jahre < 2 ? [0.25, 0.6] : jahre < 4 ? [0.12, 0.3] : [0.05, 0.15]);
-const feldWert = (id) => $(id).value;
+const feldWert = (id) => { const e = $(id); return e ? e.value : ''; };   // 23.11.2026: fehlt ein Feld (z. B. e-alter bei Charakteren ohne Alter), zählt es als leer, sonst blieb die Seite bei „3D-Figur lädt …“ stehen
 const daten = () => st.daten(feldWert, form ? form.fettSchaetzung : null);
 // Fett: 1 bis 2 kg im Monat sind ohne Crashdiät machbar. Nur, wenn genug zum Abgeben da ist; wer schlank ist, soll nicht abnehmen
 function fettWeg(monate) { const d = daten(), ueber = d.gewicht * (d.fett - d.fettGrenze) / 100; return ueber <= 0 ? [0, 0] : [Math.min(ueber, monate), Math.min(ueber, 2 * monate)]; }
@@ -471,7 +499,7 @@ function zielNeu() {
   const r0 = rFoto ? st.ausFoto(form.modell, rFoto, dFoto, d) : rZahl;
   const r = nachZahlen(mitNachstellen(r0), d.groesse, d, w), f = formZiel(w, d), t = JSON.stringify([r, f]);
   if (t === letztesZiel) return;
-  letztesZiel = t; zielSetzen(r, f); if (stand !== 'regler') speichernSpaeter();
+  letztesZiel = t; zielSetzen(r, f); speichernSpaeter();
 }
 const reliefMit = (ffm, h2) => st.reliefMit(ffm, h2, +$('t-relief').value / 100);
 // w: was gezeigt wird (Gewicht, Körperfett), d: die Eingaben
@@ -522,7 +550,7 @@ const MONATSNAME = (m) => new Date(m + '-15').toLocaleDateString('de-DE', { mont
 function zeigeMonate(liste) {
   $('monate-tabelle').innerHTML = liste.length ? liste.map((m) => '<tr><td>' + MONATSNAME(m.monat) + '</td><td>' + komma(m.gewicht) + ' kg</td><td>' + komma(m.fettfrei) + ' kg</td></tr>').join('') : '<tr><td colspan="3" class="leer">Noch kein Eintrag.</td></tr>';
 }
-zeigeMonate(D.monate);
+zeigeMonate(KONTO && KONTO.c && KONTO.c.v === 1 ? ku.auspacken(KONTO.c).monate : D.monate);
 
 zeigeZahlen();
 function posenKnopf(name) { for (const b of document.querySelectorAll('[data-pose]')) b.setAttribute('aria-pressed', String(b.dataset.pose === name)); }
@@ -580,6 +608,7 @@ async function insGym() {
 
 // In der App: Mit Plan trainiert der Kunde im Gym mit seinen echten Sätzen. Ohne Plan und in Devins Vorschau bleibt es beim Probetag
 $('ins-gym').addEventListener('click', () => {
+  sichern();   // 23.11.2026: das gerade Eingestellte zuerst speichern, dann trainiert genau diese Figur (in der App wählt #gym den eigenen Charakter)
   const plan = lies('dk_plaene', {})[lies('dk_aktiv', '')];
   if (!VORSCHAU && plan && Array.isArray(plan.t) && plan.t.length) { location.href = '../#gym'; return; }
   insGym();
@@ -645,6 +674,7 @@ async function los() {
   $('c').addEventListener('pointerdown', () => { $('tipp').style.opacity = 0; }, { once: true });
   zeigeZahlen();
   $('lade').hidden = true;
+  wahlZurueck();
   merke({ spur: 'seite-offen' });
   
   if (VORSCHAU) parent.postMessage('dk-kunde-bereit', '*');

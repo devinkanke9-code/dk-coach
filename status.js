@@ -1,7 +1,8 @@
 // DK Coach — Status (18.11.2026). Devin: „Status … Skin auswählen oder deinen Charakter auswählen, den du aus dir selber machst mit deinen Bildern … Fettanzahl“,
 // in der Fragekarte: unten in der Leiste, eigener Charakter + Skins, Zahlen auch zeigen.
 // Zeigt den eigenen Charakter mit Größe, Gewicht und Körperfett und lässt wählen, wer im Gym trainiert: der eigene Charakter, die normale Figur oder ein fertiger Skin.
-// Die Wahl bleibt nur auf diesem Handy (dk_figur_<Plan>). Schickt Devin einen neuen eigenen Charakter, ist der sofort gewählt.
+// Die Wahl bleibt nur auf diesem Handy. Seit 23.11.2026 speichert und liest sie figurwahl.js (eine Wahl je Kunde, gilt überall; neuer Charakter von Devin: Hinweis statt still gewählt).
+// figurFuer unten ist der alte Weg (Wahl je Plan) und gilt nur noch, wenn ansicht() ohne o.jetzt aufgerufen wird.
 // Skins sind fertige Charakter-Daten wie Devins Charaktere (nur Zahlen und Farben, charakter/kurzform.js) und laufen im Gym über charakter/gym.js.
 // Die 3D-Figur kennt bisher nur einen Männerkörper mit kurzen Haaren, darum sind alle Skins Männer-Figuren. Bilder: arbeit-status/skins-vorschau.js.
 
@@ -53,7 +54,7 @@ function eigenKarte(o) {
   const feld = (wert, was) => h('div', { class: 'st-zahl' }, h('b', { text: wert }), h('span', { text: was }));
   return h('section', { class: 'block st-ich' },
     h('h2', { text: 'Dein Charakter' }),
-    h('p', { class: 'leise klein', text: 'Von Devin für dich gebaut.' }),
+    h('p', { class: 'leise klein', text: o.eigenNotiz || 'Von Devin für dich gebaut.' }),
     h('div', { class: 'st-zahlen' },
       feld(Math.round(z.groesse) + ' cm', 'Größe'),
       feld(komma(z.gewicht, 1) + ' kg', 'Gewicht'),
@@ -72,8 +73,10 @@ function ohneKarte(o) {
 
 // o: { h, plan, eigen, lies, schreib, toast, neu, vorladen }
 export function ansicht(o) {
-  const { h } = o, jetzt = figurFuer(o.plan, o.eigen, o.lies);
+  // Figur überall (23.11.2026): o.jetzt und o.waehlen kommen aus figurwahl.js (eine Wahl je Kunde, gilt im Gym, beim Training und in den Übungen)
+  const { h } = o, jetzt = o.jetzt || figurFuer(o.plan, o.eigen, o.lies);
   const waehlen = (id, name) => {
+    if (o.waehlen) { o.waehlen(id, name); return; }
     o.schreib(schluessel(o.plan), { f: id, e: kennung(o.eigen) });
     if (id !== 'standard' && o.vorladen) o.vorladen();   // Figur und Gym einmal laden, dann geht es auch ohne Internet
     o.toast(id === 'eigen' ? 'Dein Charakter trainiert jetzt im Gym' : name + ' trainiert jetzt im Gym');
@@ -90,5 +93,5 @@ export function ansicht(o) {
         o.eigen ? kachel('eigen', 'Mein Charakter', null) : null,
         kachel('standard', 'Standard', 'skin-standard.jpg'),
         SKINS.map((s) => kachel(s.id, s.name, s.bild))),
-      h('p', { class: 'leise klein', text: 'Gilt ab dem nächsten Gang ins Gym. Die Wahl bleibt nur auf diesem Handy.' }))];
+      h('p', { class: 'leise klein', text: o.waehlen ? 'Trainiert überall: im Gym, beim Training und in den Übungen. Die Wahl bleibt nur auf diesem Handy.' : 'Gilt ab dem nächsten Gang ins Gym. Die Wahl bleibt nur auf diesem Handy.' }))];
 }

@@ -8,6 +8,7 @@ import { erklaerPunkte, ART_NAME } from './coach.js';
 import * as Bestleistung from './bestleistung.js';
 import * as Rang from './rang.js';
 import * as Status from './status.js';   // Status (18.11.2026): eigener Charakter mit Zahlen, Skins, wer im Gym trainiert
+import * as Figurwahl from './figurwahl.js';   // Figur überall (23.11.2026): eine Wahl je Kunde für Gym, Station, Training und Übungen
 import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 import * as Statistik from './statistik.js';   // Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings, nur auf diesem Handy
@@ -970,14 +971,15 @@ const charakterLink = () => h('a', { class: 'knopf charakter-knopf', href: 'char
 /* ---------- Heute: Wochenleiste, Training des Tages, Übungen abhaken ---------- */
 let OHNE_3D = false;   // Der PR-Raum hat nicht geladen: Die Rang-Seite zeigt dann das Formular
 function ansichtStatus() {
-  const ko = aktivesKonto();
-  return Status.ansicht({ h, plan: S.plan, eigen: ko && ko.id === S.plan.id ? ko.c : null, lies: speicher.lies, schreib: speicher.schreib, toast, neu: zeichne,
-    vorladen: () => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}) });
+  // Figur überall (23.11.2026): eigen = die eigene Figur des Kunden (was er auf „Mein Charakter“ eingestellt hat, sonst Devins Charakter), jetzt und waehlen aus figurwahl.js
+  const ei = Figurwahl.eigene(figurZiel());
+  return [figurHinweis(), ...Status.ansicht({ h, plan: S.plan, eigen: ei.c, eigenNotiz: ei.notiz, jetzt: figurJetzt(), waehlen: figurWaehlen, lies: speicher.lies, schreib: speicher.schreib, toast, neu: zeichne,
+    vorladen: () => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}) })];
 }
 function ansichtRang() { return Rang.ansicht({ h, kopf: () => kopf('', 'Dein Rang'), lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
 function ansichtHeute() {
   const p = S.plan, heute = heuteIndex();
-  const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }))];
+  const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })), figurHinweis()];   // figurHinweis: neue Figur von Devin (23.11.2026), meist null
   if (p.id === 'beispiel') teile.push(h('div', { class: 'st-beispiel' }, h('span', { text: 'Das ist ein Beispiel.' }), h('button', { class: 'knopf klein', type: 'button', onclick: beispielEnde, text: 'Zur Startseite' })));
   // Kunden-Test 23.11.2026: Die Code-Karte mitten im Beispiel verwirrte Neue („ich hab doch gar keinen Code“). Wer später Devins Code bekommt, findet sie unter Infos und auf der Startseite.
   const ko = aktivesKonto();
@@ -1295,10 +1297,46 @@ function planLoeschen(e) {
 /* ---------- 3D ---------- */
 let modul3d = null;
 // Den echten Körper gleich mitladen (Texturen inklusive); klappt das nicht, zeigt die Bühne die gebaute Figur
-function lade3d() {
+function lade3dNormal() {
+  KOPIEN.add('normal');
   if (!modul3d) modul3d = Promise.all([import('./figur.js'), import('./bewegungen.js'), import('./figur-modell.js').then((m) => m.ladeKoerper()).catch(() => null)])
     .then(([f, b]) => ({ ...f, ...b }), (e) => { modul3d = null; throw e; });
   return modul3d;
+}
+/* Figur überall (23.11.2026, Devin: „Der Status, wenn du den einstellst, dein Skin einstellst, siehst du den nicht, wenn du in den Gym gehst … dass es alles so eine Connection hat“):
+   Die Figur, die der Kunde unter Status wählt (eigener Charakter oder Skin), zeigt jede 3D-Ansicht der App: Gym, Station, Training ohne Gym, Übungs-Blätter, Vorschaubilder.
+   Die 3D-Dateien kommen dann aus charakter/ (eigene Kopie mit der Figur), die normale Kopie lädt gar nicht erst. Lädt die Figur nicht, zeigt die normale Figur die Übung (einmal ein Hinweis).
+   KOPIEN merkt sich, welche Kopie schon geladen ist: Braucht eine neue Wahl die andere, lädt die Seite einmal neu (figurGewechselt), so sind am Handy nie zwei Kopien im Speicher. */
+const KOPIEN = new Set();
+let figur3d = null, figur3dSchl = '';
+const figurZiel = () => ({ plan: S.plan, konto: aktivesKonto(), lies: speicher.lies, schreib: speicher.schreib });   // Anschluss für später (Status „Dein Gewicht heute“): gewicht: (speicher.lies('dk_gewicht_' + (S.plan && S.plan.id), null) || {}).kg, figurwahl.eigene nimmt es als Gewicht der eigenen Figur
+const figurJetzt = () => Figurwahl.jetzt(figurZiel());
+function lade3d() {
+  const f = figurJetzt();
+  if (!f.c) return lade3dNormal();
+  const schl = f.id + ':' + Status.kennung(f.c);
+  if (!figur3d || figur3dSchl !== schl) { KOPIEN.add('figur'); figur3dSchl = schl; figur3d = import('./charakter/gym.js').then((m) => m.lade3d(f.c)); }
+  return figur3d.catch(() => {
+    figur3d = null;
+    if (!S.figurFehler) { S.figurFehler = true; toast((f.eigen ? 'Dein Charakter' : f.name) + ' lädt gerade nicht. Die normale Figur zeigt die Übung.'); }
+    return lade3dNormal();
+  });
+}
+// Nach einer neuen Wahl (Status, Hinweis „Neue Figur von Devin“): Braucht die Figur die andere 3D-Kopie und ist schon eine geladen, lädt die Seite einmal neu und zeigt danach dieselbe Seite
+function figurGewechselt(text) {
+  const kopie = figurJetzt().c ? 'figur' : 'normal';
+  if (KOPIEN.size && !KOPIEN.has(kopie)) {
+    try { sessionStorage.setItem('dk_figur_neu', JSON.stringify({ text, ansicht: S.ansicht })); location.reload(); return; } catch (e) { /* ohne sessionStorage geht es ohne Neuladen weiter */ }
+  }
+  if (kopie === 'figur') import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {});   // Figur und Gym einmal laden, dann geht es auch ohne Internet
+  toast(text);
+  try { window.dispatchEvent(new CustomEvent('dk-look', { detail: document.documentElement.dataset.look })); } catch (e) { zeichne(); }   // wie nach der Farbwahl: buehne.js malt die Vorschaubilder neu, die Seite zeichnet sich neu
+}
+function figurWaehlen(id, name) { Figurwahl.waehlen(figurZiel(), id); figurGewechselt((id === 'eigen' ? 'Dein Charakter' : name) + ' trainiert jetzt überall'); }
+function figurHinweis() {
+  return Figurwahl.hinweisKarte({ h, f: figurJetzt(),
+    ja: () => { Figurwahl.uebernehmen(figurZiel()); figurGewechselt('Deine neue Figur von Devin trainiert jetzt überall'); },
+    nein: () => { Figurwahl.behalten(figurZiel()); toast('Deine Figur bleibt'); zeichne(); } });
 }
 function fotoGross(src) {
   const zu = () => { el.remove(); document.removeEventListener('keydown', taste); };
@@ -1312,7 +1350,7 @@ function fotoGross(src) {
 function fotosVorladen() {
   if (!S.plan || navigator.onLine === false) return;
   const ko = aktivesKonto();
-  if ((ko && ko.c) || Status.figurFuer(S.plan, null, speicher.lies).c) setTimeout(() => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}), 3000);   // der eigene Charakter ist auch ohne Internet im Gym dabei
+  if ((ko && ko.c) || figurJetzt().c) setTimeout(() => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}), 3000);   // der eigene Charakter ist auch ohne Internet im Gym dabei
   const pfade = new Set();
   for (const t of S.plan.t || []) for (const x of t.u || []) { const d = UEBUNGEN[x.i]; if (d && d.b) pfade.add(d.b); }
   if (pfade.size) setTimeout(() => pfade.forEach((p) => fetch(p).catch(() => {})), 2500);
@@ -1553,11 +1591,12 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 /* ---------- Gym (raum.js): der Trainingstag als kleines 3D-Spiel. LAUF bleibt die eine Wahrheit: An der Station läuft der normale Satz-Ablauf, nur ohne eigene Bühne (die Figur trainiert in der Halle). ---------- */
 let GYM = null;
 function raumLaden(wie, p) {
-  const normal = () => import('./raum.js').then((m) => m.raumOeffnen(wie));
+  const normal = () => import('./raum.js').then((m) => m.raumOeffnen({ ...wie, lade3d: lade3dNormal }));   // das normale Gym immer mit der normalen Kopie (raum.js holt einleitung.js aus demselben Ordner)
   // Eigener Charakter: läuft aus dem Ordner charakter/ mit eigener Kopie der Figur. Klappt das nicht, trainiert die normale Figur, das Training selbst bleibt gleich
-  // Status (18.11.2026): Wer im Gym trainiert, wählt der Kunde unter Status (eigener Charakter, normale Figur oder ein Skin). Von „Mein Charakter“ aus immer der eigene Charakter
-  const ko = aktivesKonto(), eigen = ko && p && ko.id === p.id ? ko.c : null, f = S.gymEigen && eigen ? { c: eigen, eigen: true } : Status.figurFuer(p, eigen, speicher.lies), c = f.c;
-  S.gymEigen = false;
+  // Status (18.11.2026): Wer im Gym trainiert, wählt der Kunde unter Status (eigener Charakter, normale Figur oder ein Skin).
+  // Figur überall (23.11.2026): dieselbe Wahl wie bei jeder 3D-Figur der App (figurwahl.js), auf allen Wegen hinein. „Im Gym spielen“ auf „Mein Charakter“ wählt vorher den eigenen Charakter (figurAusLink)
+  const f = Figurwahl.jetzt({ plan: p, konto: aktivesKonto(), lies: speicher.lies }), c = f.c;
+  if (c) KOPIEN.add('figur');
   if (c) toast(f.eigen ? 'Dein Charakter kommt …' : f.name + ' kommt …');
   return c ? import('./charakter/gym.js').then((m) => m.oeffnen(c, { ...wie, name: vorname(p.n) })).catch(() => { toast((f.eigen ? 'Dein Charakter lädt' : f.name + ' lädt') + ' gerade nicht. Heute trainiert die normale Figur.'); return normal(); }) : normal();
 }
@@ -1622,11 +1661,15 @@ function raumStarten(p, ti, abTuer) {
   raumLaden(wie, p)
     .then((r) => { if (GYM) GYM.raum = r; }, () => { toast('Das Gym lädt gerade nicht.'); gymZu(false); });
 }
+// „Im Gym spielen“ auf „Mein Charakter“ (#gym, 23.11.2026): Der eigene Charakter wird gewählt und trainiert dann überall (vorher nur bei diesem einen Besuch, Status blieb beim Skin).
+// Läuft vor dem ersten Zeichnen, damit die Vorschaubilder gleich mit derselben Figur entstehen (eine 3D-Kopie)
+function figurAusLink() {
+  if (/[#&]gym\b/.test(location.hash) && Figurwahl.eigene(figurZiel()).c && figurJetzt().id !== 'eigen') Figurwahl.waehlen(figurZiel(), 'eigen');
+}
 // Von der Seite „Mein Charakter“ (#gym): gleich ins Gym, mit dem laufenden Training, sonst dem von heute oder dem nächsten
 function gymAusLink() {
   if (!/[#&]gym\b/.test(location.hash)) return;
-  history.replaceState(null, '', location.pathname + location.search);
-  S.gymEigen = true;   // von „Mein Charakter“: dort ist der eigene Charakter gemeint, auch wenn unter Status ein Skin gewählt ist
+  history.replaceState(null, '', location.pathname + location.search);   // den eigenen Charakter hat figurAusLink schon gewählt
   const p = S.plan;
   if (!p) return;
   if (LAUF && LAUF.phase !== 'fertig') { if (LAUF.gym && LAUF.plan === p.id) raumStarten(p, LAUF.tagNr - 1); return; }
@@ -2422,7 +2465,11 @@ if ('serviceWorker' in navigator) {
   gespeichertesPruefen();
   S.wartet = speicher.lies('dk_wartet', null);
   await linkEinlesen();
+  figurAusLink();
+  const figurNeu = (() => { try { const x = JSON.parse(sessionStorage.getItem('dk_figur_neu') || 'null'); sessionStorage.removeItem('dk_figur_neu'); return x; } catch (e) { return null; } })();   // nach dem Neuladen wegen neuer Figur (figurGewechselt)
+  if (figurNeu && typeof figurNeu.ansicht === 'string') S.ansicht = figurNeu.ansicht;
   zeichne();
+  if (figurNeu && figurNeu.text) toast(String(figurNeu.text).slice(0, 80));
   fotosVorladen();
   gymAusLink();
   umzugPruefen();
