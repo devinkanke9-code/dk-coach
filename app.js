@@ -1281,6 +1281,7 @@ function abmelden(e) {
   speicher.schreib('dk_konten', alle); speicher.schreib('dk_plaene', plaene); speicher.schreib(entwurfKey(ko), null);
   speicher.schreib(VERLAUF_KEY, null); speicher.schreib('dk_tage_' + ko.id, null); if (LAUF) laufSchliessen();   // der nächste auf diesem Handy soll nichts davon sehen
   speicher.schreib(Statistik.SCHLUESSEL, null);   // Dein Fortschritt geht mit (wie der Verlauf)
+  speicher.schreib(FRAGE_MAIL_KEY, null); speicher.schreib(LAUF_GESENDET_KEY, null);   // Adresse für Antworten und „schon gesendet“ gehen mit (23.11.2026)
   speicher.schreib('dk_konto', Object.keys(alle)[0] || null); speicher.schreib('dk_aktiv', Object.keys(plaene)[0] || null);
   EN = null; S.tagWahl = null; S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
 }
@@ -1378,8 +1379,8 @@ function tauschBlatt(u) {
     h('button', { class: 'knopf', type: 'button', onclick: () => feedbackBlatt({ u }), text: 'Nichts passt? Devin Bescheid sagen' })]);   // Feedback an Devin (20.11.2026)
 }
 /* ---------- Feedback an Devin (20.11.2026, Devin: „Feedback-Button … das gibt es hier nicht im Fitnessstudio … wird mir über Gmail geschickt“) ----------
-   Ohne Feedback-Skript öffnet sich die Mail-App fertig ausgefüllt an KONTAKT.mail (wie „Per E-Mail an Devin“ beim Training), der Kunde tippt nur noch auf Senden.
-   Mit Feedback-Skript (kontakt.json → feedback_skript) geht es direkt in Devins Gmail, ohne Mail-App. Die Zeile DK-Feedback:…:Ende kann die Trainer-Seite später lesen. */
+   Ohne Kunden-Eingang öffnet sich die Mail-App fertig ausgefüllt an KONTAKT.mail (wie beim Training ohne Skript), der Kunde tippt nur noch auf Senden.
+   Mit Kunden-Eingang (kontakt.json → eingang_skript, seit 23.11.2026 dasselbe Skript wie Analyse, Fragen und Trainings) geht es direkt in Devins Gmail, ohne Mail-App. Die Zeile DK-Feedback:…:Ende kann die Trainer-Seite später lesen. */
 const FB_ARTEN = [['geraet', 'Gerät gibt es hier nicht'], ['unklar', 'Übung ist unklar'], ['anderes', 'Etwas anderes']];
 const FB_PLATZ = { geraet: 'Zum Beispiel: Bei uns gibt es dafür eine Pendel-Kniebeuge.', unklar: 'Was ist dir unklar?', anderes: 'Deine Idee oder dein Problem …' };
 let FB_ZULETZT = 0;
@@ -1395,16 +1396,20 @@ function feedbackText(f) {
 }
 function feedbackBetreff(f) { const art = (FB_ARTEN.find((a) => a[0] === f.art) || FB_ARTEN[2])[1]; return 'Feedback für ' + KONTAKT.marke + ': ' + art + (f.u ? ' · ' + anzeigeName(f.u) : ''); }
 const feedbackMailLink = (f) => 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(feedbackBetreff(f)) + '&body=' + encodeURIComponent(feedbackText(f).replace(/\n/g, '\r\n'));
-async function feedbackPost(daten) {   // wie briefPost: JSON als Text, keine Cookies, nichts in der Adresse
+/* Kunden-Eingang (23.11.2026, Devin: „sie drücken nur drauf und das wird direkt automatisiert gesendet … Drücken die drauf und direkt ist das bei mir“):
+   EIN Google-Skript in Devins Konto (analyse-eingang/analyse-eingang.gs, kontakt.json → eingang_skript) nimmt Analyse, Fragen, Trainings und Feedback an und legt sie als Mail in sein Gmail.
+   Wie briefPost: JSON als Text, keine Cookies, nichts in der Adresse, 20 s Zeit; ok nur, wenn das Skript ok sagt. Ohne Skript oder offline gleich { ok: false }: Dann nimmt jeder Knopf die Mail-App wie bisher. */
+async function eingangSenden(daten) {
+  if (!KONTAKT.eingang || navigator.onLine === false) return { ok: false };
   const stopp = new AbortController(), uhr = setTimeout(() => stopp.abort(), 20000);
   try {
-    const r = await fetch(KONTAKT.feedback, { method: 'POST', body: JSON.stringify(daten), cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
+    const r = await fetch(KONTAKT.eingang, { method: 'POST', body: JSON.stringify(Object.assign({ v: 1 }, daten)), cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: stopp.signal });
     if (!r.ok) return { ok: false };
     try { const j = JSON.parse(await r.text()); return j && j.ok === true ? j : { ok: false }; } catch (e) { return { ok: false }; }
   } catch (e) { return { ok: false }; } finally { clearTimeout(uhr); }
 }
 function feedbackBlatt(f = {}) {
-  const st = { art: f.u ? 'geraet' : 'anderes', text: '' }, direkt = !!KONTAKT.feedback, jetzt = () => Object.assign({}, f, st);
+  const st = { art: f.u ? 'geraet' : 'anderes', text: '' }, direkt = !!KONTAKT.eingang, jetzt = () => Object.assign({}, f, st);
   const feld = h('textarea', { class: 'eingabe', rows: '4', maxlength: '600', 'aria-label': 'Was soll Devin wissen?' });
   const wahl = h('div', { class: 'fs-wahl fb-wahl', role: 'group', 'aria-label': 'Worum geht es?' });
   const senden = direkt ? h('button', { class: 'knopf haupt', type: 'button', text: 'An Devin senden' }) : h('a', { class: 'knopf haupt', href: feedbackMailLink(jetzt()), text: 'An Devin senden' });
@@ -1419,7 +1424,7 @@ function feedbackBlatt(f = {}) {
     e.preventDefault();
     if (Date.now() - FB_ZULETZT < 30000) { toast('Gerade gesendet. Bitte kurz warten.'); return; }
     senden.disabled = true; senden.textContent = 'Sende …';
-    const r = navigator.onLine === false ? { ok: false } : await feedbackPost({ a: 'feedback', betreff: feedbackBetreff(jetzt()), text: feedbackText(jetzt()) });
+    const r = await eingangSenden({ art: 'feedback', betreff: feedbackBetreff(jetzt()), text: feedbackText(jetzt()) });
     if (r.ok) { FB_ZULETZT = Date.now(); schliesseBlatt(); toast('Danke! Devin hat dein Feedback.'); return; }
     senden.disabled = false; senden.textContent = 'An Devin senden';
     location.href = feedbackMailLink(jetzt()); toast('Direkt ging gerade nicht. Deine Mail-App ist offen, tippe dort auf Senden.');
@@ -1434,10 +1439,60 @@ function feedbackBlatt(f = {}) {
   ]);
   neu();
 }
-function feedbackBlock() {
-  return h('section', { class: 'block' }, h('h2', { text: 'Feedback an Devin' }),
-    h('p', { class: 'leise klein', text: 'Fehlt in deinem Studio ein Gerät, ist eine Übung unklar oder hast du eine Idee? Schreib es Devin. Bei einer Übung geht das auch direkt über „Gibt es hier nicht? Feedback“.' }),
-    h('button', { class: 'knopf', type: 'button', onclick: () => feedbackBlatt({}), text: 'Feedback schreiben' }));
+function feedbackBlock() {   // Frage oder Feedback an Devin (20.11.2026 Feedback, 23.11.2026 auch Fragen)
+  return h('section', { class: 'block' }, h('h2', { text: 'Frage oder Feedback' }),
+    h('p', { class: 'leise klein', text: 'Hast du eine Frage, fehlt in deinem Studio ein Gerät oder ist eine Übung unklar? Schreib es Devin. Bei einer Übung geht Feedback auch direkt über „Gibt es hier nicht? Feedback“.' }),
+    h('div', { class: 'reihe' },
+      h('button', { class: 'knopf', type: 'button', onclick: () => frageBlatt(), text: 'Frage stellen' }),
+      h('button', { class: 'knopf', type: 'button', onclick: () => feedbackBlatt({}), text: 'Feedback schreiben' })));
+}
+/* ---------- Frage an Devin (23.11.2026, Devin: „wenn die irgendwelche Fragen haben …, dass sie das per E-Mail schicken können … Das ist einfach wie ein Knopf. Drücken die drauf und direkt ist das bei mir“) ----------
+   Mit Kunden-Eingang: Frage und Adresse für die Antwort, ein Tipp, direkt in Devins Gmail. „Antworten“ geht dort an den Kunden (Reply-To).
+   Die Adresse merkt sich nur dieses Handy, und erst nach dem Senden (für die nächste Frage). Abmelden löscht sie.
+   Ohne Skript, offline oder wenn es nicht klappt: die Mail-App fertig ausgefüllt, „Antworten“ geht dann an die eigene Adresse des Kunden. */
+const FRAGE_MAIL_KEY = 'dk_frage_mail', FRAGE_MAIL_RE = /^[^\s@<>()",;:\\]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;   // wie analyse.html und das Skript
+let FRAGE_ZULETZT = 0;
+const ohneSteuerzeichen = (t) => String(t || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+function frageBetreff() { const wer = ohneSteuerzeichen(feedbackWer()).slice(0, 120); return 'Frage für ' + KONTAKT.marke + (wer ? ': ' + wer : ''); }
+function frageText(frage, mail) {
+  const p = S.plan, z = ['DK Frage · ' + (ohneSteuerzeichen(feedbackWer()).slice(0, 120) || (p && p.n ? 'Plan ' + p.n + ', nicht eingeloggt' : 'ohne Plan')), new Date().toLocaleString('de-DE')];
+  if (mail) z.push('Antwort bitte an: ' + mail);
+  z.push('', frage);
+  return z.join('\n');
+}
+const frageMailLink = (frage) => 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(frageBetreff()) + '&body=' + encodeURIComponent(frageText(frage, '').replace(/\n/g, '\r\n'));
+function frageBlatt() {
+  const direkt = !!KONTAKT.eingang, gemerkt = direkt ? String(speicher.lies(FRAGE_MAIL_KEY, '') || '') : '';
+  const feld = h('textarea', { class: 'eingabe', rows: '5', maxlength: '1000', 'aria-label': 'Deine Frage an Devin', placeholder: 'Zum Beispiel: Wie schwer soll ich bei der Kniebeuge anfangen?' });
+  const adresse = direkt ? h('input', { class: 'eingabe', type: 'email', inputmode: 'email', autocomplete: 'email', autocapitalize: 'off', spellcheck: 'false', maxlength: '120',
+    'aria-label': 'Deine E-Mail-Adresse für die Antwort', placeholder: 'deine E-Mail-Adresse', value: gemerkt }) : null;
+  const meldung = h('p', { class: 'meldung klein fr-meldung', role: 'alert', style: 'display:none' });
+  const senden = direkt ? h('button', { class: 'knopf haupt', type: 'button', text: 'An Devin senden' }) : h('a', { class: 'knopf haupt', href: frageMailLink(''), text: 'An Devin senden' });
+  const frage = () => feld.value.trim().slice(0, 1000);
+  const zeige = (t, el) => { meldung.textContent = t; meldung.style.display = t ? '' : 'none'; if (t && el) el.focus(); };
+  feld.addEventListener('input', () => { zeige(''); if (!direkt) senden.href = frageMailLink(frage()); });
+  if (adresse) adresse.addEventListener('input', () => zeige(''));
+  senden.addEventListener('click', async (e) => {
+    if (frage().length < 5) { e.preventDefault(); zeige('Schreib zuerst deine Frage.', feld); return; }
+    if (!direkt) { setTimeout(() => { schliesseBlatt(); toast('Deine Mail-App ist offen. Tippe dort auf Senden.'); }, 400); return; }
+    const mail = adresse.value.trim().toLowerCase();
+    if (mail.length > 120 || !FRAGE_MAIL_RE.test(mail)) { zeige('Bitte trag deine E-Mail-Adresse ein, damit Devin dir antworten kann.', adresse); return; }
+    if (senden.disabled) return;
+    if (Date.now() - FRAGE_ZULETZT < 30000) { toast('Gerade gesendet. Bitte kurz warten.'); return; }
+    senden.disabled = true; senden.textContent = 'Sende …';
+    const r = await eingangSenden({ art: 'frage', betreff: frageBetreff(), text: frageText(frage(), mail), mail });
+    if (r.ok) { FRAGE_ZULETZT = Date.now(); speicher.schreib(FRAGE_MAIL_KEY, mail); schliesseBlatt(); toast('Gesendet. Devin antwortet dir per E-Mail.'); return; }
+    senden.disabled = false; senden.textContent = 'An Devin senden';
+    location.href = frageMailLink(frage()); toast('Direkt ging gerade nicht. Deine Mail-App ist offen, tippe dort auf Senden.');
+  });
+  oeffneBlatt('Frage an Devin', 'Er antwortet dir per E-Mail.', [
+    h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Deine Frage' }), feld),
+    adresse ? h('div', { class: 'blatt-abschnitt' }, h('b', { text: 'Deine E-Mail für die Antwort' }), adresse) : null,
+    meldung,
+    senden,
+    h('p', { class: 'leise klein', text: direkt ? 'Geht direkt an Devin.' + (feedbackWer() ? ' Dein Name aus dem Plan steht dabei.' : '') + ' Deine Adresse merkt sich nur dieses Handy.'
+      : 'Deine Mail-App öffnet sich fertig ausgefüllt. Tippe dort nur noch auf Senden.' })
+  ]);
 }
 function oeffneUebung(u, ti) {
   const d = u.d, p = S.plan;
@@ -1713,7 +1768,7 @@ function ergebnis(status) {
     const pz = nach ? nach.s - s.e : (s === alle[alle.length - 1] && LAUF.phase === 'satz' ? LAUF.seit - s.e : null);
     return [zahlOderNull(s.kg), zahlOderNull(s.wdh), Math.round((s.e - s.s) / 1000), pz != null ? Math.round(pz / 1000) : null];
   }) }));
-  return { v: 1, k: LAUF.kunde, t: LAUF.tagNr, tn: LAUF.tagName, s: LAUF.start, e: ende, st: status, u: ue };
+  return { v: 1, k: LAUF.kunde, p: LAUF.plan, t: LAUF.tagNr, tn: LAUF.tagName, s: LAUF.start, e: ende, st: status, u: ue };
 }
 // Sätze aus dem Training als Bestleistung eintragen (nur Kniebeuge, Bankdrücken, Kreuzheben; Mindest-Wiederholungen aus dem Plan)
 function spielBestleistung() {
@@ -1939,18 +1994,38 @@ function ansichtStatistik() {
       h('li', { text: 'Gezählt wird, was du im Training einträgst. Die Statistik bleibt auf diesem Handy. Schickst du Devin dein Training, sieht er sie auch.' }))));
   return teile;
 }
-// Training per E-Mail an Devin (06.11.2026): Die Mail-App öffnet sich fertig ausgefüllt, der Kunde tippt nur noch auf Senden.
-// Devins Trainer-Seite findet die Zeile DK-Lauf in seinem Postfach und trägt das Training beim passenden Kunden ein. WhatsApp bleibt als zweiter Weg.
+// Training per E-Mail an Devin (06.11.2026): Die Mail-App öffnet sich fertig ausgefüllt, der Kunde tippt nur noch auf Senden. WhatsApp bleibt als zweiter Weg.
+// 23.11.2026 (Devin: „wenn die mit dem Workout fertig sind … sie drücken nur drauf und das wird direkt automatisiert gesendet“): Mit Kunden-Eingang (kontakt.json → eingang_skript)
+// geht es mit einem Tipp direkt in Devins Gmail. Ohne Skript, offline oder wenn es nicht klappt: die Mail-App wie bisher.
+// Devins Trainer-Seite findet die Zeile DK-Lauf in seinem Postfach und trägt das Training beim passenden Kunden ein (seit 23.11.2026 zuerst über die Kunden-Nummer p im Training).
+const LAUF_GESENDET_KEY = 'dk_lauf_gesendet';   // Startzeiten der Trainings, die direkt bei Devin angekommen sind (nur dieses Handy)
+const laufGesendet = (r) => (speicher.lies(LAUF_GESENDET_KEY, []) || []).indexOf(r.s) >= 0;
+function laufBetreff(r) { return 'Training für ' + KONTAKT.marke + ': ' + (String(r.k || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 120) || 'Kunde') + ', ' + new Date(r.s).toLocaleDateString('de-DE'); }
 function laufMailLink(r) {
-  const betreff = 'Training für ' + KONTAKT.marke + ': ' + (r.k || 'Kunde') + ', ' + new Date(r.s).toLocaleDateString('de-DE');
-  return 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(betreff) + '&body=' + encodeURIComponent(laufAlsText(r).replace(/\n/g, '\r\n'));
+  return 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(laufBetreff(r)) + '&body=' + encodeURIComponent(laufAlsText(r).replace(/\n/g, '\r\n'));
 }
-const laufMailKnopf = (r, klasse) => h('a', { class: klasse, href: laufMailLink(r), text: 'Per E-Mail an Devin' });
+function laufSendeKnopf(r, klasse) {
+  if (!KONTAKT.eingang) return h('a', { class: klasse, href: laufMailLink(r), text: 'Per E-Mail an Devin' });
+  const knopf = h('button', { class: klasse, type: 'button', text: 'An Devin senden' });
+  const gesendet = () => { knopf.dataset.gesendet = '1'; knopf.textContent = 'An Devin gesendet ✓'; };
+  knopf.addEventListener('click', async () => {
+    if (knopf.dataset.gesendet) { toast('Schon gesendet. Devin hat dein Training.'); return; }
+    if (knopf.dataset.sendet) return;   // zweiter Tipp, während es noch sendet
+    knopf.dataset.sendet = '1'; knopf.textContent = 'Sende …';
+    const ok = (await eingangSenden({ art: 'training', betreff: laufBetreff(r), text: laufAlsText(r) })).ok;
+    delete knopf.dataset.sendet;
+    if (ok) { speicher.schreib(LAUF_GESENDET_KEY, (speicher.lies(LAUF_GESENDET_KEY, []) || []).filter((s) => s !== r.s).concat([r.s]).slice(-60)); gesendet(); toast('Gesendet. Devin hat dein Training.'); return; }
+    knopf.textContent = 'An Devin senden';
+    location.href = laufMailLink(r); toast('Direkt ging gerade nicht. Deine Mail-App ist offen, tippe dort auf Senden.');
+  });
+  if (laufGesendet(r)) gesendet();
+  return knopf;
+}
 function laufBlatt(r) {
   const knopf = h('button', { class: 'knopf', type: 'button', onclick: () => kopieren(laufAlsText(r), knopf), text: 'Text für WhatsApp kopieren' });
   oeffneBlatt('Training ' + r.t + ' · ' + r.tn, datumZeit(r.s), [h('div', { class: 'blatt-werte' }, h('span', { class: 'chip', text: 'Dauer ' + mmss(laufDauer(r)) }),
     h('span', { class: 'chip', text: saetzeGesamt(r) + ' Sätze' }), r.st === 'abgebrochen' ? h('span', { class: 'chip', text: 'vorzeitig beendet' }) : null,
-    schmerzOk(r.sz) ? h('span', { class: 'chip', text: 'Schmerz ' + r.sz + '/' + SCHMERZ.max }) : null), laufTabelle(r), laufMailKnopf(r, 'knopf haupt'), knopf]);
+    schmerzOk(r.sz) ? h('span', { class: 'chip', text: 'Schmerz ' + r.sz + '/' + SCHMERZ.max }) : null), laufTabelle(r), laufSendeKnopf(r, 'knopf haupt'), knopf]);
 }
 // Letztes Mal: aus den gespeicherten Trainings, sonst aus der alten Satz-Liste (App bis 28.10.)
 function letztesMal(u, satz) {
@@ -2126,8 +2201,8 @@ function timerFertig() {
     schmerzFrage(),
     h('section', { class: 'block' }, h('h2', { text: 'Training ' + r.t + ' · ' + r.tn }), laufTabelle(r)),
     h('section', { class: 'block' }, h('h2', { text: 'An Devin schicken' }),
-      h('p', { class: 'leise klein', text: 'Per E-Mail geht es mit einem Tipp, deine Mail-App ist schon ausgefüllt. Oder kopier den Text für WhatsApp. Devin sieht dann deine Zeiten, Gewichte und Wiederholungen.' }),
-      laufMailKnopf(r, 'knopf haupt tm-gross'), knopf, feld),
+      h('p', { class: 'leise klein', text: (KONTAKT.eingang ? 'Ein Tipp auf „An Devin senden“, und Devin hat dein Training.' : 'Per E-Mail geht es mit einem Tipp, deine Mail-App ist schon ausgefüllt.') + ' Oder kopier den Text für WhatsApp. Devin sieht dann deine Zeiten, Gewichte und Wiederholungen.' }),
+      laufSendeKnopf(r, 'knopf haupt tm-gross'), knopf, feld),
     h('button', { class: 'knopf tm-gross', type: 'button', onclick: laufSchliessen, text: 'Fertig' })
   ];
 }
