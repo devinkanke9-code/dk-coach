@@ -29,6 +29,17 @@ let R3 = false;
 // 23.11.2026 (Runde 4): eigene Einstiege (Knierolle, hohe Bank mit Hanteln, Knie auf der Bank, seitlich auf die Sitzkante). Für Übungen in OHNE_R4
 // bleibt der Stand von Runde 3
 let R4 = false;
+// Runde 5 (24.11.2026): hohe Bank mit Hanteln (erst hinlegen, dann greifen), Copenhagen, Hantel am Körper, Fuß am Bodenrohr. Für Übungen in OHNE_R5
+// bleibt der Stand von Runde 4
+let R5 = false;
+const OHNE_R5 = new Set([
+  "schulterdruecken:{\"last\":\"kettlebell\"}",   // kettlebell_schulterdruecken
+  "kreuzheben:{\"art\":\"rumaenisch\",\"last\":\"kurzhanteln\"}",   // kh_rumaenisches_kreuzheben
+  "kreuzheben:{\"art\":\"rumaenisch\",\"last\":\"kurzhanteln\",\"bstance\":true}",   // b_stance_rdl
+  "trizeps:{\"art\":\"kickback\"}",   // kurzhantel_kickback
+  "bankdruecken:{\"last\":\"kurzhanteln\",\"art\":\"boden\",\"griff\":\"neutral\"}",   // kurzhantel_bodendruecken_hammer
+  "bankdruecken:{\"last\":\"kurzhanteln\",\"art\":\"boden\"}",   // kurzhantel_bodendruecken
+]);
 const OHNE_R4 = new Set([
   "ausfallschritt:{\"art\":\"stepup\",\"last\":\"kurzhanteln\"}",   // stepup_kurzhanteln
   "rudern:{\"art\":\"kabel_sitzend\",\"last\":\"kabel\",\"griff\":\"breit\"}",   // kabelrudern_breit
@@ -346,7 +357,9 @@ function hantelnAufBeinen(p, beide = false, kelch = null) {
   const g = gelenke(p), q = Object.assign({}, p);
   q.kelch = null;
   const mitte = g.knie.l.clone().add(g.knie.r).add(g.huefte.l).add(g.huefte.r).multiplyScalar(0.25);
-  q.hand = seiten((s, sg) => (beide ? mitte.clone().add(V(0, 0.32, 0)).addScaledVector(g.R.links, sg * 0.05) : g.huefte[s].clone().lerp(g.knie[s], 0.8).add(V(0, 0.3, 0))));
+  // Runde 5: bei vorgebeugtem Sitz (Handgelenk-Curl) liegen die Hanteln vorn bei den Knien und tiefer; 30 cm über dem Oberschenkel lagen sie 12 cm in der Brust
+  const vorgebeugt = R5 && g.R.oben.clone().projectOnPlane(Y).dot(waag(g.R.vor)) < 0 ? false : R5 && g.R.oben.clone().projectOnPlane(Y).length() > 0.3;
+  q.hand = seiten((s, sg) => (beide ? mitte.clone().add(V(0, 0.32, 0)).addScaledVector(g.R.links, sg * 0.05) : vorgebeugt ? g.huefte[s].clone().lerp(g.knie[s], 1.0).add(V(0, 0.22, 0)).addScaledVector(waag(g.R.oben), 0.05) : g.huefte[s].clone().lerp(g.knie[s], 0.8).add(V(0, 0.3, 0))));
   q.handflaeche = seiten((s, sg) => g.R.links.clone().multiplyScalar(-sg));
   q.ellbogenPol = seiten((s, sg) => g.R.links.clone().multiplyScalar(sg).sub(g.R.vor.clone().multiplyScalar(0.5)));
   q.flach = { l: null, r: null }; q.greift = GENAU();
@@ -862,6 +875,16 @@ function knieAufBank(Gp, gg, b, f, ab) {
   kniet.zehen = Object.assign({}, Gp.zehen); if (Gp.zehenAuf) kniet.zehenAuf = Gp.zehenAuf; if (Gp.fussFlaeche) kniet.fussFlaeche = Gp.fussFlaeche;
   return { name: 'knieAufBank' + ab, blick, stand: S, schritte: [{ ziel: kniet, d: 1.4, steigen: { erst: b, bogen: 0.2 } }, { ziel: Gp, d: DAUER.legen + 0.2, verzug: 0.25 }] };
 }
+// Runde 5 (24.11.2026): Brust auf die Schrägbank legen (Rudern brustgestützt, Spider-Curl, Y-Heben, Reverse Flys, mit Hanteln). Bis dahin stand die
+// Figur aufrecht mit den Oberschenkeln im unteren Teil des Polsters und kippte von dort nach vorn (8–9 cm). Wie im Studio: hinter der Bank stehen,
+// die Füße an ihren Platz, die Hüfte zurück und den Rumpf schon halb vorneigen, dann die Brust auf das Polster legen. hinten = Abstand der Füße
+function anlehnen(Gp, gg, hinten) {
+  const blick = waag(gg.R.vor), w = winkelVon(blick), q = drehY(w), fm = gg.knoechel.l.clone().add(gg.knoechel.r).multiplyScalar(0.5).setY(0);
+  const S = fm.clone().addScaledVector(blick, -hinten), vorStand = stehen(S, w);
+  const halb = Object.assign({}, vorStand, { becken: Gp.becken.clone().addScaledVector(blick, -0.06).setY(Math.max(Gp.becken.y, 0.92)), rumpf: { basis: q.clone().slerp(Gp.rumpf.basis, 0.5) } });
+  halb.fuss = seiten((s) => Gp.fuss[s].clone()); halb.kniePol = seiten((s) => Gp.kniePol[s].clone()); halb.fussRicht = seiten((s) => Gp.fussRicht[s].clone());
+  return { name: 'anlehnen' + hinten, blick, stand: S, schritte: [{ ziel: halb, d: 1.0, steigen: { bogen: 0.05, erst: 'l' } }, { ziel: Gp, d: DAUER.legen, verzug: 0.2 }] };
+}
 function langsitz(Gp, gg, Q, d) {
   const blick = waag(gg.R.oben).negate(), w = winkelVon(blick), q = drehY(w), B = gg.becken;
   const m = B.clone().sub(blick.clone().multiplyScalar(d)), bank = auflage(Q, m);
@@ -1110,7 +1133,9 @@ export function baueEinleitung(anim, ger, z, kamera) {
   R3 = !ALT && !(anim && OHNE_R3.has(anim.schluessel));
   const r3 = R3;
   R4 = R3 && !(anim && OHNE_R4.has(anim.schluessel));
-  const r4 = R4;   // gilt auch später in pose() (dort wird ALT wieder gesetzt, falls inzwischen ein anderer Ablauf gebaut wurde)
+  const r4 = R4;
+  R5 = R4 && !(anim && OHNE_R5.has(anim.schluessel));
+  const r5 = R5;   // gilt auch später in pose() (dort wird ALT wieder gesetzt, falls inzwischen ein anderer Ablauf gebaut wurde)
   QAKT = null;   // Geräte dieses Ablaufs erst, wenn sie bekannt sind (unten)
   const obj = Object.values(z).filter((o) => o && o.isObject3D);
   const hanteln = ['kh_l', 'kh_r', 'kb'].filter((n) => z[n] && z[n].isObject3D);
@@ -1300,6 +1325,11 @@ export function baueEinleitung(anim, ger, z, kamera) {
   }
   const hantelArt = hanteln.length ? (Object.values(halter).includes('beide') ? 'beide' : true) : false;
   const plaene = [eigen || kabel || latzug || klassisch(art, G, Gp, gg, hantelArt, !griffEnde.l && !griffEnde.r, anim.sitzVersatz || 0)];
+  // Runde 5: vorgebeugt mit der Brust auf einem Polster, beide Füße am Boden: eigener Einstieg „anlehnen“ (auch mit Hanteln), wenn er weniger eintaucht
+  if (r5 && !eigen && !kabel && !latzug && art === 'stehen' && gg.R.oben.y < 0.88) {
+    const brust = Q.some((q, k) => (erlaubtEnde[NG * k] > 0.02 || erlaubtEnde[NG * k + 1] > 0.02) && q.top > 0.6);
+    if (brust) { let best = { p: plaene[0], x: bewerten(plaene[0]) }; for (const h of [0.35, 0.5, 0.65]) { const pk = anlehnen(Gp, gg, h), x = bewerten(pk); if (x < best.x - 0.01) best = { p: pk, x }; } plaene[0] = best.p; }
+  }
   // Runde 4: ein Knie auf einer Bank, das andere Bein steht am Boden: eigener Einstieg (auch mit Hantel), wenn er weniger eintaucht als der klassische
   if (r4 && !eigen && !kabel && !latzug) {
     const bank = ['l', 'r'].filter((k) => gg.knie[k].y > 0.3 && gg.knie[k].y < 0.8 && gg.knoechel[k].y > 0.3), boden = ['l', 'r'].filter((k) => gg.knoechel[k].y < 0.15);
@@ -1459,7 +1489,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // Anlauf: von der Seite (quer zur Kamera), bleibt auf der Bodenscheibe. Ist der gerade Weg frei, bleibt er; sonst um die Geräte herum
   const kh = waag(kamera || V(0.62, 0.32, 0.72)), seitlich = V(kh.z, 0, -kh.x);
   const startVon = (stand, sg) => { const s = stand.clone().setY(0).add(kh.clone().multiplyScalar(-0.25)).add(seitlich.clone().multiplyScalar(1.4 * sg)); if (V(s.x, 0, s.z).length() > 1.9) s.setLength(1.9); return s; };
-  let R = null, QW = Q, nHantelAb = Infinity; const W = {};   // QW: Hindernisse beim Laufen (mit den Hanteln am Boden)
+  let R = null, QW = Q, nHantelAb = Infinity, hantelAmBoden = []; const W = {};   // hantelAmBoden (Runde 5): über die Hanteln am Boden steigt der Fuß beim Hinlaufen (bis 4 cm traten die Füße hinein)   // QW: Hindernisse beim Laufen (mit den Hanteln am Boden)
   const weg = (plan) => {
     const wEnde = winkelVon(plan.blick), P = plan.stand.clone().setY(0), start = plan.von || startVon(P, 1);   // von (ablaufEigen): Anlauf von dort (Pull-Through: quer zum Seil, nicht an ihm entlang)
     const erlaubt = tiefen(gelenke(stehen(P, wEnde)), QW).map((t, i) => (i >= NG * nHantelAb ? 0.015 : t + 0.015));   // beim Laufen zählt nur, was die Figur am Standpunkt berührt
@@ -1510,7 +1540,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
     // 23.11.2026: die Hanteln am Boden zuletzt in der Liste (nHantelAb), damit beim Laufen ihr Berühren am Standplatz nicht erlaubt ist: die Füße
     // traten sonst im Vorbeigehen 4 cm in die Hanteln (Schulterdrücken und Curl im Sitzen)
     if (alt) QW = quader(ger, new Set());
-    else { const ohne = quader(ger, new Set(hanteln.map((n) => z[n]))), mit = []; for (const n of hanteln) z[n].traverse((m) => { const q = m.isMesh && m.visible ? quaderTeil(m) : null; if (q) mit.push(q); }); QW = [...ohne, ...mit]; nHantelAb = ohne.length; }
+    else { const ohne = quader(ger, new Set(hanteln.map((n) => z[n]))), mit = []; for (const n of hanteln) z[n].traverse((m) => { const q = m.isMesh && m.visible ? quaderTeil(m) : null; if (q) mit.push(q); }); QW = [...ohne, ...mit]; nHantelAb = ohne.length; if (r5) hantelAmBoden = mit.map((q) => Object.assign({}, q, { uebersteigen: true })); }
   }
   klass.weg = weg(auf ? Object.assign({}, klass, { stand: auf.A }) : klass);
   let plan = klass;
@@ -1588,7 +1618,7 @@ export function baueEinleitung(anim, ger, z, kamera) {
       // Kurzhantel ist symmetrisch: um 180° gedreht sieht sie gleich aus, also zur näheren der beiden Lagen drehen (sonst schwenkt sie quer durchs Bein)
       const qU = z[n].quaternion.clone(), offU = z[n].position.clone().sub(halt);
       if (n !== 'kb' && h !== 'beide') { const um = qU.clone().multiply(UM_Y); if (Math.abs(um.dot(a.q)) > Math.abs(qU.dot(a.q))) qU.copy(um); }
-      const w = alt || n === 'kb' || h === 'beide' ? w0 : w1;   // Kettlebell und Hantel in beiden Händen wie bisher
+      const w = alt || n === 'kb' || h === 'beide' ? w0 : spaetDrehen ? glatt((sek - haeltAb - 0.5 * (tMit - haeltAb)) / (0.5 * (tMit - haeltAb))) : w1;   // Kettlebell und Hantel in beiden Händen wie bisher
       z[n].position.copy(halt).add(a.off.clone().lerp(offU, w));
       z[n].quaternion.copy(a.q).slerp(qU, w);
     }
@@ -1644,6 +1674,10 @@ export function baueEinleitung(anim, ger, z, kamera) {
     props(G);
   }
   const tSchritte0 = teile.reduce((a, x) => a + x.d, 0);   // ab hier die Schritte (Zeit für eigeneGeraete)
+  // Runde 5: Kurzhantel in einer Hand hängt nach dem Aufheben längs wie am Boden (schmal neben dem Bein) und dreht sich erst im ersten Schritt in die
+  // Haltung der Übung; in Übungshaltung ging sie beim Weg zum Platz quer durch den Oberschenkel (Handgelenk-Curl 9 cm)
+  const spaetDrehen = r5 && auf && !Object.values(auf.halter).includes('beide') && !hanteln.includes('kb') && schritte.length;
+  if (spaetDrehen) tMit = tSchritte0 + schritte[0].d;
   for (const s of schritte) { teile.push({ d: s.d, bild: uebergang(vorher, s) }); vorher = s.ziel; }
   if (dannStart) { const st = { ziel: dannStart, d: 0.9 }; teile.push({ d: st.d, bild: uebergang(vorher, st) }); vorher = dannStart; }
   // Kommt die Hand erst mit dem letzten Schritt an, bleibt kurz Zeit zum Zugreifen, bevor die Übung beginnt
@@ -1670,14 +1704,14 @@ export function baueEinleitung(anim, ger, z, kamera) {
     // Pose zur Zeit sek (setzt bis zum Aufstehen auch die Hanteln); gehtMit: ab wann die Geräte mit den Händen mitgehen (Hanteln nach
     // dem Aufstehen, sonst nach dem Greifen)
     pose(sek) {
-      ALT = alt; R3 = r3; R4 = r4;
+      ALT = alt; R3 = r3; R4 = r4; R5 = r5;
       let x = sek, p = null;
       for (const teil of teile) { if (x <= teil.d) { p = teil.bild(teil.d > 0 ? x / teil.d : 1); break; } x -= teil.d; }
       if (!p) p = teile[teile.length - 1].bild(1);
       if (auf && sek < tMit) halten(sek, p);
       if (tuch) tuch.visible = sek >= Math.min(tMit, tGriff);
       const ende = 1 - glatt((sek - (dauer - 0.45)) / 0.4);   // die letzten 0,45 s ohne Eingriff: der Ablauf endet genau in der Startpose der Übung (sonst Sprung bei der Übergabe)
-      return ueberBoden(ueberBodenteilen(Object.assign({}, p, griffStand(sek)), alt ? [] : FLACH, ende, Q), ende);
+      return ueberBoden(ueberBodenteilen(Object.assign({}, p, griffStand(sek)), alt ? [] : hantelAmBoden.length && sek < haeltAb ? FLACH.concat(hantelAmBoden) : FLACH, ende, Q), ende);
     },
     // eigene Geräte (oben): immer, mit der Zeit dieses Bilds in z.ablaufZeit (die props der Vorlage setzen sie damit)
     gehtMit: (sek) => { if (eigeneGeraete) { z.ablaufZeit = sek - tSchritte0; return true; } return sek >= Math.min(tMit, tGriff); },
