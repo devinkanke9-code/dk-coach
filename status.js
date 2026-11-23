@@ -84,7 +84,8 @@ export function ansicht(o) {
     h('span', { class: 'st-name', text: name }));
   return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Status' })),
     o.eigen ? eigenKarte(o) : ohneKarte(o),
-    h('section', { class: 'block st-wahl' }, h('h2', { text: 'Wer trainiert im Gym?' }),
+    // 23.11.2026: hieß „st-wahl“ wie die Zeitraum-Wahl der Statistik (stil.css: Raster mit 5 Spalten), dadurch waren die Figuren eingequetscht. Eigener Name, keine Regel nötig.
+    h('section', { class: 'block status-gymwahl' }, h('h2', { text: 'Wer trainiert im Gym?' }),
       h('div', { class: 'st-figuren' },
         o.eigen ? kachel('eigen', 'Mein Charakter', null) : null,
         kachel('standard', 'Standard', 'skin-standard.jpg'),
