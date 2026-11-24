@@ -558,6 +558,25 @@
     });
     return proTyp;
   }
+  // Wunsch-Muskeln (24.11.2026, Devin: „Ehrlich sagen“): Fällt die Extra-Übung für einen gewünschten Muskel ganz weg, weil er schon die Höchstzahl an Sätzen
+  // pro Woche für das Level hat (Warnung aus extraBegrenzen), sagt der Plan das dem Kunden. Texte: anamnese.json → Feld extra_muskeln (text_grenze_1, text_grenze_n).
+  function extraGrenzeHinweis(W, k, plan) {
+    var F = null; arr(W.anamnese && W.anamnese.abschnitte).forEach(function (a) { arr(a.felder).forEach(function (f) { if (f.id === 'extra_muskeln') F = f; }); });
+    if (!F || !F.text_grenze_1 || !arr(k.extra_muskeln).length) return '';
+    var gName = {}, label = {}, alleU = [];
+    bausteinGruppen(W).forEach(function (g) { gName[g.id] = g.name; });
+    arr(F.optionen).forEach(function (o) { label[o.wert] = o.label; });
+    arr(plan.tage).forEach(function (t) { arr(t.uebungen).forEach(function (u) { alleU.push(u); }); });
+    var weg = arr(k.extra_muskeln).filter(function (id, i, l) {
+      var n = gName[id] || id;
+      if (l.indexOf(id) !== i || alleU.some(function (u) { return (u.notiz || '') === 'Extra: ' + n; })) return false;
+      return arr(plan.warnungen).some(function (w) { return String(w).indexOf('Extra ' + n + ':') === 0 && /zu viele Sätze/.test(w); });
+    });
+    if (!weg.length) return '';
+    var namen = weg.map(function (id) { return label[id] || gName[id] || id; });
+    var liste = namen.length < 2 ? namen.join('') : namen.slice(0, -1).join(', ') + ' und ' + namen[namen.length - 1];
+    return String(weg.length === 1 ? F.text_grenze_1 : (F.text_grenze_n || F.text_grenze_1)).replace('{namen}', liste);
+  }
   function extraEinbauen(W, ctx, tag, gruppen, imTag, warnungen) {
     var ex = W.regeln.extra_muskeln || {};
     gruppen.forEach(function (g) {
@@ -1528,6 +1547,8 @@
       var vb = planVerbessern(W, k, plan, { vorlage: plan });
       if (vb.aenderungen.length) { plan = vb.plan; plan.verbessert = vb.aenderungen; plan.qualitaet = pruefeQualitaet(W, plan); }
     }
+    var grenzText = extraGrenzeHinweis(W, k, plan);   // Wunsch-Muskeln (24.11.2026): ehrlich sagen, wenn die Extra-Übung wegen der Wochengrenze wegfällt
+    if (grenzText && arr(plan.hinweise).indexOf(grenzText) < 0) plan.hinweise = arr(plan.hinweise).concat([grenzText]);
     return plan;
   }
 
@@ -1623,8 +1644,12 @@
       var exDrin = extra.filter(function (id) { return alle.some(function (x) { return (x.u.notiz || '') === 'Extra: ' + (gName[id] || id); }); });
       var exGeht = extra.filter(function (id) { return exDrin.indexOf(id) < 0 && liste_(plan.warnungen).some(function (w) { return String(w).indexOf('Extra ' + (gName[id] || id) + ':') === 0; }); });
       var exFehlt = extra.filter(function (id) { return exDrin.indexOf(id) < 0 && exGeht.indexOf(id) < 0; });
+      var exGrund = function (id) {   // Grund aus der Warnung des Generators: Wochengrenze schon erreicht oder keine passende Übung
+        var n = gName[id] || id, w = liste_(plan.warnungen).filter(function (x) { return String(x).indexOf('Extra ' + n + ':') === 0; })[0] || '', m = /höchstens (\d+)/.exec(w);
+        return /zu viele Sätze/.test(w) ? n + ' bekommt schon die Höchstzahl an Sätzen pro Woche' + (m ? ' (' + m[1] + ')' : '') + ', darum keine Extra-Übung.' : 'Für ' + n + ' gibt es keine passende Übung (Level, Beschwerden oder Geräte).';
+      };
       punkt('Extra-Muskeln', exFehlt.length ? false : exGeht.length ? null : true,
-        (exDrin.length ? 'Extra für ' + liste(exDrin.map(function (id) { return gName[id] || id; })) + ' ist im Plan. ' : '') + (exGeht.length ? 'Für ' + liste(exGeht.map(function (id) { return gName[id] || id; })) + ' gibt es keine passende Übung (Level, Beschwerden oder Geräte). ' : '') + (exFehlt.length ? 'Fehlt im Plan: ' + liste(exFehlt.map(function (id) { return gName[id] || id; })) + '.' : ''));
+        (exDrin.length ? 'Extra für ' + liste(exDrin.map(function (id) { return gName[id] || id; })) + ' ist im Plan. ' : '') + (exGeht.length ? exGeht.map(exGrund).join(' ') + ' ' : '') + (exFehlt.length ? 'Fehlt im Plan: ' + liste(exFehlt.map(function (id) { return gName[id] || id; })) + '.' : ''));
     }
 
     // 11. Wunsch-Aufteilung

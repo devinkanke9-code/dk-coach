@@ -291,6 +291,7 @@
     if (f.typ === 'mehrfach') {   // „Keine“ (exklusiv) nur, wenn sonst nichts gewählt ist
       var liste = [], ex = null;
       [].concat(v).forEach(function (x) { var o = finde(x); if (!o) return; if (o.exklusiv) ex = o.wert; else if (liste.indexOf(o.wert) < 0) liste.push(o.wert); });
+      if (f.max_wahl > 0 && liste.length > f.max_wahl) liste = liste.slice(0, f.max_wahl);   // Höchstzahl (z. B. Wunsch-Muskeln, 24.11.2026)
       return liste.length ? liste : ex != null ? [ex] : undefined;
     }
     return undefined;
