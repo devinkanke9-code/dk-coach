@@ -671,6 +671,7 @@ function beispielEnde() {
    Bewegung: nur Planvorschau und Devins Abschnitt erscheinen sanft (8 px, 220 ms, einmal). Ohne JavaScript oder bei weniger Bewegung steht alles sofort da. */
 // Analyse-Schritte wie analyse.html → schritte(): Über dich 1 + Fragen 10 + Gesundheits-Check 1 + Essen 1 (fällt bei Essstörung weg) + Nährwerte 1 + Einwilligung 1 + Abschicken 1.
 // Höchstens 16, mit Essstörung 15. Ändert sich der Ablauf in analyse.html, hier mitändern (vorher stand 16 im Text und 18 im Kommentar).
+const PLAETZE = 'Maximal 10 Plätze in den ersten zwei Monaten.';   // Devin 24.11.2026: nur der Satz, kein Zähler
 const ANALYSE_SCHRITTE = 16, ANALYSE_MINUTEN = 10;
 const analyseAngefangen = () => { const a = speicher.lies('dk_analyse10', null); return !!(a && !a.gesendet && a.schritt > 0); };   // Kunden-Test 23.11.2026: angefangene Analyse heißt „fortsetzen“
 const analyseKnopf = (klasse) => h('a', { class: 'knopf haupt ' + (klasse || ''), href: 'analyse/', text: analyseAngefangen() ? 'Analyse fortsetzen' : 'Analyse starten' });
@@ -746,7 +747,7 @@ function startseite() {
         h('p', { class: 'rg-wie', text: 'Du beantwortest ein paar Fragen. Ich schaue mir deine Antworten an und erstelle deinen Plan.' }),
         h('p', { class: 'rg-dauer leise klein', text: 'Höchstens ' + ANALYSE_SCHRITTE + ' kurze Schritte, etwa ' + ANALYSE_MINUTEN + ' Minuten. Dein Entwurf bleibt auf diesem Handy, du kannst jederzeit weitermachen.' }),
         h('div', { class: 'rg-aktionen' }, analyseKnopf('rg-gross'), beispielKnopf('zweit rg-gross')),
-        a ? h('p', { class: 'rg-preis' }, h('b', { text: gratisZeit(a) + ' kostenlos' }), ', endet automatisch. Danach ' + a.preis + ' € im Monat, nur wenn du weitermachen willst.') : null,
+        a ? h('p', { class: 'rg-preis' }, h('b', { text: gratisZeit(a) + ' kostenlos' }), ', endet automatisch. Danach ' + a.preis + ' € im Monat, nur wenn du weitermachen willst. ', h('span', { class: 'rg-plaetze', text: PLAETZE })) : null,
         codeZugang()),
       h('div', { class: 'rg-held-bild' }, h('img', { src: heldBild(), alt: 'Das DK-Gym: Blick durch die Glasfront aufs Meer, davor Bänke und Geräte', width: 1600, height: 900, fetchpriority: 'high', decoding: 'async' }))),
     h('section', { class: 'rg-teil rg-erscheint', 'aria-labelledby': 'rg-vorschau' },
@@ -763,7 +764,8 @@ function startseite() {
         h('li', null, h('b', { text: 'Du trainierst mit deinem Plan.' }), h('span', { class: 'leise', text: 'Link und Code von Devin öffnen ihn auf deinem Handy, auch ohne Internet.' })))),
     a ? h('section', { class: 'rg-teil rg-angebot', id: 'preis', 'aria-labelledby': 'rg-preis' },
       h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Leistung und Preis' }), h('h2', { id: 'rg-preis', text: gratisZeit(a) + ' kostenlos.' }),
-        h('p', { class: 'leise', text: 'Keine Zahlungsdaten für die Gratiszeit. Sie endet automatisch, du musst nichts kündigen.' })),
+        h('p', { class: 'leise', text: 'Keine Zahlungsdaten für die Gratiszeit. Sie endet automatisch, du musst nichts kündigen.' }),
+        h('p', { class: 'rg-plaetze', text: PLAETZE })),
       h('div', { class: 'rg-preis-karte' },
         h('ul', { class: 'rg-leistung' }, a.punkte.map((x) => h('li', { text: x }))),
         h('p', { class: 'rg-betrag' }, h('b', { class: 'zahl', text: a.preis + ' €' }), h('span', { text: ' im Monat danach' })),
