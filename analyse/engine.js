@@ -1531,6 +1531,123 @@
     return plan;
   }
 
+  /* ---------- Passungs-Check (23.11.2026, Trainings-Agent) ----------
+   * Devin: Plan „perfekt angepasst an den Kunden und seine Analyse“. Vergleicht Punkt für Punkt, was der Kunde gesagt hat, mit dem fertigen Plan:
+   * Tage, Zeit, Ort und Geräte, Ziel (Wiederholungen), Level, Beschwerden, nicht gewünschte Übungen, Lieblingsübungen, Schwerpunkt, Extra-Muskeln, Schlaf.
+   * Ändert nichts am Plan. ok false = steht nicht so im Plan (der Autopilot sendet dann nicht), ok null = Hinweis. Arbeitsfassung mit Test:
+   * D:\DK-Coach\arbeit-trainingsagent\passung-pruefen.js (der Teil hier ist wörtlich von dort). */
+  function passungPruefenMit(W, E, kunde, plan) {
+    var ZIEL = { muskelaufbau: 'Muskelaufbau', kraft: 'Kraft', fettabbau: 'Fettabbau', gesundheit: 'Gesundheit', fitness_allgemein: 'allgemeine Fitness', ruecken_gesund: 'gesunder Rücken', beweglichkeit: 'Beweglichkeit', ausdauer: 'Ausdauer' };
+    var ORT = { gym: 'im Studio', zuhause: 'zu Hause', beides: 'im Studio oder zu Hause' };
+    var BESCHWERDE = { knie: 'Knie', schulter: 'Schulter', ruecken: 'Rücken', nacken: 'Nacken', huefte: 'Hüfte', ellbogen: 'Ellbogen', handgelenk: 'Handgelenk', sonstiges: 'Sonstiges' };
+    var liste_ = function (x) { return Array.isArray(x) ? x : x == null || x === '' ? [] : [x]; };
+    var liste = function (namen) { return namen.length <= 1 ? namen.join('') : namen.slice(0, -1).join(', ') + ' und ' + namen[namen.length - 1]; };
+    var k = kunde || {}, punkte = [], nicht = [];
+    function punkt(was, ok, text) { punkte.push({ was: was, ok: ok, text: text }); }
+    if (!plan || plan.status === 'stopp' || plan.status === 'fehler' || !liste_(plan.tage).length) {
+      punkt('Plan', false, 'Es gibt keinen fertigen Plan (Stopp oder leer). Der Fall bleibt bei Devin.');
+      return { punkte: punkte, offen: 1, text: '', nicht_genutzt: nicht };
+    }
+    var tage = liste_(plan.tage), alle = [], ctx = null, erlaubt = null;
+    tage.forEach(function (t) { liste_(t.uebungen).forEach(function (u) { alle.push({ u: u, tag: t, ex: u.eigen ? null : (W.index[u.id] || null) }); }); });
+    try { ctx = E.kontext(W, k); erlaubt = {}; liste_(E.erlaubteUebungen(W, k)).forEach(function (x) { erlaubt[x.id || x] = true; }); } catch (e) { erlaubt = null; }
+    var name = function (id) { var x = W.index[id]; return x ? x.name : id; };
+    var slotUebung = function (x) { return /^(Schwerpunkt|Extra)/.test(x.u.notiz || ''); };   // Sätze und Wiederholungen kommen aus der Regel des Schwerpunkts oder Extras
+
+    // 1. Tage
+    var soll = +k.tage || +k.tage_pro_woche || null;
+    if (soll) punkt('Trainingstage', tage.length === soll, tage.length === soll ? 'Du kannst ' + soll + ' Tage pro Woche, der Plan hat ' + tage.length + ' Einheiten.' : 'Gewünscht sind ' + soll + ' Tage, der Plan hat ' + tage.length + ' Einheiten.');
+    else punkt('Trainingstage', null, 'Keine Angabe zu den Tagen, der Plan hat ' + tage.length + ' Einheiten.');
+
+    // 2. Zeit pro Einheit (2 Minuten Spielraum; passt es nicht, warnt auch der Generator selbst)
+    var minuten = +k.minuten_pro_einheit || +k.minuten || null, laengste = Math.max.apply(null, tage.map(function (t) { return +t.dauer_min || 0; }));
+    if (minuten && laengste) punkt('Zeit pro Training', laengste <= minuten + 2, laengste <= minuten + 2 ? 'Du hast ' + minuten + ' Minuten, die längste Einheit dauert etwa ' + Math.round(laengste) + ' Minuten.' : 'Du hast ' + minuten + ' Minuten, die längste Einheit dauert aber etwa ' + Math.round(laengste) + ' Minuten.');
+    else punkt('Zeit pro Training', null, 'Keine Angabe zur Zeit.');
+
+    // 3. Ort und Geräte: jede Übung muss für diesen Kunden erlaubt sein (Ort, Geräte, Level, Beschwerden, Alter: dieselbe Prüfung wie im Generator)
+    if (erlaubt) {
+      var fremd = alle.filter(function (x) { return x.ex && !erlaubt[x.ex.id]; });
+      punkt('Ort und Geräte', fremd.length === 0, fremd.length === 0 ? 'Alle ' + alle.length + ' Übungen gehen ' + (ORT[k.ort] || 'an deinem Trainingsort') + ' mit dem, was du hast.' : fremd.length + ' Übung(en) passen nicht zu Ort, Geräten, Level oder Beschwerden: ' + liste(fremd.slice(0, 4).map(function (x) { return x.u.name || x.u.id; })) + '.');
+    } else punkt('Ort und Geräte', null, 'Nicht prüfbar (Generator gibt keine Liste der erlaubten Übungen).');
+
+    // 4. Ziel → Wiederholungen: jede Übung genau mit den Wiederholungen, die der Generator für dieses Ziel, dieses Level und diese Übung vergibt
+    // (Schwerpunkt- und Extra-Übungen ausgenommen: Dort gibt die Regel des Schwerpunkts die Wiederholungen vor, z. B. wenige Sprünge).
+    var mitWdh = alle.filter(function (x) { return x.ex && !slotUebung(x) && x.u.einheit === 'wdh' && Array.isArray(x.u.wdh); }), anders = [], zaehl = {};
+    mitWdh.forEach(function (x) {
+      var soll4 = null; try { soll4 = E.planUebung(W, k, { id: x.u.id, saetze: x.u.saetze }); } catch (e) { soll4 = null; }
+      if (soll4 && Array.isArray(soll4.wdh) && (soll4.wdh[0] !== x.u.wdh[0] || soll4.wdh[1] !== x.u.wdh[1])) anders.push(x);
+      if (x.ex.rolle === 'grund') { var key = x.u.wdh[0] + ' bis ' + x.u.wdh[1]; zaehl[key] = (zaehl[key] || 0) + 1; }
+    });
+    var meist = Object.keys(zaehl).sort(function (p, q) { return zaehl[q] - zaehl[p]; })[0];
+    if (!mitWdh.length) punkt('Ziel', null, 'Keine Übung mit Wiederholungen im Plan.');
+    else punkt('Ziel', anders.length === 0, anders.length === 0 ? 'Dein Ziel ist ' + (ZIEL[k.ziel] || k.ziel) + ': Die meisten Grundübungen laufen mit ' + (meist || 'passenden') + ' Wiederholungen.' : anders.length + ' Übung(en) haben andere Wiederholungen, als die Regeln für das Ziel ' + (ZIEL[k.ziel] || k.ziel) + ' vorgeben: ' + liste(anders.slice(0, 3).map(function (x) { return x.u.name; })) + '.');
+
+    // 5. Level
+    var lv = +k.level || (ctx && +ctx.level) || null;
+    if (lv) { var zuSchwer = alle.filter(function (x) { return x.ex && +x.ex.level_min > lv; });
+      punkt('Level', zuSchwer.length === 0, zuSchwer.length === 0 ? 'Alle Übungen passen zu Level ' + lv + '.' : zuSchwer.length + ' Übung(en) sind für ein höheres Level gedacht: ' + liste(zuSchwer.slice(0, 3).map(function (x) { return x.u.name; })) + '.'); }
+
+    // 6. Beschwerden: gewählt → der Plan nennt sie (Hinweis oder Warnung); gesperrte Übungen fallen schon in Punkt 3 auf
+    var bes = liste_(k.beschwerden).filter(function (x) { return x && x !== 'keine'; });
+    if (bes.length) { var texte = JSON.stringify([plan.hinweise, plan.warnungen, plan.sicherheit, tage.map(function (t) { return t.hinweis; })]);
+      var ohne = bes.filter(function (x) { return texte.indexOf(BESCHWERDE[x] || x) < 0; });
+      punkt('Beschwerden', ohne.length === 0, ohne.length === 0 ? 'Der Plan nimmt Rücksicht auf: ' + liste(bes.map(function (x) { return BESCHWERDE[x] || x; })) + '.' : 'Zu ' + liste(ohne.map(function (x) { return BESCHWERDE[x] || x; })) + ' steht kein Hinweis im Plan.'); }
+
+    // 7. Übungen, die er nicht will
+    var aus = liste_(k.ausschluss_ids), dochDrin = aus.filter(function (id) { return alle.some(function (x) { return x.u.id === id; }); });
+    if (aus.length) punkt('Nicht gewünscht', dochDrin.length === 0, dochDrin.length === 0 ? 'Was du nicht machen willst, ist nicht im Plan (' + liste(aus.slice(0, 4).map(name)) + ').' : 'Trotz Wunsch im Plan: ' + liste(dochDrin.map(name)) + '.');
+
+    // 8. Lieblingsübungen: Sie bekommen beim Bauen Vorrang, sind aber kein Muss (regeln_training.json → vorlieben). Fehlt eine, nennt der Plan den Grund.
+    //    Darum nur ein Hinweis (ok null), kein „passt nicht“.
+    var lieb = liste_(k.liebling_ids), drin = lieb.filter(function (id) { return alle.some(function (x) { return x.u.id === id; }); }), fehlt = lieb.filter(function (id) { return drin.indexOf(id) < 0; });
+    if (lieb.length) {
+      var grundVon = {}; liste_(plan.vorlieben && plan.vorlieben.liebling).forEach(function (x) { if (x && x.id) grundVon[x.id] = x.grund || ''; });
+      var t8 = (drin.length ? 'Drin: ' + liste(drin.map(name)) + '. ' : '') + fehlt.map(function (id) { return name(id) + ' fehlt' + (grundVon[id] ? ': ' + grundVon[id] : '') + '.'; }).join(' ');
+      punkt('Lieblingsübungen', fehlt.length ? null : true, t8.trim());
+    }
+
+    // 9. Schwerpunkt (setzt Devin): jeder gewählte Schwerpunkt mit eigener Übung im Plan, sonst der Grund aus dem Generator
+    var sp = liste_(k.schwerpunkt);
+    if (sp.length) {
+      var spPlan = {}; liste_(plan.schwerpunkte).forEach(function (x) { if (x && x.id) spPlan[x.id] = x; });
+      var spDrin = sp.filter(function (id) { return spPlan[id] && liste_(spPlan[id].uebungen).length; }), spGesperrt = sp.filter(function (id) { return spPlan[id] && spPlan[id].gesperrt; });
+      var spFehlt = sp.filter(function (id) { return spDrin.indexOf(id) < 0 && spGesperrt.indexOf(id) < 0; }), spName = function (id) { return (spPlan[id] && spPlan[id].name) || id; };
+      punkt('Schwerpunkt', spFehlt.length ? false : spGesperrt.length ? null : true,
+        (spDrin.length ? 'Schwerpunkt ' + liste(spDrin.map(spName)) + ' mit eigener Übung im Plan. ' : '') + (spGesperrt.length ? liste(spGesperrt.map(spName)) + ' ist gesperrt (' + liste(spGesperrt.map(function (id) { return spPlan[id].gesperrt; })) + '). ' : '') + (spFehlt.length ? 'Fehlt im Plan: ' + liste(spFehlt.map(spName)) + '.' : ''));
+    }
+
+    // 10. Extra-Muskeln (aus seinen Worten, Devin bestätigt): je Gruppe eine Extra-Übung, sonst die Warnung des Generators
+    var extra = liste_(k.extra_muskeln);
+    if (extra.length) {
+      var gName = {}; liste_(W.regeln && W.regeln.split_bausteine && W.regeln.split_bausteine.gruppen).forEach(function (g) { gName[g.id] = g.name; });
+      var exDrin = extra.filter(function (id) { return alle.some(function (x) { return (x.u.notiz || '') === 'Extra: ' + (gName[id] || id); }); });
+      var exGeht = extra.filter(function (id) { return exDrin.indexOf(id) < 0 && liste_(plan.warnungen).some(function (w) { return String(w).indexOf('Extra ' + (gName[id] || id) + ':') === 0; }); });
+      var exFehlt = extra.filter(function (id) { return exDrin.indexOf(id) < 0 && exGeht.indexOf(id) < 0; });
+      punkt('Extra-Muskeln', exFehlt.length ? false : exGeht.length ? null : true,
+        (exDrin.length ? 'Extra für ' + liste(exDrin.map(function (id) { return gName[id] || id; })) + ' ist im Plan. ' : '') + (exGeht.length ? 'Für ' + liste(exGeht.map(function (id) { return gName[id] || id; })) + ' gibt es keine passende Übung (Level, Beschwerden oder Geräte). ' : '') + (exFehlt.length ? 'Fehlt im Plan: ' + liste(exFehlt.map(function (id) { return gName[id] || id; })) + '.' : ''));
+    }
+
+    // 11. Wunsch-Aufteilung
+    if (k.split_art && k.split_art !== 'egal') punkt('Aufteilung der Woche', null, 'Gewünscht: ' + k.split_art + '. Der Plan heißt: ' + tage.map(function (t) { return t.name; }).join(', ') + '.');
+
+    // 12. Schlaf (seit 23.11.2026 im Generator): eigener Punkt, sobald der Plan die Schlaf-Stufe kennt (plan.schlaf)
+    if (plan.schlaf && plan.schlaf.stufe && plan.schlaf.stufe !== 'gruen') {
+      var sagtEs = JSON.stringify(plan.hinweise || '').indexOf('Du schläfst etwa') >= 0, sw = +plan.schlaf.saetze_weniger || 0;
+      punkt('Schlaf', sagtEs, sagtEs ? 'Du schläfst etwa ' + String(plan.schlaf.stunden).replace('.', ',') + ' Stunden (Stufe „' + plan.schlaf.name + '“): ' + (sw ? sw + (sw === 1 ? ' Satz' : ' Sätze') + ' pro Woche weniger und ' : '') + 'mehr Reserve bei freien Grundübungen.' : 'Die Schlaf-Stufe steht im Plan, aber der Hinweis für den Kunden fehlt.');
+    } else if (!plan.schlaf && +k.schlaf_stunden && +k.schlaf_stunden < 6) nicht.push('Wenig Schlaf: ' + k.schlaf_stunden + ' Stunden');
+
+    // Was der Kunde gesagt hat, der Generator aber (noch) nicht benutzt: ehrlich aufzählen, damit Devin es sieht
+    var sagt = function (feld, text) { var v = k[feld]; if (v != null && v !== '' && !(Array.isArray(v) && !v.length) && v !== 'keins' && v !== 'egal' && v !== false) nicht.push(text + ': ' + (Array.isArray(v) ? v.join(', ') : String(v)).slice(0, 90)); };
+    sagt('nebenziel', 'Nebenziel'); sagt('ziele_weitere', 'Weitere Ziele'); sagt('andere_sportarten', 'Anderer Sport'); sagt('trainingspause', 'Trainingspause');
+    sagt('feste_tage', 'Feste Tage'); sagt('kurzeinheit_minuten', 'Zeit an einem schlechten Tag'); sagt('schichtarbeit', 'Schichtarbeit');
+    if (+k.stress >= 8) nicht.push('Hoher Stress: ' + k.stress + ' von 10');
+    sagt('wunsch_training', 'Wunsch in eigenen Worten'); sagt('nicht_aufgeben_details', 'Will er nicht aufgeben'); sagt('cardio_vorliebe', 'Cardio-Vorliebe');
+
+    var offen = punkte.filter(function (p) { return p.ok === false; }).length;
+    var gut = punkte.filter(function (p) { return p.ok === true; }).map(function (p) { return p.text; });
+    return { punkte: punkte, offen: offen, text: offen ? '' : gut.join(' '), nicht_genutzt: nicht };
+  }
+  function passungPruefen(W, kundeIn, plan) { return passungPruefenMit(W, API, kundeIn, plan); }
   function pruefeQualitaet(W, plan) {
     var p = [];
     var ziel = plan.volumen.ziel_pro_muskel;
@@ -2519,6 +2636,7 @@
     pruefeQualitaet: pruefeQualitaet,
     // A-Lizenz-Checkliste (13.11.2026): prüft den aktuellen Plan, ändert nichts; Zähl-Helfer auch für app/pruefe-faelle.js
     planPruefen: planPruefen,
+    passungPruefen: passungPruefen,   // Trainings-Agent (23.11.2026): passt der Plan zur Analyse?
     planVerbessern: planVerbessern,
     PRUEF_PUNKTE: PRUEF_PUNKTE,
     muskelTage: muskelTage,
