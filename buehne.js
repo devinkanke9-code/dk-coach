@@ -62,13 +62,17 @@ export function buehne({ lade3d, fotoGross }) {
       if (!d.a) return;
       if (!ansicht) el.classList.add('laedt');
       let M;
-      try { M = await lade3d(); } catch (e) { el.classList.remove('laedt'); el.classList.add('ohne'); return; }
+      try { M = await lade3d(); } catch (e) {   // 24.11.2026: Figur lädt nicht (offline, Speicher knapp): ehrlicher Hinweis statt „keine 3D-Figur“
+        el.classList.remove('laedt'); el.classList.add('ohne', 'fehlt');
+        el.dataset.hinweis = (d.n ? d.n + ': ' : '') + 'Die 3D-Figur lädt gerade nicht, zum Beispiel ohne Internet. Training und Eintragen gehen trotzdem.'; return;
+      }
+      el.classList.remove('fehlt');
       el.classList.remove('laedt');
       if (!el.isConnected || gezeigt !== d) return;
       if (!ansicht) {
         // Licht und Ringe der Bühne in den Farben der Seite (Farbwelt in stil.css)
         const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || undefined;
-        ansicht = new M.Ansicht(canvas, { effekte: true, hell: !/^(gold|sport)$/.test(document.documentElement.dataset.look || ''), farbeA: css('--verlauf-a'), farbeB: css('--verlauf-b') });
+        ansicht = new M.Ansicht(canvas, { effekte: true, hell: !/^(gold|sport|champagner)$/.test(document.documentElement.dataset.look || ''), farbeA: css('--verlauf-a'), farbeB: css('--verlauf-b') });
         klarerBoden(ansicht);
         ansicht.beiDrehStopp = () => auto.setAttribute('aria-pressed', 'false');
         ansicht.start();
@@ -191,7 +195,7 @@ export async function standbilder(lade3d, ziele, datenZu) {
   if (!standAnsicht) {
     const c = document.createElement('canvas'); c.width = 192; c.height = 192; c.style.cssText = 'position:fixed;left:-500px;top:0;width:192px;height:192px';
     document.body.append(c);
-    standAnsicht = new M.Ansicht(c, { standbild: true, hell: !/^(gold|sport)$/.test(document.documentElement.dataset.look || ''), hintergrund: document.documentElement.dataset.look === 'sport' ? 0x1a1c20 : document.documentElement.dataset.look === 'gold' ? 0x17171c : document.documentElement.dataset.look === 'klar' ? 0xf5f5f7 : 0xd6ecf8, farbeA: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-a').trim(), farbeB: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-b').trim() });
+    standAnsicht = new M.Ansicht(c, { standbild: true, hell: !/^(gold|sport|champagner)$/.test(document.documentElement.dataset.look || ''), hintergrund: document.documentElement.dataset.look === 'sport' ? 0x1a1c20 : document.documentElement.dataset.look === 'champagner' ? 0x202124 : document.documentElement.dataset.look === 'gold' ? 0x17171c : document.documentElement.dataset.look === 'klar' ? 0xf5f5f7 : 0xd6ecf8, farbeA: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-a').trim(), farbeB: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-b').trim() });
     klarerBoden(standAnsicht);
   }
   for (const el of ziele) {

@@ -89,9 +89,10 @@
  * Früher: Menü und location.reload(). Das war langsam, sprang auf „Heute“ zurück, und wo der Speicher fehlt (abgeschirmte Trainer-Seite), ging die Wahl beim Neuladen verloren. */
 (function () {
   var SCHLUESSEL = 'dk_look';
-  var WELTEN = [['sport', 'Sport'], ['gold', 'Schwarz-Gold'], ['lagune', 'Lagune'], ['klar', 'Lounge-Weiß']].filter(function (w) { return w[0] !== 'sport' || !!document.querySelector('link[href$="sport.css"]'); });
+  var WELTEN = [['champagner', 'Champagner'], ['sport', 'Sport'], ['gold', 'Schwarz-Gold'], ['lagune', 'Lagune'], ['klar', 'Lounge-Weiß']].filter(function (w) { return (w[0] !== 'sport' && w[0] !== 'champagner') || !!document.querySelector('link[href$="sport.css"]'); });
+  // Champagner (24.11.2026) steht wie Sport in sport.css, also nur in der Kunden-App
   // Sport nur, wo sport.css geladen ist: Die Trainer-Seite nimmt diese Datei auch (app/build.js), hat aber kein sport.css (16.11.2026)
-  var LEISTE = { klar: '#F5F5F7', gold: '#060608', sport: '#111215', lagune: '#86CBEE' };   // Farbe der Handy-Leiste, wie im frühen Skript in index.html
+  var LEISTE = { klar: '#F5F5F7', gold: '#060608', sport: '#111215', champagner: '#131416', lagune: '#86CBEE' };   // Farbe der Handy-Leiste, wie im frühen Skript in index.html
   var root = document.documentElement, schild = null, schildUhr = 0, bald = 0;
   function lies() { try { return localStorage.getItem(SCHLUESSEL) || ''; } catch (e) { return ''; } }
   function jetzt() { return root.dataset.look || 'lagune'; }
@@ -278,7 +279,7 @@
   var pfad = meta.getAttribute('content') || '', root = document.documentElement, v = null;
   var still = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) || (navigator.connection && navigator.connection.saveData);
   // Studio-Hintergrund (17.11.2026): Sport und Schwarz-Gold zeigen Devins Studio-Bild, weichgezeichnet (hoch fürs Handy, breit für große Bildschirme), Lagune eine helle Fassung davon. Klar bleibt ohne.
-  function art() { var l = root.dataset.look; return l === 'klar' ? '' : l === 'gold' || l === 'sport' ? 'studio' : 'studio-hell'; }
+  function art() { var l = root.dataset.look; return l === 'klar' ? '' : l === 'gold' || l === 'sport' || l === 'champagner' ? 'studio' : 'studio-hell'; }
   var breitMq = window.matchMedia ? window.matchMedia('(min-aspect-ratio: 1/1)') : null;
   function studioBild() { if (v && v.tagName === 'IMG') v.src = pfad + 'hintergrund-' + (breitMq && breitMq.matches ? 'breit' : 'hoch') + (v.dataset.art === 'studio-hell' ? '-hell' : '') + '.jpg'; }
   if (breitMq) { if (breitMq.addEventListener) breitMq.addEventListener('change', studioBild); else if (breitMq.addListener) breitMq.addListener(studioBild); }

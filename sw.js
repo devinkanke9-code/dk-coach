@@ -1,8 +1,15 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = 'f3c6550a4d';
-const DATEIEN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'status.js', 'figurwahl.js', 'skin-standard.jpg', 'skin-athlet.jpg', 'skin-kraftpaket.jpg', 'skin-laeufer.jpg', 'skin-gold.jpg', 'hintergrund-hoch.jpg', 'hintergrund-breit.jpg', 'hintergrund-hoch-hell.jpg', 'hintergrund-breit-hell.jpg', 'glas.js', 'gefuehl.js', 'raum.js', 'spiel.js', 'bestleistung.js', 'statistik.js', 'statistik-grafik.js', 'rang.js', 'medaille.js', 'pr-raum.js', 'relief-athlet.png', 'stil.css', 'sport.css', 'sport.js',
-  'schriften/schriften.css', 'schriften/figtree.woff2', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
+const VERSION = 'r2411a';
+// Offline-Kern (24.11.2026, Kundenperspektive „schlechter Empfang im Gym“): Plan, Training, Eintragen und alle statisch geladenen Module.
+// Kommt ohne den Kern keine neue Fassung zustande, bleibt die alte. 3D-Figur, Gym und Bilder sind optional: Sie kommen mit, wenn es klappt,
+// fehlt eins (Funkloch, Speicher knapp), gilt die neue Fassung trotzdem und das Training läuft ohne Figur (statische Vorschau).
+const KERN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'status.js', 'figurwahl.js', 'glas.js', 'gefuehl.js',
+  'spiel.js', 'bestleistung.js', 'statistik.js', 'statistik-grafik.js', 'rang.js', 'medaille.js', 'pr-raum.js', 'stil.css', 'sport.css', 'sport.js',
+  'schriften/schriften.css', 'schriften/figtree.woff2', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const OPTIONAL = ['skin-standard.jpg', 'skin-athlet.jpg', 'skin-kraftpaket.jpg', 'skin-laeufer.jpg', 'skin-gold.jpg', 'hintergrund-hoch.jpg', 'hintergrund-breit.jpg', 'hintergrund-hoch-hell.jpg', 'hintergrund-breit-hell.jpg',
+  'raum.js', 'relief-athlet.png', 'figur.js', 'figur-modell.js', 'einleitung.js', 'bewegungen.js', 'vendor/three.module.min.js', 'vendor/OrbitControls.js',
   'koerper.bin', 'koerper-haut.jpg', 'koerper-haut-n.jpg', 'koerper-haar.jpg', 'koerper-augen.jpg'];
+const DATEIEN = KERN.concat(OPTIONAL);   // alle zusammen: so viele Dateien wie vorher
 const NAME = 'dk-coach-' + VERSION;
 
 self.addEventListener('install', (e) => {
@@ -10,7 +17,9 @@ self.addEventListener('install', (e) => {
   // cache: 'reload' = am Browser-Zwischenspeicher vorbei (GitHub Pages hält Dateien 10 Minuten), sonst landet eine alte app.js in der neuen Fassung
   // 16.11.2026: Eine neue Fassung wartet, bis die App „Jetzt aktualisieren“ sagt (oder gerade geöffnet wurde). So bricht nie ein laufendes Training ab.
   // Erste Installation oder eine ältere App-Fassung ohne diesen Knopf (kein Merker dk-flags): sofort übernehmen wie bisher, sonst bliebe sie hängen.
-  e.waitUntil(caches.open(NAME).then((c) => c.addAll(DATEIEN.map((u) => new Request(u, { cache: 'reload' }))))
+  // 24.11.2026: Kern alles oder nichts, optionale Dateien einzeln (ein Fehler dort hält die neue Fassung nicht auf)
+  const holen = (u) => new Request(u, { cache: 'reload' });
+  e.waitUntil(caches.open(NAME).then((c) => c.addAll(KERN.map(holen)).then(() => Promise.all(OPTIONAL.map((u) => c.add(holen(u)).catch(() => {})))))
     .then(() => (self.registration.active ? caches.has('dk-flags') : false)).then((kannWarten) => { if (!kannWarten) return self.skipWaiting(); }));
 });
 self.addEventListener('message', (e) => { if (e.data === 'jetzt') self.skipWaiting(); });

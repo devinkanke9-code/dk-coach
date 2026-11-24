@@ -282,7 +282,7 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
 export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status, pr, prTuer, abTuer, test }) {   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
   const LIVE = !pr;   // Live-Gym: frei laufen (WASD, Maus, zwei Knüppel), Anzeige wie im Spiel, Einrichtung der Vorlage
   const LOOKL = true;   // Look der Vorlage (Farben, Marmor mit Spiegelung, Glasdach, Schein, Qualitätsstufen) seit 10.11. nachts auch im PR-Raum; dort bleiben orangenes Licht, Gummiplatten und Scheiben
-  const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold' || LOOK === 'sport', P = GOLD ? FARBEN_LIVE : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;   // seit 18.11.2026 folgt der Raum der Farbwahl: Schwarz-Gold und Sport dunkel (Vorlage), Klar und Lagune hell
+  const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold' || LOOK === 'sport' || LOOK === 'champagner', P = GOLD ? FARBEN_LIVE : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;   // seit 18.11.2026 folgt der Raum der Farbwahl: Schwarz-Gold und Sport dunkel (Vorlage), Klar und Lagune hell
   let zeitWahl = null; try { zeitWahl = localStorage.getItem('dk_gym_zeit'); } catch (e) {}
   const nativNacht = GOLD, zeitNacht = zeitWahl === 'nacht' || (zeitWahl !== 'tag' && nativNacht);   // Tag oder Nacht: ohne Wahl gilt die Farbwelt (Schwarz-Gold ist Nacht)
   const TAGP = nativNacht ? (LOOKL ? AUSSEN_ABEND : AUSSEN_TAG) : P, NACHTP = nativNacht ? P : AUSSEN_NACHT;   // die Farben für draußen bei Tag und bei Nacht (Live-Gym: der helle Stand ist der Abend)

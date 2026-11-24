@@ -21,7 +21,7 @@
   var geplant = false;
   function alle() {
     geplant = false;
-    if (!root.classList.contains('dk-wellen-an') || root.dataset.look === 'sport') return;   // Sport: Karten bleiben ruhig und dicht
+    if (!root.classList.contains('dk-wellen-an') || root.dataset.look === 'sport' || root.dataset.look === 'champagner') return;   // Sport: Karten bleiben ruhig und dicht
     var liste = document.querySelectorAll(ZIEL);
     for (var k = 0; k < liste.length; k++) markieren(liste[k]);
   }
