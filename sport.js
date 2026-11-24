@@ -19,7 +19,7 @@
   var mx = -1000, my = -1000, sx = -1000, sy = -1000, sichtbar = false;
   var karte = null, kRect = null;
 
-  function aktiv() { return root.dataset.look === 'sport' && zeiger.matches && !ruhig.matches; }
+  function aktiv() { return (root.dataset.look === 'sport' || root.dataset.look === 'champagner') && zeiger.matches && !ruhig.matches; }
 
   function scheinBauen() {
     if (schein) return;
@@ -203,6 +203,7 @@
         if (el.dataset.spGesehen) continue;
         el.dataset.spGesehen = '1';
         if (ansicht.classList.contains('still')) continue;   // Ruhig und schön (19.11.2026): dieselbe Seite neu gezeichnet, kein zweites Einblenden
+        if (document.body.classList.contains('start')) continue;   // Startseite (24.11.2026): eigenes, sparsames Erscheinen an zwei Stellen (app.js → rundgangBeobachten)
         if (el.getBoundingClientRect().top > h - 8) { el.classList.add('sp-vor'); io.observe(el); }
       }
     }

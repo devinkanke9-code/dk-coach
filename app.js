@@ -372,18 +372,47 @@ const BEREICHE = [
   ['status', 'Status', '<circle cx="12" cy="7.6" r="3.6"/><path d="M4.6 21c.8-4.6 3.8-7.3 7.4-7.3s6.6 2.7 7.4 7.3"/>'],
   ['info', 'Infos', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>']
 ];
+// Leiste (Redesign 24.11.2026): am Handy vier Ziele (Heute, Plan, Übungen, Mehr), unter „Mehr“ Statistik, Rang, Status und Infos nach Aufgaben gruppiert.
+// Ab 900 px stehen alle sieben beschriftet nebeneinander (CSS). Der aktive Bereich ist auch ohne Farbe erkennbar: Fläche hinter dem Symbol und fette Schrift.
+const MEHR = ['statistik', 'rang', 'status', 'info'];
+const MEHR_ICON = '<circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/>';
+const MEHR_GRUPPEN = [
+  ['Dein Fortschritt', [['statistik', 'Trainings, Gewichte und der Verlauf je Übung'], ['rang', 'Punkte aus dem Gym, dein Level und deine Bestleistungen']]],
+  ['Du', [['status', 'Deine Figur, dein Gewicht und deine Ernährung']]],
+  ['Hilfe und Zugang', [['info', 'Code, Frage an Devin, App aufs Handy, Farbwelt und Rechtliches']]]
+];
 function leiste() {
   const n = $('#leiste'); n.textContent = '';
   $('nav.leiste').hidden = !S.plan;
-  n.style.gridTemplateColumns = 'repeat(' + BEREICHE.length + ', 1fr)';
-  n.classList.toggle('sieben', BEREICHE.length > 6);   // sieben Knöpfe: Schrift etwas kleiner, damit „Statistik“ auch auf schmalen Handys passt
-  for (const [id, name, icon] of BEREICHE) {
-    const b = h('button', { type: 'button', 'aria-current': (S.ansicht === 'fortschritt' ? 'statistik' : S.ansicht) === id ? 'page' : null, onclick: () => geh(id) });   // die alte Seite Fortschritt ist jetzt Statistik
+  n.style.gridTemplateColumns = '';
+  n.classList.remove('sieben'); n.classList.add('mit-mehr');
+  const aktiv = S.ansicht === 'fortschritt' ? 'statistik' : S.ansicht;   // die alte Seite Fortschritt ist jetzt Statistik
+  const knopf = (id, name, icon, klasse, aktuell) => {
+    const b = h('button', { type: 'button', class: klasse || null, 'aria-current': aktuell ? 'page' : null, onclick: () => geh(id) });
     b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon + '</svg>';
-    b.append(h('span', { text: name })); n.append(b);
-  }
+    b.append(h('span', { text: name })); return b;
+  };
+  for (const [id, name, icon] of BEREICHE) n.append(knopf(id, name, icon, MEHR.includes(id) ? 'nur-breit' : null, aktiv === id));
+  n.append(knopf('mehr', 'Mehr', MEHR_ICON, 'nur-schmal', aktiv === 'mehr' || MEHR.includes(aktiv)));
 }
-function geh(id) { S.ansicht = id; zeichne(); window.scrollTo(0, 0); }
+function ansichtMehr() {
+  const icon = (id) => (BEREICHE.find((b) => b[0] === id) || [])[2] || '';
+  const name = (id) => (BEREICHE.find((b) => b[0] === id) || [])[1] || id;
+  return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Mehr' })),
+    ...MEHR_GRUPPEN.map(([titel, ziele]) => h('section', { class: 'block mehr-gruppe', 'aria-label': titel }, h('h2', { class: 'mehr-titel', text: titel }),
+      h('div', { class: 'mehr-liste' }, ziele.map(([id, text]) => {
+        const b = h('button', { class: 'mehr-zeile', type: 'button', onclick: () => geh(id) });
+        b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon(id) + '</svg>';
+        b.append(h('span', null, h('b', { text: name(id) }), h('small', { text })), h('span', { class: 'mehr-pfeil', 'aria-hidden': 'true', text: '›' }));
+        return b;
+      }))))];
+}
+// Seitenwechsel: oben anfangen und den Fokus auf die Überschrift der neuen Seite setzen (Tastatur und Vorlesen wissen, wo sie sind)
+function geh(id) {
+  S.ansicht = id; zeichne(); window.scrollTo(0, 0);
+  const t = document.querySelector('#ansicht h1');
+  if (t) { t.setAttribute('tabindex', '-1'); try { t.focus({ preventScroll: true }); } catch (e) { /* nichts */ } }
+}
 // Farbwelt mit einem Tipp (18.11.2026, antippen.js „dk-look“): die Ansicht sofort in den neuen Farben neu zeichnen, ohne Neuladen; man bleibt auf derselben Seite an derselben Stelle
 window.addEventListener('dk-look', () => { const y = window.scrollY; zeichne(); window.scrollTo(0, y); });
 // Was die App zeigt: Code-Eingabe, Sperre nach Ablauf, Analyse, Warten auf den Plan, der Plan selbst oder Willkommen
@@ -412,7 +441,7 @@ function zeichne() {
   const ansichtSchluessel = z + '|' + (z === 'plan' ? S.ansicht : '');
   ziel.classList.toggle('still', ansichtSchluessel === S.letzteAnsicht); S.letzteAnsicht = ansichtSchluessel;
   const ansicht = { laedt: laedtAnsicht, code: codeAnsicht, pausiert: pausiertAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
-    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, statistik: ansichtStatistik, fortschritt: ansichtStatistik }[S.ansicht] || ansichtHeute;
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, statistik: ansichtStatistik, fortschritt: ansichtStatistik, mehr: ansichtMehr }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
@@ -420,7 +449,9 @@ function zeichne() {
       h('p', { class: 'leise', text: 'Die gespeicherten Daten passen nicht zusammen. Füg Devins letzte Nachricht nochmal ein, dann geht es weiter.' }), einfuegenBlock('Link von Devin einfügen')));
   }
   standbilder(lade3d, [...document.querySelectorAll('[data-vorschau]')].filter((el) => el.dataset.vorschau && !el.querySelector('img')), (id) => UEBUNGEN[id]).catch(() => {});
-  if (LAUF && LAUF.phase !== 'fertig' && !TM.el && !LAUF.gym) setTimeout(timerZeigen, 0);   // laufendes Training nach Neuladen wieder zeigen
+  // laufendes Training nach Neuladen wieder zeigen. Seit 24.11.2026 nur, wenn der letzte Schritt keine 30 Minuten her ist und es nicht ausgeblendet wurde:
+  // Wer Stunden später öffnet, sieht auf „Heute“ zuerst das offene Training mit Stand und „Training fortsetzen“.
+  if (LAUF && LAUF.phase !== 'fertig' && !TM.el && !LAUF.gym && !TM.klein && Date.now() - (LAUF.seit || 0) < 30 * 60000) setTimeout(timerZeigen, 0);
 }
 
 /* ---------- Willkommen ---------- */
@@ -547,14 +578,14 @@ function laedtAnsicht() {
   return [h('section', { class: 'block willkommen', 'aria-busy': 'true' }, logo(), h('h1', { text: 'Einen Moment …' }),
     h('p', { class: 'leise', role: 'status', text: 'Dein Plan wird geladen. Das dauert nur ein paar Sekunden.' }))];
 }
-// Nach dem ersten Einloggen auf diesem Handy: Schwarz-Gold (Devin, 21.11.2026). Wer danach selbst umschaltet, behält seine Wahl.
+// Nach dem ersten Einloggen auf diesem Handy: Schwarz-Gold (Devin, 21.11.2026), seit 24.11.2026 Champagner (warmes Anthrazit, Champagnergold). Wer danach selbst umschaltet, behält seine Wahl.
 function farbeNachLogin() {
-  try { localStorage.setItem('dk_look', 'gold'); } catch (e) {}
+  try { localStorage.setItem('dk_look', 'champagner'); } catch (e) {}
   const root = document.documentElement;
-  if (root.dataset.look === 'gold') return;
-  root.dataset.look = 'gold';
-  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = '#060608';
-  try { window.dispatchEvent(new CustomEvent('dk-look', { detail: 'gold' })); } catch (e) {}
+  if (root.dataset.look === 'champagner') return;
+  root.dataset.look = 'champagner';
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = '#131416';
+  try { window.dispatchEvent(new CustomEvent('dk-look', { detail: 'champagner' })); } catch (e) {}
 }
 function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann heißt die Leiste „Neuer Code von Devin?“
   if (!KONTAKT.briefkasten) return null;
@@ -616,7 +647,7 @@ function startWeg() {
   if (STARTSEHEN) { STARTSEHEN.disconnect(); STARTSEHEN = null; }
   if (STARTBUEHNE) { STARTBUEHNE.disconnect(); STARTBUEHNE = null; }
 }
-const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + ({ klar: '-klar', gold: '-gold', sport: '-gold' }[document.documentElement.dataset.look] || '') + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
+const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + ({ klar: '-klar', gold: '-gold', sport: '-gold', champagner: '-gold' }[document.documentElement.dataset.look] || '') + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
 // Blöcke erscheinen beim Hinscrollen, die Figur rechnet nur, solange sie zu sehen ist
 function startBeobachten() {
   const bloecke = [...document.querySelectorAll('.st-block:not(.da)')];
@@ -634,56 +665,122 @@ function beispielEnde() {
   if (LAUF && LAUF.plan === 'beispiel') { LAUF = null; laufSichern(); }
   S.tagWahl = null; S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
 }
+/* ---------- Startseite als Rundgang mit Devin (24.11.2026, Redesign) ----------
+   Erster Bildschirm: Angebot, wie es funktioniert, Preis mit Ende der Gratiszeit und die nächste Aktion, sofort lesbar und ohne 3D (die Figur lud vorher ~3,8 MB).
+   Danach hat jeder Abschnitt eine Aufgabe: echter Ausschnitt aus dem Beispielplan, Devins Prüfung, Leistung und Preis, das Gym (optional), schon Kunde.
+   Bewegung: nur Planvorschau und Devins Abschnitt erscheinen sanft (8 px, 220 ms, einmal). Ohne JavaScript oder bei weniger Bewegung steht alles sofort da. */
+// Analyse-Schritte wie analyse.html → schritte(): Über dich 1 + Fragen 10 + Gesundheits-Check 1 + Essen 1 (fällt bei Essstörung weg) + Nährwerte 1 + Einwilligung 1 + Abschicken 1.
+// Höchstens 16, mit Essstörung 15. Ändert sich der Ablauf in analyse.html, hier mitändern (vorher stand 16 im Text und 18 im Kommentar).
+const PLAETZE = 'Maximal 10 Plätze in den ersten zwei Monaten.';   // Devin 24.11.2026: nur der Satz, kein Zähler
+const ANALYSE_SCHRITTE = 16, ANALYSE_MINUTEN = 10;
+const analyseAngefangen = () => { const a = speicher.lies('dk_analyse10', null); return !!(a && !a.gesendet && a.schritt > 0); };   // Kunden-Test 23.11.2026: angefangene Analyse heißt „fortsetzen“
+const analyseKnopf = (klasse) => h('a', { class: 'knopf haupt ' + (klasse || ''), href: 'analyse/', text: analyseAngefangen() ? 'Analyse fortsetzen' : 'Analyse starten' });
+const beispielKnopf = (klasse, text) => h('button', { class: 'knopf ' + (klasse || 'zweit'), type: 'button', onclick: beispiel, text: text || 'Beispielplan ansehen' });
+// Preis in einem Satz, schon beim ersten Preis mit dem Ende der Gratiszeit
+function preisSatz(a) { return gratisZeit(a) + ' kostenlos, endet automatisch. Danach ' + a.preis + ' € im Monat, nur wenn du weitermachen willst.'; }
+// „Ich habe einen Code“: kompakt neben den Aktionen, öffnet die Code-Leiste an Ort und Stelle. Kam jemand über einen kurzen Link, ist sie schon offen.
+function codeZugang() {
+  if (!KONTAKT.briefkasten) return null;
+  const offen = !!(S.codeOffen || S.codeLink || S.codeFehler);
+  const knopf = h('button', { class: 'knopf text rg-code-knopf', type: 'button', 'aria-expanded': String(offen), 'aria-controls': 'rg-code', text: 'Ich habe einen Code',
+    onclick: () => { S.codeOffen = !offen; const y = window.scrollY; zeichne(); window.scrollTo(0, y); if (S.codeOffen) { const f = document.getElementById('code-start'); if (f) f.focus(); } } });
+  return h('div', { class: 'rg-code' }, knopf, offen ? h('div', { id: 'rg-code' }, codeLeiste()) : null);
+}
+const heldBild = () => { const hell = /^(klar|lagune)$/.test(document.documentElement.dataset.look || ''); return 'hintergrund-breit' + (hell ? '-hell' : '') + '.jpg'; };
+// Sanftes Erscheinen an zwei Stellen. Schon vorbeigescrollt (schnelles Scrollen) = sofort sichtbar, ohne Effekt. Einmal pro Abschnitt, Zurückscrollen bewegt nichts.
+let RUNDGANG = null;
+function rundgangBeobachten() {
+  if (RUNDGANG) { RUNDGANG.disconnect(); RUNDGANG = null; }
+  const teile = [...document.querySelectorAll('.rg-erscheint:not(.rg-da)')];
+  const ruhig = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (ruhig || !window.IntersectionObserver) return;   // ohne Effekt: Inhalt steht ohnehin da (die Klasse rg-bereit fehlt)
+  RUNDGANG = new IntersectionObserver((liste) => liste.forEach((e) => {
+    const el = e.target;
+    if (e.isIntersecting) { el.classList.add('rg-da'); RUNDGANG.unobserve(el); }
+    else if (e.boundingClientRect.bottom < 0) { el.classList.add('rg-sofort', 'rg-da'); RUNDGANG.unobserve(el); }   // übersprungen
+  }), { threshold: 0.12 });
+  teile.forEach((el) => { const r = el.getBoundingClientRect(); if (r.top < window.innerHeight) return; el.classList.add('rg-bereit'); RUNDGANG.observe(el); });   // nur, was noch unterhalb liegt
+  // Sicherheitsnetz: Ein Sprung über den Abschnitt hinweg (Anker #preis, sehr schnelles Wischen) meldet der Beobachter nicht. Was erreicht oder übersprungen ist, steht sofort da.
+  if (!RUNDGANG_NETZ) {
+    RUNDGANG_NETZ = true;
+    let uhr = 0;
+    window.addEventListener('scroll', () => {
+      if (uhr) return;
+      uhr = requestAnimationFrame(() => {
+        uhr = 0;
+        document.querySelectorAll('.rg-erscheint.rg-bereit:not(.rg-da)').forEach((el) => {
+          const r = el.getBoundingClientRect();
+          if (r.bottom < 0) el.classList.add('rg-sofort', 'rg-da'); else if (r.top < window.innerHeight * 0.92) el.classList.add('rg-da');
+          if (el.classList.contains('rg-da') && RUNDGANG) RUNDGANG.unobserve(el);
+        });
+      });
+    }, { passive: true });
+  }
+}
+let RUNDGANG_NETZ = false;
+function planVorschau() {
+  const p = beispielPlan(), t = p.t[0];
+  return h('div', { class: 'rg-plan', role: 'group', 'aria-label': 'Ausschnitt aus dem Beispielplan' },
+    h('div', { class: 'rg-plan-kopf' }, h('span', { class: 'nr', text: 'Training 1' }), h('h3', { text: t.n }), h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' })),
+    h('ol', { class: 'rg-zeilen' }, t.u.slice(0, 4).map((roh) => {
+      const u = uebung(roh);
+      return h('li', { class: 'rg-zeile' }, h('b', { class: 'rg-name', text: anzeigeName(u) }),
+        h('span', { class: 'rg-werte' }, h('span', null, h('small', { text: 'Sätze' }), h('b', { class: 'zahl', text: String(u.saetze) })),
+          h('span', null, h('small', { text: 'Wdh' }), h('b', { class: 'zahl', text: bereich(u.wdh) })),
+          h('span', null, h('small', { text: 'Reserve' }), h('b', { class: 'zahl', text: bereich(u.rir) + ' Wdh' })),
+          h('span', null, h('small', { text: 'Pause' }), h('b', { class: 'zahl', text: pauseText(u) }))));
+    })),
+    h('p', { class: 'leise klein', text: '+ ' + (t.u.length - 4) + ' weitere Übungen. Alle mit 3D-Figur, Timer und Eintragen im Training.' }));
+}
 function startseite() {
+  startWeg();
   if (installiert()) return willkommen();
-  $('#wer').append(h('a', { class: 'knopf haupt st-nav', href: 'analyse/', text: 'Analyse' }));
-  // Kunden-Test 23.11.2026: Wer die Analyse verlassen hatte, sah wieder „Analyse starten“ und dachte, alles ist weg. Die Antworten liegen noch auf dem Handy (analyse.html → dk_analyse10).
-  const angefangen = (() => { const a = speicher.lies('dk_analyse10', null); return !!(a && !a.gesendet && a.schritt > 0); })();
-  const analyseKnopf = () => h('a', { class: 'knopf haupt', href: 'analyse/', text: angefangen ? 'Analyse weitermachen' : 'Analyse starten' });
-  const zweit = (text, fn) => h('button', { class: 'knopf zweit', type: 'button', onclick: fn, text });
-  const text = (titel, zeile, knoepfe, h1) => h('div', { class: 'st-text' }, h(h1 ? 'h1' : 'h2', { text: titel }), h('p', { class: 'st-zeile', text: zeile }), knoepfe ? h('div', { class: 'st-knoepfe' }, knoepfe) : null);
-  const d = UEBUNGEN[START_FIGUR], dU = UEBUNGEN[START_UEBUNG];
-  if (!START3D && d && d.a) { START3D = buehne({ lade3d, fotoGross }); setTimeout(() => { if (START3D) START3D.zeige(d, { direkt: true }).catch(() => {}); }, 350); }   // erst die Schrift, dann die schwere 3D-Figur
-  const punkt = dU ? erklaerPunkte(dU)[0] : null;
-  const zeigeZeile = (n, s, w, p, id) => h('div', { class: 'ueb-karte mit3d ohne-haken' }, h('span', { class: 'ueb-name', text: UEBUNGEN[id] ? UEBUNGEN[id].n : n }),
-    h('div', { class: 'ueb-dosis' }, h('b', { text: s + ' × ' + w + ' Wdh' }), h('small', { text: 'Pause ' + p + ' s' })), h('div', { class: 'mini3d', 'data-vorschau': UEBUNGEN[id] && UEBUNGEN[id].a ? id : '' }));
-  setTimeout(startBeobachten, 0);
+  setTimeout(rundgangBeobachten, 0);
+  const a = KONTAKT.abo, ue = KONTAKT.ueber_mich;
+  // Devins Text aus kontakt.json: die Sätze zur Prüfung beim Vorstellen, der Satz zur Abrechnung bei Preis und Bedingungen
+  const saetze = ue ? ue.text.split(/(?<=\.)\s+/) : [], abrechnung = saetze.filter((x) => /Abrechnung/.test(x)), vorstellung = saetze.filter((x) => !/Abrechnung/.test(x));
   return [
-    codeLeiste(),
-    h('section', { class: 'st-block st-held da' },
-      (() => {   // Kunden-Test 22.11.2026: „oben weiß ich nicht, was das ist“, der Preis stand erst ganz unten
-        const t = text(KONTAKT.marke, 'Dein Trainingsplan. Von Devin.', [analyseKnopf(), zweit('Beispiel ansehen', beispiel)], true);
-        if (KONTAKT.abo) t.append(h('p', { class: 'st-preis', text: gratisZeit(KONTAKT.abo) + ' kostenlos, danach ' + KONTAKT.abo.preis + ' € im Monat.' }));
-        return t;
-      })(),
-      START3D ? h('div', { class: 'st-buehne' }, START3D.el) : null),
-    h('section', { class: 'st-block st-frei st-breit' },
-      text('Dein Gym. In 3D.', 'Von Gerät zu Gerät. Am Ende wartet die Tür.', [zweit('Gym betreten', gymZeigen)]),
-      h('figure', { class: 'st-bild' }, startBild('gym', 'Das Gym mit Meerblick: Weg, Figur und die Tür zum PR-Raum', 1000, 845))),
-    // Zweites Gym-Bild (10.11.2026, Devin: „das Bild ändern zu den aktuellsten Stand und noch ein Bild machen“): die Waage im Eingang mit Meerblick
-    h('section', { class: 'st-block st-frei st-breit' },
-      text('Steig auf die Waage.', 'Sie zeigt dein Level. Jede Station bringt Punkte.'),
-      h('figure', { class: 'st-bild' }, startBild('waage', 'Die Waage im Eingang zeigt das Level, dahinter das Meer', 1000, 845))),
-    h('section', { class: 'st-block' },
-      text('Jede Übung. Zum Drehen.', 'Coach DK zeigt, worauf es ankommt.', [zweit('Übung ansehen', uebungZeigen)]),
-      h('figure', { class: 'st-bild' }, startBild('uebung', 'Die Figur trainiert an der Beinpresse', 1000, 1250),
-        punkt ? h('figcaption', { class: 'st-blase' }, h('b', { text: 'Coach DK · ' + ART_NAME[punkt.art] }), h('p', { text: punkt.text })) : null)),
-    h('section', { class: 'st-block' },
-      text('Alles an einem Ort.', 'Sätze, Wiederholungen, Pausen. Auch ohne Internet.', [zweit('Plan ansehen', beispiel)]),
-      h('div', { class: 'st-mock', 'aria-hidden': 'true' }, h('div', { class: 'block heute' },
-        h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training 1' }), h('h3', { text: 'Ganzkörper A' })),
-        h('div', { class: 'ueb-liste' }, zeigeZeile('Beinpresse', 3, '10–12', '90–120', 'beinpresse'), zeigeZeile('Latzug', 3, '10–12', '90–120', 'latzug_breit'), zeigeZeile('Brustpresse', 3, '10–12', '90–120', 'brustpresse_maschine'))))),
-    h('section', { class: 'st-block st-breit' },
-      text('Deine Analyse.', 'Muskeln, abnehmen oder fitter werden: 16 kurze Schritte, danach baut Devin deinen Plan.', [analyseKnopf()]),   // Kunden-Test 22.11.2026: „10 Fragen“ passte nicht zur Analyse (18 Schritte)
-      h('div', { class: 'st-fragen', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, i) => h('i', { style: '--i:' + i })))),
-    KONTAKT.abo ? angebotBlock(analyseKnopf) : null,
-    KONTAKT.ueber_mich ? h('section', { class: 'st-block st-breit st-ueber' },
-      text('Über mich.', KONTAKT.ueber_mich.zeile),
-      h('div', { class: 'st-ueber-text' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('p', { text: KONTAKT.ueber_mich.text }))) : null,
-    h('section', { class: 'st-block st-eigen st-breit' },
-      text('Du hast schon einen Plan?', 'Öffne den Link aus Devins Nachricht. Oder kopier die ganze Nachricht und füg sie hier ein.'),   // Kunden-Test 23.11.2026
-      einfuegenBlock(),
-      h('details', { class: 'st-install' }, h('summary', { text: 'Als App aufs Handy' }), installKarte(true))),
+    h('section', { class: 'rg-held', 'aria-labelledby': 'rg-titel' },
+      h('div', { class: 'rg-held-text' },
+        h('p', { class: 'rg-marke', text: KONTAKT.marke }),
+        h('h1', { id: 'rg-titel', text: 'Dein Trainingsplan. Von Devin.' }),
+        h('p', { class: 'rg-wie', text: 'Du beantwortest ein paar Fragen. Ich schaue mir deine Antworten an und erstelle deinen Plan.' }),
+        h('p', { class: 'rg-dauer leise klein', text: 'Höchstens ' + ANALYSE_SCHRITTE + ' kurze Schritte, etwa ' + ANALYSE_MINUTEN + ' Minuten. Dein Entwurf bleibt auf diesem Handy, du kannst jederzeit weitermachen.' }),
+        h('div', { class: 'rg-aktionen' }, analyseKnopf('rg-gross'), beispielKnopf('zweit rg-gross')),
+        a ? h('p', { class: 'rg-preis' }, h('b', { text: gratisZeit(a) + ' kostenlos' }), ', endet automatisch. Danach ' + a.preis + ' € im Monat, nur wenn du weitermachen willst. ', h('span', { class: 'rg-plaetze', text: PLAETZE })) : null,
+        codeZugang()),
+      h('div', { class: 'rg-held-bild' }, h('img', { src: heldBild(), alt: 'Das DK-Gym: Blick durch die Glasfront aufs Meer, davor Bänke und Geräte', width: 1600, height: 900, fetchpriority: 'high', decoding: 'async' }))),
+    h('section', { class: 'rg-teil rg-erscheint', 'aria-labelledby': 'rg-vorschau' },
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Das bekommst du' }), h('h2', { id: 'rg-vorschau', text: 'Ein Plan, der auf eine Handfläche passt.' }),
+        h('p', { class: 'leise', text: 'Sätze, Wiederholungen, Reserve und Pause auf einen Blick. Ein Ausschnitt aus dem echten Beispielplan.' }),
+        h('div', { class: 'rg-aktionen' }, beispielKnopf('zweit'))),
+      planVorschau()),
+    h('section', { class: 'rg-teil rg-devin rg-erscheint', 'aria-labelledby': 'rg-devin' },
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Persönlich geprüft' }), h('h2', { id: 'rg-devin', text: ue ? ue.zeile : 'Devin Kanke.' }),
+        vorstellung.length ? h('p', { class: 'rg-zitat', text: vorstellung.join(' ') }) : null),
+      h('ol', { class: 'rg-schritte' },
+        h('li', null, h('b', { text: 'Du beantwortest die Analyse.' }), h('span', { class: 'leise', text: 'Ziele, Training, Gesundheits-Check. Höchstens ' + ANALYSE_SCHRITTE + ' Schritte.' })),
+        h('li', null, h('b', { text: 'Devin schaut sich alles an.' }), h('span', { class: 'leise', text: 'Er meldet sich innerhalb von 24 Stunden und baut deinen Plan.' })),
+        h('li', null, h('b', { text: 'Du trainierst mit deinem Plan.' }), h('span', { class: 'leise', text: 'Link und Code von Devin öffnen ihn auf deinem Handy, auch ohne Internet.' })))),
+    a ? h('section', { class: 'rg-teil rg-angebot', id: 'preis', 'aria-labelledby': 'rg-preis' },
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Leistung und Preis' }), h('h2', { id: 'rg-preis', text: gratisZeit(a) + ' kostenlos.' }),
+        h('p', { class: 'leise', text: 'Keine Zahlungsdaten für die Gratiszeit. Sie endet automatisch, du musst nichts kündigen.' }),
+        h('p', { class: 'rg-plaetze', text: PLAETZE })),
+      h('div', { class: 'rg-preis-karte' },
+        h('ul', { class: 'rg-leistung' }, a.punkte.map((x) => h('li', { text: x }))),
+        h('p', { class: 'rg-betrag' }, h('b', { class: 'zahl', text: a.preis + ' €' }), h('span', { text: ' im Monat danach' })),
+        h('p', { class: 'leise klein', text: 'Nur wenn du weitermachen willst: Abo über PayPal, verlängert sich monatlich, jederzeit zum Monatsende kündbar. Unter 18 nur zusammen mit deinen Eltern.' + (abrechnung.length ? ' ' + abrechnung.join(' ') : '') }),
+        analyseKnopf('rg-gross'))) : null,
+    h('section', { class: 'rg-teil rg-gym', 'aria-labelledby': 'rg-gym' },
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Optional' }), h('h2', { id: 'rg-gym', text: 'Dein Gym mit Meerblick. In 3D.' }),
+        h('p', { class: 'leise', text: 'Geh von Gerät zu Gerät. Jede geschaffte Station bringt Punkte, die Punkte ergeben deinen Rang. Dein Plan funktioniert genauso ohne das Gym.' }),
+        h('div', { class: 'rg-aktionen' }, h('button', { class: 'knopf zweit', type: 'button', onclick: gymZeigen, text: 'Ins Gym' }), h('button', { class: 'knopf text', type: 'button', onclick: uebungZeigen, text: 'Eine Übung in 3D ansehen' }))),
+      h('figure', { class: 'rg-gym-bild' }, startBild('gym', 'Das DK-Gym in 3D: Weg mit Stationen, die Figur und die Tür zum PR-Raum', 1000, 845))),
+    h('section', { class: 'rg-teil rg-eigen', 'aria-labelledby': 'rg-eigen' },
+      h('div', { class: 'rg-teil-text' }, h('h2', { id: 'rg-eigen', text: 'Du hast schon einen Plan?' }),
+        h('p', { class: 'leise', text: 'Öffne den Link aus Devins Nachricht oder gib deinen Code ein. Du kannst auch die ganze Nachricht kopieren und hier einfügen.' })),   // Kunden-Test 23.11.2026
+      h('div', { class: 'stapel' }, S.codeOffen || S.codeLink || S.codeFehler ? null : codeLeiste(), einfuegenBlock(),   // oben schon offen: nur einmal, die Felder haben feste ids
+        h('details', { class: 'rg-install' }, h('summary', { text: 'Als App aufs Handy' }), installKarte(true)))),
     h('footer', { class: 'st-fuss' }, h('span', { text: KONTAKT.marke }), rechtlichesLinks())
   ];
 }
@@ -939,17 +1036,23 @@ function analyseAnsicht() {
     akt.art !== 'senden' ? h('button', { class: 'knopf haupt', type: 'button', onclick: weiter, text: 'Weiter' + (alle[EN.schritt + 1].q ? '' : ' · ' + alle[EN.schritt + 1].titel) }) : null));
   return [h('div', { class: 'analyse stapel' }, teile)];
 }
-function beispiel() {
+// Beispielplan (Redesign 24.11.2026): dieselben Daten für die Planvorschau auf der Startseite und die Demo. Heute ist immer ein Trainingstag,
+// das zweite Training drei Tage später (vorher fest Mo und Do: dienstags sah man einen Ruhetag und einen verpassten Montag).
+function beispielPlan() {
   const t = (n, m, u) => ({ n, m, u: u.map(([i, s, w, r, p]) => ({ i, s, w, r, p })) });
   const ids = Object.keys(UEBUNGEN);
   const nimm = (...k) => k.find((x) => UEBUNGEN[x]) || ids[0];
-  const p = { v: 1, id: 'beispiel', n: 'Beispiel', z: 'muskelaufbau', l: 2, s: 'Ganzkörper 2×', d: isoHeute(), importiert: isoHeute(), w: ['e', 'a', 'a', 'a', 'a', 'd'], ft: [0, 3],
+  const p = { v: 1, id: 'beispiel', n: 'Beispiel', z: 'muskelaufbau', l: 2, s: 'Ganzkörper 2×', d: isoHeute(), importiert: isoHeute(), w: ['e', 'a', 'a', 'a', 'a', 'd'], ft: [heuteIndex(), (heuteIndex() + 3) % 7].sort((x, y) => x - y),
     t: [t('Ganzkörper A', 50, [[nimm('beinpresse'), 3, [10, 12], [2, 3], [90, 120]], [nimm('latzug_breit'), 3, [10, 12], [2, 3], [90, 120]], [nimm('brustpresse_maschine'), 3, [10, 12], [2, 3], [90, 120]], [nimm('kabelrudern_sitzend'), 3, [10, 12], [2, 3], [90, 120]], [nimm('butterfly_maschine'), 2, [12, 15], [2, 3], [60, 90]], [nimm('trizepsdruecken_kabel'), 2, [12, 15], [2, 3], [60, 90]], [nimm('bauchmaschine_crunch'), 2, [12, 15], [2, 3], [60, 90]]]),
       t('Ganzkörper B', 45, [[nimm('kh_rumaenisches_kreuzheben'), 3, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_schulterdruecken_sitzend'), 3, [8, 12], [2, 3], [90, 120]], [nimm('split_squat'), 2, [8, 12], [2, 3], [90, 120]], [nimm('kurzhantel_seitheben'), 2, [12, 15], [2, 3], [60, 90]]])],
     // Status „Deine Ernährung“ (23.11.2026): erfundene Nährwerte im Format von Feld e (kompakt.js), Mann mit 80 kg, Muskelaufbau
     e: { v: 1, kc: 2900, er: 2640, ar: 'p', jk: 33, ew: [128, 176], ek: [1.6, 2.2], eb: 80, ft: 95, fm: 64, kh: 360, tr: 1410, kg: 80,
       sc: [['wasser', 'Trink zu jeder Mahlzeit ein großes Glas Wasser.'], ['eiweiss', 'Plane zu jeder Mahlzeit eine Eiweißquelle ein, zum Beispiel Quark, Eier, Fleisch oder Linsen.']], hd: { e: 1, g: 1, k: 1, f: 1, m: 4 } },
     pr: 'Schaffst du in allen Sätzen die obere Wiederholungszahl mit 2 Wiederholungen Reserve, nimm beim nächsten Mal etwas mehr Gewicht.', h: ['Beispiel mit erfundenen Daten.'], ab: [] };
+  return p;
+}
+function beispiel() {
+  const p = beispielPlan();
   const plaene = speicher.lies('dk_plaene', {}); plaene[p.id] = p; speicher.schreib('dk_plaene', plaene); speicher.schreib('dk_aktiv', p.id);
   S.tagWahl = null; zeichne();
 }
@@ -981,30 +1084,64 @@ function ansichtStatus() {
 }
 function ansichtRang() { return Rang.ansicht({ h, kopf: () => kopf('', 'Dein Rang'), lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
 function ansichtHeute() {
-  const p = S.plan, heute = heuteIndex();
-  const teile = [kopf(new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })), figurHinweis()];   // figurHinweis: neue Figur von Devin (23.11.2026), meist null
-  if (p.id === 'beispiel') teile.push(h('div', { class: 'st-beispiel' }, h('span', { text: 'Das ist ein Beispiel.' }), h('button', { class: 'knopf klein', type: 'button', onclick: beispielEnde, text: 'Zur Startseite' })));
+  let p = S.plan;
+  const heute = heuteIndex();
+  if (p.id === 'beispiel' && p.d !== isoHeute()) { beispiel(); return []; }   // Beispiel von einem anderen Tag: frisch, damit heute ein Trainingstag ist (beispiel() zeichnet neu)
+  const istBeispiel = p.id === 'beispiel';
+  const datum = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+  const teile = [kopf(datum, istBeispiel ? 'Dein Beispielplan' : null), figurHinweis()];   // figurHinweis: neue Figur von Devin (23.11.2026), meist null
+  // Beispiel offen zeigen (Redesign 24.11.2026): was es ist, was nicht gespeichert wird, und der Weg zum eigenen Plan
+  if (istBeispiel) teile.push(h('section', { class: 'rg-beispiel', 'aria-label': 'Beispielstatus' },
+    h('p', null, h('b', { text: 'Beispiel mit erfundenen Daten. ' }), 'Probier alles aus. Was du hier trainierst, landet nicht in deinem Verlauf.'),
+    h('div', { class: 'rg-aktionen' }, h('a', { class: 'knopf haupt klein', href: 'analyse/', text: analyseAngefangen() ? 'Eigene Analyse fortsetzen' : 'Eigenen Plan anfragen' }),
+      h('button', { class: 'knopf text klein', type: 'button', onclick: beispielEnde, text: 'Beispiel beenden' }))));
   // Kunden-Test 23.11.2026: Die Code-Karte mitten im Beispiel verwirrte Neue („ich hab doch gar keinen Code“). Wer später Devins Code bekommt, findet sie unter Infos und auf der Startseite.
   const ko = aktivesKonto();
-  if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
-  if (p.id !== 'beispiel') teile.push(Rang.kurzKarte({ h, oeffnen: () => geh('rang') }));
   if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
   // Erst wenn jeder Trainingstag einen Wochentag hat, kommt die Woche (vorher blieb nach dem ersten Haken nur ein Tag übrig)
   if (kundenTage(p).length < planTage(p)) {
-    teile.push(h('p', { class: 'meldung', text: 'Dein Plan hat ' + planTage(p) + ' Trainingstag' + (planTage(p) === 1 ? '' : 'e') + '. Wähle deine Tage, dann siehst du hier deine ganze Woche.' }), trainingstageBlock(p), installKarte());
+    const offen = offenesTraining(p);
+    if (offen) teile.push(offen);
+    teile.push(h('p', { class: 'meldung', text: 'Dein Plan hat ' + planTage(p) + ' Trainingstag' + (planTage(p) === 1 ? '' : 'e') + '. Wähle deine Tage, dann siehst du hier deine ganze Woche.' }), trainingstageBlock(p), installKompakt());
     return teile;
   }
   if (S.tagWahl == null) S.tagWahl = heute;
-  teile.push(wochenKarte(p, heute));
-  const ti = tagFuer(p, S.tagWahl);
+  // Zuerst, was jetzt dran ist (Redesign 24.11.2026): ein offenes Training mit Stand, sonst die Einheit des gewählten Tages oder der Ruhetag mit dem nächsten Training
+  const offen = offenesTraining(p), ti = tagFuer(p, S.tagWahl);
+  if (offen) teile.push(offen);
   teile.push(ti >= 0 ? trainingsKarte(p, ti, S.tagWahl === heute) : ruhetagKarte(p, S.tagWahl, heute));
+  teile.push(wochenKarte(p, heute));
+  if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
+  if (!istBeispiel) teile.push(Rang.kurzKarte({ h, oeffnen: () => geh('rang') }));
   teile.push(fortschrittKarte(p));
   teile.push(tippKarte(p, ti >= 0 ? ti : (naechstesTraining(p, S.tagWahl) || { ti: -1 }).ti));
-  teile.push(verlaufBlock());
+  if (!istBeispiel) teile.push(verlaufBlock());
   const w = aktuelleWoche(p), ph = PHASE[(p.w || [])[w]];   // die Zeile „Woche x von y“ steht jetzt in der Wochenkarte
   if (!ph && p.w && w >= p.w.length) teile.push(h('p', { class: 'meldung klein', text: 'Dein Plan ist durch. Sprich mit Devin über den nächsten.' }));
-  teile.push(installKarte());
+  teile.push(installKompakt());
   return teile;
+}
+// Offenes Training zuerst (Rückkehrer, 24.11.2026): Tagesname, wie lange es läuft und wie viele Sätze schon gespeichert sind. Fortsetzen hat Vorrang vor Beenden.
+function offenesTraining(p) {
+  if (!LAUF || LAUF.phase === 'fertig' || LAUF.plan !== p.id) return null;
+  const erfasst = LAUF.uebungen.reduce((s, u) => s + u.log.length, 0), gesamt = LAUF.uebungen.reduce((s, u) => s + u.saetze, 0);
+  const min = Math.max(1, Math.round((Date.now() - LAUF.start) / 60000)), planMin = (p.t[LAUF.tagNr - 1] || {}).m;
+  const beenden = h('button', { class: 'knopf text', type: 'button', text: 'Einheit beenden', onclick: (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sicher) { b.dataset.sicher = '1'; b.textContent = 'Wirklich beenden? Nochmal tippen'; return; }
+    laufBeenden('abgebrochen');
+  } });
+  return h('section', { class: 'block heute rg-offen', 'aria-labelledby': 'rg-offen-titel' },
+    h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Offenes Training · Training ' + LAUF.tagNr }), h('h2', { id: 'rg-offen-titel', text: LAUF.tagName })),
+    h('p', { class: 'rg-stand' }, h('span', { class: 'zahl', text: 'Seit ' + min + ' min' }), planMin ? h('span', { class: 'leise zahl', text: ' · geplant ~' + planMin + ' min' }) : null),
+    h('p', { class: 'rg-stand' }, h('b', { class: 'zahl', text: erfasst + ' von ' + gesamt }), erfasst === 1 ? ' Satz gespeichert' : ' Sätzen gespeichert', ' · Übung ' + Math.min(LAUF.ue + 1, LAUF.uebungen.length) + ' von ' + LAUF.uebungen.length),
+    h('div', { class: 'aktionen' }, startKnopf(p, LAUF.tagNr - 1, 'Training fortsetzen'), beenden));
+}
+// Als App aufs Handy (24.11.2026): hinter einer kompakten Aktion statt als große Karte; unter Infos steht sie immer
+function installKompakt() {
+  if (installiert() || speicher.lies('dk_install_weg', false)) return null;
+  return h('details', { class: 'rg-install block' }, h('summary', { text: 'Als App aufs Handy' }), installKarte(true),
+    h('button', { class: 'knopf text klein', type: 'button', onclick: () => { speicher.schreib('dk_install_weg', true); zeichne(); }, text: 'Ausblenden (bleibt unter Infos)' }));
 }
 /* Feinschliff (10.11.2026, Devin: „wie eine App, die man täglich benutzen kann und es nächsten Tag benutzen will“):
  * Die Woche ist eine Karte: Tage mit Datum, geschaffte Tage mit Haken, darunter der Stand der Woche und die Serie. */
@@ -1081,7 +1218,7 @@ function trainingsKarte(p, ti, istHeute) {
   return h('section', { class: 'block heute' },
     h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training ' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' }) : null),
     !istHeute ? h('p', { class: 'leise klein', text: WOCHENTAGE[S.tagWahl] + ' · Vorschau' }) : null,
-    h('div', { class: 'aktionen' }, startKnopf(p, ti, istHeute ? 'Training starten' : 'Diese Einheit starten'), h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, ti), text: 'Ins Gym gehen' })),
+    offenesTraining(p) ? null : h('div', { class: 'aktionen' }, startKnopf(p, ti, istHeute ? 'Training starten' : 'Diese Einheit starten'), h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, ti), text: 'Ins Gym' })),   // läuft schon ein Training, steht „Fortsetzen“ in der Karte darüber
     aufwaermen(t),
     istHeute ? fortschritt(p, t, erledigt.length, alle) : null,
     p.fokus && t.u.some((roh) => roh.z && !roh.z.art && !istSek(uebung(roh))) ? h('p', { class: 'notiz', text: 'Fokus diese Woche: ' + p.fokus }) : null,
@@ -1183,23 +1320,34 @@ function ansichtPlan() {
   teile.push(h('p', { class: 'leise klein', text: 'Plan vom ' + new Date(p.d || p.importiert).toLocaleDateString('de-DE') + '. Gespeichert auf diesem Handy, läuft auch ohne Internet. Neuer Link von Devin = neuer Stand.' }));
   return teile;
 }
+// Tagesplan (24.11.2026): „Diese Einheit starten“ sitzt neben Titel und Dauer; die kompakte Tabelle bleibt (auf schmalen Handys geordnete Übungszeilen, Werte mit Einheit).
+// Reserve (RIR) erklärt ein Tipp auf die Spaltenüberschrift in einem Satz.
+const RIR_SATZ = 'Reserve (RIR) heißt: So viele Wiederholungen würdest du am Ende des Satzes noch schaffen. RIR 2 heißt also aufhören, wenn noch zwei gehen würden.';
+function rirKnopf(ziel) {
+  return h('button', { class: 'rir-knopf', type: 'button', 'aria-expanded': 'false', 'aria-controls': ziel, onclick: (e) => {
+    const b = e.currentTarget, el = document.getElementById(ziel), an = b.getAttribute('aria-expanded') !== 'true';
+    document.querySelectorAll('.rir-knopf[aria-controls="' + ziel + '"]').forEach((x) => x.setAttribute('aria-expanded', String(an)));
+    if (el) el.hidden = !an;
+  } }, 'Reserve', h('span', { class: 'rir-i', 'aria-hidden': 'true', text: '?' }));
+}
 function tagBlock(p, t, ti) {
-  const sek = t.u.some((roh) => istSek(uebung(roh)));
+  const sek = t.u.some((roh) => istSek(uebung(roh))), mitRir = t.u.some((roh) => uebung(roh).rir), rirId = 'rir-' + (ti + 1);
   return h('section', { class: 'block', id: 'tag-' + (ti + 1) },
-    h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training ' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' }) : null),
+    h('div', { class: 'tag-kopf mit-start' }, h('span', { class: 'nr', text: 'Training ' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min · ' + t.u.length + ' Übungen' }) : null,
+      h('div', { class: 'tag-start' }, startKnopf(p, ti, 'Diese Einheit starten'))),
     aufwaermen(t),
     h('div', { class: 'tabelle-wrap' }, h('table', { class: 'ueb' },
-      h('thead', null, h('tr', null, ['Übung', 'Sätze', sek ? 'Wdh / Zeit' : 'Wdh', 'Reserve', 'Pause'].map((x) => h('th', { text: x })))),
+      h('thead', null, h('tr', null, h('th', { text: 'Übung' }), h('th', { text: 'Sätze' }), h('th', { text: sek ? 'Wdh / Zeit' : 'Wdh' }), h('th', null, mitRir ? rirKnopf(rirId) : 'Reserve'), h('th', { text: 'Pause' }))),
       h('tbody', null, t.u.map((roh) => {
         const u = uebung(roh);
         return h('tr', null,
           h('td', null, h('button', { class: 'ueb-name', type: 'button', 'aria-haspopup': 'dialog', onclick: () => oeffneUebung(u, ti), text: anzeigeName(u) }),
             u.notiz ? h('div', { class: 'notiz', text: u.notiz }) : null, angepasstBlock(angepasst(p, u), true), fuerDichBlock(u, true)),
           h('td', { class: 'z', 'data-l': 'Sätze', text: satzZahl(p, u) }), h('td', { class: 'z', 'data-l': istSek(u) ? 'Zeit' : 'Wdh', text: bereich(u.wdh, istSek(u) ? 'sek' : '') }),
-          h('td', { class: 'z', 'data-l': 'Reserve', text: bereich(u.rir) }), h('td', { class: 'z', 'data-l': 'Pause', text: u.pause.length ? pauseText(u) : '' }));
+          h('td', { class: 'z', 'data-l': 'Reserve', text: u.rir ? bereich(u.rir) + ' Wdh' : '' }), h('td', { class: 'z', 'data-l': 'Pause', text: u.pause.length ? pauseText(u) : '' }));
       })))),
-    t.u.some((roh) => uebung(roh).rir) ? h('p', { class: 'leise klein', text: 'Reserve: So viele Wiederholungen würdest du am Ende des Satzes noch schaffen.' }) : null,   // Kunden-Test 23.11.2026
-    h('div', { class: 'aktionen' }, startKnopf(p, ti, 'Diese Einheit starten')));
+    mitRir ? h('div', { class: 'rir-mobil' }, rirKnopf(rirId)) : null,   // schmale Handys: die Tabelle hat dort keine Überschriften
+    mitRir ? h('p', { class: 'rir-satz klein', id: rirId, hidden: true, text: RIR_SATZ }) : null);   // Kunden-Test 23.11.2026: „Was heißt Reserve?“
 }
 
 /* ---------- Übungen ---------- */
@@ -1559,7 +1707,7 @@ function oeffneUebung(u, ti) {
 // Ergebnis-Text und Code „DK-Lauf:…:Ende“ sind gleich wie in der Trainer-Seite: Devin fügt sie dort beim Kunden ein.
 const LAUF_KEY = 'dk_lauf', VERLAUF_KEY = 'dk_verlauf';
 let LAUF = speicher.lies(LAUF_KEY, null);
-const TM = { el: null, frage: false, wach: null, buehne: null, gezeigt: null };
+const TM = { el: null, frage: false, wach: null, buehne: null, gezeigt: null, speichert: false, fehler: null, sperreBis: 0 };
 const laufSichern = () => speicher.schreib(LAUF_KEY, LAUF);
 function mmss(sek) {
   sek = Math.max(0, Math.round(sek || 0));
@@ -1699,7 +1847,7 @@ function gymStationFertig() {
 }
 /* Spielstand (spiel.js): Jede Zeile fängt Fehler ab, das Training läuft immer weiter. Zählen tut es, wenn der Plan zum laufenden Training gehört;
    nachholen an einem anderen Wochentag gibt also auch Punkte (nur die Haken oben gelten allein am Plantag). Datum und Trainingstag wie in erledigtKey. */
-const spielPasst = (p) => !!p && !!LAUF && p.id === LAUF.plan;
+const spielPasst = (p) => !!p && p.id !== 'beispiel' && !!LAUF && p.id === LAUF.plan;   // Beispiel (24.11.2026): keine Punkte, keine Serie, nichts im echten Spielstand
 const spielTag = () => ({ datum: datumHeute(), tag: LAUF.tagNr - 1 });
 // Wie lange die Übung wirklich gelaufen ist: alle Sätze zusammen, von „los“ bis „Satz fertig“
 const uebungSekunden = (u) => (u && u.log ? u.log.reduce((s, x) => s + Math.max(0, (x.e - x.s) / 1000), 0) : 0);
@@ -1736,7 +1884,7 @@ function gymZu(geschafft) {
   zeichne();
 }
 function startKnopf(p, ti, text) {
-  if (LAUF && LAUF.phase !== 'fertig') return h('button', { class: 'knopf haupt', type: 'button', onclick: () => { const ap = aktiverPlan(); if (!LAUF.gym) timerZeigen(); else if (ap && LAUF.plan === ap.id) raumStarten(ap, LAUF.tagNr - 1); else altesTraining(p, ti); }, text: 'Training läuft · fortsetzen' });
+  if (LAUF && LAUF.phase !== 'fertig') return h('button', { class: 'knopf haupt', type: 'button', onclick: () => { const ap = aktiverPlan(); TM.klein = false; if (!LAUF.gym) timerZeigen(); else if (ap && LAUF.plan === ap.id) raumStarten(ap, LAUF.tagNr - 1); else altesTraining(p, ti); }, text: text === 'Training fortsetzen' ? text : 'Training läuft · fortsetzen' });
   return h('button', { class: 'knopf haupt', type: 'button', onclick: () => laufStarten(p, ti), text: text || 'Training starten' });
 }
 // Eine Übung für den Trainingslauf. tg: was im Plan stand, wenn der Kunde getauscht hat (steht im Text an Devin)
@@ -1764,44 +1912,65 @@ function laufStarten(p, ti, gym) {
   const jetzt = Date.now(), t = p.t[ti];
   LAUF = { v: 1, plan: p.id, kunde: p.n || '', tagNr: ti + 1, tagName: t.n, start: jetzt, ue: 0, satz: 0, phase: 'satz', seit: jetzt, pauseZiel: 0,
     uebungen: t.u.map((roh) => laufEintrag(p, roh)), bs: (p.bs || []).filter(Boolean).slice(0, 8) };   // bs: Plan mit Beschwerden → nach dem Training nach den Schmerzen fragen
-  TM.frage = false;
+  TM.frage = false; TM.klein = false;
   if (gym) { LAUF.gym = true; LAUF.phase = 'frei'; }
   laufSichern(); piep(1); wach(true); if (!gym) timerZeigen();
 }
 const aktUe = () => LAUF.uebungen[LAUF.ue];
 const letzterSatz = () => LAUF.ue === LAUF.uebungen.length - 1 && LAUF.satz === aktUe().saetze - 1;
+/* Satz speichern (Redesign 24.11.2026): Gewicht und Wiederholungen stehen schon während des Satzes im Feld (vorbelegt mit dem letzten Gewicht).
+   Ein Tipp speichert genau einen Eintrag auf diesem Handy: Doppeltipp und ein zweiter Tipp auf den neuen Knopf an derselben Stelle zählen nicht.
+   Geht das Speichern schief (Speicher voll oder gesperrt), bleibt alles stehen, die Werte bleiben im Feld, „Nochmal speichern“ versucht es erneut.
+   „Synchronisiert“ steht nirgends: Die App schickt Sätze nicht von selbst weg, gespeichert heißt hier „auf diesem Handy“. */
+const sperre = (ms) => { TM.sperreBis = Date.now() + ms; };
+const gesperrt = () => Date.now() < (TM.sperreBis || 0);
 function satzFertig() {
-  TM.tausch = false;
-  const u = aktUe(), jetzt = Date.now(), vor = u.log[u.log.length - 1];
-  u.log.push({ s: LAUF.seit, e: jetzt, kg: vor ? vor.kg : '', wdh: '' });
-  LAUF.bonus = null;
-  if (!LAUF.gym && u.log.length >= u.saetze) {   // im Gym meldet es die Station, sonst hier: Übung fertig, alle Sätze gemacht
-    LAUF.bonus = spielStation(S.plan, LAUF.ue) || null;
-    const auf = LAUF.bonus && LAUF.bonus.levelAuf;
-    if (auf) setTimeout(() => Rang.aufstiegZeigen(h, auf, lade3d), 500);
-  }
+  if (!LAUF || LAUF.phase !== 'satz' || TM.speichert || gesperrt()) return;
+  TM.speichert = true; TM.tausch = false;
+  const u = aktUe(), jetzt = Date.now(), vor = u.log[u.log.length - 1], ew = LAUF.entwurf || {};
+  const eintrag = { s: LAUF.seit, e: jetzt, kg: ew.kg != null && ew.kg !== '' ? ew.kg : (vor ? vor.kg : ''), wdh: ew.wdh != null ? ew.wdh : '' };
+  const vorher = { phase: LAUF.phase, seit: LAUF.seit, bonus: LAUF.bonus, uebungFertig: LAUF.uebungFertig, spruch: LAUF.spruch, pauseZiel: LAUF.pauseZiel };
+  u.log.push(eintrag);
   if (letzterSatz() && !LAUF.gym) LAUF.phase = 'letzter';
   else {
     LAUF.phase = 'pause'; LAUF.pauseZiel = u.pauseMax;
     LAUF.uebungFertig = LAUF.satz === u.saetze - 1;
     if (LAUF.uebungFertig) LAUF.spruch = spruch(SPRUECHE_UEBUNG);
   }
-  LAUF.seit = jetzt;
-  laufSichern(); timerZeigen();
+  LAUF.seit = jetzt; LAUF.entwurf = null;
+  LAUF.gespeichert = { ue: LAUF.ue, nr: u.log.length, name: u.name };
+  if (!laufSichern()) {   // nichts verloren: zurück auf den Stand vor dem Tipp, Werte bleiben im Entwurf
+    u.log.pop(); Object.assign(LAUF, vorher); LAUF.entwurf = ew; LAUF.gespeichert = null;
+    TM.speichert = false; TM.fehler = 'Nicht gespeichert. Der Speicher auf diesem Handy ist voll oder gesperrt. Deine Werte sind noch da, tipp nochmal auf „Satz speichern“.';
+    timerZeigen(); return;
+  }
+  TM.fehler = null; sperre(450);   // derselbe Finger tippt sonst gleich auf „Bereit · weiter“ an derselben Stelle
+  if (!LAUF.gym && u.log.length >= u.saetze) {   // im Gym meldet es die Station, sonst hier: Übung fertig, alle Sätze gemacht
+    LAUF.bonus = spielStation(S.plan, LAUF.ue) || null;
+    const auf = LAUF.bonus && LAUF.bonus.levelAuf;
+    if (auf) setTimeout(() => Rang.aufstiegZeigen(h, auf, lade3d), 500);
+  } else LAUF.bonus = null;
+  laufSichern(); TM.speichert = false; timerZeigen();
   gefuehl(!LAUF.gym && u.log.length >= u.saetze ? 'station' : 'satz');
-  const f = document.getElementById('tm-wdh');
-  if (f) setTimeout(() => { try { f.focus({ preventScroll: true }); } catch (e) {} }, 60);
 }
 function naechsterSatz() {
+  if (!LAUF || gesperrt()) return;
   const u = aktUe();
   if (LAUF.satz < u.saetze - 1) LAUF.satz++; else { LAUF.ue++; LAUF.satz = 0; }
-  LAUF.phase = 'satz'; LAUF.seit = Date.now(); LAUF.uebungFertig = false;
+  LAUF.phase = 'satz'; LAUF.seit = Date.now(); LAUF.uebungFertig = false; LAUF.gespeichert = null;
   laufSichern(); piep(2); timerZeigen();
 }
+// Nachträglich korrigieren (Pause): speichert bei jeder Eingabe, sagt ehrlich, ob es geklappt hat
 function eintragen(feld, wert) {
   const u = aktUe(), s = u.log[u.log.length - 1];
   if (!s) return;
   s[feld] = String(wert).replace(',', '.').replace(/[^0-9.]/g, '');
+  const ok = laufSichern(), el = document.getElementById('tm-korrektur');
+  if (el) { el.textContent = ok ? 'Korrektur gespeichert.' : 'Nicht gespeichert. Der Speicher auf diesem Handy ist voll oder gesperrt.'; el.classList.toggle('fehler', !ok); }
+}
+// Werte für den laufenden Satz (vor dem Speichern): bleiben beim Neuladen erhalten
+function entwurfSetzen(feld, wert) {
+  LAUF.entwurf = Object.assign({}, LAUF.entwurf, { [feld]: String(wert).replace(',', '.').replace(/[^0-9.]/g, '') });
   laufSichern();
 }
 const zahlOderNull = (x) => x === '' || x == null || isNaN(+x) ? null : +x;
@@ -1829,8 +1998,8 @@ function spielBestleistung() {
 function laufBeenden(status) {
   if (GYM) { const raum = GYM.raum; GYM = null; gymStationWeg(); if (raum) raum.schliessen(false, true); }
   const r = ergebnis(status);
-  const verlauf = [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40);
-  speicher.schreib(VERLAUF_KEY, verlauf);
+  // Beispiel und echter Verlauf bleiben getrennt (24.11.2026): Ein Probetraining im Beispielplan landet nie in „Deine letzten Trainings“ oder der Statistik
+  if (LAUF.plan !== 'beispiel') speicher.schreib(VERLAUF_KEY, [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40));
   if (LAUF.plan !== 'beispiel') statistikMerken([r]);   // Dein Fortschritt: bleibt auch nach den 40 im Verlauf für Monat und Jahr
   // Heute gemachte Übungen abhaken (wenn heute dieser Trainingstag ist)
   const p = S.plan;
@@ -1843,6 +2012,16 @@ function laufBeenden(status) {
   LAUF.phase = 'fertig'; LAUF.ergebnis = r; TM.frage = false;
   laufSichern(); wach(false); timerZeigen();
   if (status === 'fertig') { gefuehl('geschafft'); if (LAUF.neuePR && LAUF.neuePR.length) gefuehl('bestleistung'); }
+}
+// Training ausblenden (24.11.2026): Die Einheit läuft weiter und ist gespeichert, „Heute“ zeigt sie zuerst mit „Training fortsetzen“
+function trainingAusblenden() {
+  TM.klein = true;
+  if (TM.buehne) { TM.buehne.weg(); TM.buehne = null; TM.gezeigt = null; }
+  if (TM.el) { TM.el.remove(); TM.el = null; }
+  document.body.style.overflow = '';
+  if (history.state && history.state.training) { ZURUECK_LEISE = true; history.back(); }
+  S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
+  const t = document.querySelector('.rg-offen h2'); if (t) { t.setAttribute('tabindex', '-1'); try { t.focus({ preventScroll: true }); } catch (e) { /* nichts */ } }
 }
 function laufSchliessen() {
   LAUF = null; laufSichern(); wach(false);
@@ -2153,7 +2332,8 @@ function timerLaeuft() {
   const erledigt = LAUF.uebungen.reduce((s, x) => s + x.log.length, 0);
   const fort = []; for (let i = 0; i < gesamt; i++) fort.push(h('i', { class: i < erledigt ? 'an' : (i === erledigt && !pause && !letzter ? 'jetzt' : null) }));
   const teile = [
-    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: 'Training ' + LAUF.tagNr + ' · ' + LAUF.tagName }), h('div', { class: 'tm-gesamt' }, h('span', { id: 'tm-gesamt', text: mmss((Date.now() - LAUF.start) / 1000) }))),
+    h('div', { class: 'tm-kopf' }, h('div', { class: 'marke', text: 'Training ' + LAUF.tagNr + ' · ' + LAUF.tagName }), h('div', { class: 'tm-gesamt' }, h('span', { id: 'tm-gesamt', text: mmss((Date.now() - LAUF.start) / 1000) })),
+      TM.gym ? null : h('button', { class: 'knopf text klein tm-klein', type: 'button', 'aria-label': 'Training ausblenden. Es läuft weiter, Fortsetzen steht auf Heute.', onclick: trainingAusblenden, text: 'Ausblenden' })),
     h('div', { class: 'tm-fort', 'aria-label': erledigt + ' von ' + gesamt + ' Sätzen' }, fort)
   ];
   const feier = pause && LAUF.uebungFertig, gymFeier = !!TM.gym && feier;
@@ -2172,7 +2352,10 @@ function timerLaeuft() {
     teile.push(h('div', { class: 'tm-werte' },
       h('div', null, h('small', { text: 'Satz' }), h('b', { text: Math.min(LAUF.satz + 1, u.saetze) + ' / ' + u.saetze })),
       h('div', null, h('small', { text: u.sek ? 'Halten' : 'Ziel' }), h('b', { text: u.dosis })),
-      h('div', null, h('small', { text: u.rir ? 'Reserve' : 'Pause' }), h('b', { text: u.rir ? u.rir + ' Wdh' : mmss(u.pauseMax) }))));
+      u.rir ? h('button', { type: 'button', class: 'tm-wert-knopf', 'aria-expanded': String(!!TM.rir), 'aria-controls': 'tm-rir', onclick: () => { TM.rir = !TM.rir; TM.el && TM.el.classList.add('still'); timerZeigen(); } },
+        h('small', null, 'Reserve ', h('span', { class: 'rir-i', 'aria-hidden': 'true', text: '?' })), h('b', { text: u.rir + ' Wdh' }))
+        : h('div', null, h('small', { text: 'Pause' }), h('b', { text: mmss(u.pauseMax) }))));
+    if (u.rir && TM.rir) teile.push(h('p', { class: 'rir-satz klein', id: 'tm-rir', text: RIR_SATZ }));   // RIR beim Antippen in einem Satz (24.11.2026)
   }
   if (pause || letzter) {
     const s = u.log[u.log.length - 1];
@@ -2180,11 +2363,16 @@ function timerLaeuft() {
     const wdh = h('input', { class: 'eingabe', id: 'tm-wdh', inputmode: 'numeric', autocomplete: 'off', placeholder: '–', value: s.wdh, 'aria-label': u.sek ? 'Gehalten in Sekunden' : 'Wiederholungen', oninput: (e) => eintragen('wdh', e.target.value) });
     // Kunden-Test 22.11.2026: Das Eintragen lag unter dem großen Pause-Ring, auf dem Handy erst nach Scrollen sichtbar, und niemand wusste,
     // dass es sich von selbst speichert. Jetzt steht es direkt unter den Werten, mit dem Satz dazu.
-    const eintrag = h('div', { class: 'tm-karte' }, h('small', { class: 'tm-label', text: 'Satz ' + u.log.length + (feier || letzter ? ' · ' + u.name : '') + ' eintragen' }),
+    // Redesign 24.11.2026: zuerst die Bestätigung mit Häkchen („Satz 2 gespeichert“), darunter die Werte zum Korrigieren
+    const g = LAUF.gespeichert && LAUF.gespeichert.ue === LAUF.ue ? LAUF.gespeichert : { nr: u.log.length, name: u.name };
+    const werteText = [s.kg !== '' && s.kg != null ? String(s.kg).replace('.', ',') + ' kg' : '', s.wdh !== '' && s.wdh != null ? s.wdh + (u.sek ? ' s' : ' Wdh') : ''].filter(Boolean).join(' × ');
+    const bestaetigung = h('div', { class: 'tm-gespeichert', role: 'status' }, h('span', { class: 'tm-gespeichert-haken', html: HAKEN }),
+      h('span', null, h('b', { text: 'Satz ' + g.nr + ' gespeichert' }), h('small', { text: (werteText ? werteText + ' · ' : '') + 'auf diesem Handy' })));
+    const eintrag = h('div', { class: 'tm-karte' }, bestaetigung, h('small', { class: 'tm-label', text: 'Satz ' + u.log.length + (feier || letzter ? ' · ' + u.name : '') + ' korrigieren' }),
       h('div', { class: 'tm-eingabe' }, h('label', null, kg, h('span', { text: 'kg' })), h('label', null, wdh, h('span', { text: u.sek ? 'Sekunden' : 'Wdh' }))),
-      h('p', { class: 'leise klein tm-speichert', text: 'Speichert sich von selbst. Was du nicht weißt, lässt du einfach leer.' }));
+      h('p', { class: 'leise klein tm-speichert', id: 'tm-korrektur', role: 'status', text: 'Änderungen speichern sich von selbst.' }));
     if (pause && !gymFeier) teile.push(eintrag, ring('tm-ring', [h('small', { text: 'Pause' }), h('div', { class: 'tm-zeit', id: 'tm-uhr', text: mmss(LAUF.pauseZiel) })], 'pause'));
-    else if (!pause) teile.push(h('div', { class: 'tm-feier' }, h('div', { class: 'tm-haken', html: HAKEN }), h('small', { text: 'Letzter Satz geschafft' }), h('p', { class: 'tm-mini', text: 'Trag ihn noch ein, dann bist du durch.' })), eintrag);
+    else if (!pause) teile.push(h('div', { class: 'tm-feier' }, h('div', { class: 'tm-haken', html: HAKEN }), h('small', { text: 'Letzter Satz geschafft' }), h('p', { class: 'tm-mini', text: 'Stimmen die Werte? Dann bist du durch.' })), eintrag);
     else teile.push(eintrag);
     if (gymFeier) teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: gymStationFertig, text: 'Station geschafft' }));
     else if (pause) {
@@ -2198,7 +2386,7 @@ function timerLaeuft() {
           h('span', { class: 'leise klein', text: nu.s === 1 ? nu.u.saetze + ' Sätze · ' + nu.u.dosis : 'Satz ' + nu.s + ' von ' + nu.u.saetze + ' · ' + nu.u.dosis })),
         h('p', { class: 'tm-tipp tm-mitte', text: 'Pause laut Plan ' + mmss(u.pauseMin) + (u.pauseMin !== u.pauseMax ? ' bis ' + mmss(u.pauseMax) : '') + '. Danach geht es von selbst weiter.' }),
         h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: naechsterSatz, text: 'Bereit · weiter' }));
-    } else teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: () => { const text = spielEinheit(S.plan); laufBeenden('fertig'); spielToast(text); }, text: 'Training abschließen' }));
+    } else teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: () => { if (gesperrt()) return; const text = spielEinheit(S.plan); laufBeenden('fertig'); spielToast(text); }, text: 'Training abschließen' }));
   } else {
     // Satz läuft: die Figur zeigt die Übung, darunter die Satz-Uhr; ohne Figur (eigene Übung) der Ring wie in der Trainer-Seite
     if (TM.gym) teile.push(h('div', { class: 'tm-satzuhr' }, h('small', { text: 'Satz ' + (LAUF.satz + 1) + ' läuft' }), h('b', { class: 'zahl', id: 'tm-uhr', text: '0:00' })));
@@ -2212,7 +2400,18 @@ function timerLaeuft() {
     if (u.tipp) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Technik ' }), u.tipp));
     (u.angepasst || []).forEach((x) => info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Angepasst wegen ' + x.name + ' ' }), x.grund)));
     if (u.vorsicht) info.push(h('p', { class: 'tm-tipp' }, h('b', { text: 'Vorsicht ' }), u.vorsicht));
-    teile.push(h('button', { class: 'knopf haupt tm-gross', type: 'button', onclick: satzFertig, text: 'Satz fertig' }));
+    // Satz speichern (24.11.2026): Gewicht und Wiederholungen direkt über dem Knopf, beides mit dem Daumen erreichbar, auch bei offener Tastatur (klebt unten)
+    const ew = LAUF.entwurf || {}, vorKg = u.log.length ? u.log[u.log.length - 1].kg : (vor && vor[0] != null ? String(vor[0]) : '');
+    const kgFeld = h('input', { class: 'eingabe zahl', id: 'tm-kg', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'next', placeholder: '–', value: ew.kg != null ? ew.kg : (vorKg || ''), 'aria-label': 'Gewicht in kg',
+      oninput: (e) => entwurfSetzen('kg', e.target.value), onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); const w = document.getElementById('tm-wdh'); if (w) w.focus(); } } });
+    if (ew.kg == null && vorKg) entwurfSetzen('kg', vorKg);
+    const wdhFeld = h('input', { class: 'eingabe zahl', id: 'tm-wdh', inputmode: 'numeric', autocomplete: 'off', enterkeyhint: 'done', placeholder: u.dosis.replace(/ Wdh$/, ''), value: ew.wdh || '', 'aria-label': u.sek ? 'Gehalten in Sekunden' : 'Wiederholungen',
+      oninput: (e) => entwurfSetzen('wdh', e.target.value), onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); satzFertig(); } } });
+    const speichernKnopf = h('button', { class: 'knopf haupt tm-gross tm-speichern', type: 'button', onclick: satzFertig, text: TM.fehler ? 'Nochmal speichern' : 'Satz ' + (LAUF.satz + 1) + ' speichern' });
+    teile.push(h('div', { class: 'tm-aktion' },
+      h('div', { class: 'tm-eingabe' }, h('label', null, kgFeld, h('span', { text: 'kg' })), h('label', null, wdhFeld, h('span', { text: u.sek ? 'Sekunden' : 'Wdh' }))),
+      TM.fehler ? h('p', { class: 'tm-fehler', role: 'alert', text: TM.fehler }) : h('p', { class: 'leise klein tm-speichert', text: 'Was du nicht weißt, lässt du leer.' }),
+      speichernKnopf));
     const slot = laufSlot(), wahl = slot ? tauschOptionen(slot) : [];
     if (wahl.length && !TM.tausch) teile.push(h('button', { class: 'knopf', type: 'button', onclick: () => { TM.tausch = true; timerZeigen(); const x = TM.el && TM.el.querySelector('.tm-tausch'); if (x) x.scrollIntoView({ block: 'center' }); }, text: 'Gerät nicht da? Tauschen' }));
     if (wahl.length && TM.tausch) teile.push(h('div', { class: 'tm-karte tm-tausch' }, h('p', { text: 'Sollen wir ' + u.name + ' ändern? Das hier passt sicher zu deinem Plan.' }),
@@ -2246,6 +2445,9 @@ function timerFertig() {
       h('div', null, h('small', { text: 'Übungen' }), h('b', { text: String(r.u.length) }))),
     schmerzFrage(),
     h('section', { class: 'block' }, h('h2', { text: 'Training ' + r.t + ' · ' + r.tn }), laufTabelle(r)),
+    r.p === 'beispiel' ? h('section', { class: 'block' }, h('h2', { text: 'Das war ein Probetraining' }),   // Beispiel (24.11.2026): nichts im Verlauf, nichts an Devin
+      h('p', { class: 'leise klein', text: 'Im Beispiel landet nichts in deinem Verlauf und nichts geht an Devin. Mit deinem eigenen Plan schickst du dein Training mit einem Tipp.' }),
+      h('a', { class: 'knopf haupt tm-gross', href: 'analyse/', text: analyseAngefangen() ? 'Eigene Analyse fortsetzen' : 'Eigenen Plan anfragen' })) :
     h('section', { class: 'block' }, h('h2', { text: 'An Devin schicken' }),
       h('p', { class: 'leise klein', text: (KONTAKT.eingang ? 'Ein Tipp auf „An Devin senden“, und Devin hat dein Training.' : 'Per E-Mail geht es mit einem Tipp, deine Mail-App ist schon ausgefüllt.') + ' Oder kopier den Text für WhatsApp. Devin sieht dann deine Zeiten, Gewichte und Wiederholungen.' }),
       laufSendeKnopf(r, 'knopf haupt tm-gross'), knopf, feld),
@@ -2314,7 +2516,7 @@ function infoUeber() {
  * Fällig ist der Umzug, sobald die alte Adresse umleitet: Die Probe (manifest.webmanifest?umzug=…) geht am Offline-Speicher vorbei (sw.js), und fetch folgt der Umleitung nicht. */
 const NEUE_ADRESSE = KONTAKT.adresse;
 const ALTE_ADRESSE = /\.github\.io$/.test(location.hostname) && location.origin !== new URL(NEUE_ADRESSE).origin;
-const LOOKS = ['lagune', 'klar', 'gold', 'sport'];
+const LOOKS = ['lagune', 'klar', 'gold', 'sport', 'champagner'];
 const UMZUG_JE = /^dk_(?:(?:tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}|spiel_stand|bestleistung)$/;   // seit 09.11.2026 auch der Spielstand (genau dieser eine Schlüssel, spiel.js), sonst nichts
 async function umzugPruefen() {
   if (!ALTE_ADRESSE || S.umzug || navigator.onLine === false) return;
@@ -2405,7 +2607,7 @@ async function umzugEinlesen(teil) {
   if (leer && LOOKS.includes(d.look)) {   // Farbwelt nur auf einem leeren Handy übernehmen
     try { localStorage.setItem('dk_look', d.look); } catch (e) {}
     document.documentElement.dataset.look = d.look;
-    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = d.look === 'klar' ? '#F5F5F7' : d.look === 'gold' ? '#060608' : d.look === 'sport' ? '#111215' : '#86CBEE';
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = d.look === 'klar' ? '#F5F5F7' : d.look === 'gold' ? '#060608' : d.look === 'sport' ? '#111215' : d.look === 'champagner' ? '#131416' : '#86CBEE';
   }
   gespeichertesPruefen();
   S.umzugNeu = true; S.tagWahl = null; S.ansicht = 'heute'; dauerhaft();
@@ -2435,7 +2637,7 @@ function gespeichertesPruefen() {
 if ('serviceWorker' in navigator) {
   const hatteFassung = !!navigator.serviceWorker.controller, START = Date.now();
   let neuLaden = false, reg = null, hinweis = null, zurueck = 0;
-  const offenesEtwas = () => !!document.querySelector('.raum, .tm, .blatt.offen, .rang-auf');
+  const offenesEtwas = () => !!document.querySelector('.raum, .tm, .rg-offen, .blatt.offen, .rang-auf');   // .rg-offen: ausgeblendetes Training auf Heute
   const tippt = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
   const jetztNeu = () => { if (!neuLaden || offenesEtwas()) return; neuLaden = false; location.reload(); };
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hatteFassung) return; neuLaden = true; jetztNeu(); });

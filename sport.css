@@ -79,72 +79,167 @@
 
   --sp-ruhig: cubic-bezier(.22, .61, .36, 1);   /* weich auslaufend, ohne Überschwingen */
   --sp-fokus: 0 0 0 2px #111215, 0 0 0 4px #C8F135;
+  --knopf-voll-hover: #D6F65E;
+  --akzent-hover: #DDF77F;
+  --akzent-schimmer: rgba(200, 241, 53, .45);
+  --akzent-ring: rgba(200, 241, 53, .2);
+  --akzent-schein: rgba(200, 241, 53, .055);
 }
 
+/* ---------- Farbwelt „Champagner“ (24.11.2026, Devin: warmes Anthrazit, helle Schrift, zurückhaltendes Champagnergold für Hauptaktion, Auswahl und Bestleistung).
+   Gleiche Tokens wie Sport, Lagune, Klar und Schwarz-Gold, darum gelten alle ruhigen Regeln unten für beide. Standard für neue Besucher und nach dem ersten Einloggen.
+   Kontraste (WCAG, geprüft): Text #F6F3EE auf Grund #131416 16,7:1, auf Karte #202124 14,6:1, auf Feld #2A2B2F 12,8:1 · Zweittext #B9B2A7 auf Karte 7,7:1, auf Feld 6,7:1
+   · Gold #D6A766 auf Grund 8,4:1, auf Karte 7,3:1 · Schrift #17130C auf Gold 8,4:1 · Platzhalter #8E8880 auf Karte 4,6:1. ---------- */
+:root[data-look="champagner"] {
+  --verlauf-a: #E2B97E;
+  --verlauf-b: #C9965A;
+  --verlauf-winkel: 120deg;
+  --akzent: #D6A766;
+  --akzent-hell: #E2B97E;
+  --auf-akzent: #17130C;
+  --blatt-akzent: #E2B97E;
+  --verlauf-schrift: linear-gradient(120deg, #F6F3EE 0%, #F6F3EE 100%);
+  --akzent-verlauf: #D6A766;
+
+  --schwarz: #131416;
+  --anthrazit: #2A2B2F;
+  --flaeche: #202124;
+  --linie: #34353A;
+  --text: #F6F3EE;
+  --text2: #B9B2A7;
+  --auf-grund: #F6F3EE;
+  --auf-grund2: #B9B2A7;
+  --gut: #7BD69F;
+  --warn: #F0B85A;
+  --stopp: #FF8A7A;
+  color-scheme: dark;
+
+  --seite: #131416;
+  --flaechen: none;
+  --wellen: none;
+  --karte: #202124;
+  --flaeche-verlauf: linear-gradient(180deg, #222326, #202124);
+  --rand-weich: rgba(246, 243, 238, .07);
+  --schatten: 0 1px 0 rgba(246, 243, 238, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .8);
+  --akzent-glanz: none;
+  --blatt: #1C1D20;
+  --blatt-text: #F6F3EE;
+  --blatt-text2: #B9B2A7;
+  --blatt-linie: #34353A;
+  --blatt-feld: #2A2B2F;
+  --glas: rgba(19, 20, 22, .84);
+  --glas-rand: rgba(246, 243, 238, .08);
+  --glas-dicht: rgba(22, 23, 25, .95);
+  --knopf-grund: rgba(246, 243, 238, .07);
+  --knopf-grund2: rgba(214, 167, 102, .22);
+  --knopf-text: #F6F3EE;
+  --feld: #2A2B2F;
+  --reihe: #2A2B2F;
+  --chip-grund: #2A2B2F;
+  --platzhalter: #8E8880;
+  --blatt-hg: rgba(0, 0, 0, .6);
+  --tm-grund: #131416;
+  --buehne-grund: radial-gradient(80% 50% at 50% 100%, rgba(214, 167, 102, .08), transparent 72%), linear-gradient(180deg, #232427 0%, #18191B 100%);
+  --buehne-rand: 0 0 0 1px rgba(246, 243, 238, .06) inset;
+  --rund-grund: rgba(34, 35, 38, .94);
+  --rund-rand: rgba(246, 243, 238, .1);
+  --mini-grund: linear-gradient(180deg, #2A2B2F, #202124);
+  --raum-grund: #131416;
+  --lila: #D6A766;
+
+  --r: 20px;
+  --knopf-voll: #D6A766;
+  --auf-voll: #17130C;
+  --zweit-text: #F6F3EE;
+  --zweit-rand: rgba(246, 243, 238, .28);
+  --kachel: #202124;
+  --kachel-text: #F6F3EE;
+  --kachel-text2: #B9B2A7;
+  --kachel-frei: transparent;
+  --kachel-frei-text: #F6F3EE;
+  --kachel-frei-text2: #B9B2A7;
+  --zweit-frei-text: #F6F3EE;
+  --zweit-frei-rand: rgba(246, 243, 238, .28);
+  --held-grund: transparent;
+  --held-text: #F6F3EE;
+  --held-text2: #B9B2A7;
+
+  --sp-ruhig: cubic-bezier(.22, .61, .36, 1);
+  --sp-fokus: 0 0 0 2px #131416, 0 0 0 4px #D6A766;
+  --knopf-voll-hover: #E0B477;
+  --akzent-hover: #E8C690;
+  --akzent-schimmer: rgba(214, 167, 102, .45);
+  --akzent-ring: rgba(214, 167, 102, .24);
+  --akzent-schein: rgba(214, 167, 102, .05);
+}
+:root[data-look="champagner"] body { background: radial-gradient(120% 60% at 50% -10%, #1D1C1B 0%, transparent 60%) no-repeat, var(--seite); background-attachment: fixed; }
+:root[data-look="champagner"] .look-wahl { background: linear-gradient(135deg, #202124 0 48%, #D6A766 52% 100%); }
+.look-probe.champagner { background: linear-gradient(135deg, #202124 0 48%, #D6A766 52% 100%); }
+
 /* Grund: ruhiges Anthrazit. Bewegte Farbflächen, Wellen und Video sind in dieser Farbwelt aus. */
-:root[data-look="sport"]::before, :root[data-look="sport"]::after { content: none; }
-:root[data-look="sport"] body::before { background: color-mix(in srgb, var(--seite) 90%, transparent); }
+:root:is([data-look="sport"],[data-look="champagner"])::before, :root:is([data-look="sport"],[data-look="champagner"])::after { content: none; }
+:root:is([data-look="sport"],[data-look="champagner"]) body::before { background: color-mix(in srgb, var(--seite) 90%, transparent); }
 :root[data-look="sport"] body { background: radial-gradient(120% 60% at 50% -10%, #1A1C21 0%, transparent 60%) no-repeat, var(--seite); background-attachment: fixed; }
-:root[data-look="sport"] .dk-wellen-video { display: none; }
+:root:is([data-look="sport"],[data-look="champagner"]) .dk-wellen-video { display: none; }
 
 /* Schrift: klar, etwas mehr Kontrast zwischen Titel und Text */
-:root[data-look="sport"] h1, :root[data-look="sport"] h2, :root[data-look="sport"] h3 { letter-spacing: -.02em; }
-:root[data-look="sport"] h1 { font-weight: 700; }
-:root[data-look="sport"] .marke { background: none; color: var(--text); font-weight: 700; letter-spacing: -.015em; }
-:root[data-look="sport"] .marke::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%; background: var(--akzent); vertical-align: .12em; }
-:root[data-look="sport"] .st-held h1 { background: none; -webkit-text-fill-color: currentColor; animation: none; }   /* kein Dauer-Glanz */
+:root:is([data-look="sport"],[data-look="champagner"]) h1, :root:is([data-look="sport"],[data-look="champagner"]) h2, :root:is([data-look="sport"],[data-look="champagner"]) h3 { letter-spacing: -.02em; }
+:root:is([data-look="sport"],[data-look="champagner"]) h1 { font-weight: 700; }
+:root:is([data-look="sport"],[data-look="champagner"]) .marke { background: none; color: var(--text); font-weight: 700; letter-spacing: -.015em; }
+:root:is([data-look="sport"],[data-look="champagner"]) .marke::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%; background: var(--akzent); vertical-align: .12em; }
+:root:is([data-look="sport"],[data-look="champagner"]) .st-held h1 { background: none; -webkit-text-fill-color: currentColor; animation: none; }   /* kein Dauer-Glanz */
 
 /* Kopf und Leiste: dunkles Glas mit feiner Linie */
-:root[data-look="sport"] .kopf { border-bottom-color: rgba(255, 255, 255, .06); }
-:root[data-look="sport"] nav.leiste { box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .8); border-color: rgba(255, 255, 255, .07); }
-:root[data-look="sport"] nav.leiste button { color: var(--text2); }
-:root[data-look="sport"] nav.leiste button[aria-current="page"] { color: var(--akzent); background: none; }
+:root:is([data-look="sport"],[data-look="champagner"]) .kopf { border-bottom-color: rgba(255, 255, 255, .06); }
+:root:is([data-look="sport"],[data-look="champagner"]) nav.leiste { box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .8); border-color: rgba(255, 255, 255, .07); }
+:root:is([data-look="sport"],[data-look="champagner"]) nav.leiste button { color: var(--text2); }
+:root:is([data-look="sport"],[data-look="champagner"]) nav.leiste button[aria-current="page"] { color: var(--akzent); background: none; }
 
 /* Karten: eine Fläche, feiner Rand, großzügig */
-:root[data-look="sport"] .block, :root[data-look="sport"] .kunde, :root[data-look="sport"] .eintrag { background: var(--flaeche); border: 1px solid var(--rand-weich); box-shadow: var(--schatten); }
-:root[data-look="sport"] .block { padding: 22px; gap: 14px; }
-:root[data-look="sport"] .block.heute { border-color: color-mix(in srgb, var(--akzent) 30%, transparent); }
-:root[data-look="sport"] .naechstes { background: var(--reihe); border-color: var(--rand-weich); }
-:root[data-look="sport"] .st-block:not(.st-frei):not(.st-held) { border: 1px solid var(--rand-weich); }
-:root[data-look="sport"] .st-mock .block.heute { box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .9); }
-:root[data-look="sport"] .woche-karte .wochenleiste .wt.heute { border-color: var(--akzent); }
-:root[data-look="sport"] .fortschritt-balken i, :root[data-look="sport"] .woche-ring::before { will-change: auto; }
-:root[data-look="sport"] .tipp-text small, :root[data-look="sport"] .angepasst { color: var(--akzent); }
+:root:is([data-look="sport"],[data-look="champagner"]) .block, :root:is([data-look="sport"],[data-look="champagner"]) .kunde, :root:is([data-look="sport"],[data-look="champagner"]) .eintrag { background: var(--flaeche); border: 1px solid var(--rand-weich); box-shadow: var(--schatten); }
+:root:is([data-look="sport"],[data-look="champagner"]) .block { padding: 22px; gap: 14px; }
+:root:is([data-look="sport"],[data-look="champagner"]) .block.heute { border-color: color-mix(in srgb, var(--akzent) 30%, transparent); }
+:root:is([data-look="sport"],[data-look="champagner"]) .naechstes { background: var(--reihe); border-color: var(--rand-weich); }
+:root:is([data-look="sport"],[data-look="champagner"]) .st-block:not(.st-frei):not(.st-held) { border: 1px solid var(--rand-weich); }
+:root:is([data-look="sport"],[data-look="champagner"]) .st-mock .block.heute { box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .9); }
+:root:is([data-look="sport"],[data-look="champagner"]) .woche-karte .wochenleiste .wt.heute { border-color: var(--akzent); }
+:root:is([data-look="sport"],[data-look="champagner"]) .fortschritt-balken i, :root:is([data-look="sport"],[data-look="champagner"]) .woche-ring::before { will-change: auto; }
+:root:is([data-look="sport"],[data-look="champagner"]) .tipp-text small, :root:is([data-look="sport"],[data-look="champagner"]) .angepasst { color: var(--akzent); }
 @media (min-width: 1024px) {
-  :root[data-look="sport"] .st-block:not(.st-held):hover { transform: none; box-shadow: none; }   /* das Heben übernimmt sport.js, ruhiger und nur bis 3 px */
+  :root:is([data-look="sport"],[data-look="champagner"]) .st-block:not(.st-held):hover { transform: none; box-shadow: none; }   /* das Heben übernimmt sport.js, ruhiger und nur bis 3 px */
 }
 
 /* Knöpfe: Limette für das Wichtigste, sonst ruhig. Farbe und Größe ändern sich sanft. */
-:root[data-look="sport"] .knopf { transition: transform .22s var(--sp-ruhig), background-color .2s var(--sp-ruhig), color .2s var(--sp-ruhig), border-color .2s var(--sp-ruhig), box-shadow .2s var(--sp-ruhig); }
-:root[data-look="sport"] .knopf.haupt { background: var(--knopf-voll); color: var(--auf-voll); font-weight: 600; }
-:root[data-look="sport"] .knopf:not(.haupt):not(.text) { background: var(--knopf-grund); color: var(--knopf-text); border-color: rgba(255, 255, 255, .1); }
-:root[data-look="sport"] .knopf.text { color: var(--akzent); }
+:root:is([data-look="sport"],[data-look="champagner"]) .knopf { transition: transform .22s var(--sp-ruhig), background-color .2s var(--sp-ruhig), color .2s var(--sp-ruhig), border-color .2s var(--sp-ruhig), box-shadow .2s var(--sp-ruhig); }
+:root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt { background: var(--knopf-voll); color: var(--auf-voll); font-weight: 600; }
+:root:is([data-look="sport"],[data-look="champagner"]) .knopf:not(.haupt):not(.text) { background: var(--knopf-grund); color: var(--knopf-text); border-color: rgba(255, 255, 255, .1); }
+:root:is([data-look="sport"],[data-look="champagner"]) .knopf.text { color: var(--akzent); }
 @media (hover: hover) and (pointer: fine) {
-  :root[data-look="sport"] .knopf.haupt:hover { background: #D6F65E; }
-  :root[data-look="sport"] .knopf:not(.haupt):not(.text):hover { background: rgba(255, 255, 255, .11); border-color: rgba(200, 241, 53, .45); }
-  :root[data-look="sport"] .knopf.text:hover { color: #DDF77F; }
-  :root[data-look="sport"] .chip:hover { border-color: rgba(200, 241, 53, .45); }
+  :root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt:hover { background: var(--knopf-voll-hover); }
+  :root:is([data-look="sport"],[data-look="champagner"]) .knopf:not(.haupt):not(.text):hover { background: rgba(255, 255, 255, .11); border-color: var(--akzent-schimmer); }
+  :root:is([data-look="sport"],[data-look="champagner"]) .knopf.text:hover { color: var(--akzent-hover); }
+  :root:is([data-look="sport"],[data-look="champagner"]) .chip:hover { border-color: var(--akzent-schimmer); }
 }
 /* Knopf-Gefühl aus antippen.js in dieser Farbwelt leiser: höchstens 4 px mitziehen, nicht dehnen, kein Wackeln, nur ein sanftes Einrasten */
-:root[data-look="sport"] .kg-schwebt { transform: translate3d(clamp(-3px, var(--kx, 0px), 3px), clamp(-3px, var(--ky, 0px), 3px), 0) scale(1.03) !important; transition: transform .3s var(--sp-ruhig), box-shadow .25s var(--sp-ruhig), background-color .2s var(--sp-ruhig) !important; }
-:root[data-look="sport"] .kg-zieht { transform: translate3d(clamp(-4px, var(--kx, 0px), 4px), clamp(-4px, var(--ky, 0px), 4px), 0) scale(.98) !important; transition: transform .12s var(--sp-ruhig) !important; }
-:root[data-look="sport"] .kg-drueckt { transform: scale(.97) !important; transition: transform .1s var(--sp-ruhig) !important; }
-:root[data-look="sport"] .kg-plopp { animation: sp-einrasten .28s var(--sp-ruhig) both !important; }
+:root:is([data-look="sport"],[data-look="champagner"]) .kg-schwebt { transform: translate3d(clamp(-3px, var(--kx, 0px), 3px), clamp(-3px, var(--ky, 0px), 3px), 0) scale(1.03) !important; transition: transform .3s var(--sp-ruhig), box-shadow .25s var(--sp-ruhig), background-color .2s var(--sp-ruhig) !important; }
+:root:is([data-look="sport"],[data-look="champagner"]) .kg-zieht { transform: translate3d(clamp(-4px, var(--kx, 0px), 4px), clamp(-4px, var(--ky, 0px), 4px), 0) scale(.98) !important; transition: transform .12s var(--sp-ruhig) !important; }
+:root:is([data-look="sport"],[data-look="champagner"]) .kg-drueckt { transform: scale(.97) !important; transition: transform .1s var(--sp-ruhig) !important; }
+:root:is([data-look="sport"],[data-look="champagner"]) .kg-plopp { animation: sp-einrasten .28s var(--sp-ruhig) both !important; }
 @keyframes sp-einrasten { from { transform: scale(.97); } to { transform: none; } }
-:root[data-look="sport"] .knopf.kg-schwebt, :root[data-look="sport"] .knopf.kg-zieht, :root[data-look="sport"] .chip.kg-zieht, :root[data-look="sport"] .wt.kg-zieht { box-shadow: 0 10px 24px -14px rgba(0, 0, 0, .9); }
-:root[data-look="sport"] .knopf.haupt.kg-schwebt, :root[data-look="sport"] .knopf.haupt.kg-zieht { box-shadow: 0 10px 28px -12px rgba(200, 241, 53, .45); }
-:root[data-look="sport"] .kg-licht { background: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 60%); }
-:root[data-look="sport"] .kg-licht::after { display: none; }   /* kein Lichtstreifen quer über den Knopf */
+:root:is([data-look="sport"],[data-look="champagner"]) .knopf.kg-schwebt, :root:is([data-look="sport"],[data-look="champagner"]) .knopf.kg-zieht, :root:is([data-look="sport"],[data-look="champagner"]) .chip.kg-zieht, :root:is([data-look="sport"],[data-look="champagner"]) .wt.kg-zieht { box-shadow: 0 10px 24px -14px rgba(0, 0, 0, .9); }
+:root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt.kg-schwebt, :root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt.kg-zieht { box-shadow: 0 10px 28px -12px var(--akzent-schimmer); }
+:root:is([data-look="sport"],[data-look="champagner"]) .kg-licht { background: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 60%); }
+:root:is([data-look="sport"],[data-look="champagner"]) .kg-licht::after { display: none; }   /* kein Lichtstreifen quer über den Knopf */
 
 /* Felder und Auswahl */
-:root[data-look="sport"] .eingabe { background: var(--feld); border-color: var(--linie); color: var(--text); }
-:root[data-look="sport"] .eingabe:focus { border-color: var(--akzent); box-shadow: 0 0 0 3px rgba(200, 241, 53, .2); }
-:root[data-look="sport"] .optionen input:checked + span, :root[data-look="sport"] .janein input:checked + span { background: var(--knopf-voll); color: var(--auf-voll); border-color: transparent; }
+:root:is([data-look="sport"],[data-look="champagner"]) .eingabe { background: var(--feld); border-color: var(--linie); color: var(--text); }
+:root:is([data-look="sport"],[data-look="champagner"]) .eingabe:focus { border-color: var(--akzent); box-shadow: 0 0 0 3px var(--akzent-ring); }
+:root:is([data-look="sport"],[data-look="champagner"]) .optionen input:checked + span, :root:is([data-look="sport"],[data-look="champagner"]) .janein input:checked + span { background: var(--knopf-voll); color: var(--auf-voll); border-color: transparent; }
 
 /* Tastatur: deutlich sichtbarer Fokus, nur bei Tastatur (focus-visible) */
-:root[data-look="sport"] :focus-visible { outline: 2px solid var(--akzent); outline-offset: 3px; }
-:root[data-look="sport"] .eingabe:focus-visible { outline: none; }
-:root[data-look="sport"] .optionen input:focus-visible + span, :root[data-look="sport"] .janein input:focus-visible + span, :root[data-look="sport"] .haken input:focus-visible + span { box-shadow: var(--sp-fokus); }
+:root:is([data-look="sport"],[data-look="champagner"]) :focus-visible { outline: 2px solid var(--akzent); outline-offset: 3px; }
+:root:is([data-look="sport"],[data-look="champagner"]) .eingabe:focus-visible { outline: none; }
+:root:is([data-look="sport"],[data-look="champagner"]) .optionen input:focus-visible + span, :root:is([data-look="sport"],[data-look="champagner"]) .janein input:focus-visible + span, :root:is([data-look="sport"],[data-look="champagner"]) .haken input:focus-visible + span { box-shadow: var(--sp-fokus); }
 
 /* Farbwelt-Knopf und Probe im Menü */
 :root[data-look="sport"] .look-wahl { background: linear-gradient(135deg, #1A1C20 0 48%, #C8F135 52% 100%); }
@@ -153,10 +248,10 @@
 /* ---------- Maus-Effekte (sport.js setzt Klassen und Werte). Nur mit präzisem Zeiger und Hover, nie bei „weniger Bewegung“. ---------- */
 /* Lichtschein im Hintergrund: eine feste weiche Fläche, sport.js schiebt sie nur per transform (kein Blur-Filter) */
 .sp-schein { position: fixed; z-index: 0; left: 0; top: 0; width: 720px; height: 720px; margin: -360px 0 0 -360px; pointer-events: none; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(200, 241, 53, .055), rgba(200, 241, 53, .02) 55%, transparent);
+  background: radial-gradient(closest-side, var(--akzent-schein), transparent 55%, transparent);
   opacity: 0; transition: opacity .6s var(--sp-ruhig); will-change: transform; contain: strict; }
 .sp-schein.an { opacity: 1; }
-:root[data-look="sport"] .app { position: relative; z-index: 1; }   /* Inhalt liegt über dem Schein */
+:root:is([data-look="sport"],[data-look="champagner"]) .app { position: relative; z-index: 1; }   /* Inhalt liegt über dem Schein */
 
 /* Aktive Karte: neigt sich leicht zur Maus und rückt höchstens 3 px. Andere Karten bleiben stehen. */
 .sp-karte { transition: transform .45s var(--sp-ruhig), border-color .3s var(--sp-ruhig), box-shadow .45s var(--sp-ruhig); }
@@ -165,38 +260,38 @@
 /* Highlight: Licht auf der Fläche und am Rand, folgt der Maus (zwei Ebenen, nur opacity wird überblendet) */
 .sp-licht, .sp-rand { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .35s var(--sp-ruhig); z-index: 0; }
 .sp-licht { background: radial-gradient(420px circle at var(--sp-mx, 50%) var(--sp-my, 50%), rgba(255, 255, 255, .045), transparent 60%); }
-.sp-rand { inset: 0; padding: 1px; background: radial-gradient(240px circle at var(--sp-mx, 50%) var(--sp-my, 50%), rgba(200, 241, 53, .65), rgba(200, 241, 53, 0) 70%);
+.sp-rand { inset: 0; padding: 1px; background: radial-gradient(240px circle at var(--sp-mx, 50%) var(--sp-my, 50%), var(--akzent-schimmer), transparent 70%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 .sp-aktiv > .sp-licht, .sp-aktiv > .sp-rand { opacity: 1; }
 .sp-rel { position: relative; }
 
 /* ---------- Touch: kurze, leise Tap-Reaktion, kein Fingertracking ---------- */
 @media (hover: none), (pointer: coarse) {
-  :root[data-look="sport"] .block:active, :root[data-look="sport"] .naechstes:active, :root[data-look="sport"] .kunde:active { transform: scale(.992); transition: transform .12s var(--sp-ruhig); }
-  :root[data-look="sport"] .block, :root[data-look="sport"] .naechstes, :root[data-look="sport"] .kunde { transition: transform .25s var(--sp-ruhig); }
-  :root[data-look="sport"] .block:has(input:active, textarea:active, select:active, canvas:active) { transform: none; }   /* Felder und 3D-Bühne nicht anstupsen */
+  :root:is([data-look="sport"],[data-look="champagner"]) .block:active, :root:is([data-look="sport"],[data-look="champagner"]) .naechstes:active, :root:is([data-look="sport"],[data-look="champagner"]) .kunde:active { transform: scale(.992); transition: transform .12s var(--sp-ruhig); }
+  :root:is([data-look="sport"],[data-look="champagner"]) .block, :root:is([data-look="sport"],[data-look="champagner"]) .naechstes, :root:is([data-look="sport"],[data-look="champagner"]) .kunde { transition: transform .25s var(--sp-ruhig); }
+  :root:is([data-look="sport"],[data-look="champagner"]) .block:has(input:active, textarea:active, select:active, canvas:active) { transform: none; }   /* Felder und 3D-Bühne nicht anstupsen */
 }
 
 /* Weniger Bewegung: keine dekorative Bewegung, alles bleibt bedienbar */
 @media (prefers-reduced-motion: reduce) {
   .sp-schein, .sp-licht, .sp-rand { display: none; }
   .sp-karte, .sp-karte.sp-aktiv { transform: none !important; transition: none; }
-  :root[data-look="sport"] .knopf { transition: background-color .15s linear, color .15s linear, border-color .15s linear; }
-  :root[data-look="sport"] .block:active, :root[data-look="sport"] .naechstes:active, :root[data-look="sport"] .kunde:active { transform: none; }
+  :root:is([data-look="sport"],[data-look="champagner"]) .knopf { transition: background-color .15s linear, color .15s linear, border-color .15s linear; }
+  :root:is([data-look="sport"],[data-look="champagner"]) .block:active, :root:is([data-look="sport"],[data-look="champagner"]) .naechstes:active, :root:is([data-look="sport"],[data-look="champagner"]) .kunde:active { transform: none; }
 }
 
 /* Regeln, die in stil.css und buehne.css nur „Schwarz-Gold“ als dunkle Farbwelt kennen: für Sport ebenso dunkel.
    stil.css setzt für alle Farbwelten außer Gold und Klar einen dunkelblauen Zweittext auf dem Grund (Lagune), darum hier mit höherem Gewicht. */
-:root[data-look="sport"][data-look] { --auf-grund2: #A9AFA9; }
-:root[data-look="sport"] .marke small { color: var(--auf-grund2); }
-:root[data-look="sport"] .buehne, :root[data-look="sport"] .blatt { color-scheme: dark; }
-:root[data-look="sport"] .blatt { box-shadow: 0 -1px 0 rgba(255, 255, 255, .08), 0 -18px 44px rgba(0, 0, 0, .5); }
-:root[data-look="sport"] .erklaer-blase { background: rgba(20, 21, 25, .96); }
-:root[data-look="sport"] .raum-pop { color: var(--text); text-shadow: 0 2px 18px rgba(0, 0, 0, .85), 0 0 3px rgba(0, 0, 0, .9); }
+:root:is([data-look="sport"],[data-look="champagner"])[data-look] { --auf-grund2: #A9AFA9; }
+:root:is([data-look="sport"],[data-look="champagner"]) .marke small { color: var(--auf-grund2); }
+:root:is([data-look="sport"],[data-look="champagner"]) .buehne, :root:is([data-look="sport"],[data-look="champagner"]) .blatt { color-scheme: dark; }
+:root:is([data-look="sport"],[data-look="champagner"]) .blatt { box-shadow: 0 -1px 0 rgba(255, 255, 255, .08), 0 -18px 44px rgba(0, 0, 0, .5); }
+:root:is([data-look="sport"],[data-look="champagner"]) .erklaer-blase { background: rgba(20, 21, 25, .96); }
+:root:is([data-look="sport"],[data-look="champagner"]) .raum-pop { color: var(--text); text-shadow: 0 2px 18px rgba(0, 0, 0, .85), 0 0 3px rgba(0, 0, 0, .9); }
 
 /* Sehr schmale Handys (16.11.2026, Gesamttest): Der Punkt vor „Devin Kanke Coach“ machte den Namen 17 px breiter, „Analyse“ rutschte bei 320 px
    bis auf 7 px an den Farbwelt-Knopf (sonst 12 px, damit die Trefferflächen sich nichts wegnehmen). Kleinerer Punkt, weniger Abstand. */
-@media (max-width: 360px) { :root[data-look="sport"] .marke::before { width: 6px; height: 6px; margin-right: 5px; } }
+@media (max-width: 360px) { :root:is([data-look="sport"],[data-look="champagner"]) .marke::before { width: 6px; height: 6px; margin-right: 5px; } }
 
 /* ---------- Finger und Wischen (17.11.2026, sport.js, alle Farbwelten). Finger: Licht nur solange der Finger liegt. Wischen: Karten unterhalb des Bildschirms
    kommen einmal mit 18 px Bewegung und Überblendung. Nur transform und opacity, keine Dauer-Animation, nie bei „weniger Bewegung“. ---------- */
@@ -209,12 +304,201 @@
 
 /* Ruhig und schön (19.11.2026, Devin: „reibungslose Übergänge … keinen Reinzoom … dass die Webseite an sich besser aussieht“) */
 /* Studio-Bild etwas dunkler: Schrift direkt auf dem Hintergrund (Seitentitel, Erklärsätze, Startseite) bleibt auch vor den hellen Fenstern lesbar. Ein festes Bild, kostet beim Scrollen nichts. */
-:root[data-look="sport"] .dk-wellen-video.dk-studio { filter: brightness(.74) saturate(.92); }
-:root[data-look="sport"] #ansicht > .plan-kopf, :root[data-look="sport"] body.start .st-text { text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 0 18px rgba(0, 0, 0, .35); }
-:root[data-look="sport"] #ansicht > .plan-kopf .knopf, :root[data-look="sport"] body.start .st-text .knopf { text-shadow: none; }
+:root:is([data-look="sport"],[data-look="champagner"]) .dk-wellen-video.dk-studio { filter: brightness(.74) saturate(.92); }
+:root:is([data-look="sport"],[data-look="champagner"]) #ansicht > .plan-kopf, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-text { text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 0 18px rgba(0, 0, 0, .35); }
+:root:is([data-look="sport"],[data-look="champagner"]) #ansicht > .plan-kopf .knopf, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-text .knopf { text-shadow: none; }
 /* Erklärsätze im Seitenkopf (z. B. „Tippe auf eine Übung …“) und Untertitel der Startseite: heller und mit kräftigerem weichem Schatten statt Grau auf hellen Fenstern */
-:root[data-look="sport"] #ansicht > .plan-kopf .leise, :root[data-look="sport"] body.start .st-held .st-zeile, :root[data-look="sport"] body.start .st-frei .st-zeile { color: rgba(238, 240, 244, .9); text-shadow: 0 1px 3px rgba(0, 0, 0, .8), 0 0 14px rgba(0, 0, 0, .55); }
+:root:is([data-look="sport"],[data-look="champagner"]) #ansicht > .plan-kopf .leise, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-held .st-zeile, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-frei .st-zeile { color: rgba(238, 240, 244, .9); text-shadow: 0 1px 3px rgba(0, 0, 0, .8), 0 0 14px rgba(0, 0, 0, .55); }
 /* Startseite am Handy: Abschnitte ohne Lücke, damit zwischen ihnen keine Streifen vom Hintergrund wie Nähte aussehen */
-@media (max-width: 639px) { :root[data-look="sport"] body.start .inhalt { gap: 0; } }
+@media (max-width: 639px) { :root:is([data-look="sport"],[data-look="champagner"]) body.start .inhalt { gap: 0; } }
 /* Neuzeichnen derselben Seite (Haken, Farbwelt): nichts blendet neu ein, nur der echte Seitenwechsel (app.js setzt „still“) */
 #ansicht.still > * { animation: none !important; }
+
+/* ========== Redesign Kunden-App (24.11.2026) ==========
+   Rundgang auf der Startseite, Beispielstatus, offenes Training, Leiste mit „Mehr“, Satz speichern. Alles über die Tokens der Farbwelt,
+   darum gilt es in Champagner, Sport, Schwarz-Gold, Lagune und Lounge-Weiß. Raster 8 px (4 px für Feinheiten). Bewegt werden nur transform und opacity.
+   Druck 110 ms, Ansichtswechsel 200 ms, Erscheinen 220 ms. Bei „weniger Bewegung“ bleiben nur Zustandswechsel, Text und Häkchen. */
+:root { --rg-1: 8px; --rg-2: 16px; --rg-3: 24px; --rg-4: 32px; --rg-6: 48px; --rg-8: 64px; --rg-druck: 110ms; --rg-wechsel: 200ms; --rg-auf: 220ms; --rg-kurve: cubic-bezier(.22, .61, .36, 1); }
+
+/* Ziffern: Gewicht, Zeiten, Timer und Werte stehen ruhig untereinander */
+.zahl, .tm-zeit, #tm-gesamt, #tm-uhr, .tm-werte b, .tm-sum b, .tm-eingabe input, .woche-ring b, .rg-werte b, .rg-betrag b, table.ueb td.z { font-variant-numeric: tabular-nums; }
+
+/* Fokus für Tastatur in jeder Farbwelt sichtbar */
+:focus-visible { outline: 2px solid var(--akzent); outline-offset: 3px; }
+.eingabe:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--akzent-ring, color-mix(in srgb, var(--akzent) 30%, transparent)); }
+#ansicht h1[tabindex="-1"]:focus { outline: none; }
+#ansicht h1[tabindex="-1"]:focus-visible { outline: 2px solid var(--akzent); outline-offset: 4px; border-radius: 6px; }
+
+/* Trefferflächen: häufige Aktionen mindestens 44 × 44 */
+.knopf, .knopf.klein, .knopf.text, nav.leiste button, .wt, .rir-knopf, .rg-code-knopf, .mehr-zeile, .rg-install > summary, details > summary { min-height: 44px; }
+.knopf.text { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Druckgefühl: sofort leicht kleiner und dunkler, ohne Nachwippen */
+.knopf:active:not(:disabled) { transform: scale(.98); filter: brightness(.94); transition: transform var(--rg-druck) var(--rg-kurve), filter var(--rg-druck) var(--rg-kurve); }
+
+/* Ansichtswechsel: kurz und gemeinsam, kein gestaffeltes Einblenden */
+.inhalt > * { animation-duration: var(--rg-wechsel) !important; animation-delay: 0s !important; }
+.inhalt.still > * { animation: none !important; }
+
+/* ---------- Startseite: Rundgang ---------- */
+body.start main { padding-left: 0; padding-right: 0; }
+body.start .inhalt { gap: 0 !important; max-width: none !important; grid-template-columns: minmax(0, 1fr) !important; padding-inline: 0 !important; margin-inline: 0 !important; }   /* die alte Startseite hatte zwei Spalten am PC */
+@media (min-width: 900px) { body.start .kopf-innen { max-width: none; padding-inline: max(48px, calc((100vw - 1280px) / 2 + 24px)); } }
+.rg-held { display: grid; grid-template-columns: minmax(0, 1fr); background: var(--seite); color: var(--text); }
+.rg-held-text { display: grid; align-content: start; gap: var(--rg-2); padding: var(--rg-4) var(--rg-2) var(--rg-3); }
+.rg-marke { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--akzent); }
+.rg-held h1 { margin: 0; font-size: clamp(34px, 9.4vw, 64px); line-height: 1.04; letter-spacing: -.03em; font-weight: 700; color: var(--text); background: none; -webkit-text-fill-color: currentColor; text-wrap: balance; }
+.rg-wie { margin: 0; font-size: clamp(18px, 4.6vw, 22px); line-height: 1.4; color: var(--text); max-width: 34ch; text-wrap: pretty; }
+.rg-dauer { margin: 0; max-width: 46ch; color: var(--text2); }
+.rg-aktionen { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.rg-aktionen .knopf { text-decoration: none; }
+.knopf.rg-gross { min-height: 52px; padding-inline: 24px; font-size: 17px; }
+.rg-held .rg-aktionen { margin-top: var(--rg-1); }
+.rg-preis { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text2); max-width: 44ch; }
+.rg-preis b { color: var(--text); font-weight: 600; }
+.rg-code { display: grid; gap: var(--rg-1); justify-items: start; }
+.rg-code-knopf { padding-inline: 0; color: var(--akzent); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.rg-code > div { width: 100%; }
+.rg-code .code-leiste { margin: 0 !important; width: 100%; }
+/* Bild: optimiertes Standbild mit reserviertem Platz (Seitenverhältnis), das warme Licht läuft weich in den Grund über */
+.rg-held-bild { position: relative; margin: 0; aspect-ratio: 16 / 10; overflow: hidden; background: var(--flaeche); }
+.rg-held-bild img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 46%; }
+.rg-held-bild::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, var(--seite) 0%, transparent 22%, transparent 70%, var(--seite) 100%); }
+@media (min-width: 900px) {
+  .rg-held { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); min-height: min(calc(100svh - 64px), 760px); align-items: stretch; }
+  .rg-held-text { align-content: center; padding: var(--rg-8) var(--rg-6) var(--rg-8) max(var(--rg-6), calc((100vw - 1280px) / 2 + 24px)); gap: 20px; }
+  .rg-held-bild { aspect-ratio: auto; min-height: 100%; }
+  .rg-held-bild img { position: absolute; inset: 0; object-position: 58% 50%; }
+  .rg-held-bild::after { background: linear-gradient(90deg, var(--seite) 0%, color-mix(in srgb, var(--seite) 55%, transparent) 16%, transparent 42%), linear-gradient(180deg, transparent 75%, var(--seite) 100%); }
+}
+/* Abschnitte: eine Aufgabe je Abschnitt, großzügige Abstände, Bildkanten mit demselben Radius */
+.rg-teil { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--rg-3); padding: var(--rg-6) var(--rg-2); max-width: 1280px; margin-inline: auto; width: 100%; box-sizing: border-box; border-top: 1px solid var(--rand-weich); }
+.rg-teil-text { display: grid; gap: 12px; align-content: start; max-width: 560px; }
+.rg-teil h2 { margin: 0; font-size: clamp(28px, 6.6vw, 44px); line-height: 1.08; letter-spacing: -.025em; font-weight: 700; text-wrap: balance; }
+.rg-teil-text > p { margin: 0; line-height: 1.5; }
+.rg-klein-titel { font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--akzent) !important; }
+@media (min-width: 900px) { .rg-teil { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--rg-8); padding: 96px max(var(--rg-6), calc((100vw - 1280px) / 2 + 24px)); align-items: start; max-width: none; } }
+/* Planvorschau: echter Ausschnitt aus dem Beispielplan als geordnete Übungszeilen */
+.rg-plan { display: grid; gap: var(--rg-2); padding: var(--rg-3); border-radius: 20px; background: var(--flaeche); border: 1px solid var(--rand-weich); box-shadow: var(--schatten); }
+.rg-plan-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.rg-plan-kopf .nr { width: 100%; font-size: 13px; font-weight: 600; color: var(--akzent); }
+.rg-plan-kopf h3 { margin: 0; font-size: 22px; letter-spacing: -.015em; }
+.rg-zeilen { list-style: none; margin: 0; padding: 0; display: grid; }
+.rg-zeile { display: grid; gap: var(--rg-1); padding: 12px 0; border-top: 1px solid var(--linie); }
+.rg-zeile:first-child { border-top: 0; padding-top: 0; }
+.rg-name { font-size: 16px; font-weight: 600; }
+.rg-werte { display: grid; grid-template-columns: repeat(4, minmax(0, auto)); justify-content: start; gap: 4px 20px; }
+.rg-werte > span { display: grid; gap: 2px; }
+.rg-werte small { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
+.rg-werte b { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.rg-plan > p { margin: 0; }
+/* Devin: seine eigenen Worte und drei Schritte */
+.rg-zitat { font-size: clamp(18px, 4.4vw, 22px) !important; line-height: 1.45 !important; color: var(--text); padding-left: var(--rg-2); border-left: 2px solid var(--akzent); }
+.rg-schritte { list-style: none; counter-reset: rg; margin: 0; padding: 0; display: grid; gap: var(--rg-2); }
+.rg-schritte li { counter-increment: rg; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 2px 14px; align-items: start; padding: var(--rg-2); border-radius: 16px; background: var(--flaeche); border: 1px solid var(--rand-weich); }
+.rg-schritte li::before { content: counter(rg); grid-row: span 2; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--akzent); color: var(--akzent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.rg-schritte b { font-size: 16px; }
+.rg-schritte span { font-size: 15px; line-height: 1.45; }
+/* Leistung und Preis beieinander */
+.rg-preis-karte { display: grid; gap: var(--rg-2); padding: var(--rg-3); border-radius: 20px; background: var(--flaeche); border: 1px solid color-mix(in srgb, var(--akzent) 45%, transparent); }
+.rg-leistung { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.rg-leistung li { position: relative; padding-left: 28px; line-height: 1.4; }
+.rg-leistung li::before { content: ""; position: absolute; left: 2px; top: .3em; width: 14px; height: 8px; border-left: 2px solid var(--akzent); border-bottom: 2px solid var(--akzent); transform: rotate(-45deg); }
+.rg-betrag { margin: 0; display: flex; align-items: baseline; gap: 6px; }
+.rg-betrag b { font-size: 40px; line-height: 1; letter-spacing: -.02em; }
+.rg-betrag span { color: var(--text2); }
+.rg-preis-karte > p { margin: 0; }
+.rg-preis-karte .knopf { justify-self: start; }
+/* Gym und schon Kunde */
+.rg-gym-bild { margin: 0; border-radius: 20px; overflow: hidden; aspect-ratio: 1000 / 845; background: var(--flaeche); border: 1px solid var(--rand-weich); }
+.rg-gym-bild img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.rg-eigen .stapel { display: grid; gap: var(--rg-2); }
+.rg-install > summary { cursor: pointer; display: flex; align-items: center; font-weight: 600; color: var(--akzent); }
+.rg-install[open] > summary { margin-bottom: var(--rg-1); }
+.rg-install .block { margin: 0; }
+body.start .st-fuss { padding: var(--rg-4) var(--rg-2) var(--rg-6); text-align: center; border-top: 1px solid var(--rand-weich); }
+/* Sanftes Erscheinen: nur Planvorschau und Devin, nur was noch unterhalb lag, einmal. Ohne JS fehlt rg-bereit, der Inhalt steht einfach da. */
+.rg-erscheint.rg-bereit:not(.rg-da) > * { opacity: 0; transform: translateY(8px); }
+.rg-erscheint.rg-da > * { transition: opacity var(--rg-auf) var(--rg-kurve), transform var(--rg-auf) var(--rg-kurve); }
+.rg-erscheint.rg-sofort > * { transition: none; }
+@media (prefers-reduced-motion: reduce) { .rg-erscheint > * { opacity: 1 !important; transform: none !important; transition: none !important; } }
+
+/* ---------- Beispiel, offenes Training, Tagesplan ---------- */
+.rg-beispiel { display: grid; gap: 12px; padding: var(--rg-2); border-radius: 16px; background: color-mix(in srgb, var(--akzent) 10%, var(--flaeche)); border: 1px solid color-mix(in srgb, var(--akzent) 40%, transparent); }
+.rg-beispiel p { margin: 0; line-height: 1.45; }
+.rg-offen { border-color: var(--akzent) !important; }
+.rg-offen h2 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+.rg-stand { margin: 0; font-size: 15px; }
+.tag-kopf.mit-start { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; }
+.tag-kopf.mit-start > :not(.tag-start) { grid-column: 1; }
+.tag-kopf.mit-start .tag-start { grid-column: 2; grid-row: 1 / span 3; }
+.tag-kopf.mit-start .tag-start .knopf { white-space: nowrap; }
+@media (max-width: 479px) { .tag-kopf.mit-start { grid-template-columns: minmax(0, 1fr); } .tag-kopf.mit-start .tag-start { grid-column: 1; grid-row: auto; margin-top: var(--rg-1); } .tag-kopf.mit-start .tag-start .knopf { width: 100%; } }
+.rir-knopf { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; margin: -4px; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.rir-i { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid currentColor; font-size: 11px; font-weight: 700; text-transform: none; }
+.rir-knopf[aria-expanded="true"] { color: var(--akzent); }
+.rir-mobil { display: none; }
+.rir-mobil .rir-knopf { margin: 0; padding: 0 2px; font-size: 14px; color: var(--text2); text-transform: none; letter-spacing: 0; }
+@media (max-width: 520px) { .rir-mobil { display: block; } }
+.rir-satz { margin: 0; padding: 12px var(--rg-2); border-radius: 12px; background: var(--reihe); line-height: 1.45; }
+
+/* ---------- Leiste: Handy vier Ziele, ab 900 px alle sieben beschriftet ---------- */
+nav.leiste div.mit-mehr { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+nav.leiste div.mit-mehr .nur-breit { display: none; }
+nav.leiste div.mit-mehr button span { font-size: 12px; }
+nav.leiste div.mit-mehr button[aria-current="page"] { font-weight: 700; background: var(--knopf-grund2); color: var(--text); }
+nav.leiste div.mit-mehr button[aria-current="page"]::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 18px; height: 3px; margin-left: -9px; border-radius: 2px; background: currentColor; }
+@media (min-width: 900px) {
+  nav.leiste { width: auto !important; left: 50% !important; right: auto !important; margin-left: 0 !important; transform: translateX(-50%); }
+  nav.leiste div.mit-mehr { grid-template-columns: repeat(7, minmax(84px, auto)) !important; }
+  nav.leiste div.mit-mehr .nur-breit { display: grid; }
+  nav.leiste div.mit-mehr .nur-schmal { display: none; }
+  nav.leiste div.mit-mehr button { padding-inline: 12px; }
+}
+.mehr-gruppe { gap: var(--rg-1) !important; }
+.mehr-titel { margin: 0 0 4px; font-size: 13px !important; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text2); }
+.mehr-liste { display: grid; }
+.mehr-zeile { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 60px; padding: 10px 0; border: 0; border-top: 1px solid var(--linie); background: none; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.mehr-zeile:first-child { border-top: 0; }
+.mehr-zeile svg { width: 26px; height: 26px; stroke: var(--akzent); fill: none; stroke-width: 1.8; }
+.mehr-zeile b { display: block; font-size: 17px; }
+.mehr-zeile small { display: block; margin-top: 2px; color: var(--text2); font-size: 14px; line-height: 1.35; }
+.mehr-pfeil { font-size: 24px; color: var(--text2); }
+
+/* ---------- Training: Satz speichern ---------- */
+.tm-aktion { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 10px; margin: 0 -16px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(180deg, transparent, var(--seite) 18px); }
+.tm-aktion .tm-eingabe { margin: 0; }
+.tm-aktion .tm-speichert { margin: 0; text-align: center; }
+.tm-speichern { transition: transform var(--rg-druck) var(--rg-kurve), filter var(--rg-druck) var(--rg-kurve), background-color .15s linear; }
+.tm-speichern:active { transform: scale(.98); filter: brightness(.92); }
+.tm-fehler { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--stopp) 14%, var(--flaeche)); color: var(--text); border: 1px solid var(--stopp); font-size: 15px; line-height: 1.4; }
+.tm-gespeichert { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: center; padding: 0 0 12px; margin-bottom: 4px; border-bottom: 1px solid var(--linie); }
+.tm-gespeichert-haken { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--knopf-voll); color: var(--auf-voll); }
+.tm-gespeichert-haken svg { width: 22px; height: 22px; }
+.tm-gespeichert b { display: block; font-size: 18px; }
+.tm-gespeichert small { display: block; color: var(--text2); font-size: 14px; font-variant-numeric: tabular-nums; }
+#tm-korrektur.fehler { color: var(--stopp); }
+@media (prefers-reduced-motion: no-preference) {
+  .tm-gespeichert-haken { animation: rg-haken var(--rg-auf) var(--rg-kurve) both; }
+  @keyframes rg-haken { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+}
+@media (prefers-reduced-motion: reduce) { .knopf:active, .tm-speichern:active { transform: none; } }
+.tm-werte .tm-wert-knopf { display: grid; gap: 2px; justify-items: start; padding: 10px 12px; background: var(--flaeche-verlauf); min-width: 0; margin: 0; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.tm-werte .tm-wert-knopf small { display: inline-flex; align-items: center; gap: 6px; }
+.tm-werte .tm-wert-knopf[aria-expanded="true"] small { color: var(--akzent); }
+.tm-kopf { align-items: center; }
+.tm-kopf .tm-gesamt { margin-left: auto; }
+.tm-kopf .tm-klein { padding-inline: 8px; margin-right: -8px; }
+
+/* Schmale Breite und 200 % Zoom (390 px Handy ≈ 195 CSS-Pixel): nichts darf seitlich herausragen. */
+.kopf-innen { min-width: 0; }
+.kopf-innen > * { min-width: 0; }
+.code-reihe { flex-wrap: wrap; }
+.code-leiste .code-reihe > .code-feld { min-width: 0; flex-shrink: 1; }
+.inhalt :is(h1, h2, h3, p, span, li, td, th, label) { overflow-wrap: break-word; }
+@media (max-width: 300px) {
+  .kopf-innen { flex-wrap: wrap; gap: 8px; }
+  .inhalt :is(h1, h2, h3, p, span, li) { overflow-wrap: anywhere; hyphens: auto; }
+  .code-leiste .code-reihe > .code-feld { flex-basis: 100%; }
+}
+.rg-plaetze { color: var(--akzent); font-weight: 600; }

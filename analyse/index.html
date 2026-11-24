@@ -1,14 +1,13 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-laEu9MWosMsnlug2a+fNAsjiQ07jpKaCE/9obscU6H0=' 'sha256-siJk4tWG7iCxd+TF7aNSCenMJAfE+QVzgsVgo8SEGYA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="dk-kein-zoom" content="1">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-+JQvtxbBbmwK9cqAZ36JJWhFW3YXgQWYD28MrBcbCA8=' 'sha256-nz+dFTmZa2QllGyKzLF/lKwQ+1+xlgNrMv+u6FuM7fE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="dk-wellen-video" content="../">
 <title>Analyse für dich · Devin Kanke Coach</title>
 <!-- Nie in einer fremden Seite (13.11.2026, wie app.js): In einem Rahmen (iframe) bleibt die Seite unsichtbar, das Skript unten startet nicht. frame-ancestors geht per <meta> nicht. -->
 <script>if(window.top!==window.self){document.documentElement.style.display='none'}</script>
-<meta name="theme-color" content="#111215"><script>try{var l=localStorage.getItem('dk_look');if(!localStorage.getItem('dk_look_start1711')){l='sport';localStorage.setItem('dk_look',l);localStorage.setItem('dk_look_start1711','1')}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':l==='sport'?'#111215':'#86CBEE'}}catch(e){document.documentElement.dataset.look='sport'}</script>
+<meta name="theme-color" content="#131416"><script>try{var l=localStorage.getItem('dk_look');if(!localStorage.getItem('dk_look_start2411')){if(!l||l==='sport'){l='champagner';localStorage.setItem('dk_look',l)}localStorage.setItem('dk_look_start2411','1')}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':l==='sport'?'#111215':l==='champagner'?'#131416':'#86CBEE'}}catch(e){document.documentElement.dataset.look='champagner'}</script>
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../icon-180.png">
 <!-- Devin Kanke Coach — Analyse für dich. Eigene Seite unter /analyse/, ohne Login, ohne Code, ohne Server.
@@ -399,6 +398,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
       h('h1', { text: 'Analyse für dich' }),
       h('p', { class: 'leise', text: 'Ein paar Angaben über dich, Fragen zu Zielen und Training und der Gesundheits-Check: ' + schritte().length + ' kurze Schritte, etwa 10 Minuten. Danach baut Devin dir einen Plan, der genau zu dir passt.' }),
       h('p', { class: 'leise klein', text: 'Ab 14 Jahren. Unter 18 mit Einwilligung deiner Eltern.' }),
+      h('p', { class: 'leise klein', text: 'Deine Antworten bleiben auf diesem Handy, bis du sie selbst an Devin schickst. „Neu anfangen“ löscht sie hier.' }),   // Datensparsam (24.11.2026)
       h('button', { class: 'knopf haupt', type: 'button', onclick: function () { geh(weiter ? S.schritt : 1); }, text: weiter ? 'Weitermachen' : 'Los geht\'s' }),
       angefangen ? h('button', { class: 'knopf text', type: 'button', onclick: function () { S.g = {}; S.a = {}; S.s = {}; S.k = {}; S.e = {}; S.t = null; S.gesendet = false; S.gemahnt = {}; S.weg = null; S.mail2 = ''; geh(1); }, text: 'Neu anfangen' }) : null,
       ABO ? aboPreis() : null),
@@ -511,6 +511,8 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
       liste.append(box);
     });
     return [h('section', { class: 'block' }, kopf(st, n, gesamt, CHECK.titel || 'Gesundheits-Check', CHECK.unter),
+      // Datensparsam (24.11.2026): vor den sensiblen Fragen sagen, was auf dem Handy bleibt
+      h('p', { class: 'leise klein an-lokal', text: 'Diese Fragen sind sensibel. Deine Antworten bleiben nur auf diesem Handy, bis du sie am Ende selbst abschickst. Dann liest sie nur Devin, um deinen Plan sicher zu bauen.' }),
       unter18() ? h('p', { class: 'meldung klein', text: EW.eltern_hinweis }) : null, liste),
       fuss(n, gesamt, knopfText(n, gesamt), function () {
         var offen = checkOffen(), wider = kurzWiderspruch();
@@ -828,6 +830,8 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
     var los = skript ? h('button', { class: 'knopf haupt', type: 'button', text: 'Absenden' }) : mailKnopf('An Devin senden', 'knopf haupt');
     if (skript) los.addEventListener('click', function () { absenden(los); });
     return [h('section', { class: 'block' }, kopf(st, n, gesamt, 'Fertig! Stimmt alles?', skript ? 'Trag deine E-Mail-Adresse ein und tipp auf „Absenden“. Deine Antworten gehen dann direkt an Devin.' : 'Tipp auf „An Devin senden“: Deine Mail-App öffnet sich mit allem drin, du tippst dort nur noch auf Senden. Dein Zugang kommt per Mail an die Adresse, von der du sendest.'),
+      // Datensparsam (24.11.2026): vor dem Absenden Empfänger und Verarbeitung nennen
+      h('p', { class: 'leise klein an-empfaenger', text: 'Empfänger: Devin Kanke' + (skript ? ', direkt über sein Google-Skript (Google-Konto von Devin).' : ', per E-Mail an ' + EMPFAENGER + ' (über deine Mail-App und Devins Gmail-Postfach).') + ' Devin nutzt deine Antworten nur, um deinen Plan zu bauen und dir zu antworten. Details stehen in der Datenschutzerklärung.' }),
       ja ? h('p', { class: 'meldung klein', text: 'Du hast ' + ja + '× „Ja“ oder „Weiß nicht“ angetippt. Devin schaut sich das an und sagt dir, ob vorher etwas ärztlich abgeklärt werden sollte.' }) : null,
       unter18() ? h('p', { class: 'meldung klein', text: EW.eltern_hinweis }) : null,
       skript && S.sendFehler ? fehlerBlock() : null,
