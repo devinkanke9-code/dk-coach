@@ -118,6 +118,12 @@
 .es-scan-bild { width: 30px; height: 20px; fill: currentColor; flex: none; }
 .es-scan { position: relative; aspect-ratio: 4 / 3; border-radius: 16px; overflow: hidden; background: #000; }
 .es-video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.es-scan-rahmen { position: absolute; left: 8%; right: 8%; top: 35%; height: 30%; border: 3px solid rgba(255, 255, 255, .92); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .38); }
+.es-scan-rahmen { position: absolute; left: 10%; right: 10%; top: 24%; height: 52%; border: 3px solid rgba(255, 255, 255, .92); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .38); }
 .es-scan-rahmen::after { content: ""; position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; margin-top: -1px; background: #E0564F; box-shadow: 0 0 8px #E0564F; }
 .es-scan-status { margin: 0; font-weight: 600; }
+
+/* Packung scannen und Gericht schätzen (26.11.2026) */
+.es-scan-knopf span, .es-gericht-knopf span { display: grid; text-align: left; line-height: 1.2; }
+.es-scan-knopf small, .es-gericht-knopf small { font-size: 12px; font-weight: 500; opacity: .8; }
+.es-gericht-knopf { display: flex; align-items: center; justify-content: center; min-height: 52px; }
+.es-gruppe { margin: 8px 0 0; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text2); }
