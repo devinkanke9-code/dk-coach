@@ -6,6 +6,7 @@
 // Regeln mit Quellen: wissen/daten/ernaehrung_app.json (kommt über build.js als essen-daten.js). Test: pruefe-essen.js.
 import { essenFuer, gewichtFuer, verlaufSchluessel } from './status.js';
 import { ESSEN } from './essen-daten.js';
+import { leseBild, gtinOk } from './strichcode.js';   // Strichcode scannen (26.11.2026, Stufe 2a): eigener Leser, das Kamerabild bleibt auf dem Handy
 
 // Open Food Facts (26.11.2026 geprüft): Die alte Suche (world…/cgi/search.pl) antwortete mit 503. Die neue Suche liefert Namen, Code, Energie und Eiweiß,
 // die genauen Nährwerte je 100 g holt die App erst beim Antippen über die Produkt-Adresse. Beide senden die Kopfzeile für fremde Seiten (CORS).
@@ -141,8 +142,20 @@ async function offSuchen(begriff) {
 }
 async function offHolen(code) {
   const r = await fetch(produktAdresse(code), holen);
+  if (r.status === 404) return null;   // Produkt unbekannt
   if (!r.ok) throw new Error('Antwort ' + r.status);
   return offProdukt(await r.json());
+}
+// Strichcode nachschlagen: UPC-A steht als 12 oder 13 Ziffern (mit führender 0) in der Datenbank, darum beide Schreibweisen
+export function schreibweisen(code) {
+  if (!gtinOk(code)) return [];
+  if (code.length === 13 && code[0] === '0') return [code, code.slice(1)];
+  if (code.length === 12) return [code, '0' + code];
+  return [code];
+}
+async function codeHolen(code) {
+  for (const c of schreibweisen(code)) { const lm = await offHolen(c); if (lm) return lm; }
+  return null;
 }
 
 /* ---------- Suche in der Grundliste und in den eigenen Lebensmitteln (ohne Internet) ---------- */
@@ -161,6 +174,12 @@ function svg(tag, attrs, ...kinder) {
   for (const [k, v] of Object.entries(attrs || {})) if (v != null) el.setAttribute(k, v);
   for (const c of kinder) if (c) el.append(c);
   return el;
+}
+function strichcodeBild() {   // kleines Strichcode-Zeichen für den Knopf (gezeichnet, kein HTML aus Text)
+  const g = svg('svg', { viewBox: '0 0 30 20', class: 'es-scan-bild', 'aria-hidden': 'true' });
+  let x = 2;
+  [2, 1, 1, 2, 3, 1, 1, 1, 2, 2, 1, 3, 2, 1, 1, 1].forEach((w, i) => { if (i % 2 === 0) g.append(svg('rect', { x, y: 2, width: w, height: 16, rx: 0.3 })); x += w; });
+  return g;
 }
 function balken(h, name, wert, ziel, bereich) {
   const max = bereich ? bereich[1] : ziel, anteil = max > 0 ? Math.min(1, wert / max) : 0;
@@ -328,7 +347,8 @@ function eintragenBlatt(o, c, mahlzeit) {
     };
     feld.addEventListener('input', neuSuchen);
     feld.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); const q = feld.value.trim(); if (q.length >= 2 && !sucheLokal(st, q).length) onlineSuchen(q); } });
-    zeige(feld, treffer, online,
+    zeige(h('button', { class: 'knopf haupt es-scan-knopf', type: 'button', onclick: () => scanner() }, strichcodeBild(), h('span', { text: 'Strichcode scannen' })),
+      feld, treffer, online,
       h('div', { class: 'es-wege' },
         h('button', { class: 'knopf klein', type: 'button', onclick: () => eigenes(feld.value), text: 'Werte von der Packung' }),
         h('button', { class: 'knopf klein', type: 'button', onclick: () => schnell(), text: 'Nur Kalorien' })));
@@ -356,19 +376,113 @@ function eintragenBlatt(o, c, mahlzeit) {
     zeigeWert();
   };
 
-  // Werte von der Packung (je 100 g, so stehen sie auf jeder Packung in der EU)
-  const eigenes = (name) => {
+  // Strichcode scannen (Stufe 2a): Kamera hinten, Rahmen in der Mitte, alle 120 ms ein Bild. Erst der eingebaute Leser des Handys (BarcodeDetector,
+  // z. B. Android Chrome), sonst strichcode.js. Ein Code gilt erst, wenn er zweimal gelesen wurde. Nur die Ziffern gehen an Open Food Facts.
+  const kamera = { stream: null, timer: 0, an: false };
+  const beiVersteckt = () => { if (document.visibilityState === 'hidden') kameraAus(); };   // App im Hintergrund: Kamera aus
+  const kameraAus = () => {
+    kamera.an = false; clearTimeout(kamera.timer);
+    document.removeEventListener('visibilitychange', beiVersteckt);
+    if (kamera.stream) { kamera.stream.getTracks().forEach((t) => t.stop()); kamera.stream = null; }
+  };
+  const scanner = () => {
+    kameraAus();
+    const video = h('video', { class: 'es-video', playsinline: '', muted: '', autoplay: '', 'aria-hidden': 'true' });
+    video.muted = true; video.playsInline = true;
+    const status = h('p', { class: 'es-scan-status', role: 'status', text: 'Kamera startet …' });
+    zeige(h('div', { class: 'es-scan' }, video, h('div', { class: 'es-scan-rahmen', 'aria-hidden': 'true' })), status,
+      h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => { kameraAus(); suche(''); }, text: 'Zurück' }),
+        h('button', { class: 'knopf', type: 'button', onclick: () => { kameraAus(); nummer(); }, text: 'Nummer eintippen' })),
+      h('p', { class: 'leise klein', text: 'Das Kamerabild bleibt auf deinem Handy. Nur die Nummer des Strichcodes geht an Open Food Facts.' }));
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status.textContent = 'Hier geht die Kamera nicht. Tipp die Nummer unter dem Strichcode ein.'; return; }
+    kamera.an = true;
+    document.addEventListener('visibilitychange', beiVersteckt);
+    navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }).then((stream) => {
+      if (!kamera.an || !inhalt.isConnected) { stream.getTracks().forEach((t) => t.stop()); return; }
+      kamera.stream = stream; video.srcObject = stream;
+      const spur = stream.getVideoTracks()[0];
+      try { const f = spur.getCapabilities ? spur.getCapabilities().focusMode : null; if (f && f.indexOf('continuous') >= 0) spur.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}); } catch (e) { /* nicht jedes Handy kann das */ }
+      video.play().catch(() => {});
+      status.textContent = 'Halte den Strichcode waagerecht in den Rahmen.';
+      lesen(video, status);
+    }, (err) => {
+      kamera.an = false;
+      status.textContent = err && err.name === 'NotAllowedError' ? 'Die Kamera ist nicht erlaubt. Erlaube sie für diese Seite in den Einstellungen oder tipp die Nummer unter dem Strichcode ein.'
+        : err && err.name === 'NotFoundError' ? 'Keine Kamera gefunden. Tipp die Nummer unter dem Strichcode ein.' : 'Die Kamera ging nicht an. Tipp die Nummer unter dem Strichcode ein.';
+    });
+  };
+  const lesen = (video, status) => {
+    const leinwand = document.createElement('canvas'), ctx = leinwand.getContext('2d', { willReadFrequently: true }), zaehler = {};
+    let eingebaut = null;
+    try { if ('BarcodeDetector' in window) eingebaut = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a'] }); } catch (e) { eingebaut = null; }
+    const schritt = async () => {
+      if (!kamera.an || !inhalt.isConnected) { kameraAus(); return; }
+      const vw = video.videoWidth, vh = video.videoHeight, bw = video.clientWidth, bh = video.clientHeight;
+      if (video.readyState >= 2 && vw && bw) {
+        // Sichtbarer Teil des Videos (object-fit: cover), darin der Rahmen: Mitte, 84 % breit, 30 % hoch (wie .es-scan-rahmen)
+        const mass = Math.max(bw / vw, bh / vh), sichtW = bw / mass, sichtH = bh / mass;
+        const sw = Math.round(sichtW * 0.84), sh = Math.round(sichtH * 0.3), sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
+        const zw = Math.min(sw, 1280), zh = Math.max(1, Math.round(sh * zw / sw));
+        leinwand.width = zw; leinwand.height = zh;
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, zw, zh);
+        let codes = {};
+        if (eingebaut) { try { (await eingebaut.detect(leinwand)).forEach((x) => { if (gtinOk(x.rawValue)) codes[x.rawValue] = 1; }); } catch (e) { eingebaut = null; } }
+        if (!Object.keys(codes).length) codes = leseBild(ctx.getImageData(0, 0, zw, zh).data, zw, zh, 9);
+        for (const [code, n] of Object.entries(codes)) {
+          zaehler[code] = (zaehler[code] || 0) + n;
+          if (zaehler[code] >= 2) { kameraAus(); if (navigator.vibrate) navigator.vibrate(40); gefunden(code); return; }
+        }
+      }
+      if (kamera.an) kamera.timer = setTimeout(schritt, 120);
+    };
+    schritt();
+  };
+  // Ziffern von Hand (wenn die Kamera nicht geht oder der Code zerknittert ist)
+  const nummer = () => {
+    const feld = h('input', { class: 'eingabe', id: 'es-ean', type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: 'z. B. 4337185761638' });
+    const pruefen = () => {
+      const code = feld.value.replace(/\D/g, '');
+      if (!gtinOk(code)) { o.toast('Die Nummer stimmt nicht. Sie hat 8, 12 oder 13 Ziffern und steht unter dem Strichcode.'); feld.focus(); return; }
+      gefunden(code);
+    };
+    feld.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') pruefen(); });
+    zeige(h('label', { class: 'lbl', for: 'es-ean', text: 'Nummer unter dem Strichcode' }), feld,
+      h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => suche(''), text: 'Zurück' }), h('button', { class: 'knopf haupt', type: 'button', onclick: pruefen, text: 'Nachschlagen' })));
+    setTimeout(() => { try { feld.focus({ preventScroll: true }); } catch (x) { /* nichts */ } }, 80);
+  };
+  // Gefunden: erst in den eigenen Lebensmitteln (dann auch ohne Internet), sonst bei Open Food Facts. Unbekannt: Werte von der Packung, die App merkt sich den Code.
+  const gefunden = (code) => {
+    const status = h('p', { class: 'es-scan-status', role: 'status', text: 'Strichcode ' + code + ': suche das Produkt …' });
+    const wege = h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => scanner(), text: 'Nochmal scannen' }));
+    zeige(status, wege);
+    const ids = schreibweisen(code).flatMap((c) => ['off' + c, 'ean' + c]), bekannt = st.eigene.find((x) => ids.indexOf(x.id) >= 0);
+    if (bekannt) { menge(bekannt, ''); return; }
+    if (navigator.onLine === false) { status.textContent = 'Ohne Internet kann ich das Produkt nicht nachschlagen. Trag die Werte von der Packung ein.'; wege.append(h('button', { class: 'knopf haupt', type: 'button', onclick: () => eigenes('', code), text: 'Werte von der Packung' })); return; }
+    codeHolen(code).then((lm) => {
+      if (!inhalt.isConnected) return;
+      if (lm) { menge(lm, ''); return; }
+      status.textContent = 'Dieses Produkt kennt Open Food Facts noch nicht. Trag die Werte von der Packung ein, dann kennt die App es beim nächsten Scan.';
+      wege.append(h('button', { class: 'knopf haupt', type: 'button', onclick: () => eigenes('', code), text: 'Werte von der Packung' }));
+    }, () => {
+      if (!inhalt.isConnected) return;
+      status.textContent = 'Das Nachschlagen hat gerade nicht geklappt. Versuch es gleich nochmal oder trag die Werte von der Packung ein.';
+      wege.append(h('button', { class: 'knopf haupt', type: 'button', onclick: () => eigenes('', code), text: 'Werte von der Packung' }));
+    });
+  };
+
+  // Werte von der Packung (je 100 g, so stehen sie auf jeder Packung in der EU). Mit Strichcode merkt sich die App ihn (id ean…).
+  const eigenes = (name, code) => {
     const f = (id, label, wert, mode) => [h('label', { class: 'lbl', for: id, text: label }), h('input', { class: 'eingabe', id, type: 'text', inputmode: mode || 'decimal', autocomplete: 'off', value: wert || '' })];
     const wert = (id) => alsZahl(inhalt.querySelector('#' + id).value);
     const weiter = () => {
       const n = text(inhalt.querySelector('#es-e-name').value, 70), k = wert('es-e-k');
       if (!n) { o.toast('Bitte einen Namen eintragen.'); return; }
       if (!(k >= 0 && k <= 900)) { o.toast('Kalorien je 100 g: eine Zahl von 0 bis 900.'); return; }
-      const lm = lmSauber({ n, k, p: wert('es-e-p'), c: wert('es-e-c'), f: wert('es-e-f'), pg: wert('es-e-pg'), q: 'eigen' });
+      const lm = lmSauber({ n, k, p: wert('es-e-p'), c: wert('es-e-c'), f: wert('es-e-f'), pg: wert('es-e-pg'), q: 'eigen', id: code && gtinOk(code) ? 'ean' + code : undefined });
       if (!lm || (lm.p || 0) + (lm.c || 0) + (lm.f || 0) > 105) { o.toast('Eiweiß, Kohlenhydrate und Fett je 100 g zusammen höchstens 100 g.'); return; }
       menge(lm, name);
     };
-    zeige(h('p', { class: 'leise klein', text: 'Die Werte je 100 g stehen hinten auf der Packung. Das Lebensmittel merkt sich die App für das nächste Mal.' }),
+    zeige(h('p', { class: 'leise klein', text: 'Die Werte je 100 g stehen hinten auf der Packung. Das Lebensmittel merkt sich die App für das nächste Mal.' + (code ? ' Strichcode: ' + code : '') }),
       f('es-e-name', 'Name', text(name, 70), 'text'), f('es-e-k', 'Kalorien je 100 g (kcal)'), f('es-e-p', 'Eiweiß je 100 g (freiwillig)'), f('es-e-c', 'Kohlenhydrate je 100 g (freiwillig)'),
       f('es-e-f', 'Fett je 100 g (freiwillig)'), f('es-e-pg', 'Eine Portion in Gramm (freiwillig)'),
       h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => suche(name), text: 'Zurück' }), h('button', { class: 'knopf haupt', type: 'button', onclick: weiter, text: 'Weiter' })));
@@ -390,7 +504,7 @@ function eintragenBlatt(o, c, mahlzeit) {
       h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => suche(''), text: 'Zurück' }), h('button', { class: 'knopf haupt', type: 'button', onclick: eintragen, text: 'Eintragen' })));
   };
 
-  o.blatt('Essen eintragen', tagName(VERSATZ), [inhalt]);
+  o.blatt('Essen eintragen', tagName(VERSATZ), [inhalt], kameraAus);   // Blatt zu: Kamera sofort aus
   suche('');
 }
 
