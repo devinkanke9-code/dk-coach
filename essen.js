@@ -7,6 +7,7 @@
 import { essenFuer, gewichtFuer, verlaufSchluessel } from './status.js';
 import { ESSEN } from './essen-daten.js';
 import { leseBild, gtinOk } from './strichcode.js';   // Strichcode scannen (26.11.2026, Stufe 2a): eigener Leser, das Kamerabild bleibt auf dem Handy
+import { leseRGBA as qrLesen, produktnummer } from './qrcode.js';   // QR-Code (26.11.2026, Devin: „QR auch einbauen“): Produktnummer aus GS1-QR-Codes, Links werden nie geöffnet
 
 // Open Food Facts (26.11.2026 geprüft): Die alte Suche (world…/cgi/search.pl) antwortete mit 503. Die neue Suche liefert Namen, Code, Energie und Eiweiß,
 // die genauen Nährwerte je 100 g holt die App erst beim Antippen über die Produkt-Adresse. Beide senden die Kopfzeile für fremde Seiten (CORS).
@@ -45,7 +46,7 @@ function lmSauber(x) {   // Lebensmittel je 100 g (Packungen in der EU tragen di
   const o = { n, k: Math.round(k) };
   for (const s of ['p', 'c', 'f']) { const v = alsZahl(x[s]); if (v >= 0 && v <= 100) o[s] = r1(v); }
   const pg = alsZahl(x.pg); if (pg > 0 && pg <= Z.gramm_max) { o.pg = Math.round(pg); const pn = text(x.pn, 40); if (pn) o.pn = pn; }
-  if (x.q === 'off' || x.q === 'liste' || x.q === 'eigen') o.q = x.q;
+  if (x.q === 'off' || x.q === 'liste' || x.q === 'eigen' || x.q === 'gericht') o.q = x.q;
   if (typeof x.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(x.id)) o.id = x.id;
   return o;
 }
@@ -54,6 +55,7 @@ function eintragSauber(x) {
   const m = alsZahl(x.m), k = alsZahl(x.k), n = text(x.n, 70) || 'Eintrag';
   if (!(m >= 0 && m <= 3) || !(k >= 0 && k <= 10000)) return null;
   const o = { m: Math.round(m), n, k: Math.round(k) };
+  if (x.s === 1) o.s = 1;   // geschätzt (Gericht ohne Packung)
   const g = alsZahl(x.g); if (g > 0 && g <= Z.gramm_max) o.g = Math.round(g);
   for (const s of ['p', 'c', 'f']) { const v = alsZahl(x[s]); if (v >= 0 && v <= 1000) o[s] = r1(v); }
   return o;
@@ -162,7 +164,7 @@ async function codeHolen(code) {
 const einfach = (s) => String(s).toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9 ]/g, ' ');
 export function sucheLokal(st, begriff) {
   const q = einfach(begriff).trim().split(/\s+/).filter(Boolean);
-  const alle = st.eigene.concat((ESSEN.lebensmittel || []).map((x) => Object.assign({ q: 'liste' }, x)));
+  const alle = st.eigene.concat((ESSEN.lebensmittel || []).map((x) => Object.assign({ q: 'liste' }, x)), (ESSEN.gerichte || []).map((x) => Object.assign({ q: 'gericht' }, x)));
   const passt = alle.filter((lm) => { const n = einfach(lm.n); return q.every((w) => n.indexOf(w) >= 0); });
   const gesehen = new Set();
   return passt.filter((lm) => { const k = einfach(lm.n); if (gesehen.has(k)) return false; gesehen.add(k); return true; }).slice(0, 30);
@@ -280,7 +282,7 @@ function zaehlenTeile(o, c) {
         h('div', { class: 'es-mahlzeit-kopf' }, h('b', { text: name }), h('span', { class: 'leise', text: liste.length ? kcalText(k) : '' }),
           h('button', { class: 'knopf klein es-plus', type: 'button', 'aria-label': name + ': Essen eintragen', onclick: () => eintragenBlatt(o, c, m), text: '+ Eintragen' })),
         liste.length ? h('ul', { class: 'es-liste' }, liste.map(([x, i]) => h('li', null,
-          h('span', null, h('b', { text: x.n }), h('small', { text: [x.g ? x.g + ' g' : null, kcalText(x.k), typeof x.p === 'number' ? gText(x.p) + ' Eiweiß' : null].filter(Boolean).join(' · ') })),
+          h('span', null, h('b', { text: x.n }), h('small', { text: [x.s ? 'geschätzt' : null, x.g ? x.g + ' g' : null, (x.s ? '≈ ' : '') + kcalText(x.k), typeof x.p === 'number' ? gText(x.p) + ' Eiweiß' : null].filter(Boolean).join(' · ') })),
           h('button', { class: 'es-weg', type: 'button', 'aria-label': x.n + ' entfernen', onclick: () => { c.tag().e.splice(i, 1); c.speichern(); o.toast('Entfernt'); o.neu(); }, text: '✕' })))) : null);
     }));
   return [karte, mahlzeiten];
@@ -298,7 +300,7 @@ function eintragenBlatt(o, c, mahlzeit) {
   const fertig = (eintrag, lm) => {
     const t = c.tag();
     if (t.e.length >= Z.eintraege_pro_tag_max) { o.toast('Für diesen Tag sind es schon sehr viele Einträge.'); return; }
-    t.e.push(Object.assign({}, eintrag, { m }));   // die gewählte Mahlzeit gilt immer
+    t.e.push(Object.assign({}, eintrag, { m }, lm && lm.q === 'gericht' ? { s: 1 } : {}));   // die gewählte Mahlzeit gilt immer; Gericht = Schätzung
     if (lm) {
       const gleich = (x) => (lm.id && x.id === lm.id) || einfach(x.n) === einfach(lm.n);
       st.zuletzt = [lm].concat(st.zuletzt.filter((x) => !gleich(x))).slice(0, Z.zuletzt_max);
@@ -347,7 +349,8 @@ function eintragenBlatt(o, c, mahlzeit) {
     };
     feld.addEventListener('input', neuSuchen);
     feld.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); const q = feld.value.trim(); if (q.length >= 2 && !sucheLokal(st, q).length) onlineSuchen(q); } });
-    zeige(h('button', { class: 'knopf haupt es-scan-knopf', type: 'button', onclick: () => scanner() }, strichcodeBild(), h('span', { text: 'Strichcode scannen' })),
+    zeige(h('button', { class: 'knopf haupt es-scan-knopf', type: 'button', onclick: () => scanner() }, strichcodeBild(), h('span', null, h('b', { text: 'Packung scannen' }), h('small', { text: 'Strichcode oder QR-Code' }))),
+      (ESSEN.gerichte || []).length ? h('button', { class: 'knopf es-gericht-knopf', type: 'button', onclick: () => gerichte('') }, h('span', null, h('b', { text: 'Gericht schätzen' }), h('small', { text: 'Ohne Packung, z. B. Döner, Pizza, Nudeln' }))) : null,
       feld, treffer, online,
       h('div', { class: 'es-wege' },
         h('button', { class: 'knopf klein', type: 'button', onclick: () => eigenes(feld.value), text: 'Werte von der Packung' }),
@@ -365,10 +368,13 @@ function eintragenBlatt(o, c, mahlzeit) {
       wert.textContent = '= ' + [kcalText(x.k), typeof x.p === 'number' ? gText(x.p) + ' Eiweiß' : null, typeof x.c === 'number' ? gText(x.c) + ' KH' : null, typeof x.f === 'number' ? gText(x.f) + ' Fett' : null].filter(Boolean).join(' · '); };
     feld.addEventListener('input', zeigeWert);
     const setze = (g) => { feld.value = String(g); zeigeWert(); };
-    const chips = [lm.pg ? [lm.pg, (lm.pn || '1 Portion') + ' (' + lm.pg + ' g)'] : null, lm.pg ? [lm.pg * 2, '2 Portionen'] : null, [100, '100 g'], [50, '50 g']].filter(Boolean);
+    const istGericht = lm.q === 'gericht' && lm.pg;
+    const chips = istGericht ? [[Math.round(lm.pg * 0.7), 'klein (' + Math.round(lm.pg * 0.7) + ' g)'], [lm.pg, 'normal: ' + (lm.pn || '1 Portion') + ' (' + lm.pg + ' g)'], [Math.round(lm.pg * 1.4), 'groß (' + Math.round(lm.pg * 1.4) + ' g)']]
+      : [lm.pg ? [lm.pg, (lm.pn || '1 Portion') + ' (' + lm.pg + ' g)'] : null, lm.pg ? [lm.pg * 2, '2 Portionen'] : null, [100, '100 g'], [50, '50 g']].filter(Boolean);
     const eintragen = () => { const g = lesen(); if (!g) { o.toast('Bitte eine Menge in Gramm eintragen.'); feld.focus(); return; } fertig(fuerMenge(lm, g), lm); };
     feld.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') eintragen(); });
-    zeige(h('div', { class: 'es-gewaehlt' }, h('b', { text: lm.n }),
+    zeige(istGericht ? h('p', { class: 'meldung klein', text: 'Schätzung: Rezept und Menge sind bei jedem Gericht anders. Die Werte sind ein Durchschnitt aus einer Lebensmittel-Datenbank.' }) : null,
+      h('div', { class: 'es-gewaehlt' }, h('b', { text: lm.n }),
       h('small', { text: 'Je 100 g: ' + [kcalText(lm.k), typeof lm.p === 'number' ? gText(lm.p) + ' Eiweiß' : null, typeof lm.c === 'number' ? gText(lm.c) + ' KH' : null, typeof lm.f === 'number' ? gText(lm.f) + ' Fett' : null].filter(Boolean).join(' · ') })),
       h('div', { class: 'es-chips' }, chips.map(([g, n]) => h('button', { class: 'chip es-chip', type: 'button', onclick: () => setze(g), text: n }))),
       h('label', { class: 'lbl', for: 'es-gramm', text: 'Menge in Gramm (bei Getränken ml)' }), feld, wert,
@@ -393,7 +399,7 @@ function eintragenBlatt(o, c, mahlzeit) {
     zeige(h('div', { class: 'es-scan' }, video, h('div', { class: 'es-scan-rahmen', 'aria-hidden': 'true' })), status,
       h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => { kameraAus(); suche(''); }, text: 'Zurück' }),
         h('button', { class: 'knopf', type: 'button', onclick: () => { kameraAus(); nummer(); }, text: 'Nummer eintippen' })),
-      h('p', { class: 'leise klein', text: 'Das Kamerabild bleibt auf deinem Handy. Nur die Nummer des Strichcodes geht an Open Food Facts.' }));
+      h('p', { class: 'leise klein', text: 'Das Kamerabild bleibt auf deinem Handy. Nur die Produktnummer geht an Open Food Facts. Links aus QR-Codes öffnet die App nie.' }));
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status.textContent = 'Hier geht die Kamera nicht. Tipp die Nummer unter dem Strichcode ein.'; return; }
     kamera.an = true;
     document.addEventListener('visibilitychange', beiVersteckt);
@@ -403,7 +409,7 @@ function eintragenBlatt(o, c, mahlzeit) {
       const spur = stream.getVideoTracks()[0];
       try { const f = spur.getCapabilities ? spur.getCapabilities().focusMode : null; if (f && f.indexOf('continuous') >= 0) spur.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}); } catch (e) { /* nicht jedes Handy kann das */ }
       video.play().catch(() => {});
-      status.textContent = 'Halte den Strichcode waagerecht in den Rahmen.';
+      status.textContent = 'Halte den Strichcode waagerecht in den Rahmen. QR-Codes gehen auch.';
       lesen(video, status);
     }, (err) => {
       kamera.an = false;
@@ -413,27 +419,50 @@ function eintragenBlatt(o, c, mahlzeit) {
   };
   const lesen = (video, status) => {
     const leinwand = document.createElement('canvas'), ctx = leinwand.getContext('2d', { willReadFrequently: true }), zaehler = {};
-    let eingebaut = null;
-    try { if ('BarcodeDetector' in window) eingebaut = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a'] }); } catch (e) { eingebaut = null; }
+    let eingebaut = null, runde = 0, linkGesehen = false;
+    // Eingebauter Leser (z. B. Android Chrome): Strichcode und QR, wenn das Handy beides kann
+    if ('BarcodeDetector' in window) {
+      Promise.resolve(window.BarcodeDetector.getSupportedFormats ? window.BarcodeDetector.getSupportedFormats() : ['ean_13', 'ean_8', 'upc_a'])
+        .then((kann) => { const f = ['ean_13', 'ean_8', 'upc_a', 'qr_code'].filter((x) => kann.indexOf(x) >= 0); if (f.length) eingebaut = new window.BarcodeDetector({ formats: f }); }).catch(() => { eingebaut = null; });
+    }
+    const treffer = (code) => { kameraAus(); if (navigator.vibrate) navigator.vibrate(40); gefunden(code); };
+    const nurLink = () => { if (!linkGesehen) { linkGesehen = true; status.textContent = 'Das ist ein QR-Code ohne Produktnummer, zum Beispiel ein Link. Scanne lieber den Strichcode auf der Packung.'; } };
     const schritt = async () => {
       if (!kamera.an || !inhalt.isConnected) { kameraAus(); return; }
       const vw = video.videoWidth, vh = video.videoHeight, bw = video.clientWidth, bh = video.clientHeight;
       if (video.readyState >= 2 && vw && bw) {
-        // Sichtbarer Teil des Videos (object-fit: cover), darin der Rahmen: Mitte, 84 % breit, 30 % hoch (wie .es-scan-rahmen)
         const mass = Math.max(bw / vw, bh / vh), sichtW = bw / mass, sichtH = bh / mass;
-        const sw = Math.round(sichtW * 0.84), sh = Math.round(sichtH * 0.3), sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
-        const zw = Math.min(sw, 1280), zh = Math.max(1, Math.round(sh * zw / sw));
-        leinwand.width = zw; leinwand.height = zh;
-        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, zw, zh);
-        let codes = {};
-        if (eingebaut) { try { (await eingebaut.detect(leinwand)).forEach((x) => { if (gtinOk(x.rawValue)) codes[x.rawValue] = 1; }); } catch (e) { eingebaut = null; } }
-        if (!Object.keys(codes).length) codes = leseBild(ctx.getImageData(0, 0, zw, zh).data, zw, zh, 9);
-        for (const [code, n] of Object.entries(codes)) {
-          zaehler[code] = (zaehler[code] || 0) + n;
-          if (zaehler[code] >= 2) { kameraAus(); if (navigator.vibrate) navigator.vibrate(40); gefunden(code); return; }
+        runde++;
+        if (eingebaut) {   // ganzer sichtbarer Ausschnitt, der eingebaute Leser findet Codes überall
+          const sw = Math.round(sichtW), sh = Math.round(sichtH), zw = Math.min(sw, 1280), zh = Math.max(1, Math.round(sh * zw / sw));
+          leinwand.width = zw; leinwand.height = zh;
+          ctx.drawImage(video, Math.round((vw - sw) / 2), Math.round((vh - sh) / 2), sw, sh, 0, 0, zw, zh);
+          try {
+            for (const x of await eingebaut.detect(leinwand)) {
+              if (x.format === 'qr_code') { const nr = produktnummer({ text: x.rawValue, gs1: false }); if (nr) { treffer(nr); return; } nurLink(); }
+              else if (gtinOk(x.rawValue)) { treffer(x.rawValue); return; }
+            }
+          } catch (e) { eingebaut = null; }
+        } else if (runde % 2 === 1) {
+          // Strichcode: im Rahmen (Mitte, 80 % breit, 52 % hoch wie .es-scan-rahmen, passt auch für QR), 13 Zeilen, ein Code gilt nach zwei Lesungen
+          const sw = Math.round(sichtW * 0.8), sh = Math.round(sichtH * 0.52), sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
+          const zw = Math.min(sw, 1280), zh = Math.max(1, Math.round(sh * zw / sw));
+          leinwand.width = zw; leinwand.height = zh;
+          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, zw, zh);
+          for (const [code, n] of Object.entries(leseBild(ctx.getImageData(0, 0, zw, zh).data, zw, zh, 13))) {
+            zaehler[code] = (zaehler[code] || 0) + n;
+            if (zaehler[code] >= 2) { treffer(code); return; }
+          }
+        } else {
+          // QR: Quadrat in der Mitte (90 % der kürzeren Seite), höchstens 640 px. Reed-Solomon prüft jeden Code, darum reicht eine Lesung.
+          const seite = Math.round(Math.min(sichtW, sichtH) * 0.9), z = Math.min(seite, 640);
+          leinwand.width = z; leinwand.height = z;
+          ctx.drawImage(video, Math.round((vw - seite) / 2), Math.round((vh - seite) / 2), seite, seite, 0, 0, z, z);
+          const qr = qrLesen(ctx.getImageData(0, 0, z, z).data, z, z);
+          if (qr) { const nr = produktnummer(qr); if (nr) { treffer(nr); return; } nurLink(); }
         }
       }
-      if (kamera.an) kamera.timer = setTimeout(schritt, 120);
+      if (kamera.an) kamera.timer = setTimeout(schritt, eingebaut ? 150 : 90);
     };
     schritt();
   };
@@ -468,6 +497,27 @@ function eintragenBlatt(o, c, mahlzeit) {
       status.textContent = 'Das Nachschlagen hat gerade nicht geklappt. Versuch es gleich nochmal oder trag die Werte von der Packung ein.';
       wege.append(h('button', { class: 'knopf haupt', type: 'button', onclick: () => eigenes('', code), text: 'Werte von der Packung' }));
     });
+  };
+
+  // Gericht schätzen (26.11.2026, Stufe 2 ohne Packung, Devin: „Erst Gerichte-Liste, dann KI“): Gerichte nach Gruppen, Suche, dann Portion klein/normal/groß.
+  // Später schlägt ein Bild-Modell auf dem Handy das Gericht aus genau dieser Liste vor (Plan: KI-PLAN.md im Arbeitsordner).
+  const gerichte = (begriff) => {
+    const feld = h('input', { class: 'eingabe', type: 'search', id: 'es-gericht-suche', autocomplete: 'off', placeholder: 'z. B. Döner, Pizza, Bowl', value: begriff || '', 'aria-label': 'Gericht suchen' });
+    const liste = h('div', { class: 'es-treffer' });
+    const zeile = (g) => h('button', { class: 'es-lm', type: 'button', onclick: () => menge(Object.assign({ q: 'gericht' }, g), '') },
+      h('b', { text: g.n }), h('small', { text: (g.pg ? '≈ ' + kcalText(g.k * g.pg / 100) + ' pro ' + (g.pn || 'Portion') : kcalText(g.k) + ' je 100 g') + (typeof g.p === 'number' && g.pg ? ' · ' + gText(g.p * g.pg / 100) + ' Eiweiß' : '') }));
+    const neu = () => {
+      const q = einfach(feld.value).trim().split(/\s+/).filter(Boolean), alle = ESSEN.gerichte || [];
+      const passt = alle.filter((g) => q.every((w) => einfach(g.n).indexOf(w) >= 0));
+      if (q.length) { liste.replaceChildren(...(passt.length ? passt.map(zeile) : [h('p', { class: 'leise klein', text: 'Nichts gefunden. Nimm ein ähnliches Gericht oder „Nur Kalorien“.' })])); return; }
+      const gruppen = [];
+      for (const g of alle) { let gr = gruppen.find((x) => x.n === (g.gr || 'Weitere')); if (!gr) gruppen.push(gr = { n: g.gr || 'Weitere', l: [] }); gr.l.push(g); }
+      liste.replaceChildren(...gruppen.flatMap((gr) => [h('p', { class: 'es-gruppe', text: gr.n }), ...gr.l.map(zeile)]));
+    };
+    feld.addEventListener('input', neu);
+    zeige(h('p', { class: 'leise klein', text: 'Für Essen ohne Packung: Such dein Gericht und wähl die Portion. Das ist immer eine Schätzung.' }), feld, liste,
+      h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => suche(''), text: 'Zurück' }), h('button', { class: 'knopf', type: 'button', onclick: () => schnell(), text: 'Nur Kalorien' })));
+    neu();
   };
 
   // Werte von der Packung (je 100 g, so stehen sie auf jeder Packung in der EU). Mit Strichcode merkt sich die App ihn (id ean…).
