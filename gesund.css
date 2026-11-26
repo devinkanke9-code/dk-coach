@@ -1,0 +1,55 @@
+/* DK Coach — Gesundheits-Scan (26.11.2026). Nur Farben aus den Farbwelten (Tokens) und dieselben Ampelfarben wie Essen, damit es in allen Farbwelten passt. */
+.gs-gruen { --ampel: #3FA66B; }
+.gs-gelb { --ampel: #E2B04A; }
+.gs-rot { --ampel: #E0564F; }
+.gs-grau { --ampel: color-mix(in srgb, var(--text) 28%, transparent); }
+
+/* Karte auf Heute: fünf Punkte mit Zeichen (auch ohne Farbe lesbar) */
+.gs-punkte { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.gs-punkte li { display: grid; justify-items: center; gap: 4px; min-width: 0; }
+.gs-punkte i, .gs-zeile i, .gs-mini i { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--ampel); color: #fff; font-style: normal; font-weight: 700; font-size: 15px; line-height: 1; }
+.gs-grau i { color: var(--text); }
+.gs-punkte span { font-size: 12px; color: var(--text2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-tipp-kurz { margin: 12px 0 0; font-size: 15px; line-height: 1.45; }
+.gs-tipp-kurz.gs-wichtig b { color: var(--warn); }
+.gs-karte .aktionen:empty { display: none; }
+
+/* Seite */
+.gs-unter { margin: -4px 0 2px; }
+.gs-tipp small { display: block; color: var(--text2); font-size: 13px; margin-bottom: 2px; }
+.gs-tipp h2 { margin-top: 0; }
+.gs-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.gs-zeile { width: 100%; display: grid; grid-template-columns: 30px minmax(0, 1fr) 12px; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; min-height: 56px;
+  border: 0; border-left: 4px solid var(--ampel); border-radius: 14px; background: color-mix(in srgb, var(--text) 5%, transparent); color: inherit; font: inherit; cursor: pointer; }
+.gs-zeile-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.gs-zeile-kopf b { font-size: 16px; }
+.gs-zeile-text small { display: block; margin-top: 2px; color: var(--text2); font-size: 13px; line-height: 1.35; }
+.gs-wort { font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--text2); }
+.gs-pfeil { color: var(--text2); font-size: 18px; line-height: 1; }
+.gs-check .knopf { margin-top: 4px; }
+.gs-verlauf { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+.gs-verlauf li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 0; border-top: 1px solid var(--linie); font-size: 14px; }
+.gs-verlauf li > span:first-child { min-width: 72px; color: var(--text2); font-variant-numeric: tabular-nums; }
+.gs-mini { display: inline-flex; align-items: center; gap: 6px; }
+.gs-mini i { width: 20px; height: 20px; font-size: 11px; }
+.gs-info ul { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 6px; }
+.block.gs-warnung { box-shadow: inset 4px 0 0 var(--warn), var(--schatten, none); background: color-mix(in srgb, var(--warn) 10%, var(--flaeche)); }
+.gs-warnung h2 { color: var(--warn); }
+.block.gs-hilfe { box-shadow: inset 4px 0 0 var(--akzent), var(--schatten, none); }
+.gs-telefone { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 8px; }
+.gs-telefone li { display: grid; gap: 2px; }
+.gs-telefone a { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--akzent); text-decoration: none; }
+.gs-telefone span { color: var(--text2); font-size: 14px; }
+
+/* Wochen-Check im Blatt */
+.gs-blatt { display: grid; gap: 14px; }
+.gs-frage { display: grid; gap: 6px; }
+.gs-frage small { font-size: 13px; }
+.gs-wahl { display: grid; gap: 6px; }
+.gs-wahl-skala { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gs-wahl-janein { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gs-wahl-schlaf { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+.gs-wert { min-height: 48px; padding: 0 6px; border-radius: 14px; border: 1px solid var(--linie); background: none; color: inherit; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.gs-wert[aria-pressed="true"] { background: var(--knopf-voll); border-color: transparent; color: var(--auf-voll); }
+.gs-blatt .knopf.haupt[disabled] { opacity: .45; }
+@media (prefers-reduced-motion: no-preference) { .gs-wert { transition: background-color .15s ease, border-color .15s ease; } }
