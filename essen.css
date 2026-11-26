@@ -112,3 +112,12 @@
 .es-warnung p { margin: 0; }
 .es-info ul { color: var(--text2); font-size: 14px; }
 .st-zum-essen { margin-top: 14px; justify-self: start; }
+
+/* Strichcode scannen (26.11.2026) */
+.es-scan-knopf { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; font-size: 16px; }
+.es-scan-bild { width: 30px; height: 20px; fill: currentColor; flex: none; }
+.es-scan { position: relative; aspect-ratio: 4 / 3; border-radius: 16px; overflow: hidden; background: #000; }
+.es-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.es-scan-rahmen { position: absolute; left: 8%; right: 8%; top: 35%; height: 30%; border: 3px solid rgba(255, 255, 255, .92); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .38); }
+.es-scan-rahmen::after { content: ""; position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; margin-top: -1px; background: #E0564F; box-shadow: 0 0 8px #E0564F; }
+.es-scan-status { margin: 0; font-weight: 600; }
