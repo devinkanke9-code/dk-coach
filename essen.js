@@ -7,7 +7,8 @@
 import { essenFuer, gewichtFuer, verlaufSchluessel } from './status.js';
 import { ESSEN } from './essen-daten.js';
 import { leseBild, gtinOk } from './strichcode.js';   // Strichcode scannen (26.11.2026, Stufe 2a): eigener Leser, das Kamerabild bleibt auf dem Handy
-import { leseRGBA as qrLesen, produktnummer } from './qrcode.js';   // QR-Code (26.11.2026, Devin: „QR auch einbauen“): Produktnummer aus GS1-QR-Codes, Links werden nie geöffnet
+import { leseRGBA as qrLesen, produktnummer } from './qrcode.js';
+import * as KiFoto from './ki-foto.js';   // Foto vom Essen (26.11.2026): Bild-Modell auf dem Handy, lädt erst beim ersten Foto   // QR-Code (26.11.2026, Devin: „QR auch einbauen“): Produktnummer aus GS1-QR-Codes, Links werden nie geöffnet
 
 // Open Food Facts (26.11.2026 geprüft): Die alte Suche (world…/cgi/search.pl) antwortete mit 503. Die neue Suche liefert Namen, Code, Energie und Eiweiß,
 // die genauen Nährwerte je 100 g holt die App erst beim Antippen über die Produkt-Adresse. Beide senden die Kopfzeile für fremde Seiten (CORS).
@@ -350,6 +351,7 @@ function eintragenBlatt(o, c, mahlzeit) {
     feld.addEventListener('input', neuSuchen);
     feld.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); const q = feld.value.trim(); if (q.length >= 2 && !sucheLokal(st, q).length) onlineSuchen(q); } });
     zeige(h('button', { class: 'knopf haupt es-scan-knopf', type: 'button', onclick: () => scanner() }, strichcodeBild(), h('span', null, h('b', { text: 'Packung scannen' }), h('small', { text: 'Strichcode oder QR-Code' }))),
+      ESSEN.ki && (ESSEN.gerichte || []).length ? h('button', { class: 'knopf es-gericht-knopf es-foto-start', type: 'button', onclick: () => foto() }, h('span', null, h('b', { text: 'Foto vom Essen' }), h('small', { text: 'Die KI schlägt das Gericht vor, du wählst' }))) : null,
       (ESSEN.gerichte || []).length ? h('button', { class: 'knopf es-gericht-knopf', type: 'button', onclick: () => gerichte('') }, h('span', null, h('b', { text: 'Gericht schätzen' }), h('small', { text: 'Ohne Packung, z. B. Döner, Pizza, Nudeln' }))) : null,
       feld, treffer, online,
       h('div', { class: 'es-wege' },
@@ -497,6 +499,45 @@ function eintragenBlatt(o, c, mahlzeit) {
       status.textContent = 'Das Nachschlagen hat gerade nicht geklappt. Versuch es gleich nochmal oder trag die Werte von der Packung ein.';
       wege.append(h('button', { class: 'knopf haupt', type: 'button', onclick: () => eigenes('', code), text: 'Werte von der Packung' }));
     });
+  };
+
+  // Foto vom Essen (26.11.2026, KI-Plan Stufe C/D): Foto aufnehmen (Kamera des Handys über die Datei-Auswahl), auf 512 px verkleinern, Bild-Modell auf dem Handy,
+  // höchstens 3 Vorschläge aus der Gerichte-Liste mit Balken. Der Kunde wählt selbst oder sucht. Das Foto wird nie gespeichert und nie verschickt.
+  const foto = () => {
+    const datei = h('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'es-datei', id: 'es-foto-datei' });
+    const status = h('p', { class: 'es-scan-status', role: 'status', text: KiFoto.geladen() ? 'Mach ein Foto von deinem Essen.' : 'Mach ein Foto von deinem Essen. Beim ersten Mal lädt die App die KI (ca. 35 MB, lieber im WLAN). Danach geht es ohne Internet.' });
+    const vorschau = h('div', { class: 'es-foto' }), vorschlaege = h('div', { class: 'es-treffer' });
+    const auswerten = async () => {
+      const f = datei.files && datei.files[0];
+      if (!f || !/^image\//.test(f.type || 'image/')) return;
+      vorschlaege.replaceChildren();
+      status.textContent = KiFoto.geladen() ? 'Die KI schaut sich dein Foto an …' : 'Die KI wird geladen und schaut sich dein Foto an … (beim ersten Mal etwas länger)';
+      const adresse = URL.createObjectURL(f), bild = new Image();
+      try {
+        bild.src = adresse; await bild.decode();
+        const mass = Math.min(1, 512 / Math.max(bild.naturalWidth, bild.naturalHeight)), w = Math.max(1, Math.round(bild.naturalWidth * mass)), hh = Math.max(1, Math.round(bild.naturalHeight * mass));
+        const leinwand = document.createElement('canvas'); leinwand.width = w; leinwand.height = hh; leinwand.className = 'es-foto-bild';
+        leinwand.getContext('2d').drawImage(bild, 0, 0, w, hh);
+        vorschau.replaceChildren(leinwand);
+        const treffer = await KiFoto.erkennen(leinwand);
+        if (!inhalt.isConnected) return;
+        const liste = KiFoto.gerichteAus(treffer, ESSEN.ki.idx, ESSEN.gerichte).filter((x) => x.s >= 0.05);   // unter 5 % ist Rauschen, das zeigt die App nicht
+        const unsicher = !liste.length || liste[0].s < (ESSEN.ki.schwelle || 0.2);
+        status.textContent = !liste.length ? 'Ich erkenne kein Gericht aus der Liste. Such dein Gericht oder nimm „Nur Kalorien“.'
+          : unsicher ? 'Ich bin mir nicht sicher. Ist eins davon richtig? Sonst such dein Gericht.' : 'Das sieht aus wie:';
+        vorschlaege.replaceChildren(...liste.map((x) => h('button', { class: 'es-lm es-vorschlag', type: 'button', onclick: () => menge(Object.assign({ q: 'gericht' }, x.g), '') },
+          h('b', { text: x.g.n }), h('span', { class: 'es-sicher', role: 'img', 'aria-label': Math.round(x.s * 100) + ' Prozent sicher' }, h('i', { style: 'width:' + Math.max(4, Math.round(x.s * 100)) + '%' })),
+          h('small', { text: Math.round(x.s * 100) + ' % sicher' + (x.g.pg ? ' · ≈ ' + kcalText(x.g.k * x.g.pg / 100) + ' pro ' + (x.g.pn || 'Portion') : '') }))));
+      } catch (e) {
+        if (inhalt.isConnected) status.textContent = KiFoto.geladen() ? 'Das Foto ging nicht. Versuch es noch einmal oder such dein Gericht.' : 'Die KI konnte nicht laden. Beim ersten Mal braucht sie Internet. Versuch es gleich noch einmal oder such dein Gericht.';
+      } finally { URL.revokeObjectURL(adresse); datei.value = ''; }
+    };
+    datei.addEventListener('change', auswerten);
+    zeige(h('p', { class: 'meldung klein', text: 'Schätzung: Die KI erkennt nur, welches Gericht es ist. Menge, Öl und Soße sieht sie nicht. Du wählst selbst aus.' }),
+      h('label', { class: 'knopf haupt es-foto-knopf', for: 'es-foto-datei' }, 'Foto aufnehmen'), datei, status, vorschau, vorschlaege,
+      h('div', { class: 'es-wege' }, h('button', { class: 'knopf', type: 'button', onclick: () => suche(''), text: 'Zurück' }), h('button', { class: 'knopf', type: 'button', onclick: () => gerichte(''), text: 'Gericht suchen' })),
+      h('p', { class: 'leise klein', text: 'Das Foto bleibt auf deinem Handy und wird nicht gespeichert. Die KI ist ein Bild-Modell von Google (frei nutzbar), das auf deinem Handy läuft.' }));
+    if (navigator.onLine !== false) KiFoto.vorbereiten().catch(() => {});   // schon mal laden, während der Kunde fotografiert
   };
 
   // Gericht schätzen (26.11.2026, Stufe 2 ohne Packung, Devin: „Erst Gerichte-Liste, dann KI“): Gerichte nach Gruppen, Suche, dann Portion klein/normal/groß.
