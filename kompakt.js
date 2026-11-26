@@ -174,6 +174,9 @@
     if (+kunde.gewicht_kg) e.kg = +kunde.gewicht_kg;
     if ((er.schritte || []).length) e.sc = er.schritte.slice(0, 2).map(function (s) { return [s.id, s.text]; });
     if (er.hand && er.hand.pro_mahlzeit) { var p = er.hand.pro_mahlzeit; e.hd = { e: p.eiweiss, g: p.gemuese, k: p.kohlenhydrate, f: p.fett, m: er.hand.mahlzeiten }; if (er.hand.anpassen) e.hd.a = er.hand.anpassen; }
+    // Essen in der App (26.11.2026): ju = unter 18 (dann nur Teller, kein Zählen), zf = Devin hat Zählen trotzdem freigegeben (nur zum Bedarf, nie mit Minus)
+    if (kunde.alter != null && kunde.alter !== '' && +kunde.alter < 18) e.ju = 1;
+    if (kunde.essen_zaehlen_frei === true) e.zf = 1;
     return e;
   }
   function ernaehrungSauber(e) {   // Feld e beim Einlesen in der App: nur Zahlen in sinnvollen Grenzen, Texte begrenzt, sonst weg
@@ -203,6 +206,8 @@
       if (typeof e.hd.a === 'string' && e.hd.a) hd.a = e.hd.a.slice(0, 300);
       if (['e', 'g', 'k', 'f'].every(function (s) { return s in hd; })) aus.hd = hd;
     }
+    if (e.ju === 1) aus.ju = 1;   // unter 18 (26.11.2026, Essen)
+    if (e.zf === 1) aus.zf = 1;   // Zählen von Devin freigegeben
     return aus;
   }
   function planSauber(p) {

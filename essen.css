@@ -1,0 +1,114 @@
+/* DK Coach — Essen (26.11.2026). Nur Farben aus den Farbwelten (Tokens), damit es in Lagune, Klar, Schwarz-Gold, Sport und Champagner passt. */
+.es-tag { display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: 8px; }
+.es-tag-name { text-align: center; font-size: 17px; }
+.es-tag-pfeil { font-size: 22px; line-height: 1; padding: 0; }
+.es-tag-pfeil[disabled] { opacity: .35; }
+.fs-wahl.es-modus { grid-template-columns: repeat(2, minmax(0, 1fr)); }   /* .fs-wahl steht im Stil von index.html danach, darum doppelte Klasse */
+.es-jung { margin: 0; }
+
+/* Ring und Balken */
+.es-ziel-oben { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 16px; align-items: center; }
+.es-ring { position: relative; width: 132px; height: 132px; }
+.es-ring-bild { width: 100%; height: 100%; display: block; }
+.es-ring-spur { fill: none; stroke: color-mix(in srgb, var(--text) 10%, transparent); stroke-width: 12; }
+.es-ring-wert { fill: none; stroke: var(--akzent); stroke-width: 12; stroke-linecap: round; transition: stroke-dasharray .5s var(--sanft, ease); }
+.es-ring-mitte { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 2px; }
+.es-ring-mitte b { font-size: 26px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+.es-ring-mitte span { font-size: 12px; color: var(--text2); }
+.es-rest { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
+.es-ziel-text p { margin: 0 0 6px; }
+.es-balken { display: grid; gap: 6px; }
+.es-balken-kopf { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+.es-balken-kopf span { color: var(--text2); font-variant-numeric: tabular-nums; }
+.es-spur { position: relative; height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
+.es-spur i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--akzent); transition: width .5s var(--sanft, ease); }
+.es-spur em { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); opacity: .55; }
+.es-balken.im-ziel .es-spur i { background: var(--gut); }
+
+/* Mahlzeiten */
+.es-mahlzeit { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--linie); }
+.es-mahlzeit:first-of-type { border-top: 0; padding-top: 0; }
+.es-mahlzeit-kopf { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.es-mahlzeit-kopf b { font-size: 17px; }
+.es-mahlzeit-kopf .leise { font-size: 14px; font-variant-numeric: tabular-nums; }
+.es-plus { white-space: nowrap; }
+.es-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.es-liste li { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 12px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.es-liste li b { display: block; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.es-liste li small { display: block; color: var(--text2); font-size: 13px; }
+.es-weg { width: 44px; height: 44px; border: 0; border-radius: 12px; background: none; color: var(--text2); font: inherit; font-size: 16px; cursor: pointer; }
+
+/* Blatt: Eintragen */
+.es-blatt { display: grid; gap: 10px; }
+.fs-wahl.es-mwahl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fs-wahl.es-mwahl .fs-wahl-knopf { font-size: 13px; padding: 0 2px; }
+.es-treffer, .es-online { display: grid; gap: 6px; }
+.es-lm { display: grid; gap: 2px; text-align: left; padding: 10px 12px; min-height: 52px; border-radius: 14px; border: 1px solid var(--linie); background: none; color: inherit; font: inherit; cursor: pointer; }
+.es-lm b { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.es-lm small { color: var(--text2); font-size: 13px; }
+.es-wege { display: flex; flex-wrap: wrap; gap: 8px; }
+.es-wege .knopf { flex: 1 1 140px; }
+.es-gewaehlt { display: grid; gap: 4px; }
+.es-gewaehlt b { font-size: 18px; overflow-wrap: anywhere; }
+.es-gewaehlt small { color: var(--text2); }
+.es-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.es-chip { min-height: 40px; padding: 0 14px; font-size: 14px; cursor: pointer; background: none; }
+.es-mengenwert { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.es-blatt .lbl { display: block; font-weight: 600; margin-top: 4px; }
+.es-blatt p { margin: 0; }
+
+/* Teller */
+.es-teller-oben { display: grid; grid-template-columns: minmax(120px, 168px) minmax(0, 1fr); gap: 14px; align-items: center; }
+.es-teller-bild { width: 100%; height: auto; display: block; }
+.es-teller-rand { fill: color-mix(in srgb, var(--text) 8%, transparent); stroke: color-mix(in srgb, var(--text) 18%, transparent); stroke-width: 1.5; }
+.es-t-gemuese, .es-f-gemuese { fill: #3FA66B; background: #3FA66B; }
+.es-t-eiweiss, .es-f-eiweiss { fill: #D9644A; background: #D9644A; }
+.es-t-kh, .es-f-kh { fill: #E2B04A; background: #E2B04A; }
+.es-t-oel, .es-f-oel { fill: #B9C24A; background: #B9C24A; }
+.es-t-glas, .es-f-glas { fill: color-mix(in srgb, #5AB4E6 70%, transparent); background: #5AB4E6; }
+.es-t-gemuese, .es-t-eiweiss, .es-t-kh { stroke: var(--flaeche); stroke-width: 2; }
+.es-legende { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.es-legende li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; align-items: start; }
+.es-legende i { width: 14px; height: 14px; border-radius: 50%; margin-top: 3px; }
+.es-legende b { display: block; font-size: 15px; }
+.es-legende small { display: block; color: var(--text2); font-size: 13px; line-height: 1.35; }
+.es-hand { display: grid; gap: 4px; }
+.es-hand ul, .es-schritte ul, .es-info ul { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+@media (max-width: 380px) { .es-teller-oben, .es-ziel-oben { grid-template-columns: minmax(0, 1fr); justify-items: center; } .es-teller-bild { max-width: 200px; } }
+
+/* Ampel: die Farbe ist nur ein Punkt, der Name (Oft, Manchmal, Selten) steht immer dabei */
+.es-ampel-gruppe { display: grid; gap: 6px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--text) 5%, transparent); border-left: 4px solid var(--ampel); }
+.es-ampel-gruen { --ampel: #3FA66B; }
+.es-ampel-gelb { --ampel: #E2B04A; }
+.es-ampel-rot { --ampel: #E0564F; }
+.es-ampel-kopf { display: grid; grid-template-columns: 14px auto minmax(0, 1fr); align-items: center; gap: 4px 10px; }
+.es-ampel-kopf i { width: 14px; height: 14px; border-radius: 50%; background: var(--ampel); }
+.es-ampel-kopf b { font-size: 17px; }
+.es-ampel-kopf small { color: var(--text2); font-size: 13px; grid-column: 2 / -1; }
+.es-ampel-gruppe ul { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: 15px; }
+
+/* Haken */
+.es-haken-liste { display: grid; gap: 8px; }
+.es-haken-knopf { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 52px; padding: 8px 12px; border-radius: 14px; border: 1px solid var(--linie); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.es-haken-knopf i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--text2); display: grid; place-items: center; }
+.es-haken-knopf[aria-pressed="true"] { border-color: color-mix(in srgb, var(--gut) 60%, transparent); background: color-mix(in srgb, var(--gut) 12%, transparent); }
+.es-haken-knopf[aria-pressed="true"] i { border-color: var(--gut); background: var(--gut); }
+.es-haken-knopf[aria-pressed="true"] i::after { content: ""; width: 10px; height: 6px; border-left: 2.5px solid #fff; border-bottom: 2.5px solid #fff; transform: translateY(-1px) rotate(-45deg); }
+.es-woche { display: flex; gap: 8px; }
+.es-woche i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--text2); opacity: .7; }
+.es-woche i.voll { background: var(--gut); border-color: var(--gut); opacity: 1; }
+
+/* Trinken */
+.es-trinken-reihe { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.es-trinken-reihe .knopf { min-height: 48px; }
+.es-trinken-reihe .knopf:first-child { font-size: 24px; line-height: 1; padding: 0; }
+.es-trinken-wert { display: grid; text-align: center; }
+.es-trinken-wert b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.es-trinken-wert span { font-size: 13px; color: var(--text2); }
+.es-trinken .es-spur i { background: #5AB4E6; }
+
+.block.es-warnung { box-shadow: inset 4px 0 0 var(--warn), var(--schatten, none); background: color-mix(in srgb, var(--warn) 10%, var(--flaeche)); }
+.es-warnung h2 { color: var(--warn); }
+.es-warnung p { margin: 0; }
+.es-info ul { color: var(--text2); font-size: 14px; }
+.st-zum-essen { margin-top: 14px; justify-self: start; }

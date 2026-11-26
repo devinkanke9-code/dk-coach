@@ -76,9 +76,22 @@ function ohneKarte(o) {
 // kcal + je_kg × Unterschied, Eiweiß je kg (bei Übergewicht höchstens bis zum Bezugsgewicht), Kohlenhydrate als Rest, Fett und Trinken bleiben.
 // Mehr als 15 % Unterschied zur Analyse: Die Zahlen bleiben wie im Plan, Devin soll neu rechnen.
 const gewichtSchluessel = (p) => 'dk_gewicht_' + (p && p.id ? p.id : 'beispiel');
+// Gewichtsverlauf (26.11.2026, Essen): jedes „Neu rechnen“ merkt sich [Zeit, kg], höchstens 40, einer pro Tag. essen.js warnt damit bei mehr als 1 % Abnahme pro Woche.
+export const verlaufSchluessel = (p) => 'dk_gewichte_' + (p && p.id ? p.id : 'beispiel');
+// Boden beim Defizit (26.11.2026, Essen): Der Plan trägt kein Geschlecht. Sinkt das Gewicht, sinkt auch das Ziel (kc + jk·Δ). Damit es nie unter die Grenzen aus
+// rechner.json rutscht (1200 Frau, 1500 Mann, nie unter Grundumsatz), bleibt es beim Defizit nie unter dem Plan-Wert, wenn der unter 1500 liegt, sonst nie unter 1500.
+export const BODEN_KCAL = 1500;
+// Mit welchem Gewicht gerechnet wird: dem zuletzt eingetragenen, außer es weicht mehr als 15 % von der Analyse ab (dann bleiben die Plan-Zahlen)
+export function gewichtFuer(p, lies) {
+  const e = (p && p.e) || {}, basis = typeof e.kg === 'number' ? e.kg : null;
+  const gemerkt = lies(gewichtSchluessel(p), null), jetzt = gemerkt && typeof gemerkt.kg === 'number' ? gemerkt.kg : basis;
+  const zuWeit = !!(basis && jetzt && Math.abs(jetzt - basis) > basis * 0.15);
+  return { basis, jetzt, zuWeit, rechenKg: zuWeit || !jetzt ? (basis || 0) : jetzt };
+}
 export function essenFuer(e, kg) {
   const basis = typeof e.kg === 'number' ? e.kg : kg, d = kg - basis;
-  const kc = Math.round((e.kc + (typeof e.jk === 'number' ? e.jk * d : 0)) / 10) * 10;
+  let kc = Math.round((e.kc + (typeof e.jk === 'number' ? e.jk * d : 0)) / 10) * 10;
+  if (e.ar === 'd') kc = Math.max(kc, Math.min(e.kc, BODEN_KCAL));
   let ew = Array.isArray(e.ew) ? e.ew : null;
   if (d !== 0 && Array.isArray(e.ek) && e.ek.length === 2) { const bez = typeof e.eb === 'number' && e.eb < basis ? Math.min(kg, e.eb) : kg; ew = [Math.round(e.ek[0] * bez), Math.round(e.ek[1] * bez)]; }
   let kh = typeof e.kh === 'number' ? e.kh : null;
@@ -88,17 +101,19 @@ export function essenFuer(e, kg) {
 const ZIEL_SATZ = { d: 'Etwas unter deinem Bedarf, damit du langsam Fett verlierst.', p: 'Etwas über deinem Bedarf, damit Muskeln wachsen können.', e: 'Ungefähr dein Bedarf an einem normalen Tag.' };
 const zahlText = (x) => komma(x, x % 1 ? 1 : 0);
 function essenKarte(o) {
-  const { h } = o, e = o.plan.e, basis = typeof e.kg === 'number' ? e.kg : null;
-  const gemerkt = o.lies(gewichtSchluessel(o.plan), null), jetztKg = gemerkt && typeof gemerkt.kg === 'number' ? gemerkt.kg : basis;
-  const zuWeit = !!(basis && jetztKg && Math.abs(jetztKg - basis) > basis * 0.15);
-  const w = essenFuer(e, zuWeit || !jetztKg ? (basis || 0) : jetztKg);
+  const { h } = o, e = o.plan.e, gw = gewichtFuer(o.plan, o.lies), basis = gw.basis, jetztKg = gw.jetzt, zuWeit = gw.zuWeit;
+  const w = essenFuer(e, gw.rechenKg);
   const feld = (wert, was) => h('div', { class: 'st-zahl' }, h('b', { text: wert }), h('span', { text: was }));
   const ber = (a) => (a[0] === a[1] ? String(a[0]) : a[0] + '–' + a[1]);
   const eingabe = h('input', { class: 'eingabe', id: 'st-gewicht', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: jetztKg ? zahlText(jetztKg) : '', 'aria-describedby': 'st-gewicht-hilfe' });
   const rechnen = () => {
     const kg = Number(String(eingabe.value).trim().replace(',', '.'));
     if (!(kg >= 30 && kg <= 250)) { o.toast('Bitte dein Gewicht in kg eintragen, zum Beispiel 78,5.'); eingabe.focus(); return; }
-    o.schreib(gewichtSchluessel(o.plan), { kg: Math.round(kg * 10) / 10, t: Date.now() });
+    const jetzt = Date.now(), neuKg = Math.round(kg * 10) / 10;
+    o.schreib(gewichtSchluessel(o.plan), { kg: neuKg, t: jetzt });
+    const alt = o.lies(verlaufSchluessel(o.plan), []), tag = (t) => new Date(t).toDateString();
+    const verlauf = (Array.isArray(alt) ? alt : []).filter((x) => Array.isArray(x) && typeof x[0] === 'number' && typeof x[1] === 'number' && tag(x[0]) !== tag(jetzt));
+    o.schreib(verlaufSchluessel(o.plan), verlauf.concat([[jetzt, neuKg]]).slice(-40));
     o.toast('Neu gerechnet'); o.neu();
   };
   eingabe.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') rechnen(); });
@@ -118,6 +133,7 @@ function essenKarte(o) {
       w.tr ? feld('ab ' + komma(Math.round(w.tr / 100) / 10, 1) + ' l', 'Trinken') : null),
     hand,
     Array.isArray(e.sc) && e.sc.length ? h('div', { class: 'st-schritte' }, h('b', { text: 'Deine ersten Schritte' }), h('ul', null, e.sc.map((s) => h('li', { text: s[1] })))) : null,
+    o.geh ? h('button', { class: 'knopf haupt st-zum-essen', type: 'button', onclick: () => o.geh('essen'), text: 'Zu deinem Essen' }) : null,   // Essen (26.11.2026): Tagesplan, Eintragen, Teller
     h('label', { class: 'lbl', for: 'st-gewicht', text: 'Dein Gewicht heute (kg)' }),
     h('div', { class: 'code-reihe' }, eingabe, h('button', { class: 'knopf', type: 'button', onclick: rechnen, text: 'Neu rechnen' })),
     h('p', { class: 'leise klein', id: 'st-gewicht-hilfe', text: zuWeit ? 'Das sind mehr als 15 % Unterschied zu deiner Analyse (' + zahlText(basis) + ' kg). Die Zahlen bleiben wie im Plan: Sag Devin Bescheid, dann rechnet er neu.' : 'Ändert sich dein Gewicht, trag es hier ein. Die App rechnet mit. Das bleibt nur auf diesem Handy.' }),
