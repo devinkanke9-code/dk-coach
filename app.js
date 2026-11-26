@@ -9,6 +9,7 @@ import * as Bestleistung from './bestleistung.js';
 import * as Rang from './rang.js';
 import * as Status from './status.js';   // Status (18.11.2026): eigener Charakter mit Zahlen, Skins, wer im Gym trainiert
 import * as Figurwahl from './figurwahl.js';   // Figur überall (23.11.2026): eine Wahl je Kunde für Gym, Station, Training und Übungen
+import * as Essen from './essen.js';   // Essen (26.11.2026): Tagesplan mit Zählen, Teller und Ampel ohne Zählen, nur auf diesem Handy
 import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 import * as Statistik from './statistik.js';   // Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings, nur auf diesem Handy
@@ -384,7 +385,7 @@ const MEHR = ['statistik', 'rang', 'status', 'info'];
 const MEHR_ICON = '<circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/>';
 const MEHR_GRUPPEN = [
   ['Dein Fortschritt', [['statistik', 'Trainings, Gewichte und der Verlauf je Übung'], ['rang', 'Punkte aus dem Gym, dein Level und deine Bestleistungen']]],
-  ['Du', [['status', 'Deine Figur, dein Gewicht und deine Ernährung']]],
+  ['Du', [['status', 'Deine Figur, dein Gewicht und deine Ernährung'], ['essen', 'Dein Tag: Kalorien, Eiweiß, Trinken und der Teller ohne Zählen']]],
   ['Hilfe und Zugang', [['info', 'Code, Frage an Devin, App aufs Handy, Farbwelt und Rechtliches']]]
 ];
 function leiste() {
@@ -392,7 +393,7 @@ function leiste() {
   $('nav.leiste').hidden = !S.plan;
   n.style.gridTemplateColumns = '';
   n.classList.remove('sieben'); n.classList.add('mit-mehr');
-  const aktiv = S.ansicht === 'fortschritt' ? 'statistik' : S.ansicht;   // die alte Seite Fortschritt ist jetzt Statistik
+  const aktiv = S.ansicht === 'fortschritt' ? 'statistik' : S.ansicht === 'essen' ? 'status' : S.ansicht;   // die alte Seite Fortschritt ist jetzt Statistik; Essen gehört zu Status (am Handy unter Mehr)
   const knopf = (id, name, icon, klasse, aktuell) => {
     const b = h('button', { type: 'button', class: klasse || null, 'aria-current': aktuell ? 'page' : null, onclick: () => geh(id) });
     b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon + '</svg>';
@@ -401,9 +402,11 @@ function leiste() {
   for (const [id, name, icon] of BEREICHE) n.append(knopf(id, name, icon, MEHR.includes(id) ? 'nur-breit' : null, aktiv === id));
   n.append(knopf('mehr', 'Mehr', MEHR_ICON, 'nur-schmal', aktiv === 'mehr' || MEHR.includes(aktiv)));
 }
+// Ziele nur unter „Mehr“, ohne eigenen Knopf in der Leiste (Essen 26.11.2026, Devins Wahl: die Leiste aus dem Redesign bleibt, wie sie ist)
+const NUR_MEHR = [['essen', 'Essen', '<circle cx="12" cy="12.5" r="5.5"/><path d="M3 3.5v4a1.5 1.5 0 0 0 3 0v-4M4.5 3.5V21M19.5 21V3.5c-1.6.9-2.5 2.8-2.5 5.5v3.5h2.5"/>']];
 function ansichtMehr() {
-  const icon = (id) => (BEREICHE.find((b) => b[0] === id) || [])[2] || '';
-  const name = (id) => (BEREICHE.find((b) => b[0] === id) || [])[1] || id;
+  const icon = (id) => (BEREICHE.concat(NUR_MEHR).find((b) => b[0] === id) || [])[2] || '';
+  const name = (id) => (BEREICHE.concat(NUR_MEHR).find((b) => b[0] === id) || [])[1] || id;
   return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Mehr' })),
     ...MEHR_GRUPPEN.map(([titel, ziele]) => h('section', { class: 'block mehr-gruppe', 'aria-label': titel }, h('h2', { class: 'mehr-titel', text: titel }),
       h('div', { class: 'mehr-liste' }, ziele.map(([id, text]) => {
@@ -447,7 +450,7 @@ function zeichne() {
   const ansichtSchluessel = z + '|' + (z === 'plan' ? S.ansicht : '');
   ziel.classList.toggle('still', ansichtSchluessel === S.letzteAnsicht); S.letzteAnsicht = ansichtSchluessel;
   const ansicht = { laedt: laedtAnsicht, code: codeAnsicht, pausiert: pausiertAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
-    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, info: ansichtInfo, statistik: ansichtStatistik, fortschritt: ansichtStatistik, mehr: ansichtMehr }[S.ansicht] || ansichtHeute;
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, essen: ansichtEssen, info: ansichtInfo, statistik: ansichtStatistik, fortschritt: ansichtStatistik, mehr: ansichtMehr }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
@@ -1140,7 +1143,12 @@ function ansichtStatus() {
   // Figur überall (23.11.2026): eigen = die eigene Figur des Kunden (was er auf „Mein Charakter“ eingestellt hat, sonst Devins Charakter), jetzt und waehlen aus figurwahl.js
   const ei = Figurwahl.eigene(figurZiel());
   return [figurHinweis(), ...Status.ansicht({ h, plan: S.plan, eigen: ei.c, eigenNotiz: ei.notiz, jetzt: figurJetzt(), waehlen: figurWaehlen, lies: speicher.lies, schreib: speicher.schreib, toast, neu: zeichne,
-    vorladen: () => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}) })];
+    geh, vorladen: () => import('./charakter/gym.js').then((m) => m.vorladen()).catch(() => {}) })];
+}
+// Essen (26.11.2026): neu zeichnen ohne nach oben zu springen (Haken, Glas, Eintrag), nur der Tageswechsel bleibt oben
+function ansichtEssen() {
+  const neu = () => { const y = window.scrollY; zeichne(); window.scrollTo(0, y); };
+  return Essen.ansicht({ h, plan: S.plan, lies: speicher.lies, schreib: speicher.schreib, toast, neu, blatt: oeffneBlatt, blattZu: () => schliesseBlatt() });
 }
 function ansichtRang() { return Rang.ansicht({ h, kopf: () => kopf('', 'Dein Rang'), lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
 function ansichtHeute() {
