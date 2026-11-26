@@ -497,6 +497,21 @@ function sperren(id) {
 }
 // Neuer Stand oder Sperre von Devin: beim Öffnen, bei Rückkehr in die App und wenn das Internet wiederkommt. Nie mitten im Training oder Gym.
 let STAND_ZULETZT = 0;
+// Fassung 5 (22.11.2026, Devin: „nach der Zahlung automatisch wieder drin“): Das Ende, das der Briefkasten nennt, gilt, auch ohne neuen Plan
+// (Verlängerung nach Zahlung). Früher als bisher = „abgelaufen“, später = wieder drin, leer = ohne Ende. Nur ein Datum oder leer wird übernommen.
+function bisUebernehmen(id, r) {
+  if (!id || !r || typeof r.bis !== 'string' || (r.bis && !/^\d{4}-\d{2}-\d{2}$/.test(r.bis))) return false;
+  const ko = konten()[id];
+  if (!ko || (ko.bis || '') === r.bis) return false;
+  kontoSetzen(id, { bis: r.bis });
+  return true;
+}
+// Zeit des Eintrags im Briefkasten merken (nach einer Zeile „Plan behalten“ ist sie neuer als die Zeit im Plan): sonst holt die App bei jedem Öffnen denselben Plan.
+// Erst nach anmelden aufrufen, sonst hielte anmelden den Plan für älter und nähme ihn nicht.
+function standMerken(id, r) {
+  const ko = konten()[id];
+  if (ko && r && typeof r.t === 'number' && r.t > (ko.t || 0) && r.t <= Date.now() + 1728e5) kontoSetzen(id, { t: r.t });
+}
 async function zugangPruefen(vonHand) {
   const ko = aktivesKonto();
   if (!ko || !ko.code || !KONTAKT.briefkasten) return 'kein';
@@ -509,12 +524,15 @@ async function zugangPruefen(vonHand) {
   if (r.an === false) { sperren(ko.id); zeichne(); return 'aus'; }
   const warAus = !!ko.aus;
   if (warAus) kontoSetzen(ko.id, { aus: null });
-  if (r.erneuert || !r.neu || typeof r.z !== 'string') { if (warAus) zeichne(); return r.erneuert ? 'erneuert' : 'aktuell'; }
+  const bisNeu = bisUebernehmen(ko.id, r);   // Verlängerung nach Zahlung oder Ablauf: gilt sofort, ohne neuen Plan
+  if (r.erneuert || !r.neu || typeof r.z !== 'string') { if (warAus || bisNeu) zeichne(); return r.erneuert ? 'erneuert' : bisNeu ? 'bis' : 'aktuell'; }
   let d = null; try { d = await K.entpacken(ko.code, r.z); } catch (e) {}
   if (!linkDatenOk(d) || d.k !== ko.id) { if (warAus) zeichne(); return 'passt-nicht'; }
   if (!vonHand && document.querySelector('.raum, .tm, .blatt.offen')) { STAND_ZULETZT = 0; return 'warte'; }   // inzwischen ein Training geöffnet: später
   const ansichtVorher = S.ansicht;
   anmelden(d, ko.code, r.z);
+  bisUebernehmen(ko.id, r);   // der Plan trägt das Ende vom Erstellen, der Briefkasten kennt die Verlängerung
+  standMerken(ko.id, r);
   if (!vonHand) S.ansicht = ansichtVorher;   // von selbst: die Seite bleibt, wo man war
   zeichne(); fotosVorladen();
   return 'neu';
@@ -532,7 +550,7 @@ const CODE_TEXTE = {
   'passt-nicht': 'Der Code passt nicht. Schau nochmal in Devins Nachricht.',
   aus: 'Dein Zugang ist gerade ausgeschaltet. Schreib Devin, dann schaltet er ihn wieder an.',
   erneuert: 'Für dich gibt es einen neuen Code. Nimm den Code aus Devins neuester Nachricht.',
-  abgelaufen: 'Dieser Code ist abgelaufen. Bitte Devin um einen neuen Code.',
+  abgelaufen: 'Dein Zugang ist abgelaufen. Ist er verlängert, geht derselbe Code wieder, ohne neuen Link.',
   pause: 'Zu viele falsche Versuche mit alten Codes. Bitte in 10 Minuten nochmal.'
 };
 async function codeHolen(code) {
@@ -555,6 +573,8 @@ async function codeHolen(code) {
   if (!linkDatenOk(d)) return 'passt-nicht';
   if (konten()[d.k] && konten()[d.k].aus) kontoSetzen(d.k, { aus: null });   // der Code geht wieder: Devin hat angeschaltet
   anmelden(d, ziffern, teil);
+  bisUebernehmen(d.k, r);   // erstes Holen: das Ende aus dem Briefkasten (nach einer Zahlung später als im Plan)
+  standMerken(d.k, r);
   return 'ok';
 }
 /* Kurzer Link mit Code (21.11.2026, Devin: „ein kleiner Link … der Kunde gibt einmal den Code ein und dann direkt wird das funktionieren … er kriegt direkt seinen Trainingsplan“):
@@ -819,12 +839,22 @@ function codeAnsicht() {
     h('label', { class: 'lbl', for: 'code', text: 'Dein Code' }), feld, knopf, fehler),
     aktiverPlan() || aktivesKonto() ? h('button', { class: 'knopf text', type: 'button', onclick: () => { S.wartet = null; speicher.schreib('dk_wartet', null); zeichne(); }, text: 'Abbrechen' }) : null];
 }
+// Nach der Zahlung (26.11.2026): sofort beim Briefkasten nachsehen. Ist das Ende verlängert, zeichnet zugangPruefen schon neu (der Plan ist wieder da).
+async function nachZahlungPruefen(e) {
+  const b = e.currentTarget; b.disabled = true; b.textContent = 'Prüfe …';
+  const r = await zugangPruefen(true);
+  if (r === 'aus') return;
+  if (!abgelaufen(aktivesKonto())) { toast('Fertig, du bist wieder drin.'); return; }
+  b.disabled = false; b.textContent = 'Schon bezahlt? Nochmal prüfen';
+  toast(r === 'offline' || r === 'netz' ? 'Keine Verbindung. Bitte mit Internet nochmal.' : 'Noch nicht da. Nach der Zahlung dauert es meist ein paar Minuten. Schau gleich nochmal.');
+}
 function abgelaufenAnsicht() {
-  const ko = aktivesKonto(), vn = vorname(ko.n), a = KONTAKT.abo;
+  const ko = aktivesKonto(), vn = vorname(ko.n), a = KONTAKT.abo, link = bezahlLink(a, ko);
   return [h('section', { class: 'block willkommen' }, logo(),
     h('h1', { text: (vn ? vn + ', dein' : 'Dein') + ' Zugang ist abgelaufen' }),
-    h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? ' + (a && a.link ? 'Schließ das Abo ab. Sobald die Zahlung da ist, bekommst du deinen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' : 'Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.') }),
-    a ? weiterAbo(a) : null,
+    h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? ' + (link ? 'Schließ das Abo ab. Sobald die Zahlung da ist, bist du von selbst wieder drin, mit deinem Plan. Meist dauert das ein paar Minuten. Öffne dafür einfach wieder diese Seite.' : 'Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.') }),
+    a ? weiterAbo(a, ko) : null,
+    link && ko.code && KONTAKT.briefkasten ? h('button', { class: 'knopf text', type: 'button', text: 'Schon bezahlt? Nochmal prüfen', onclick: nachZahlungPruefen }) : null,
     einfuegenBlock('Neuen Link einfügen'))];
 }
 // Angebot (21.11.2026): Gratis-Zeit, danach ein Preis im Monat. Nur mit echtem Impressum (KONTAKT.abo), Bezahl-Knopf nur mit PayPal-Link
@@ -841,10 +871,21 @@ function angebotBlock(knopf) {
     h('div', { class: 'st-stufen eins' }, aboKarte(a, 'Danach'),
       h('p', { class: 'leise klein', text: 'Die Gratis-Zeit endet von selbst. Danach kannst du für ' + a.preis + ' € im Monat weitermachen, jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' })));
 }
-function weiterAbo(a) {
-  const knopf = a.link ? h('a', { class: 'knopf haupt', href: a.link, target: '_blank', rel: 'noopener noreferrer', text: 'Zahlungspflichtig abonnieren' }) : null;
+// Bezahl-Knopf (26.11.2026, Devin: „Rest einbauen“): PayPal-Abo, Link aus kontakt.json (abo.link, fertig bis auf custom).
+// Nur ein vollständiger Link zählt: PayPal-Abo mit notify_url zu „DK Zahlungen“ (Google-Skript). Ohne diese Meldung bliebe der Kunde nach dem Zahlen draußen.
+// custom = Kunden-ID (wie daten.k im Plan): Daran erkennt „DK Zahlungen“ den Kunden, der Briefkasten verlängert um einen Monat, die App übernimmt das neue Ende.
+function bezahlLink(a, ko) {
+  const l = a && typeof a.link === 'string' ? a.link : '';
+  if (!/^https:\/\/www\.paypal\.com\/cgi-bin\/webscr\?cmd=_xclick-subscriptions&/.test(l) || /[?&]custom=/.test(l)
+    || !/&notify_url=https%3A%2F%2Fscript\.google\.com%2Fmacros%2Fs%2F[A-Za-z0-9_-]{20,}%2Fexec(&|$)/.test(l)) return null;
+  if (!ko || !/^k[A-Za-z0-9]{1,16}$/.test(ko.id || '')) return null;
+  return l + '&custom=' + encodeURIComponent(ko.id);
+}
+function weiterAbo(a, ko) {
+  const link = bezahlLink(a, ko);
+  const knopf = link ? h('a', { class: 'knopf haupt', href: link, target: '_blank', rel: 'noopener noreferrer', text: 'Zahlungspflichtig abonnieren' }) : null;
   return h('div', { class: 'st-stufen eins weiter' }, aboKarte(a, 'Weitermachen', knopf),
-    h('p', { class: 'leise klein', text: (a.link ? 'Zahlung über PayPal. ' : 'Schreib Devin, dass du weitermachen willst. ') + 'Das Abo kostet ' + a.preis + ' € im Monat, verlängert sich jeden Monat und ist jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' }));
+    h('p', { class: 'leise klein', text: (link ? 'Zahlung über PayPal. ' : 'Schreib Devin, dass du weitermachen willst. ') + 'Das Abo kostet ' + a.preis + ' € im Monat, verlängert sich jeden Monat und ist jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' }));
 }
 function wartenAnsicht() {
   const ko = aktivesKonto(), vn = vorname(ko.n), geschickt = ko.analyse === 'geschickt';
@@ -1097,7 +1138,12 @@ function ansichtHeute() {
       h('button', { class: 'knopf text klein', type: 'button', onclick: beispielEnde, text: 'Beispiel beenden' }))));
   // Kunden-Test 23.11.2026: Die Code-Karte mitten im Beispiel verwirrte Neue („ich hab doch gar keinen Code“). Wer später Devins Code bekommt, findet sie unter Infos und auf der Startseite.
   const ko = aktivesKonto();
-  if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) teile.push(h('p', { class: 'meldung klein', text: (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.')) + ' Schreib Devin, wenn du weitermachen willst.' }));
+  if (ko && ko.id === p.id && ko.bis && tageBis(ko) <= 7) {
+    const link = bezahlLink(KONTAKT.abo, ko);   // mit Bezahl-Knopf (26.11.2026): gleich hier verlängern, die bezahlte Zeit hängt sich hinten an
+    teile.push(h('p', { class: 'meldung klein' }, (tageBis(ko) === 0 ? 'Dein Zugang endet heute.' : 'Dein Zugang läuft noch ' + tageBis(ko) + (tageBis(ko) === 1 ? ' Tag.' : ' Tage.'))
+      + (link ? ' Willst du weitermachen? ' : ' Schreib Devin, wenn du weitermachen willst.'),
+      link ? h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', text: 'Abo für ' + KONTAKT.abo.preis + ' € im Monat abschließen' }) : null));
+  }
   // Erst wenn jeder Trainingstag einen Wochentag hat, kommt die Woche (vorher blieb nach dem ersten Haken nur ein Tag übrig)
   if (kundenTage(p).length < planTage(p)) {
     const offen = offenesTraining(p);
