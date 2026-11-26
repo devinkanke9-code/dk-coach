@@ -28,7 +28,7 @@ export function buehne({ lade3d, fotoGross }) {
   const canvas = h('canvas', { 'aria-label': '3D-Figur, mit dem Finger drehen' });
   const knopf = (text, label, fn, extra) => h('button', Object.assign({ class: 'rund', type: 'button', 'aria-label': label, onclick: fn, text }, extra || {}));
   let ansicht = null, ruht = false;
-  const auto = knopf('360°', 'Automatisch drehen', () => { if (!ansicht) return; const an = !ansicht.steuerung.autoRotate; ansicht.autoDrehen(an); auto.setAttribute('aria-pressed', String(an)); }, { 'aria-pressed': 'true' });
+  const auto = knopf('360°', 'Automatisch drehen', () => { if (!ansicht) return; const an = !ansicht.steuerung.autoRotate; ansicht.autoDrehen(an); auto.setAttribute('aria-pressed', String(an)); }, { 'aria-pressed': matchMedia('(prefers-reduced-motion: reduce)').matches ? 'false' : 'true' });   // QA 25.11.2026: bei weniger Bewegung nicht von selbst drehen
   const pause = knopf('❚❚', 'Pause', () => { if (!ansicht) return; ansicht.laeuft = !ansicht.laeuft; pause.setAttribute('aria-pressed', String(!ansicht.laeuft)); pause.textContent = ansicht.laeuft ? '❚❚' : '▶'; }, { 'aria-pressed': 'false' });
   const langsam = knopf('½×', 'Langsam', () => { if (!ansicht) return; ansicht.tempo = ansicht.tempo === 1 ? 0.4 : 1; langsam.setAttribute('aria-pressed', String(ansicht.tempo !== 1)); }, { 'aria-pressed': 'false' });
   const links = knopf('⟲', 'Nach links drehen', () => { if (!ansicht) return; ansicht.drehe(-45); auto.setAttribute('aria-pressed', 'false'); });
