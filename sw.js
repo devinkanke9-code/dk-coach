@@ -1,5 +1,5 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = '3c8fe447d1';
+const VERSION = 'knopfmwxuulds';
 // Offline-Kern (24.11.2026, Kundenperspektive „schlechter Empfang im Gym“): Plan, Training, Eintragen und alle statisch geladenen Module.
 // Kommt ohne den Kern keine neue Fassung zustande, bleibt die alte. 3D-Figur, Gym und Bilder sind optional: Sie kommen mit, wenn es klappt,
 // fehlt eins (Funkloch, Speicher knapp), gilt die neue Fassung trotzdem und das Training läuft ohne Figur (statische Vorschau).
