@@ -95,6 +95,20 @@ export function schnellAbnahme(verlauf, jetzt) {
   return proWoche > Z.abnahme_max_prozent_woche ? { proWoche, von: alt[1], bis: neu[1] } : null;
 }
 
+/* ---------- Für den Gesundheits-Scan (gesund.js, 26.11.2026): die letzten n Tage, nur lesen ---------- */
+// Der Speicherschlüssel bleibt hier. gesund.js bekommt nur Zahlen je Tag (Einträge, kcal, Eiweiß, Trinken in ml, Teller-Haken) und die Ziele aus dem Plan.
+export function essenWoche(p, lies, jetzt, n) {
+  const st = stand(lies(schluessel(p), null)), d0 = new Date(jetzt || Date.now()), tage = [];
+  for (let i = (n || 7) - 1; i >= 0; i--) {
+    const iso = isoTag(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() - i)), d = st.tage[iso] || { e: [], w: 0, hk: [] }, s = summe(d);
+    tage.push({ iso, n: d.e.length, k: s.k, p: s.p, w: d.w, hk: d.hk.slice() });
+  }
+  const e = p && p.e;
+  if (!e) return { e: false, tage };
+  const darf = darfZaehlen(e), gw = gewichtFuer(p, lies);
+  return { e: true, tage, ziel: essenFuer(e, gw.rechenKg), modus: darf ? st.modus || (e.hd ? 'teller' : 'zaehlen') : 'teller', jung: istJung(e), darf };
+}
+
 /* ---------- Online suchen (Open Food Facts) ---------- */
 // Nur auf Tipp, nur der Suchbegriff geht raus: kein Name, kein Plan, kein Code. Open Food Facts ist frei und braucht keinen Schlüssel (Daten unter ODbL).
 // Die Antwort ist fremder Text: nur Zahlen in sinnvollen Grenzen, Namen gekürzt, nie als HTML (die App setzt alles als textContent).

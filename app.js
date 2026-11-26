@@ -10,6 +10,7 @@ import * as Rang from './rang.js';
 import * as Status from './status.js';   // Status (18.11.2026): eigener Charakter mit Zahlen, Skins, wer im Gym trainiert
 import * as Figurwahl from './figurwahl.js';   // Figur überall (23.11.2026): eine Wahl je Kunde für Gym, Station, Training und Übungen
 import * as Essen from './essen.js';   // Essen (26.11.2026): Tagesplan mit Zählen, Teller und Ampel ohne Zählen, nur auf diesem Handy
+import * as Gesund from './gesund.js';   // Gesundheits-Scan (26.11.2026): Ampel der letzten 7 Tage und Wochen-Check, nur auf diesem Handy
 import * as PrRaum from './pr-raum.js';
 import * as Spiel from './spiel.js';   // Punkte, Level und Serie fürs Gym (09.11.2026): nur Zahlen, nur auf diesem Handy
 import * as Statistik from './statistik.js';   // Dein Fortschritt (17.11.2026): Statistik aus den eigenen Trainings, nur auf diesem Handy
@@ -385,7 +386,7 @@ const MEHR = ['statistik', 'rang', 'status', 'info'];
 const MEHR_ICON = '<circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/>';
 const MEHR_GRUPPEN = [
   ['Dein Fortschritt', [['statistik', 'Trainings, Gewichte und der Verlauf je Übung'], ['rang', 'Punkte aus dem Gym, dein Level und deine Bestleistungen']]],
-  ['Du', [['status', 'Deine Figur, dein Gewicht und deine Ernährung'], ['essen', 'Dein Tag: Kalorien, Eiweiß, Trinken und der Teller ohne Zählen']]],
+  ['Du', [['status', 'Deine Figur, dein Gewicht und deine Ernährung'], ['essen', 'Dein Tag: Kalorien, Eiweiß, Trinken und der Teller ohne Zählen'], ['gesund', 'Training, Essen, Trinken, Schlaf und Befinden als Ampel']]],
   ['Hilfe und Zugang', [['info', 'Code, Frage an Devin, App aufs Handy, Farbwelt und Rechtliches']]]
 ];
 function leiste() {
@@ -393,7 +394,7 @@ function leiste() {
   $('nav.leiste').hidden = !S.plan;
   n.style.gridTemplateColumns = '';
   n.classList.remove('sieben'); n.classList.add('mit-mehr');
-  const aktiv = S.ansicht === 'fortschritt' ? 'statistik' : S.ansicht === 'essen' ? 'status' : S.ansicht;   // die alte Seite Fortschritt ist jetzt Statistik; Essen gehört zu Status (am Handy unter Mehr)
+  const aktiv = S.ansicht === 'fortschritt' ? 'statistik' : S.ansicht === 'essen' || S.ansicht === 'gesund' ? 'status' : S.ansicht;   // die alte Seite Fortschritt ist jetzt Statistik; Essen und Gesundheits-Scan gehören zu Status (am Handy unter Mehr)
   const knopf = (id, name, icon, klasse, aktuell) => {
     const b = h('button', { type: 'button', class: klasse || null, 'aria-current': aktuell ? 'page' : null, onclick: () => geh(id) });
     b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon + '</svg>';
@@ -403,7 +404,8 @@ function leiste() {
   n.append(knopf('mehr', 'Mehr', MEHR_ICON, 'nur-schmal', aktiv === 'mehr' || MEHR.includes(aktiv)));
 }
 // Ziele nur unter „Mehr“, ohne eigenen Knopf in der Leiste (Essen 26.11.2026, Devins Wahl: die Leiste aus dem Redesign bleibt, wie sie ist)
-const NUR_MEHR = [['essen', 'Essen', '<circle cx="12" cy="12.5" r="5.5"/><path d="M3 3.5v4a1.5 1.5 0 0 0 3 0v-4M4.5 3.5V21M19.5 21V3.5c-1.6.9-2.5 2.8-2.5 5.5v3.5h2.5"/>']];
+const NUR_MEHR = [['essen', 'Essen', '<circle cx="12" cy="12.5" r="5.5"/><path d="M3 3.5v4a1.5 1.5 0 0 0 3 0v-4M4.5 3.5V21M19.5 21V3.5c-1.6.9-2.5 2.8-2.5 5.5v3.5h2.5"/>'],
+  ['gesund', 'Gesundheits-Scan', '<path d="M12 20.5s-7.5-4.4-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.8-7.5 10.2-7.5 10.2z"/><path d="M3.5 12.5h4l1.6-2.6 2.4 5 1.8-3.4h7.2"/>']];   // Gesundheits-Scan (26.11.2026)
 function ansichtMehr() {
   const icon = (id) => (BEREICHE.concat(NUR_MEHR).find((b) => b[0] === id) || [])[2] || '';
   const name = (id) => (BEREICHE.concat(NUR_MEHR).find((b) => b[0] === id) || [])[1] || id;
@@ -450,7 +452,7 @@ function zeichne() {
   const ansichtSchluessel = z + '|' + (z === 'plan' ? S.ansicht : '');
   ziel.classList.toggle('still', ansichtSchluessel === S.letzteAnsicht); S.letzteAnsicht = ansichtSchluessel;
   const ansicht = { laedt: laedtAnsicht, code: codeAnsicht, pausiert: pausiertAnsicht, abgelaufen: abgelaufenAnsicht, analyse: analyseAnsicht, warten: wartenAnsicht, willkommen: startseite }[z]
-    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, essen: ansichtEssen, info: ansichtInfo, statistik: ansichtStatistik, fortschritt: ansichtStatistik, mehr: ansichtMehr }[S.ansicht] || ansichtHeute;
+    || { heute: ansichtHeute, plan: ansichtPlan, uebungen: ansichtUebungen, rang: ansichtRang, status: ansichtStatus, essen: ansichtEssen, gesund: ansichtGesund, info: ansichtInfo, statistik: ansichtStatistik, fortschritt: ansichtStatistik, mehr: ansichtMehr }[S.ansicht] || ansichtHeute;
   try { ziel.append(...[umzugKarte(), umzugFertigKarte(), ansicht()].flat().filter(Boolean)); }
   catch (e) {   // Kaputte Daten dürfen nie einen weißen Bildschirm ergeben: Ein neuer Link von Devin hilft immer weiter
     console.error(e); ziel.textContent = '';
@@ -1182,6 +1184,24 @@ function ansichtEssen() {
   const neu = () => { const y = window.scrollY; zeichne(); window.scrollTo(0, y); };
   return Essen.ansicht({ h, plan: S.plan, lies: speicher.lies, schreib: speicher.schreib, toast, neu, blatt: oeffneBlatt, blattZu: () => schliesseBlatt() });
 }
+// Gesundheits-Scan (26.11.2026, Devins Fragekarte): Training, Essen und Trinken aus vorhandenen Daten, Schlaf und Befinden aus dem Wochen-Check. Beschwerden gehen über „Frage an Devin“.
+function gesundOpt() {
+  const neu = () => { const y = window.scrollY; zeichne(); window.scrollTo(0, y); };
+  return { h, plan: S.plan, lies: speicher.lies, schreib: speicher.schreib, toast, neu, geh, blatt: oeffneBlatt, blattZu: () => schliesseBlatt(), frage: (start) => frageBlatt(start), training: gesundTraining(S.plan) };
+}
+function ansichtGesund() { return Gesund.ansicht(gesundOpt()); }
+// Trainingstage der letzten 7 Tage: gespeicherte Trainings (Statistik) und ganz abgehakte Tage dieser Woche, dazu der höchste Schmerz nach einem Training (nur Pläne mit Beschwerden fragen danach)
+function gesundTraining(p) {
+  if (!p || !Array.isArray(p.t)) return null;
+  const d = new Date(), ab = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6).getTime(), tage = new Set(), hi = heuteIndex();
+  let liste = [];
+  try { liste = Statistik.trainings(); } catch (e) { liste = []; }
+  for (const r of liste) if (r && r.s >= ab) tage.add(new Date(r.s).toDateString());
+  wocheErledigt(p, hi).forEach((ok, i) => { if (ok) tage.add(new Date(d.getFullYear(), d.getMonth(), d.getDate() - (hi - i)).toDateString()); });
+  let schmerz = null;
+  for (const r of verlaufListe()) if (r && r.s >= ab && schmerzOk(r.sz) && (schmerz === null || r.sz > schmerz)) schmerz = r.sz;
+  return { geschafft: tage.size, geplant: planTage(p), jemals: liste.length > 0 || tage.size > 0, schmerz };
+}
 function ansichtRang() { return Rang.ansicht({ h, kopf: () => kopf('', 'Dein Rang'), lade3d, UEBUNGEN, plan: S.plan, toast, datum: datumHeute, neu: zeichne, prRaum: () => prRaumOeffnen(null), ohne3d: () => OHNE_3D }); }
 function ansichtHeute() {
   let p = S.plan;
@@ -1219,6 +1239,7 @@ function ansichtHeute() {
   if (ko && ko.id === p.id && ko.c) teile.push(charakterLink());
   if (!istBeispiel) teile.push(Rang.kurzKarte({ h, oeffnen: () => geh('rang') }));
   teile.push(fortschrittKarte(p));
+  teile.push(Gesund.kurzKarte(gesundOpt()));   // Gesundheits-Scan (26.11.2026): Ampel der letzten 7 Tage, Wochen-Check wenn fällig
   teile.push(tippKarte(p, ti >= 0 ? ti : (naechstesTraining(p, S.tagWahl) || { ti: -1 }).ti));
   if (!istBeispiel) teile.push(verlaufBlock());
   const w = aktuelleWoche(p), ph = PHASE[(p.w || [])[w]];   // die Zeile „Woche x von y“ steht jetzt in der Wochenkarte
@@ -1800,19 +1821,21 @@ function frageText(frage, mail) {
   return z.join('\n');
 }
 const frageMailLink = (frage) => 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(frageBetreff()) + '&body=' + encodeURIComponent(frageText(frage, '').replace(/\n/g, '\r\n'));
-function frageBlatt() {
+function frageBlatt(start) {   // start: Anfang der Nachricht (Gesundheits-Scan, 26.11.2026: „Ich habe gerade Beschwerden …“), sonst leer
   const direkt = !!KONTAKT.eingang, gemerkt = direkt ? String(speicher.lies(FRAGE_MAIL_KEY, '') || '') : '';
   const feld = h('textarea', { class: 'eingabe', rows: '5', maxlength: '1000', 'aria-label': 'Deine Frage an Devin', placeholder: 'Zum Beispiel: Wie schwer soll ich bei der Kniebeuge anfangen?' });
+  if (typeof start === 'string') feld.value = start.slice(0, 200);
   const adresse = direkt ? h('input', { class: 'eingabe', type: 'email', inputmode: 'email', autocomplete: 'email', autocapitalize: 'off', spellcheck: 'false', maxlength: '120',
     'aria-label': 'Deine E-Mail-Adresse für die Antwort', placeholder: 'deine E-Mail-Adresse', value: gemerkt }) : null;
   const meldung = h('p', { class: 'meldung klein fr-meldung', role: 'alert', style: 'display:none' });
-  const senden = direkt ? h('button', { class: 'knopf haupt', type: 'button', text: 'An Devin senden' }) : h('a', { class: 'knopf haupt', href: frageMailLink(''), text: 'An Devin senden' });
+  const senden = direkt ? h('button', { class: 'knopf haupt', type: 'button', text: 'An Devin senden' }) : h('a', { class: 'knopf haupt', href: frageMailLink(feld.value.trim()), text: 'An Devin senden' });
   const frage = () => feld.value.trim().slice(0, 1000);
   const zeige = (t, el) => { meldung.textContent = t; meldung.style.display = t ? '' : 'none'; if (t && el) el.focus(); };
   feld.addEventListener('input', () => { zeige(''); if (!direkt) senden.href = frageMailLink(frage()); });
   if (adresse) adresse.addEventListener('input', () => zeige(''));
   senden.addEventListener('click', async (e) => {
     if (frage().length < 5) { e.preventDefault(); zeige('Schreib zuerst deine Frage.', feld); return; }
+    if (typeof start === 'string' && frage() === start.trim()) { e.preventDefault(); zeige('Schreib kurz dazu, was los ist.', feld); return; }
     if (!direkt) { setTimeout(() => { schliesseBlatt(); toast('Deine Mail-App ist offen. Tippe dort auf Senden.'); }, 400); return; }
     const mail = adresse.value.trim().toLowerCase();
     if (mail.length > 120 || !FRAGE_MAIL_RE.test(mail)) { zeige('Bitte trag deine E-Mail-Adresse ein, damit Devin dir antworten kann.', adresse); return; }
