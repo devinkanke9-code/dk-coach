@@ -38,9 +38,15 @@ const speicher = {
   lies(k, std) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : std; } catch (e) { return std; } },
   schreib(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
 };
+function ansagen(t) {   // QA 25.11.2026 (Rolle 15): feste, unsichtbare Ansage-Fläche (gibt es schon vor der Meldung, darum wird sie gesprochen)
+  let ansage = document.getElementById('ansage');
+  if (!ansage) { ansage = h('div', { id: 'ansage', 'aria-live': 'polite', style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap' }); document.body.append(ansage); }
+  ansage.textContent = ''; setTimeout(() => { ansage.textContent = t; }, 60);
+}
 function toast(t) {
   document.querySelectorAll('.toast').forEach((x) => x.remove());
-  const el = h('div', { class: 'toast', role: 'status', text: t }); document.body.append(el);
+  ansagen(t);   // QA 25.11.2026 (Rolle 15)
+  const el = h('div', { class: 'toast', 'aria-hidden': 'true', text: t }); document.body.append(el);
   setTimeout(() => el.remove(), 2600);
 }
 const bereich = (r, e) => !r ? '' : (r[0] === r[r.length - 1] ? String(r[0]) : r[0] + '–' + r[r.length - 1]) + (e === 'sek' ? ' s' : '');
@@ -607,6 +613,12 @@ function farbeNachLogin() {
   const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = '#131416';
   try { window.dispatchEvent(new CustomEvent('dk-look', { detail: 'champagner' })); } catch (e) {}
 }
+// QA 25.11.2026 (Rolle 10): Wer Code oder Nachricht verloren hat, fand Devin nur im Impressum. Jetzt direkt am Code-Feld.
+function codeVerlorenZeile() {
+  if (!KONTAKT.mail) return null;
+  return h('p', { class: 'leise klein code-verloren' }, 'Code oder Nachricht verloren? ',
+    h('a', { href: 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent('Code verloren'), text: 'Schreib Devin' }), ', dann schickt er dir einen neuen.');
+}
 function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann heißt die Leiste „Neuer Code von Devin?“
   if (!KONTAKT.briefkasten) return null;
   const status = h('p', { class: 'klein', role: 'status', text: !art && S.codeFehler ? CODE_TEXTE[S.codeFehler] || CODE_TEXTE.netz : null });   // kurzer Link ging nicht: warum
@@ -628,10 +640,12 @@ function codeLeiste(art) {   // art 'zugang': schon eingeloggt (Infos), dann hei
     status.textContent = CODE_TEXTE[aus] || CODE_TEXTE.netz;
     feld.select();
   }
+  // QA 25.11.2026 (Rolle 08): Ging ein kurzer Link nicht (z. B. kein Netz), stand der Grund unter dem ersten Bildschirm, man sah nur die Startseite.
+  if (!art && S.codeFehler && S.codeFehlerGezeigt !== S.codeFehler) { S.codeFehlerGezeigt = S.codeFehler; requestAnimationFrame(() => { const l = document.querySelector('.code-leiste'); if (l) l.scrollIntoView({ block: 'center' }); }); }
   return h('section', { class: 'block code-leiste' },
     h('label', { class: 'lbl', for: 'code-start', text: art === 'zugang' ? 'Neuer Code von Devin?' : 'Schon Kunde? Code von Devin' }),
     h('p', { class: 'leise klein', id: 'code-start-hilfe', text: art === 'zugang' ? 'Neue Pläne kommen von selbst, sobald du online bist. Hat Devin dir einen neuen Code geschickt? Dann hier eingeben.' : 'Hier eingeben, dann ist dein Plan da und bleibt auf dem Handy, auch ohne Internet.' }),
-    h('div', { class: 'code-reihe' }, feld, knopf), status);
+    h('div', { class: 'code-reihe' }, feld, knopf), status, art ? null : codeVerlorenZeile());
 }
 function pausiertAnsicht() {   // Schalter „aus“ bei Devin: kein Plan, nur ein klarer Satz und „Nochmal prüfen“
   const ko = aktivesKonto(), vn = vorname(ko.n);
@@ -784,7 +798,7 @@ function startseite() {
         h('li', null, h('b', { text: 'Du trainierst mit deinem Plan.' }), h('span', { class: 'leise', text: 'Link und Code von Devin öffnen ihn auf deinem Handy, auch ohne Internet.' })))),
     a ? h('section', { class: 'rg-teil rg-angebot', id: 'preis', 'aria-labelledby': 'rg-preis' },
       h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Leistung und Preis' }), h('h2', { id: 'rg-preis', text: gratisZeit(a) + ' kostenlos.' }),
-        h('p', { class: 'leise', text: 'Keine Zahlungsdaten für die Gratiszeit. Sie endet automatisch, du musst nichts kündigen.' }),
+        h('p', { class: 'leise', text: 'Keine Zahlungsdaten für die Gratiszeit. Sie endet automatisch, du musst nichts kündigen. Machst du nicht weiter, kostet es nichts: Die App zeigt dann statt des Plans „Zugang abgelaufen“.' }),   // QA 25.11.2026 (Rolle 05)
         h('p', { class: 'rg-plaetze', text: PLAETZE })),
       h('div', { class: 'rg-preis-karte' },
         h('ul', { class: 'rg-leistung' }, a.punkte.map((x) => h('li', { text: x }))),
@@ -830,13 +844,15 @@ function codeAnsicht() {
       if (aus === 'aus' || aus === 'erneuert' || aus === 'abgelaufen' || aus === 'netz') grund = aus;
     }
     laeuft = false; knopf.disabled = false; knopf.textContent = 'Einloggen';
+    // QA 25.11.2026 (Rolle 08): Der Link ließ sich mit dem Code nicht öffnen. Ohne Netz kann die App Devins Briefkasten nicht fragen, der Code passt aber sicher nicht zu diesem Link
+    if (grund === 'netz') { fehler.textContent = 'Der Code passt nicht zu diesem Link. Prüf die Ziffern in Devins Nachricht. Ohne Internet kann die App nicht nachsehen, ob Devin dir einen neueren Code geschickt hat.'; feld.select(); return; }
     fehler.textContent = grund ? CODE_TEXTE[grund] : 'Der Code passt nicht zu diesem Link. Prüf die Ziffern in Devins Nachricht. Ist der Link abgeschnitten? Dann gib den Code oben auf devin-kanke.com ein.';
     feld.select();
   }
   return [h('section', { class: 'block willkommen' }, logo(),
     h('h1', { text: 'Willkommen bei DK Coach' }),
     h('p', { class: 'leise', text: 'Gib den Code aus Devins Nachricht ein. Danach bleibst du eingeloggt und brauchst ihn nicht mehr.' }),
-    h('label', { class: 'lbl', for: 'code', text: 'Dein Code' }), feld, knopf, fehler),
+    h('label', { class: 'lbl', for: 'code', text: 'Dein Code' }), feld, knopf, fehler, codeVerlorenZeile()),
     aktiverPlan() || aktivesKonto() ? h('button', { class: 'knopf text', type: 'button', onclick: () => { S.wartet = null; speicher.schreib('dk_wartet', null); zeichne(); }, text: 'Abbrechen' }) : null];
 }
 // Nach der Zahlung (26.11.2026): sofort beim Briefkasten nachsehen. Ist das Ende verlängert, zeichnet zugangPruefen schon neu (der Plan ist wieder da).
@@ -855,6 +871,9 @@ function abgelaufenAnsicht() {
     h('p', { class: 'leise', text: 'Er lief bis ' + datumDe(ko.bis) + '. Willst du weitermachen? ' + (link ? 'Schließ das Abo ab. Sobald die Zahlung da ist, bist du von selbst wieder drin, mit deinem Plan. Meist dauert das ein paar Minuten. Öffne dafür einfach wieder diese Seite.' : 'Schreib Devin. Seinen neuen Link öffnest du einfach, der Code ist schon gespeichert.') }),
     a ? weiterAbo(a, ko) : null,
     link && ko.code && KONTAKT.briefkasten ? h('button', { class: 'knopf text', type: 'button', text: 'Schon bezahlt? Nochmal prüfen', onclick: nachZahlungPruefen }) : null,
+    // QA 25.11.2026 (Rolle 09): Der Text sagte „Schreib Devin“, aber ohne Weg zu ihm (Infos und Impressum sind hier nicht erreichbar)
+    !link && KONTAKT.mail ? h('a', { class: 'knopf haupt', href: 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent('Weitermachen mit DK Coach') + '&body=' + encodeURIComponent('Hi Devin, mein Zugang ist abgelaufen (' + (ko.n || '') + '). Ich will weitermachen.'), text: 'Devin schreiben' }) : null,
+    !link && KONTAKT.mail ? h('p', { class: 'leise klein', text: 'Oder direkt an ' + KONTAKT.mail + '.' }) : null,
     einfuegenBlock('Neuen Link einfügen'))];
 }
 // Angebot (21.11.2026): Gratis-Zeit, danach ein Preis im Monat. Nur mit echtem Impressum (KONTAKT.abo), Bezahl-Knopf nur mit PayPal-Link
@@ -1400,7 +1419,9 @@ function tagBlock(p, t, ti) {
 function ansichtUebungen() {
   const p = S.plan, gesehen = new Set(), liste = [];
   p.t.forEach((t) => t.u.forEach((roh) => { const k = roh.i + (roh.nm || ''); if (!gesehen.has(k)) { gesehen.add(k); liste.push(uebung(roh)); } }));
-  return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Übungen' }), h('p', { class: 'leise', text: 'Tippe auf eine Übung: Die Figur zeigt dir die Bewegung in 3D. Mit dem Finger drehst du sie rundum, „Coach DK erklärt“ zeigt dir, worauf es ankommt.' })),
+  return [h('div', { class: 'plan-kopf' }, h('h1', { text: 'Übungen' }), h('p', { class: 'leise', text: (matchMedia('(hover: hover) and (pointer: fine)').matches   // QA 25.11.2026 (Rolle 13): am Computer gibt es keinen Finger
+    ? 'Klick auf eine Übung: Die Figur zeigt dir die Bewegung in 3D. Mit gedrückter Maustaste drehst du sie rundum, „Coach DK erklärt“ zeigt dir, worauf es ankommt.'
+    : 'Tippe auf eine Übung: Die Figur zeigt dir die Bewegung in 3D. Mit dem Finger drehst du sie rundum, „Coach DK erklärt“ zeigt dir, worauf es ankommt.') })),
     h('div', { class: 'stapel' }, liste.map((u) => h('button', { class: 'eintrag mit3d', type: 'button', 'aria-haspopup': 'dialog', onclick: () => oeffneUebung(u) },
       h('span', { class: 'mini3d' + (u.d.a ? '' : ' ohne'), 'aria-hidden': 'true', 'data-vorschau': u.d.a ? u.id : '' }, u.d.a ? '' : '–'),
       h('b', { text: anzeigeName(u) }),
@@ -1459,6 +1480,10 @@ function ansichtInfo() {
     gefuehlBlock(),
     farbBlock(),
     h('section', { class: 'block' }, h('h2', { text: 'Begriffe' }),
+      // QA 25.11.2026 (Rolle 02, Anfängerin): „Sätze“, „Wdh“ und die Aufteilung standen im Plan, waren aber nirgends erklärt
+      h('p', { class: 'klein', text: 'Satz: eine Runde einer Übung am Stück. 3 Sätze heißt: Übung machen, Pause, das Ganze noch zweimal.' }),
+      h('p', { class: 'klein', text: 'Wdh (Wiederholungen): wie oft du die Bewegung in einem Satz machst. 10–15 Wdh heißt: mindestens 10, höchstens 15.' }),
+      h('p', { class: 'klein', text: 'Aufteilung: Ganzkörper trainiert jedes Mal den ganzen Körper. Oberkörper/Unterkörper wechselt zwischen oben und Beinen. Push/Pull/Beine heißt Drücken (Brust, Schultern, Trizeps), Ziehen (Rücken, Bizeps) und Beine an eigenen Tagen.' }),
       h('p', { class: 'klein', text: 'Reserve (RIR): Wiederholungen, die du am Ende des Satzes noch schaffen würdest. RIR 2 heißt: aufhören, wenn noch zwei gehen würden.' }),
       h('p', { class: 'klein', text: 'Pause: Zeit zwischen zwei Sätzen. Im Training läuft sie als Ring und geht danach von selbst weiter.' }),
       h('p', { class: 'klein', text: 'Coach DK erklärt: Knopf auf jeder 3D-Figur. Die Figur hält an der wichtigen Stelle an und zeigt dir, worauf du achten musst.' })),
@@ -1991,6 +2016,7 @@ function satzFertig() {
     timerZeigen(); return;
   }
   TM.fehler = null; sperre(450);   // derselbe Finger tippt sonst gleich auf „Bereit · weiter“ an derselben Stelle
+  ansagen('Satz ' + u.log.length + ' gespeichert');   // QA 25.11.2026 (Rolle 15): für Screenreader
   if (!LAUF.gym && u.log.length >= u.saetze) {   // im Gym meldet es die Station, sonst hier: Übung fertig, alle Sätze gemacht
     LAUF.bonus = spielStation(S.plan, LAUF.ue) || null;
     const auf = LAUF.bonus && LAUF.bonus.levelAuf;
@@ -2355,15 +2381,16 @@ function besterSatz(u) {
 function timerZeigen() {
   if (!LAUF) return;
   if (!TM.el) {
-    TM.el = h('div', { class: 'tm', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Training' }); (TM.gym || document.body).append(TM.el);
+    TM.el = h('div', { class: 'tm', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Training', tabindex: '-1' }); (TM.gym || document.body).append(TM.el);   // tabindex: Fokus in den Dialog (QA 25.11.2026)
     if (!(history.state && history.state.training)) history.pushState({ training: 1 }, '');
   }
   document.body.style.overflow = 'hidden';
-  const el = TM.el; el.textContent = '';
+  const el = TM.el, fokusRein = !document.activeElement || document.activeElement === document.body || !document.activeElement.closest('.tm') || el.contains(document.activeElement); el.textContent = '';
   el.append(h('div', { class: 'tm-in' }, LAUF.phase === 'fertig' ? timerFertig() : timerLaeuft()));
   const stelle = LAUF.phase + ':' + LAUF.ue + ':' + LAUF.satz;
   if (TM.stelle !== stelle) { TM.stelle = stelle; TM.frage = false; el.scrollTop = 0; el.classList.remove('still'); }   // Kunden-Test 22.11.2026: „Training jetzt beenden?“ blieb beim nächsten Satz offen
   timerTick();
+  if (fokusRein && !el.contains(document.activeElement) && !TM.klein) el.focus({ preventScroll: true });   // QA 25.11.2026 (Rolle 14)
 }
 // Die Bühne bleibt über alle Sätze dieselbe (eine 3D-Ansicht), nur die Übung wechselt
 function trainingsBuehne(u) {
@@ -2729,5 +2756,11 @@ if ('serviceWorker' in navigator) {
 })();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') zugangPruefen().catch(() => {}); });   // zurück in der App: Neues oder Schalter „aus“
 window.addEventListener('hashchange', async () => { if (await linkEinlesen()) { zeichne(); window.scrollTo(0, 0); fotosVorladen(); } });
+// QA 25.11.2026 (Rolle 19): Zurück-Wisch zeigte eine alte Fassung der Seite aus dem Browser-Speicher (Code-Eingabe, obwohl eingeloggt).
+// Ist der Login-Stand seit dem Verlassen anders, frisch laden.
+let LOGIN_BEIM_VERLASSEN = null;
+const loginStand = () => { try { return ['dk_konten', 'dk_konto', 'dk_aktiv', 'dk_wartet'].map((k) => localStorage.getItem(k)).join('|'); } catch (e) { return ''; } };
+window.addEventListener('pagehide', () => { LOGIN_BEIM_VERLASSEN = loginStand(); });
+window.addEventListener('pageshow', (e) => { if (e.persisted && LOGIN_BEIM_VERLASSEN !== null && LOGIN_BEIM_VERLASSEN !== loginStand()) location.reload(); });
 window.addEventListener('online', () => { zeichne(); umzugPruefen(); netzAnzeigen(); zugangPruefen().catch(() => {}); if (S.codeLink && !S.laedt) codeLinkEinlesen(S.codeLink).then(() => { zeichne(); window.scrollTo(0, 0); }); });
 window.addEventListener('offline', () => { zeichne(); netzAnzeigen(); });

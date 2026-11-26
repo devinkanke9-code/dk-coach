@@ -360,6 +360,9 @@ body.start .inhalt { gap: 0 !important; max-width: none !important; grid-templat
 .rg-code-knopf { padding-inline: 0; color: var(--akzent); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
 .rg-code > div { width: 100%; }
 .rg-code .code-leiste { margin: 0 !important; width: 100%; }
+/* QA 25.11.2026: „Code oder Nachricht verloren? Schreib Devin“ an Code-Leiste und Code-Ansicht */
+.code-verloren { margin: 0; }
+.code-verloren a { color: var(--akzent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 /* Bild: optimiertes Standbild mit reserviertem Platz (Seitenverhältnis), das warme Licht läuft weich in den Grund über */
 .rg-held-bild { position: relative; margin: 0; aspect-ratio: 16 / 10; overflow: hidden; background: var(--flaeche); }
 .rg-held-bild img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 46%; }
@@ -414,6 +417,11 @@ body.start .inhalt { gap: 0 !important; max-width: none !important; grid-templat
 .rg-gym-bild img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .rg-eigen .stapel { display: grid; gap: var(--rg-2); }
 .rg-install > summary { cursor: pointer; display: flex; align-items: center; font-weight: 600; color: var(--akzent); }
+/* QA 25.11.2026 (Rolle 17): zugeklappt ohne Zeichen wirkte die Karte leer; Plus/Minus wie bei aufklappbaren Zeilen */
+.rg-install > summary { justify-content: space-between; gap: 12px; list-style: none; }
+.rg-install > summary::-webkit-details-marker { display: none; }
+.rg-install > summary::after { content: "+"; font-size: 24px; line-height: 1; font-weight: 400; }
+.rg-install[open] > summary::after { content: "–"; }
 .rg-install[open] > summary { margin-bottom: var(--rg-1); }
 .rg-install .block { margin: 0; }
 body.start .st-fuss { padding: var(--rg-4) var(--rg-2) var(--rg-6); text-align: center; border-top: 1px solid var(--rand-weich); }

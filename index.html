@@ -19,6 +19,8 @@
 <!-- manifest setzt app.js (nicht auf dem iPhone: dort soll „Zum Home-Bildschirm“ den Link mit dem Plan behalten) -->
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
+<!-- QA 25.11.2026 (Rolle 16): Grundfarbe der Farbwelt sofort (vorher bei langsamem Netz sekundenlang weiß) -->
+<style>:where(html){background:#131416}:where(html[data-look="sport"]){background:#111215}:where(html[data-look="gold"]){background:#060608}:where(html[data-look="klar"]){background:#F5F5F7}:where(html[data-look="lagune"]){background:#86CBEE}</style>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 <!-- Design wie die Trainer-Seite: stil.css kommt aus app/src (build.js kopiert es), buehne.css = 3D-Bühne für beide -->
 <link rel="stylesheet" href="schriften/schriften.css">
@@ -374,6 +376,16 @@ nav.leiste div.sieben button span { max-width: 100%; overflow: hidden; text-over
 .status-essen ul { margin: 6px 0 0; padding-left: 20px; }
 .status-essen .lbl { display: block; margin-top: 16px; font-weight: 600; }
 .status-essen #st-gewicht { flex: 1 1 120px; max-width: 180px; min-width: 0; }
+/* QA 25.11.2026 (Rolle 17): Lagune – Akzent als Schrift auf Hellblau 2,26:1 → dunkles Blau #074B70 5,2:1 (--akzent-hell #07577A wäre nur 4,4:1), Zweittext 4,35:1 → 5,3:1 */
+:root:is([data-look="lagune"], :not([data-look])) { --text2: #30495A; }
+:root:is([data-look="lagune"], :not([data-look])) :is(.rg-marke, .rg-plaetze, .nr, .rg-install > summary, .code-verloren a) { color: #074B70; }
+:root:is([data-look="lagune"], :not([data-look])) .rg-klein-titel { color: #074B70 !important; }   /* sport.css setzt sie mit !important */
+/* QA 25.11.2026 (Rolle 14): Mit Tab angesprungene Elemente rutschten unter die schwebende Leiste bzw. die Kopfzeile */
+html { scroll-padding-top: 76px; scroll-padding-bottom: 112px; }
+/* QA 25.11.2026 (Rolle 14): Der Trainings-Dialog bekommt beim Öffnen den Fokus, ohne Rahmen um die ganze Fläche (der nächste Tab zeigt den Rahmen am Knopf) */
+.tm:focus { outline: none; }
+/* QA 25.11.2026 (Rolle 15): Bei 200 % Zoom (640×400) lag die feste Speichern-Leiste über Satz/Ziel/Reserve. Bei sehr wenig Höhe läuft sie mit. */
+@media (max-height: 480px) { .tm-aktion { position: static; } }
 </style>
 </head>
 <body>
