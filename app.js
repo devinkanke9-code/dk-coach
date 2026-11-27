@@ -680,11 +680,22 @@ function willkommen() {
 
 /* ---------- Startseite (04.11.2026, Devin: „die Webseite so wie Apple“): für alle ohne Plan. Aufbau wie dort: jeder Block eine kurze Überschrift, eine Zeile, Knöpfe, ein großes Bild. Oben trainiert die echte Figur live. In der App vom Home-Bildschirm bleibt es beim knappen Willkommen, dort will man nur noch den Link einfügen. ---------- */
 const START_FIGUR = 'kniebeuge', START_UEBUNG = 'beinpresse';
-let START3D = null, STARTSEHEN = null, STARTBUEHNE = null;
+let START3D = null, STARTSEHEN = null, STARTBUEHNE = null, SCHNELL = null;
 function startWeg() {
   if (START3D) { START3D.weg(); START3D = null; }
   if (STARTSEHEN) { STARTSEHEN.disconnect(); STARTSEHEN = null; }
   if (STARTBUEHNE) { STARTBUEHNE.disconnect(); STARTBUEHNE = null; }
+  if (SCHNELL) { SCHNELL.disconnect(); SCHNELL = null; }
+}
+// Kleine Handys (27.11.2026, Devin: „Platziere die Zielfrage und die Hauptaktion auf kleinen Handys gut sichtbar“): Liegen die Knöpfe unter dem ersten Bildschirm,
+// zeigt eine Leiste unten „Starte die kurze Analyse“. Sobald die echten Knöpfe zu sehen sind (oder schon vorbeigescrollt), verschwindet sie. Große Bildschirme sehen sie nie.
+function schnellLeiste() {
+  const leiste = document.querySelector('.rg-schnell'), ziel = document.querySelector('.rg-held .rg-aktionen');
+  if (!leiste || !ziel || !window.IntersectionObserver) return;
+  if (SCHNELL) SCHNELL.disconnect();
+  let gesehen = false;
+  SCHNELL = new IntersectionObserver((l) => { const e = l[l.length - 1]; if (e.isIntersecting || e.boundingClientRect.top < 0) gesehen = true; leiste.hidden = gesehen; if (gesehen) { SCHNELL.disconnect(); SCHNELL = null; } }, { threshold: 0.6 });
+  SCHNELL.observe(ziel);
 }
 const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + ({ klar: '-klar', gold: '-gold', sport: '-gold', champagner: '-gold' }[document.documentElement.dataset.look] || '') + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
 // Blöcke erscheinen beim Hinscrollen, die Figur rechnet nur, solange sie zu sehen ist
@@ -697,7 +708,11 @@ function startBeobachten() {
   if (START3D && !STARTBUEHNE) { STARTBUEHNE = new IntersectionObserver((liste) => { if (START3D) START3D.ruhe(!liste[liste.length - 1].isIntersecting); }); STARTBUEHNE.observe(START3D.el); }
 }
 function gymZeigen() { beispiel(); raumStarten(aktiverPlan(), 0); window.scrollTo(0, 0); }
-function uebungZeigen() { beispiel(); const p = aktiverPlan(); oeffneUebung(uebung(p.t[0].u.find((u) => u.i === START_UEBUNG) || p.t[0].u[0]), 0); }
+function uebungZeigen(id) {   // 27.11.2026: Übung nach ID aus allen Trainings des Beispiels (Bilder auf der Startseite)
+  beispiel(); const p = aktiverPlan(), alle = p.t.flatMap((t, ti) => t.u.map((u) => [u, ti]));
+  const f = alle.find(([u]) => u.i === (id || START_UEBUNG)) || alle.find(([u]) => u.i === START_UEBUNG) || alle[0];
+  oeffneUebung(uebung(f[0]), f[1]);
+}
 function beispielEnde() {
   const plaene = speicher.lies('dk_plaene', {}); delete plaene.beispiel; speicher.schreib('dk_plaene', plaene);
   if (speicher.lies('dk_aktiv', null) === 'beispiel') speicher.schreib('dk_aktiv', null);
@@ -708,12 +723,49 @@ function beispielEnde() {
    Erster Bildschirm: Angebot, wie es funktioniert, Preis mit Ende der Gratiszeit und die nächste Aktion, sofort lesbar und ohne 3D (die Figur lud vorher ~3,8 MB).
    Danach hat jeder Abschnitt eine Aufgabe: echter Ausschnitt aus dem Beispielplan, Devins Prüfung, Leistung und Preis, das Gym (optional), schon Kunde.
    Bewegung: nur Planvorschau und Devins Abschnitt erscheinen sanft (8 px, 220 ms, einmal). Ohne JavaScript oder bei weniger Bewegung steht alles sofort da. */
-// Analyse-Schritte wie analyse.html → schritte(): Über dich 1 + Fragen 10 + Gesundheits-Check 1 + Essen 1 (fällt bei Essstörung weg) + Nährwerte 1 + Einwilligung 1 + Abschicken 1.
-// Höchstens 16, mit Essstörung 15. Ändert sich der Ablauf in analyse.html, hier mitändern (vorher stand 16 im Text und 18 im Kommentar).
-const PLAETZE = 'Maximal 10 Plätze in den ersten zwei Monaten.';   // Devin 24.11.2026: nur der Satz, kein Zähler
-const ANALYSE_SCHRITTE = 16, ANALYSE_MINUTEN = 10;
-const analyseAngefangen = () => { const a = speicher.lies('dk_analyse10', null); return !!(a && !a.gesendet && a.schritt > 0); };   // Kunden-Test 23.11.2026: angefangene Analyse heißt „fortsetzen“
-const analyseKnopf = (klasse) => h('a', { class: 'knopf haupt ' + (klasse || ''), href: 'analyse/', text: analyseAngefangen() ? 'Analyse fortsetzen' : 'Analyse starten' });
+// Neuer Einstieg (27.11.2026, Devin: „Neuen Besuchern soll sofort klar sein, dass ich persönliches Fitness-Coaching anbiete“):
+// /analyse/ ist jetzt die kurze Coaching-Anfrage (Ziel, Unterstützung, passende Rückfragen, Kontakt). Ohne Gesundheitsdaten, ohne Plan, keine Buchung.
+// Die ausführliche Analyse mit Gesundheits-Check bleibt unter analyse/?onboarding: Den Link schickt Devin nach der ersten Kontaktaufnahme.
+// Runde: 10 Plätze (kontakt.json → runde). Restplätze nur aus bestätigten Buchungen (runde.belegt, trägt Devin ein), Anfragen belegen keinen Platz.
+const ANFRAGE_KEY = 'dk_anfrage1';
+const anfrageAngefangen = () => { const a = speicher.lies(ANFRAGE_KEY, null); return !!(a && !a.gesendet && a.schritt > 0); };
+const analyseAngefangen = () => { if (anfrageAngefangen()) return true; const a = speicher.lies('dk_analyse10', null); return !!(a && !a.gesendet && a.schritt > 0); };   // Kunden-Test 23.11.2026: angefangen heißt „fortsetzen“
+const analyseKnopf = (klasse, ziel) => h('a', { class: 'knopf haupt ' + (klasse || ''), href: 'analyse/' + (ziel ? '?schwerpunkt=' + ziel : ''), text: anfrageAngefangen() ? 'Kurze Analyse fortsetzen' : 'Starte die kurze Analyse' });
+const interesseLink = (wort) => KONTAKT.mail ? 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(wort) + '&body=' + encodeURIComponent(wort) : null;
+const interesseKnopf = (klasse) => { const l = interesseLink('Interesse'); return l ? h('a', { class: 'knopf ' + (klasse || 'zweit'), href: l, text: 'Schreib mir „Interesse“' }) : null; };
+// Runde: { plaetze, belegt (null = keine verlässliche Zahl), frei, voll }
+function rundeStand() {
+  const r = KONTAKT.runde; if (!r) return null;
+  const belegt = Number.isInteger(r.belegt) ? r.belegt : null;
+  return { plaetze: r.plaetze, belegt, frei: belegt == null ? null : Math.max(0, r.plaetze - belegt), voll: belegt != null && belegt >= r.plaetze };
+}
+function rundeZeile(klasse) {
+  const r = rundeStand(); if (!r) return null;
+  const text = r.voll ? 'Die erste Runde ist voll.' : r.frei != null ? 'Noch ' + r.frei + ' von ' + r.plaetze + ' Coachingplätzen frei.' : r.plaetze + ' Coachingplätze in der ersten Runde';
+  return h('p', { class: 'rg-plaetze ' + (klasse || ''), text });
+}
+function wartelisteBlock() {
+  const r = rundeStand(), l = interesseLink('Warteliste');
+  if (!r || !r.voll || !l) return null;
+  return h('div', { class: 'rg-warteliste meldung' }, h('p', { text: 'Alle ' + r.plaetze + ' Plätze sind vergeben. Schreib mir „Warteliste“, dann melde ich mich, sobald ein Platz frei wird.' }),
+    h('a', { class: 'knopf haupt', href: l, text: 'Auf die Warteliste' }));
+}
+// Kursschwerpunkte (gleicher Preis). Die Wahl kommt als änderbare Vorauswahl in die kurze Analyse (?schwerpunkt=…).
+const SCHWERPUNKTE = [
+  { id: 'training', name: 'Regelmäßig trainieren', ziel: 'Beispielziel: zwei Einheiten pro Woche, die du wirklich schaffst.',
+    punkte: ['Ein Plan, der in deine Woche passt', 'Ich passe ihn an, wenn sich deine Woche ändert', 'Alle Übungen in 3D, mit Timer und Eintragen'] },
+  { id: 'ernaehrung', name: 'Ernährung im Alltag', ziel: 'Beispielziel: Mahlzeiten für deine Arbeitstage vorausplanen.',
+    punkte: ['Einfache Mahlzeiten, die zu deinem Alltag passen', 'Mehr Struktur statt strenger Diät', 'In der App: die Seite „Essen“ mit Teller-Regel'] }
+];
+// Laufzeit: 6 Monate, Monat 1 gratis, danach je Monat der Preis. Gesamt = (Laufzeit − Gratis) × Preis.
+const preisZahl = (a) => +String(a.preis).replace(',', '.');
+const euroText = (n) => (Math.round(n * 100) % 100 ? n.toFixed(2).replace('.', ',') : String(Math.round(n))) + ' €';
+const kursGesamt = (a) => a && a.monate ? euroText((a.monate - a.gratis) * preisZahl(a)) : null;
+function kursSatz(a) {
+  if (!a) return '';
+  if (!a.monate) return gratisZeit(a) + ' kostenlos, danach ' + a.preis + ' € im Monat.';
+  return a.monate + ' Monate persönliches Coaching. Monat ' + (a.gratis === 1 ? '1 ist' : '1 bis ' + a.gratis + ' sind') + ' gratis, Monat ' + (a.gratis + 1) + ' bis ' + a.monate + ' kosten je ' + a.preis + ' €, insgesamt ' + kursGesamt(a) + '.';
+}
 const beispielKnopf = (klasse, text) => h('button', { class: 'knopf ' + (klasse || 'zweit'), type: 'button', onclick: beispiel, text: text || 'Beispielplan ansehen' });
 // Preis in einem Satz, schon beim ersten Preis mit dem Ende der Gratiszeit
 function preisSatz(a) { return gratisZeit(a) + ' kostenlos, endet automatisch. Danach ' + a.preis + ' € im Monat, nur wenn du weitermachen willst.'; }
@@ -726,6 +778,14 @@ function codeZugang() {
   return h('div', { class: 'rg-code' }, knopf, offen ? h('div', { id: 'rg-code' }, codeLeiste()) : null);
 }
 const heldBild = () => { const hell = /^(klar|lagune)$/.test(document.documentElement.dataset.look || ''); return 'hintergrund-breit' + (hell ? '-hell' : '') + '.jpg'; };
+// 3D-Standbilder (27.11.2026): je Farbwelt eine Fassung (wie startBild), je zwei Breiten, feste Maße gegen Springen beim Laden
+const START_WEG = 'split_squat';   // Übung der Bilder im ersten Bildschirm und bei „So sieht dein Training aus“ (Antippen öffnet sie)
+const lookEndung = () => ({ klar: '-klar', gold: '-gold', sport: '-gold', champagner: '-gold' }[document.documentElement.dataset.look] || '');
+function standBild(name, alt, b, h2, prio) {
+  const e = lookEndung(), url = (w) => 'start/' + name + e + '-' + w + '.jpg';
+  return h('img', { src: url(960), srcset: url(480) + ' 480w, ' + url(960) + ' 960w', sizes: '(min-width: 900px) 42vw, 92vw', alt, width: b, height: h2,
+    loading: prio ? null : 'lazy', fetchpriority: prio ? 'high' : null, decoding: 'async', onerror: (ev) => { const f = ev.target.closest('figure'); (f || ev.target).remove(); } });
+}
 // Sanftes Erscheinen an zwei Stellen. Schon vorbeigescrollt (schnelles Scrollen) = sofort sichtbar, ohne Effekt. Einmal pro Abschnitt, Zurückscrollen bewegt nichts.
 let RUNDGANG = null;
 function rundgangBeobachten() {
@@ -774,53 +834,78 @@ function planVorschau() {
 function startseite() {
   startWeg();
   if (installiert()) return willkommen();
-  setTimeout(rundgangBeobachten, 0);
-  const a = KONTAKT.abo, ue = KONTAKT.ueber_mich;
+  setTimeout(rundgangBeobachten, 0); setTimeout(schnellLeiste, 0);
+  const a = KONTAKT.abo, ue = KONTAKT.ueber_mich, voll = !!(rundeStand() || {}).voll;
   // Devins Text aus kontakt.json: die Sätze zur Prüfung beim Vorstellen, der Satz zur Abrechnung bei Preis und Bedingungen
   const saetze = ue ? ue.text.split(/(?<=\.)\s+/) : [], abrechnung = saetze.filter((x) => /Abrechnung/.test(x)), vorstellung = saetze.filter((x) => !/Abrechnung/.test(x));
+  const wegBild = (teil, text) => h('figure', { class: 'rg-weg-bild' }, h('button', { type: 'button', class: 'rg-weg-knopf', onclick: () => uebungZeigen(START_WEG), 'aria-label': ((UEBUNGEN[START_WEG] || {}).n || 'Übung') + ', ' + text + ': Übung in 3D öffnen' },
+    standBild('weg-' + teil, '', 960, 1200), h('figcaption', { text: text })));
   return [
-    h('section', { class: 'rg-held', 'aria-labelledby': 'rg-titel' },
+    // Erster Bildschirm (Devins freigegebener Wortlaut 27.11.2026): Fragen als Überschrift und Unterzeile, dann kurze Absätze, dann die Hauptaktion
+    h('section', { class: 'rg-held rg-held-neu', 'aria-labelledby': 'rg-titel' },
       h('div', { class: 'rg-held-text' },
-        h('p', { class: 'rg-marke', text: KONTAKT.marke }),
-        h('h1', { id: 'rg-titel', text: 'Dein Trainingsplan. Von Devin.' }),
-        h('p', { class: 'rg-wie', text: 'Du beantwortest ein paar Fragen. Ich schaue mir deine Antworten an und erstelle deinen Plan.' }),
-        h('p', { class: 'rg-dauer leise klein', text: 'Höchstens ' + ANALYSE_SCHRITTE + ' kurze Schritte, etwa ' + ANALYSE_MINUTEN + ' Minuten. Dein Entwurf bleibt auf diesem Handy, du kannst jederzeit weitermachen.' }),
-        h('div', { class: 'rg-aktionen' }, analyseKnopf('rg-gross'), beispielKnopf('zweit rg-gross')),
-        a ? h('p', { class: 'rg-preis' }, h('b', { text: gratisZeit(a) + ' kostenlos' }), ', endet automatisch. Danach ' + a.preis + ' € im Monat, nur wenn du weitermachen willst. ', h('span', { class: 'rg-plaetze', text: PLAETZE })) : null,
+        h('p', { class: 'rg-marke', text: 'Persönliches Fitness-Coaching' }),
+        h('h1', { id: 'rg-titel', text: 'Willst du regelmäßig trainieren, aber fragst dich, wie du das in deine Woche kriegst?' }),
+        h('p', { class: 'rg-unter', text: 'Wünschst du dir einen Coach, der sich Zeit für dich nimmt?' }),
+        h('div', { class: 'rg-absaetze' },
+          h('p', { text: 'Ich erstelle dir deinen Trainingsplan, der zu deinem Alltag passt, und begleite dich sechs Monate lang. Der erste Monat ist gratis, danach fünf Monate je fünf Euro.' }),
+          h('p', { text: 'Für die erste Runde nehme ich zehn Leute auf. So kann ich mir neben der Dachdecker-Ausbildung nach Feierabend Zeit für jeden Einzelnen nehmen.' }),
+          h('p', { class: 'rg-bock', text: 'Hast du Bock? Dann starte die kurze Analyse oder schreib mir ‚Interesse‘.' })),
+        wartelisteBlock(),
+        h('div', { class: 'rg-aktionen' }, analyseKnopf(voll ? 'zweit rg-gross' : 'rg-gross'), interesseKnopf('zweit rg-gross')),
+        h('p', { class: 'rg-preis' }, 'Unverbindlich: Die kurze Analyse ist keine Buchung und kostet nichts. ', rundeZeile('rg-inline')),
         codeZugang()),
-      h('div', { class: 'rg-held-bild' }, h('img', { src: heldBild(), alt: 'Das DK-Gym: Blick durch die Glasfront aufs Meer, davor Bänke und Geräte', width: 1600, height: 900, fetchpriority: 'high', decoding: 'async' }))),
+      h('figure', { class: 'rg-held-figur' }, standBild('held', 'Die 3D-Figur aus DK Coach beim Split Squat, dem Ausfallschritt im Stand', 960, 1200, true))),
+    // So sieht dein Training aus: zwei echte Ansichten derselben Übung, Antippen öffnet die Übung. Darunter die Demo (frische Einheit).
+    h('section', { class: 'rg-teil rg-training rg-erscheint', 'aria-labelledby': 'rg-so' },
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Trainingsdemo' }), h('h2', { id: 'rg-so', text: 'So sieht dein Training aus' }),
+        h('p', { class: 'leise', text: 'Jede Übung zeigt dir eine 3D-Figur: wie du startest und wohin die Bewegung geht. Tipp ein Bild an, dann bewegt sie sich.' }),
+        h('div', { class: 'rg-aktionen' }, beispielKnopf('zweit', 'Training ausprobieren'), h('button', { class: 'knopf text', type: 'button', onclick: () => uebungZeigen(START_WEG), text: 'Übung in 3D ansehen' })),
+        h('p', { class: 'leise klein', text: 'Die Demo startet jedes Mal mit einer frischen Einheit und erfundenen Daten. Nichts davon geht an mich.' })),
+      h('div', { class: 'rg-weg' }, wegBild('start', 'Start'), wegBild('ende', 'Tiefster Punkt'))),
     h('section', { class: 'rg-teil rg-erscheint', 'aria-labelledby': 'rg-vorschau' },
       h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Das bekommst du' }), h('h2', { id: 'rg-vorschau', text: 'Ein Plan, der auf eine Handfläche passt.' }),
-        h('p', { class: 'leise', text: 'Sätze, Wiederholungen, Reserve und Pause auf einen Blick. Ein Ausschnitt aus dem echten Beispielplan.' }),
-        h('div', { class: 'rg-aktionen' }, beispielKnopf('zweit'))),
+        h('p', { class: 'leise', text: 'Sätze, Wiederholungen, Reserve und Pause auf einen Blick. Ein Ausschnitt aus dem echten Beispielplan.' })),
       planVorschau()),
+    // Zwei Kursschwerpunkte zum gleichen Preis
+    a ? h('section', { class: 'rg-teil rg-kurse', id: 'kurse', 'aria-labelledby': 'rg-kurse' },
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Erste Runde' }), h('h2', { id: 'rg-kurse', text: 'Wähl deinen Schwerpunkt.' }),
+        h('p', { class: 'leise', text: 'Beide kosten gleich viel. In der kurzen Analyse kannst du den Schwerpunkt noch ändern oder beides auswählen.' }),
+        rundeZeile()),
+      h('div', { class: 'rg-kurs-liste' }, SCHWERPUNKTE.map((k) => h('article', { class: 'rg-kurs', 'aria-labelledby': 'kurs-' + k.id },
+        h('h3', { id: 'kurs-' + k.id, text: k.name }), h('p', { class: 'rg-kurs-ziel', text: k.ziel }),
+        h('ul', { class: 'rg-leistung' }, k.punkte.map((x) => h('li', { text: x }))),
+        h('p', { class: 'rg-kurs-preis' }, h('b', { text: a.monate ? a.monate + ' Monate' : gratisZeit(a) + ' gratis' }), a.monate ? ' · Monat 1 gratis · danach je ' + a.preis + ' €' : ', danach ' + a.preis + ' € im Monat'),
+        h('a', { class: 'knopf ' + (voll ? 'zweit' : 'haupt'), href: 'analyse/?schwerpunkt=' + k.id, 'aria-label': 'Schwerpunkt ' + k.name + ' wählen und kurze Analyse starten', text: 'Diesen Schwerpunkt wählen' }))))) : null,
     h('section', { class: 'rg-teil rg-devin rg-erscheint', 'aria-labelledby': 'rg-devin' },
-      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Persönlich geprüft' }), h('h2', { id: 'rg-devin', text: ue ? ue.zeile : 'Devin Kanke.' }),
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'So läuft es ab' }), h('h2', { id: 'rg-devin', text: ue ? ue.zeile : 'Devin Kanke.' }),
         vorstellung.length ? h('p', { class: 'rg-zitat', text: vorstellung.join(' ') }) : null),
       h('ol', { class: 'rg-schritte' },
-        h('li', null, h('b', { text: 'Du beantwortest die Analyse.' }), h('span', { class: 'leise', text: 'Ziele, Training, Gesundheits-Check. Höchstens ' + ANALYSE_SCHRITTE + ' Schritte.' })),
-        h('li', null, h('b', { text: 'Devin schaut sich alles an.' }), h('span', { class: 'leise', text: 'Er meldet sich innerhalb von 24 Stunden und baut deinen Plan.' })),
-        h('li', null, h('b', { text: 'Du trainierst mit deinem Plan.' }), h('span', { class: 'leise', text: 'Link und Code von Devin öffnen ihn auf deinem Handy, auch ohne Internet.' })))),
+        h('li', null, h('b', { text: 'Du schickst mir die kurze Analyse.' }), h('span', { class: 'leise', text: 'Dein Ziel, wobei ich dir helfen soll, und deine Woche. Ohne Fragen zur Gesundheit.' })),
+        h('li', null, h('b', { text: 'Ich melde mich bei dir.' }), h('span', { class: 'leise', text: 'Wir besprechen, welche Unterstützung zu deinem Ziel und deinem Alltag passt.' })),
+        h('li', null, h('b', { text: 'Dann geht es richtig los.' }), h('span', { class: 'leise', text: 'Du füllst die ausführliche Analyse mit Gesundheits-Check aus, ich baue deinen Plan. Mit Link und Code öffnest du ihn auf deinem Handy.' })))),
     a ? h('section', { class: 'rg-teil rg-angebot', id: 'preis', 'aria-labelledby': 'rg-preis' },
-      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Leistung und Preis' }), h('h2', { id: 'rg-preis', text: gratisZeit(a) + ' kostenlos.' }),
-        h('p', { class: 'leise', text: 'Keine Zahlungsdaten für die Gratiszeit. Sie endet automatisch, du musst nichts kündigen. Machst du nicht weiter, kostet es nichts: Die App zeigt dann statt des Plans „Zugang abgelaufen“.' }),   // QA 25.11.2026 (Rolle 05)
-        h('p', { class: 'rg-plaetze', text: PLAETZE })),
+      h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Leistung und Preis' }), h('h2', { id: 'rg-preis', text: a.monate ? a.monate + ' Monate persönliches Coaching.' : gratisZeit(a) + ' kostenlos.' }),
+        h('p', { class: 'leise', text: kursSatz(a) }),
+        h('p', { class: 'leise', text: 'Die kurze Analyse und deine Anfrage sind unverbindlich. Sie lösen keine Buchung und keine Zahlung aus.' }),
+        rundeZeile()),
       h('div', { class: 'rg-preis-karte' },
         h('ul', { class: 'rg-leistung' }, a.punkte.map((x) => h('li', { text: x }))),
-        h('p', { class: 'rg-betrag' }, h('b', { class: 'zahl', text: a.preis + ' €' }), h('span', { text: ' im Monat danach' })),
-        h('p', { class: 'leise klein', text: 'Nur wenn du weitermachen willst: Abo über PayPal, verlängert sich monatlich, jederzeit zum Monatsende kündbar. Unter 18 nur zusammen mit deinen Eltern.' + (abrechnung.length ? ' ' + abrechnung.join(' ') : '') }),
-        analyseKnopf('rg-gross'))) : null,
+        h('p', { class: 'rg-betrag' }, h('b', { class: 'zahl', text: a.preis + ' €' }), h('span', { text: a.monate ? ' im Monat, ab Monat ' + (a.gratis + 1) + ' · insgesamt ' + kursGesamt(a) : ' im Monat danach' })),
+        h('p', { class: 'leise klein', text: 'Für die Gratiszeit brauchst du keine Zahlungsdaten, sie endet von selbst. Danach zahlst du über PayPal, jederzeit zum Monatsende kündbar.' + (a.monate ? ' Nach dem ' + a.monate + '. Monat endet das Coaching von selbst.' : ' Das Abo verlängert sich monatlich.') + ' Unter 18 nur zusammen mit deinen Eltern.' + (abrechnung.length ? ' ' + abrechnung.join(' ') : '') }),
+        analyseKnopf(voll ? 'zweit rg-gross' : 'rg-gross'))) : null,
     h('section', { class: 'rg-teil rg-gym', 'aria-labelledby': 'rg-gym' },
       h('div', { class: 'rg-teil-text' }, h('p', { class: 'rg-klein-titel', text: 'Optional' }), h('h2', { id: 'rg-gym', text: 'Dein Gym mit Meerblick. In 3D.' }),
-        h('p', { class: 'leise', text: 'Geh von Gerät zu Gerät. Jede geschaffte Station bringt Punkte, die Punkte ergeben deinen Rang. Dein Plan funktioniert genauso ohne das Gym.' }),
-        h('div', { class: 'rg-aktionen' }, h('button', { class: 'knopf zweit', type: 'button', onclick: gymZeigen, text: 'Ins Gym' }), h('button', { class: 'knopf text', type: 'button', onclick: uebungZeigen, text: 'Eine Übung in 3D ansehen' }))),
+        h('p', { class: 'leise', text: 'Geh von Gerät zu Gerät. Jede geschaffte Station bringt Punkte, die Punkte ergeben deinen Rang. Dein Plan funktioniert genauso ohne das Gym. Das 3D lädt erst, wenn du es öffnest.' }),
+        h('div', { class: 'rg-aktionen' }, h('button', { class: 'knopf zweit', type: 'button', onclick: gymZeigen, text: 'Ins Gym' }))),
       h('figure', { class: 'rg-gym-bild' }, startBild('gym', 'Das DK-Gym in 3D: Weg mit Stationen, die Figur und die Tür zum PR-Raum', 1000, 845))),
     h('section', { class: 'rg-teil rg-eigen', 'aria-labelledby': 'rg-eigen' },
       h('div', { class: 'rg-teil-text' }, h('h2', { id: 'rg-eigen', text: 'Du hast schon einen Plan?' }),
         h('p', { class: 'leise', text: 'Öffne den Link aus Devins Nachricht oder gib deinen Code ein. Du kannst auch die ganze Nachricht kopieren und hier einfügen.' })),   // Kunden-Test 23.11.2026
       h('div', { class: 'stapel' }, S.codeOffen || S.codeLink || S.codeFehler ? null : codeLeiste(), einfuegenBlock(),   // oben schon offen: nur einmal, die Felder haben feste ids
         h('details', { class: 'rg-install' }, h('summary', { text: 'Als App aufs Handy' }), installKarte(true)))),
-    h('footer', { class: 'st-fuss' }, h('span', { text: KONTAKT.marke }), rechtlichesLinks())
+    h('footer', { class: 'st-fuss' }, h('span', { text: KONTAKT.marke }), rechtlichesLinks()),
+    voll ? null : h('div', { class: 'rg-schnell', hidden: true }, analyseKnopf('rg-gross'))
   ];
 }
 
@@ -917,7 +1002,7 @@ function weiterAbo(a, ko) {
   const link = bezahlLink(a, ko);
   const knopf = link ? h('a', { class: 'knopf haupt', href: link, target: '_blank', rel: 'noopener noreferrer', text: 'Zahlungspflichtig abonnieren' }) : null;
   return h('div', { class: 'st-stufen eins weiter' }, aboKarte(a, 'Weitermachen', knopf),
-    h('p', { class: 'leise klein', text: (link ? 'Zahlung über PayPal. ' : 'Schreib Devin, dass du weitermachen willst. ') + 'Das Abo kostet ' + a.preis + ' € im Monat, verlängert sich jeden Monat und ist jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' }));
+    h('p', { class: 'leise klein', text: (link ? 'Zahlung über PayPal. ' : 'Schreib Devin, dass du weitermachen willst. ') + 'Das Abo kostet ' + a.preis + ' € im Monat' + (a.monate ? ', endet nach ' + (a.monate - a.gratis) + ' Zahlungen von selbst' : ', verlängert sich jeden Monat') + ' und ist jederzeit zum Monatsende kündbar. Unter 18? Dann nur zusammen mit deinen Eltern.' }));   // 27.11.2026: mit Laufzeit (6 Monate) kein Abo ohne Ende mehr
 }
 function wartenAnsicht() {
   const ko = aktivesKonto(), vn = vorname(ko.n), geschickt = ko.analyse === 'geschickt';
@@ -1148,7 +1233,14 @@ function beispielPlan() {
     pr: 'Schaffst du in allen Sätzen die obere Wiederholungszahl mit 2 Wiederholungen Reserve, nimm beim nächsten Mal etwas mehr Gewicht.', h: ['Beispiel mit erfundenen Daten.'], ab: [] };
   return p;
 }
+// Demo (27.11.2026, Devin: „Eine neue Demo startet mit einer frischen Einheit“): Reste einer früheren Demo weg (offenes Probetraining, Haken, Tausch)
+function demoFrisch() {
+  if (LAUF && LAUF.plan === 'beispiel') { LAUF = null; laufSichern(); }
+  try { Object.keys(localStorage).filter((k) => k.indexOf('dk_erledigt_beispiel_') === 0 || k === 'dk_tausch_beispiel').forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ohne Speicher nichts zu tun */ }
+}
 function beispiel() {
+  const vorher = speicher.lies('dk_plaene', {}).beispiel;
+  if (speicher.lies('dk_aktiv', null) !== 'beispiel' || !vorher || vorher.d !== isoHeute()) demoFrisch();   // schon in der Demo von heute (z. B. Übung aus der Demo heraus): nichts verwerfen
   const p = beispielPlan();
   const plaene = speicher.lies('dk_plaene', {}); plaene[p.id] = p; speicher.schreib('dk_plaene', plaene); speicher.schreib('dk_aktiv', p.id);
   S.tagWahl = null; zeichne();
