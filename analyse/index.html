@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-+JQvtxbBbmwK9cqAZ36JJWhFW3YXgQWYD28MrBcbCA8=' 'sha256-tvM3c6HiesKxl/3iHi9ei3iSqNFqYSuxUBdUtx76e8k='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-+JQvtxbBbmwK9cqAZ36JJWhFW3YXgQWYD28MrBcbCA8=' 'sha256-s/CDIf01kuSrhXyh+miQpJ6jcEXcPvayFDEbab5JFdU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="dk-wellen-video" content="../">
-<title>Analyse für dich · Devin Kanke Coach</title>
+<title>Kurze Analyse · Devin Kanke Coach</title>
 <!-- Nie in einer fremden Seite (13.11.2026, wie app.js): In einem Rahmen (iframe) bleibt die Seite unsichtbar, das Skript unten startet nicht. frame-ancestors geht per <meta> nicht. -->
 <script>if(window.top!==window.self){document.documentElement.style.display='none'}</script>
 <meta name="theme-color" content="#131416"><script>try{var l=localStorage.getItem('dk_look');if(!localStorage.getItem('dk_look_start2411')){if(!l||l==='sport'){l='champagner';localStorage.setItem('dk_look',l)}localStorage.setItem('dk_look_start2411','1')}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':l==='sport'?'#111215':l==='champagner'?'#131416':'#86CBEE'}}catch(e){document.documentElement.dataset.look='champagner'}</script>
@@ -153,6 +153,31 @@ body { font-size: 18px; letter-spacing: 0; text-rendering: optimizeLegibility; -
 .knopf { font-size: 17px; letter-spacing: 0; }
 .knopf.klein { font-size: 15px; }
 nav.leiste button { font-size: 13px; letter-spacing: 0; }
+/* Kurze Coaching-Anfrage (27.11.2026): große Auswahlkarten, gewählt = gefüllt + Haken (nicht nur Farbe), Fehler direkt über den Knöpfen */
+.af-einstieg { margin: 0 0 6px; font-size: 17px; line-height: 1.45; color: var(--text2); }
+.af-schwerpunkt { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text); }
+.af-karten { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.af-karten label { display: block; min-width: 0; }
+.af-karten span { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 52px; padding: 12px 16px; box-sizing: border-box; border-radius: 14px !important; font-size: 17px; line-height: 1.3; text-align: left; }
+.af-karten input:checked + span::after { content: ""; flex: none; width: 12px; height: 7px; margin: -4px 2px 0 0; border-left: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; transform: rotate(-45deg); }
+.af-karten input:focus-visible + span { outline: 3px solid var(--akzent-hell); outline-offset: 3px; }
+@media (min-width: 560px) { .af-karten { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.af-frage { display: grid; gap: 10px; margin-top: 10px; }
+.af-label { margin: 0; font-size: 16px; font-weight: 600; color: var(--text); }
+.af-label .frei { font-weight: 400; color: var(--text2); }
+.af-fehler { margin: 6px 0 0; padding: 10px 14px; border-radius: 12px; border: 1.5px solid var(--stopp); color: var(--text); font-size: 15px; line-height: 1.4; }
+.af-fehler[hidden] { display: none; }
+.af-wichtig { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--feld); border: 1px solid var(--rand-weich); font-size: 16px; line-height: 1.45; color: var(--text); }
+.af-versand { display: grid; gap: 12px; margin-top: 20px; }
+.af-versand .meldung p { margin: 0; }
+.af-frage-gesendet, .af-alt { display: grid; gap: 12px; }
+.af-frage-gesendet .reihe, .af-versand .reihe { display: flex; flex-wrap: wrap; gap: 12px; }
+.af-onboarding { margin: 10px 0 0; text-align: center; }
+.af-onboarding a, .af-alt a:not(.knopf) { color: var(--akzent-hell); }
+.af-danke p { max-width: 36ch; }
+.fuss .af-ueberspringen { margin-left: auto; }
+.fuss .af-ueberspringen + .knopf.haupt { margin-left: 0; }
+.eingabe[aria-invalid="true"] { border-color: var(--stopp); box-shadow: 0 0 0 1px var(--stopp); }
 </style>
 </head>
 <body>
@@ -160,6 +185,7 @@ nav.leiste button { font-size: 13px; letter-spacing: 0; }
   <header class="kopf"><div class="kopf-innen"><span class="marke">Devin Kanke Coach</span><button class="zu" id="zu" type="button" aria-label="Analyse verlassen" hidden>✕</button></div></header>
   <main><div class="inhalt" id="inhalt"></div></main>
 </div>
+<script src="anfrage.js"></script>
 <script src="engine.js"></script>
 <script src="formeln.js"></script>
 <script>
@@ -172,11 +198,21 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
   var MARKE = "Devin Kanke Coach";
   // Impressum und Datenschutz: z. B. [['Impressum', '../impressum/'], ['Datenschutz', '../datenschutz/']]. Leer = keine Links. Setzt die Hauptsitzung, sobald die Seiten online sind.
   var RECHTLICHES = [['Impressum', '../impressum/'], ['Datenschutz', '../datenschutz/'], ['Widerruf', '../widerruf/'], ['Verträge hier kündigen', '../kuendigen/']];
-  var ABO = {"gratis":1,"preis":"5","punkte":["Dein Plan aus deiner Analyse","Alle Übungen in 3D","Gym, Punkte und Ränge"],"link":"https://www.paypal.com/cgi-bin/webscr?cmd=_xclick-subscriptions&business=eddy%40kanke.org&item_name=Devin%20Kanke%20Coach%20Abo&a3=5.00&p3=1&t3=M&src=1&currency_code=EUR&no_shipping=1&charset=utf-8&notify_url=https%3A%2F%2Fscript.google.com%2Fmacros%2Fs%2FAKfycbwgi3DRWYW8aygk0HAx4rBgQCNxDFOQvaVyMJGXD-kdk2k61hgqWBBxaPspCZ_ToIvGjw%2Fexec&return=https%3A%2F%2Fdevin-kanke.com%2F"};   // Angebot (Gratis-Zeit, danach ein Preis im Monat): füllt build.js aus kontakt.json, erst mit echtem Impressum
+  var ABO = {"gratis":1,"preis":"5","punkte":["Dein Plan aus deiner Analyse","Alle Übungen in 3D","Gym, Punkte und Ränge"],"link":"https://www.paypal.com/cgi-bin/webscr?cmd=_xclick-subscriptions&business=eddy%40kanke.org&item_name=Devin%20Kanke%20Coach%20Abo&a3=5.00&p3=1&t3=M&src=1&srt=5&currency_code=EUR&no_shipping=1&charset=utf-8&notify_url=https%3A%2F%2Fscript.google.com%2Fmacros%2Fs%2FAKfycbwgi3DRWYW8aygk0HAx4rBgQCNxDFOQvaVyMJGXD-kdk2k61hgqWBBxaPspCZ_ToIvGjw%2Fexec&return=https%3A%2F%2Fdevin-kanke.com%2F","monate":6};   // Angebot (Gratis-Zeit, danach ein Preis im Monat): füllt build.js aus kontakt.json, erst mit echtem Impressum
   // Senden-Knopf (22.11.2026): Adresse des Google-Skripts in Devins Konto, setzt build.js aus kontakt.json (analyse_skript). null = Analyse wie bisher über die Mail-App
   var ANALYSE_SKRIPT = null;
   var A = ANALYSE || {}, BOGEN = A.bogen || { felder: [] }, FRAGEN = A.fragen || [], CHECK = A.gesundheit || { kurz: [] }, EW = A.einwilligung || {}, NW = A.naehrwerte || null, ERN = A.ernaehrung || null;
   var ESSEN = A.essen || null;   // Ernährungs-Check (23.11.2026): 5 Antippen-Fragen vor „Deine Nährwerte“
+  var ANFRAGE = {"runde":{"plaetze":10,"belegt":null},"mail":"devinkanke7@gmail.com","skript":null};   // build.js aus kontakt.json: { runde, mail, skript } für die kurze Coaching-Anfrage (anfrage.js)
+  // Neuer Einstieg (27.11.2026): /analyse/ ist die kurze Coaching-Anfrage. Die ausführliche Analyse mit Gesundheits-Check ist das Onboarding nach dem ersten Kontakt,
+  // Devin schickt dafür den Link mit ?onboarding (Trainer-Seite: Analyse-Link kopieren).
+  var ONBOARDING = /(^|&)onboarding(=|&|$)/.test(location.search.slice(1));
+  if (!ONBOARDING) {
+    if (window.DKAnfrage) window.DKAnfrage.start({ inhalt: document.getElementById('inhalt'), zu: document.getElementById('zu'), anfrage: ANFRAGE || {}, abo: ABO, rechtliches: RECHTLICHES, empfaenger: EMPFAENGER, marke: MARKE, altKey: SPEICHER });
+    else document.getElementById('inhalt').textContent = 'Die Seite konnte nicht laden. Bitte lade sie neu.';
+    return;
+  }
+  document.title = 'Analyse für dich · ' + MARKE;
   function essenAktiv() { return !istJa(S.s.essstoerung); }   // bei Essstörung (oder Weiß nicht) keine Fragen zum Essen
   var inhalt = document.getElementById('inhalt'), zuKnopf = document.getElementById('zu');
   function objekt(x) { return x && typeof x === 'object' && !Array.isArray(x) ? x : {}; }
@@ -241,11 +277,22 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
   var STEUERT = {};   // Fragen, von denen Folgefragen abhängen
   alleCheckFragen().forEach(function (f) { if (f.nur_wenn && f.nur_wenn.frage_ja) STEUERT[f.nur_wenn.frage_ja] = true; });
   S.k = kurzLaden(S.k);   // gespeicherte Hauptfragen: nur bekannte und gültige Antworten (beim Laden oben gab es KURZ noch nicht)
+  // Verletzungen und Schmerzen nur einmal (27.11.2026, Devin: „Erfrage Verletzungen und Schmerzen dort nur einmal, mit passenden Rückfragen“):
+  // Die Frage „Hast du Verletzungen oder Schmerzen?“ (Felder beschwerden, beschwerden_details) ist kein eigener Schritt mehr. Sie steht als Rückfrage unter der
+  // Hauptfrage „Knochen, Gelenke, Muskeln“ im Gesundheits-Check. Nein dort = beschwerden „keine“. Geschickt wird wie bisher (a.beschwerden), Plan und Trainer-Seite bleiben gleich.
+  var BESCHWERDE_Q = FRAGEN.filter(function (q) { return q.id === 'koerper'; })[0] || null, BESCHWERDE_K = KURZ.filter(function (k) { return k.id === 'koerper' && !k.direkt; })[0] || null;
+  var ZUSAMMEN = !!(BESCHWERDE_Q && BESCHWERDE_K && FELD.beschwerden);
+  function beschwerdenNachHaupt(v) {   // Hauptfrage geändert: Nein = keine Beschwerden; Ja/Weiß nicht nach automatischem „keine“ = neu wählen
+    if (!ZUSAMMEN) return;
+    if (v === 'nein') { S.a.beschwerden = ['keine']; delete S.a.beschwerden_details; }
+    else if (istJa(v) && [].concat(S.a.beschwerden || []).join() === 'keine') delete S.a.beschwerden;
+  }
+  if (ZUSAMMEN && S.k.koerper === 'nein' && leer(S.a.beschwerden)) S.a.beschwerden = ['keine'];   // älterer Entwurf
 
   /* ---------- Schritte: Über dich, 10 Fragen, Gesundheits-Check in Gruppen, Einwilligung, Abschicken ---------- */
   function schritte() {
     var l = [{ art: 'bogen', titel: BOGEN.titel || 'Über dich' }];
-    FRAGEN.forEach(function (q) { l.push({ art: 'frage', titel: q.titel || q.frage, q: q }); });
+    FRAGEN.forEach(function (q) { if (ZUSAMMEN && q === BESCHWERDE_Q) return; l.push({ art: 'frage', titel: q.titel || q.frage, q: q }); });   // Verletzungen: im Check (27.11.2026)
     if (KURZ.some(kurzAktiv)) l.push({ art: 'check', titel: CHECK.titel || 'Gesundheits-Check' });   // Kurz-Check (23.11.2026): eine Seite statt vier
     if (ESSEN && essenAktiv()) l.push({ art: 'frage', titel: ESSEN.titel, q: ESSEN });   // Ernährungs-Check (23.11.2026): eine Seite vor „Deine Nährwerte“, nicht bei Essstörung
     if (NW) l.push({ art: 'naehrwerte', titel: NW.titel });   // Deine Nährwerte (07.11.2026): nach dem Check, er entscheidet, ob es Zahlen gibt
@@ -352,6 +399,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
       var hv = kurzAntwort(k);
       if (!hv) { offen.push(k.direkt ? k.direkt : { id: 'k_' + k.id }); return; }
       if (!k.direkt && istJa(hv)) k.fragen.forEach(function (f) { if (aktiv(f) && !S.s[f.id]) offen.push(f); });
+      if (ZUSAMMEN && k === BESCHWERDE_K && istJa(hv) && leer(S.a.beschwerden)) offen.push({ id: 'beschwerden' });   // Verletzungen: Stelle antippen („Keine“ geht auch)
     });
     return offen;
   }
@@ -380,7 +428,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
   function gratisZeit() { return ABO.gratis === 1 ? '1 Monat' : ABO.gratis + ' Monate'; }
   function aboPreis() {
     return h('p', { class: 'abo-preis' }, h('b', { text: gratisZeit() + ' kostenlos' }),
-      h('span', { class: 'klein', text: ' · ohne Zahlungsdaten. Danach ' + euro(ABO.preis) + ' im Monat, jederzeit kündbar.' }));
+      h('span', { class: 'klein', text: ' · ohne Zahlungsdaten. Danach ' + euro(ABO.preis) + ' im Monat' + (ABO.monate ? ' bis zum ' + ABO.monate + '. Monat' : '') + ', jederzeit kündbar.' }));   // 27.11.2026: Laufzeit 6 Monate
   }
   // Nach der Analyse bezahlt niemand: Die Gratis-Zeit startet mit dem Plan. Bezahlt wird erst danach in der App (Zugang abgelaufen)
   function aboBlock() {
@@ -389,7 +437,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
     if (c.ja.length + c.unsicher.length) return h('p', { class: 'meldung klein', text: 'Devin schaut sich zuerst deinen Gesundheits-Check an und meldet sich bei dir. Kosten entstehen dir dadurch keine.' });
     return h('div', { class: 'abo stapel' }, h('h2', { text: ABO.gratis === 1 ? 'Dein Gratis-Monat' : 'Deine ' + ABO.gratis + ' Gratis-Monate' }),
       h('p', { class: 'leise', text: 'Du zahlst jetzt nichts und gibst keine Zahlungsdaten an. Die Gratis-Zeit startet mit deinem Plan und endet von selbst, du musst nichts kündigen.' }),
-      h('p', { class: 'leise klein', text: 'Willst du danach weitermachen: ' + euro(ABO.preis) + ' im Monat über PayPal, jederzeit zum Monatsende kündbar.' + (unter18() ? ' Weil du noch nicht 18 bist, brauchst du dafür deine Eltern.' : '') }));
+      h('p', { class: 'leise klein', text: 'Willst du danach weitermachen: ' + euro(ABO.preis) + ' im Monat über PayPal' + (ABO.monate ? ', höchstens ' + (ABO.monate - ABO.gratis) + ' Monate, dann endet es von selbst' : '') + ', jederzeit zum Monatsende kündbar.' + (unter18() ? ' Weil du noch nicht 18 bist, brauchst du dafür deine Eltern.' : '') }));
   }
   function start() {
     var angefangen = S.schritt > 0 || [S.g, S.a, S.s].some(function (o) { return Object.keys(o).some(function (k) { return !leer(o[k]); }); });
@@ -398,6 +446,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
     return [h('section', { class: 'block start' },
       h('img', { class: 'logo', src: '../icon.svg', alt: '' }),
       h('h1', { text: 'Analyse für dich' }),
+      h('p', { class: 'rg-klein-titel', text: 'Teil 2: nach unserem ersten Kontakt' }),
       h('p', { class: 'leise', text: 'Ein paar Angaben über dich, Fragen zu Zielen und Training und der Gesundheits-Check: ' + schritte().length + ' kurze Schritte, etwa 10 Minuten. Danach baut Devin dir einen Plan, der genau zu dir passt.' }),
       h('p', { class: 'leise klein', text: 'Ab 14 Jahren. Unter 18 mit Einwilligung deiner Eltern.' }),
       h('p', { class: 'leise klein', text: 'Deine Antworten bleiben auf diesem Handy, bis du sie selbst an Devin schickst. „Neu anfangen“ löscht sie hier.' }),   // Datensparsam (24.11.2026)
@@ -499,6 +548,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
         knoepfe(k.direkt ? 'scr_' + k.direkt.id : 'kc_' + k.id, kurzAntwort(k), function (v) {
           if (k.direkt) S.s[k.direkt.id] = v;
           else { S.k[k.id] = v; if (v === 'nein') k.fragen.forEach(function (f) { delete S.s[f.id]; }); }   // Nein: alle Fragen darunter gelten als Nein
+          if (ZUSAMMEN && k === BESCHWERDE_K) beschwerdenNachHaupt(v);
           aendern(); kopfEl.classList.remove('an-offen'); box.classList.remove('an-offen'); sichtbarkeit();
         }));
       var unter = k.direkt ? null : h('div', { class: 'kc-unter', hidden: !istJa(S.k[k.id]) },
@@ -508,7 +558,10 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
             h('p', { id: 'cf_' + f.id, text: f.frage }),
             knoepfe('scr_' + f.id, S.s[f.id], function (v) { S.s[f.id] = v; aendern(); el.classList.remove('an-offen'); box.classList.remove('an-offen'); if (STEUERT[f.id]) sichtbarkeit(); }));
           return el;
-        }));
+        }), ZUSAMMEN && k === BESCHWERDE_K ? h('div', { class: 'cfrage kc-beschwerden', 'data-id': 'beschwerden', role: 'group', 'aria-label': 'Wo hast du Beschwerden oder alte Verletzungen?' },
+          // eigene Überschrift statt der Feldfrage (sonst doppelt), ohne den Satz „Medizinische Fragen kommen im separaten Gesundheits-Check“: wir sind schon dort
+          feld(Object.assign({}, FELD.beschwerden, { label: 'Wo hast du Beschwerden oder alte Verletzungen?', hilfe: 'Auch alte Verletzungen, die sich manchmal noch melden. „Keine“ geht auch, z. B. nach einer gut verheilten Operation.' }), false, BESCHWERDE_Q),
+          FELD.beschwerden_details ? feld(FELD.beschwerden_details, false, BESCHWERDE_Q) : null) : null);
       box = h('div', { class: 'kc', 'data-kurz': k.id, hidden: !kurzAktiv(k) }, kopfEl, unter);
       liste.append(box);
     });
@@ -746,7 +799,7 @@ var ANALYSE = {"bogen":{"id":"ueber_dich","titel":"Über dich","frage":"Erzähl 
       if (q.mehrfach) {
         var extra = q.felder.filter(function (f) { return f.id !== q.frage_ist && !leer(S.a[f.id]); }).map(function (f) { return [f.label, wert(f, S.a[f.id])]; });
         teile.push(teil(q.titel || 'Deine Ziele', stelle('frage', q), [[null, zielZeilen().join('\n') || '–']].concat(extra)));
-      } else teile.push(teil(q.titel || q.frage, stelle('frage', q), [[q.frage, antwortText(q) || '–']]));
+      } else teile.push(teil(q.titel || q.frage, ZUSAMMEN && q === BESCHWERDE_Q ? stelle('check') : stelle('frage', q), [[q.frage, antwortText(q) || '–']]));
     });
     var cz = c.ja.map(function (f) { return ['Ja', f.frage]; }).concat(c.unsicher.map(function (f) { return ['Weiß nicht', f.frage]; }));
     cz.push([null, cz.length ? 'Nein bei allen anderen ' + c.nein + ' Fragen.' : 'Alle ' + c.nein + ' Fragen mit Nein beantwortet.']);
