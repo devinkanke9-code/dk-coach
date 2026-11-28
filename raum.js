@@ -14,7 +14,9 @@ const STILL = typeof window !== 'undefined' && window.matchMedia && matchMedia('
 // Maße seit 07.11.2026 (Paket G1, Devin: „der Raum soll größer sein“, die Kamera ging beim Drehen durch die Wand): Breite 20 statt 12 m, Stationen 3,6 statt 3,2 m neben dem Gang,
 // Fach 6,2 statt 5,2 m, Wände 4,6 statt 3,2 m hoch und mit Decke. Die Kamera kreist an der Station mit Radius 3,7 bis 9,1 m (Handy hochkant, Median 6,4 m): Station bis Wand sind jetzt 6,25 statt 2,65 m.
 // 16.11.2026 (Devin: „das Gym komplett größer … mehr Platz, dass du dich nicht so eng fühlst … dass du direkt die Maschinen siehst“): Breite 28 statt 20 m, Decke 5,6 statt 4,6 m, Fach 8 statt 6,2 m, Geräte 5 statt 3,6 m neben dem Gang
-const BREITE = 28, WAND = 5.6, FACH = 8, SEITE_X = 5, STATION_R = 2.1, TUER_B = 4, TUER_H = 3.6;
+// 27.11.2026 (Strand-Gym Stufe 1, Devin: „nicht so schnell rumläufst … soll schon ein bisschen laufen, aber nicht zu viel laufen“): Fach 6 statt 8 m. So liegt die nächste Station bei ruhigem Tempo
+// (2 m/s) höchstens rund 5 Sekunden entfernt (gemessen: Weg vom Platz nach der Übung bis in den Kreis der nächsten Station rund 8,6 m), und die Halle wird kürzer.
+const BREITE = 28, WAND = 5.6, FACH = 6, SEITE_X = 5, STATION_R = 2.1, TUER_B = 4, TUER_H = 3.6;
 const WAND_D = 0.3, RAND = 0.4, ENDE_ABSTAND = 9, ORBIT_Y_MIN = 0.6, ORBIT_Y_MAX = Math.min(3.4, WAND - 0.2), FOV_MAX = 80;   // Wanddicke, Abstand der Kamera zu jeder Wand, Höhen beim Wischen, weiteste Sicht beim Heranrücken
 const FIGUR_RAND = 1.5;   // so nah an die Wand (Mitte der Wand) darf die Figur beim Laufen: Zwischen Figur und Kamera hinter ihr bleibt noch mindestens 0,95 m, die Kamera sitzt nie in der Figur
 const SCHIENEN_X = [SEITE_X - 0.6, BREITE / 2 - 3];
@@ -57,8 +59,18 @@ export function folgeKamera(h, F, kamW, kamZ, spieler, nick) {
   // nick hebt den Blick (positiv: nach oben sehen, die Kamera geht dabei tiefer), bleibt stehen, bis man ihn wieder ändert
   if (spieler === 'live') {
     const L = 8.2 * kamZ, phi = klemme(0.17 - (nick || 0) * 0.9, -0.12, 1.15), y = 1.35 + L * Math.sin(phi), hz = L * Math.cos(phi);   // 16.11.: weiter hinten und etwas höher (Devin: „bessere POV von hinten“), die Figur ist kleiner, man sieht die Halle
-    const p = kameraImRaum(h, F, { x: F.x + dx * hz, y, z: F.z + dz * hz }), vor = 4 * Math.max(0.35, p.s);
-    return { pos: p, blick: { x: F.x - dx * vor, y: 1.35 - (y - 1.35) * 0.6 + (nick || 0) * 3, z: F.z - dz * vor }, s: p.s };
+    // 27.11.2026 (Strand-Gym Stufe 1, Glas): Die Figur darf bis an die Scheibe, näher als der Rand, in dem die Kamera bleibt. Darum beginnt der Arm an der Figur, in den Kasten geholt
+    // (ohne Sprung an dessen Rand). Bleibt hinter der Figur weniger als 0,95 m Platz (das gab es vorher nie), steigt die Kamera höher und schaut zur Figur hinunter: So sitzt sie nie in ihr.
+    const k = h.kasten, vx = klemme(F.x, k.xMin, k.xMax), vz = klemme(F.z, k.zMin, k.zMax);
+    const p = kameraImRaum(h, { x: vx, z: vz }, { x: vx + dx * hz, y, z: vz + dz * hz }), vor = 4 * Math.max(0.35, p.s);
+    const blick = { x: F.x - dx * vor, y: 1.35 - (y - 1.35) * 0.6 + (nick || 0) * 3, z: F.z - dz * vor };
+    const l = Math.hypot(p.x - F.x, p.z - F.z), L0 = 0.95;
+    if (l < L0) {
+      const u = 1 - l / L0, D = Math.hypot(L0, p.y - 1.35) + u * 1.7, g = u * u * (3 - 2 * u);
+      p.y = Math.min(k.yMax, Math.max(p.y, 1.35 + Math.sqrt(Math.max(0, D * D - l * l))));
+      blick.x += (F.x - dx * 0.35 - blick.x) * g; blick.y += (1.0 - blick.y) * g; blick.z += (F.z - dz * 0.35 - blick.z) * g;
+    }
+    return { pos: p, blick, s: p.s };
   }
   const arm = spieler ? { h: 4.5 * kamZ, y: 0.9 + 3.5 * kamZ, voraus: 0.9, ziel: 0.95 } : { h: 6 * kamZ, y: 4.4 * kamZ, voraus: 0.5, ziel: 0.8 };   // eigener Charakter: groß im Bild
   const p = kameraImRaum(h, F, { x: F.x + dx * arm.h, y: arm.y, z: F.z + dz * arm.h });
@@ -145,6 +157,30 @@ const FARBEN_LIVE = Object.assign({}, FARBEN_GOLD, {
   studio: Object.assign({}, FARBEN_GOLD.studio, { decke: '#050506', deckeLinie: 'rgba(232,196,104,.07)', wand: '#0E0E11', wandB: '#060607' })
 });
 FARBEN_LIVE.sprosse = '#1E1C19'; FARBEN_LIVE.ringAus = 0x4a4130; FARBEN_LIVE.teller = 0x09090b; FARBEN_LIVE.tellerSicht = 0.35; FARBEN_LIVE.tellerFertig = 0.45;   // die runden Platten unter den Geräten nur angedeutet, der Marmor bleibt sichtbar
+// Fünf Farbwelten (28.11.2026, Look 5 der Sitzung LOOK): Licht und Akzente des Gyms folgen der gewählten Welt. Die Werte stehen in D:/DK-Coach/arbeit-look5/farben.json unter welten.<name>.gym
+// und sind hier fest eingetragen, weil die App diese Datei nicht ausliefert (ändert LOOK die Farben, hier nachziehen). Technische Namen: champagner = Ozean (Start), gold = Abendrot,
+// sport = Dämmerung, lagune = Lagune, klar = Morgenrot. Die drei dunklen Welten bauen auf dem Look der Vorlage auf (schwarzer Marmor), die zwei hellen auf dem hellen Stein.
+const GYM_WELT = {
+  champagner: { himmelOben: '#14233D', himmelUnten: '#0E4654', licht: '#9CEBF7', lichtStaerke: 0.75, schein: '#5294FF', akzent: '#5294FF', akzent2: '#22D3EE', led: '#22D3EE', nacht: true },
+  gold: { himmelOben: '#392515', himmelUnten: '#562230', licht: '#FFB6CA', lichtStaerke: 0.75, schein: '#FFA24A', akzent: '#FFA24A', akzent2: '#FF5C8A', led: '#FF5C8A', nacht: true },
+  sport: { himmelOben: '#24203D', himmelUnten: '#4E2B55', licht: '#F7C4F9', lichtStaerke: 0.75, schein: '#9B8CFF', akzent: '#9B8CFF', akzent2: '#EE7BF2', led: '#EE7BF2', nacht: true },
+  lagune: { himmelOben: '#98E6EC', himmelUnten: '#BBF3DB', licht: '#E8FBF3', lichtStaerke: 1.15, schein: '#19C7D4', akzent: '#19C7D4', akzent2: '#3DDC97', led: '#3DDC97', nacht: false },
+  klar: { himmelOben: '#FFDDC3', himmelUnten: '#FFD0DE', licht: '#FFEFF4', lichtStaerke: 1.15, schein: '#FFB37A', akzent: '#FFB37A', akzent2: '#FF7AA2', led: '#FF7AA2', nacht: false }
+};
+const hexZahl = (h) => parseInt(h.slice(1), 16), hexTeile = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const hexMisch = (a, b, t) => { const x = hexTeile(a), y = hexTeile(b); return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+const hexRgba = (h, al) => 'rgba(' + hexTeile(h).join(',') + ',' + al + ')';
+// Palette einer Welt: der bisherige Look (basis) mit Himmel, Licht und Akzenten der Welt
+function weltPalette(basis, w) {
+  const a = w.akzent, b = w.akzent2, hellA = hexMisch(a, '#FFFFFF', 0.45), hellB = hexMisch(b, '#FFFFFF', 0.35), teil = (h) => hexTeile(h).map((v) => +(v / 255).toFixed(3));
+  return Object.assign({}, basis, {
+    welt: w, led: hexZahl(hexMisch(w.led, '#FFFFFF', 0.3)), halo: hexZahl(w.schein), tuer: hexZahl(a), ring: hexZahl(a), ringFertig: hexZahl(b), waage: b, metall: hexZahl(hexMisch('#D5DAE2', b, 0.3)),
+    bodenLicht: hexRgba(w.schein, 0.2), bodenLicht0: hexRgba(w.schein, 0), aussenLinie: hexRgba(a, 0.26), wegA: teil(hellB), wegB: teil(a), strich: teil(hellB),
+    himmelOben: w.himmelOben, himmelHorizont: w.himmelUnten, sonne: hexMisch(w.licht, '#FFFFFF', 0.3), glitzer: hexMisch(w.licht, '#FFFFFF', 0.4),
+    schild: Object.assign({}, basis.schild, { a: hellB, b: a }),
+    studio: Object.assign({}, basis.studio, { logoA: hellB, logoB: a, rahmen: a, wandLinie: hexRgba(a, 0.36), fassadeLinie: hexRgba(a, 0.3), deckeLinie: hexRgba(a, 0.1) })
+  });
+}
 const AUSSEN_ABEND = { himmelOben: '#3F70B3', himmelHorizont: '#F7A66A', sonne: '#FFD995', meerNah: '#2E7C98', meerFern: '#1A4B76', schaum: '#FFF1DE', glitzer: '#FFE3A8', glasTon: '#D9DCE0', palme: ['#1E5A38', '#62A35E'], holz: ['#8E7556', '#7A6247'], lichtStark: 1.0 };
 
 function zeichne(breite, hoehe, malen) {
@@ -154,6 +190,30 @@ function zeichne(breite, hoehe, malen) {
 }
 function runde(x, l, o, b, h, r) { x.beginPath(); x.moveTo(l + r, o); x.arcTo(l + b, o, l + b, o + h, r); x.arcTo(l + b, o + h, l, o + h, r); x.arcTo(l, o + h, l, o, r); x.arcTo(l, o, l + b, o, r); x.closePath(); }
 const SCHRIFT = '-apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-serif';
+// Gerät fürs Gym (27.11.2026, Strand-Gym Stufe 1): ein Eintrag auf diesem Gerät, kein Netz. { ok, stufe, ms } = die Start-Messung lief durch, { schwach, ms } = zu langsam fürs Gym,
+// offen = Starts, die nie bis zum Urteil kamen und nicht normal geschlossen wurden (Seite abgestürzt, Speicher voll). Die App liest den Eintrag vor der Wahl „Ins Gym gehen“ oder „Nur mein Plan“.
+const GERAET_KEY = 'dk_gym_geraet';
+const geraetLies = () => { try { const g = JSON.parse(localStorage.getItem(GERAET_KEY) || '{}'); return g && typeof g === 'object' ? g : {}; } catch (e) { return {}; } };
+const geraetSchreib = (g) => { try { localStorage.setItem(GERAET_KEY, JSON.stringify(g)); } catch (e) {} };
+// Strand-Gym (27.11.2026): Größe und Anordnung der Gym-Anzeige, einmal je Seite eingehängt. Steht hier und nicht in buehne.css, weil dort Farben und Ecken in einer Hand bleiben sollen;
+// hier stehen nur Maße, Abstände und Sichtbarkeit, die Farben kommen aus den vorhandenen Variablen (--live-…).
+function weltStil() {
+  if (document.getElementById('dk-welt-stil')) return;
+  const s = document.createElement('style'); s.id = 'dk-welt-stil';
+  s.textContent = [
+    // Plan am PC: die Zahl steht in der zweiten Zeile, das kleine Feld bleibt weg
+    '.raum.live .live-plan:not(.klein) .live-plan-zahl { display: none; }',
+    // Plan am Handy: eine Zeile (Fortschritt, nächste Übung, Pfeil), mindestens 44 px hoch zum Antippen
+    '.raum.live .live-plan.klein { width: max-content; min-width: 128px; max-width: calc(100% - 128px); }',
+    '.raum.live .live-plan.klein .live-plan-kopf { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; min-height: 44px; padding: 4px 10px 4px 12px; }',
+    '.raum.live .live-plan.klein.zu .live-plan-kopf { border-bottom-width: 0; }',
+    '.raum.live .live-plan.klein .live-plan-kopf svg, .raum.live .live-plan.klein .live-plan-titel small { display: none; }',
+    '.raum.live .live-plan.klein .live-plan-zahl { font-style: normal; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--live-gold); }',
+    '.raum.live .live-plan.klein .live-plan-titel b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+    '.raum.live .live-plan.klein .live-plan-liste { width: min(262px, calc(100vw - 150px)); max-height: min(46vh, 320px); overflow-y: auto; overscroll-behavior: contain; }'
+  ].join('\n');
+  document.head.append(s);
+}
 
 // spieler (optional): der eigene Charakter statt der Standardfigur. { name, bauen(ansicht, M) vor dem Aufbau der Stationen, haltung(pose, winkel) im Gehen und Stehen }. Dann: Kamera näher dran, Einstieg durch die Tür, Name über dem Kopf, „Hier trainieren“ am Gerät
 // Rückfall-Bremse für langsame Handys (Empfehlung von 3D-Ablauf): Solange der Spiegel gezeichnet wird, kommt die ganze Halle je Bild zweimal dran. Wird es dauerhaft langsam, kommt erst eine kleinere
@@ -279,10 +339,12 @@ function spiegelFlaeche(THREE, breite, hoehe, opt) {
 }
 
 // pr (optional): Die Halle ist der PR-Raum. { rang, titel, level, ausgang }, die Übungen tragen scheiben und wert. prTuer (optional): Im Gym steht die Tür zum PR-Raum, der Aufruf kommt, wenn die Figur durch ist. abTuer: Die Figur kommt gerade aus dem PR-Raum zurück.
-export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status, pr, prTuer, abTuer, test }) {   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
+export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStationWeg, beiZu, spieler, status, pr, prTuer, abTuer, test, beiSchwach }) {   // beiSchwach(ms) (optional, 27.11.): das Gerät ist für das Gym zu langsam, die App wechselt zu „Nur mein Plan“   // status (optional): liefert den Spielstand für die Waage im Eingang; ohne ihn gibt es keine Waage
   const LIVE = !pr;   // Live-Gym: frei laufen (WASD, Maus, zwei Knüppel), Anzeige wie im Spiel, Einrichtung der Vorlage
+  const SELBST = !STILL;   // 27.11.2026 (Strand-Gym Stufe 1): selbst laufen, kein Springen und kein Hinlaufen per Antippen (bei „Bewegung reduzieren“ bleibt der direkte Weg)
   const LOOKL = true;   // Look der Vorlage (Farben, Marmor mit Spiegelung, Glasdach, Schein, Qualitätsstufen) seit 10.11. nachts auch im PR-Raum; dort bleiben orangenes Licht, Gummiplatten und Scheiben
-  const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold' || LOOK === 'sport' || LOOK === 'champagner', P = GOLD ? FARBEN_LIVE : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE;   // seit 18.11.2026 folgt der Raum der Farbwahl: Schwarz-Gold und Sport dunkel (Vorlage), Klar und Lagune hell
+  const LOOK = document.documentElement.dataset.look, GOLD = LOOK === 'gold' || LOOK === 'sport' || LOOK === 'champagner', WELT = GYM_WELT[LOOK] || GYM_WELT.champagner, P = weltPalette(GOLD ? FARBEN_LIVE : LOOK === 'klar' ? FARBEN_KLAR : FARBEN_LAGUNE, WELT);   // 28.11.: fünf Welten (Look 5), Licht und Akzente aus GYM_WELT
+  const WA = WELT.akzent, WB = WELT.akzent2, WHELL = hexMisch(WB, '#FFFFFF', 0.55);   // Akzent, zweiter Akzent und ein heller Ton daraus (für Leuchtschrift und Lichtlinien)   // seit 18.11.2026 folgt der Raum der Farbwahl: Schwarz-Gold und Sport dunkel (Vorlage), Klar und Lagune hell
   let zeitWahl = null; try { zeitWahl = localStorage.getItem('dk_gym_zeit'); } catch (e) {}
   const nativNacht = GOLD, zeitNacht = zeitWahl === 'nacht' || (zeitWahl !== 'tag' && nativNacht);   // Tag oder Nacht: ohne Wahl gilt die Farbwelt (Schwarz-Gold ist Nacht)
   const TAGP = nativNacht ? (LOOKL ? AUSSEN_ABEND : AUSSEN_TAG) : P, NACHTP = nativNacht ? P : AUSSEN_NACHT;   // die Farben für draußen bei Tag und bei Nacht (Live-Gym: der helle Stand ist der Abend)
@@ -311,8 +373,12 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   document.body.append(wurzel);
 
   let letzterTipp = null, erkAn = false, a = null, offen = true, beobachter = null, sichtBeob = null, aufraeumen = null, spiegelEnde = null, livePlan = null, liveKarte = null;   // livePlan, liveKarte: Anzeige im Live-Gym
+  // Start-Merker (27.11.): gezählt wird beim Öffnen, gelöscht beim Urteil der Start-Messung, beim normalen Schließen und beim Verlassen der Seite. Bleibt er stehen, ist die Seite im Gym abgestürzt
+  const merkerWeg = () => { if (pr || test) return; const g = geraetLies(); if (g.offen) { delete g.offen; geraetSchreib(g); } };
+  if (!pr && !test) { const g = geraetLies(); if (!g.schwach) { g.offen = (g.offen || 0) + 1; geraetSchreib(g); } window.addEventListener('pagehide', merkerWeg); }
   function schliessen(geschafft, still) {
     if (!offen) return; offen = false;
+    merkerWeg(); window.removeEventListener('pagehide', merkerWeg);
     if (erkLauf) erkLauf.ende();
     if (beobachter) beobachter.disconnect();
     if (sichtBeob) sichtBeob.disconnect();
@@ -340,7 +406,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const szene = a.szene;
   for (const o of szene.children) if (o.isMesh && /Circle|Ring/.test(o.geometry.type)) o.visible = false;   // Boden und Ring der Bühne: hier nicht
   if (GOLD && !LOOKL) { const lila = new THREE.DirectionalLight(0x9b6cff, spieler ? 0.5 : 1.5); lila.position.set(-1, 5, -2.5); szene.add(lila); }
-  if (LIVE) { const warm = new THREE.DirectionalLight(0xffc27a, 1.1); warm.position.set(-2, 5, -3); szene.add(warm); }   // Live-Gym: warmes Licht von den goldenen LED
+  if (LIVE) { const warm = new THREE.DirectionalLight(hexZahl(hexMisch(WELT.licht, '#FFFFFF', 0.25)), 1.1 * WELT.lichtStaerke / 0.75 * (GOLD ? 1 : 0.6)); warm.position.set(-2, 5, -3); szene.add(warm); }   // Live-Gym: warmes Licht von den goldenen LED
   const lichter = szene.children.filter((o) => o.isDirectionalLight);
   let kameraLicht = null;   // eigener Charakter: warmes Licht aus Richtung der Kamera, so stimmt der Hautton von jeder Seite
   if (spieler) { kameraLicht = new THREE.DirectionalLight(0xfff0e4, GOLD ? 1.1 : 0.6); szene.add(kameraLicht); }
@@ -465,8 +531,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
         }
       };
       x.lineCap = 'round'; x.lineJoin = 'round';
-      x.shadowColor = GOLD ? 'rgba(214,170,92,0.4)' : 'rgba(120,130,150,0.3)'; x.shadowBlur = b / 500;
-      for (let k = 0; k < 10; k++) ader(k, (GOLD ? 'rgba(206,164,92,' : 'rgba(118,126,140,') + (0.16 + ruheL(k, 10) * 0.3).toFixed(2) + ')', b / 1500 + ruheL(k, 11) * b / 1000, 60 + Math.floor(ruheL(k, 12) * 80));
+      x.shadowColor = GOLD ? hexRgba(WA, 0.4) : 'rgba(120,130,150,0.3)'; x.shadowBlur = b / 500;
+      for (let k = 0; k < 10; k++) ader(k, (GOLD ? 'rgba(' + hexTeile(hexMisch(WA, '#C9B089', 0.35)).join(',') + ',' : 'rgba(' + hexTeile(hexMisch(WA, '#767E8C', 0.6)).join(',') + ',') + (0.16 + ruheL(k, 10) * 0.3).toFixed(2) + ')', b / 1500 + ruheL(k, 11) * b / 1000, 60 + Math.floor(ruheL(k, 12) * 80));
       x.shadowBlur = 0;
       for (let k = 16; k < 46; k++) ader(k, (GOLD ? 'rgba(190,175,150,' : 'rgba(255,255,255,') + (0.08 + ruheL(k, 10) * 0.14).toFixed(2) + ')', b / 1400, 30 + Math.floor(ruheL(k, 12) * 50));
       for (let k = 0; k < 2600; k++) { x.fillStyle = 'rgba(255,240,210,' + (ruheL(k, 13) * 0.06).toFixed(3) + ')'; x.fillRect(ruheL(k, 14) * b, ruheL(k, 15) * h, 1.5, 1.5); }
@@ -1082,6 +1148,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let hallenWinkel = 0, aktiv = null, kamFlug = null, modus = 'draussen', orbit = null, zeit = 0, gehX = 0, gehY = 0;
   let kamNick = 0, kamStickX = 0, kamStickY = 0, kamStickId = null, kamHand = -1e9;   // kamHand: wann zuletzt selbst umgesehen wurde (danach dreht die Kamera eine Weile nicht von selbst)   // Kamera-Joystick (09.11.2026): drehen und nach oben oder unten sehen
   let kamW = 0, kamZ = 1, bisZiel = 0, vonZiel = 0, tuerOffen = 0, auftritt = null, nahe = null;
+  let kamDreh = null, kamNickZiel = null, naheZiel = false;   // Weg zeigen (27.11.): Winkel, zu dem die Kamera gerade weich dreht; naheZiel: alles geschafft und die Figur steht vor der Zieltür
   let tuerEin = spieler ? 1 : 0, tuerEinZiel = tuerEin, tuerSicht = false, reach = 0, reachZiel = 0, einstiegLaeuft = !spieler;   // Eingangstür (0 zu, 1 auf), Blick von draußen auf die Tür, Hand zum Türgriff
   const legeHalle = (p, w) => {
     const delta = w - hallenWinkel; hallenWinkel = w;
@@ -1156,8 +1223,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     weiter.textContent = '';
     if (naheTuer) weiter.append(el('small', null, 'Tür öffnen'), el('b', null, 'PR-Raum'));
     else if (nahe != null && !stationen[nahe].fertig) weiter.append(el('small', null, 'Hier trainieren'), el('b', null, stationen[nahe].u.name));
-    else if (n == null) weiter.append(el('small', null, 'Alles geschafft'), el('b', null, 'Zur Tür'));
-    else weiter.append(el('small', null, 'Direkt zur nächsten Übung · ' + (n + 1) + ' von ' + N), el('b', null, stationen[n].u.name));
+    else if (n == null) weiter.append(el('small', null, !SELBST || naheZiel ? 'Alles geschafft' : 'Alles geschafft · lauf zur Tür'), el('b', null, !SELBST ? 'Zur Tür' : naheZiel ? 'Rausgehen' : 'Weg zeigen'));
+    else weiter.append(el('small', null, (SELBST ? 'Nächste Übung · ' : 'Direkt zur nächsten Übung · ') + (n + 1) + ' von ' + N), el('b', null, stationen[n].u.name));
     if (n == null) { schildMalen(true); lichtSaeule.visible = false; rahmenM.opacity = 1; }
     else { lichtSaeule.visible = true; lichtSaeule.position.set(stationen[n].pos.x, 1.6, stationen[n].pos.z); }
   }
@@ -1168,7 +1235,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     return { x: F.x, z: F.z, kamW, modus, n, sp, alle: stationen.map((q) => ({ i: q.i, fertig: !!q.fertig, sp: wo(q) })) };
   };
   function modusSetzen(m) {
-    modus = m;
+    modus = m; if (m !== 'gehen') kamDreh = null;
     wurzel.classList.toggle('an-station', m === 'station');
     wurzel.classList.toggle('faehrt', m === 'draussen' || m === 'lauf');
     if (m !== 'station' && erkAn) { erkKnopf.hidden = true; drehHinweis.style.opacity = '0'; orbitZiel = null; if (erkLauf) erkLauf.ende(); }   // weg von der Übung: Erklärung und Knopf weg
@@ -1302,7 +1369,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     const i = +kNr.dataset.station, s = stationen[i];
     if (beiStationWeg) beiStationWeg(i);
     blitz.classList.remove('an'); void blitz.offsetWidth; blitz.classList.add('an');
-    frei(s.start, s.startH); stand();
+    // 27.11. (Strand-Gym Stufe 1, kurze Wege): Nach der Übung steht die Figur am Rand des Kreises, auf der Seite zur nächsten Station (ist alles geschafft: zur Zieltür; nur „Zurück“: zum Gang).
+    // Vorher stand sie am Platz vor dem Gerät, oft auf der abgewandten Seite, und musste erst um das eigene Gerät herum (gemessen bis 9,6 s bis zur nächsten Station statt rund 4 s).
+    const n0 = naechste(), zm = n0 == null ? V(0, 0, zEnde) : n0 === i ? V(0, 0, s.pos.z) : stationen[n0].pos, ax = zm.x - s.pos.x, az = zm.z - s.pos.z, al = Math.hypot(ax, az) || 1;
+    if (SELBST && LOOKL) frei(V(s.pos.x + ax / al * 1.9, 0, s.pos.z + az / al * 1.9), Math.atan2(ax, az)); else frei(s.start, s.startH);
+    stand();
     const n = naechste(), ziel = n == null ? V(0, 0, zEnde) : stationen[n].start;
     zielH = Math.atan2(ziel.x - F.x, ziel.z - F.z);
     if (STRAFE) kamW = zielH + Math.PI;   // die Kamera geht hinter die Figur, Blick zur nächsten Übung
@@ -1347,7 +1418,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   let waageAktiv = false, waageGesperrt = false, waageZeit = 0, kreisSperre = null, kreisZeit = 0;
   // G19 (16.11., Vorgaben von 3D-Ablauf, Devin: „lass den Charakter viel natürlicher wirken“): Gehen 1,5 m/s, Joggen (Sprint, Weg zum Gerät) 2,6–2,8 m/s, Schritte aus dem zurückgelegten Weg,
   // Anlaufen und Anhalten weich, Drehen höchstens 265 °/s, im Stand Atmen und Gewichtsverlagerung
-  let gangX = 0, gangZ = -1, gangVX = 0, gangVZ = 0, haltSperre = 0, drehT = 0, zugJetzt = 1, gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, standLetzt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, GEH_V = 2.2, JOGG = 4.0, FV = V(0, 0, 0), LEINE = 0.07; let selbstBewegt = false, kamWVor = null; /* Gang 3 (20.11.): selbstBewegt = in diesem Bild selbst gelaufen; kamWVor = Kamerawinkel im letzten Bild */ const armVers = { l: { v: 0, y: 0, s: 0 }, r: { v: 0, y: 0, s: 0 } }; let armK = 0, armVor = 1, armVX = 0, armVZ = 0, armFX = null, armFZ = 0;   // lockerer Gang (18.11.)   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
+  let gangX = 0, gangZ = -1, gangVX = 0, gangVZ = 0, haltSperre = 0, drehT = 0, zugJetzt = 1, gehV = 0, gehVx = 0, gehVz = 0, gehDx = 0, gehDz = -1, vGlatt = 0, ankommt = false, gegenEingabe = false; const fussFest = { l: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 }, r: { an: false, x: 0, z: 0, dx: 0, dz: 0, ab: 0 } }, fussZuletzt = { l: null, r: null }, fussAus = { l: null, r: null }; let fussAusT = 0, warLauf = false, standT = 0, standSchritt = null, standLetzt = null, warAktiv = false; const standAnker = { l: { an: false, x: 0, z: 0, h: 0 }, r: { an: false, x: 0, z: 0, h: 0 } }, fussWeltZuletzt = { l: null, r: null }; const GEH = 1.5, GEH_V = 2.2, JOGG = 2.0 /* 27.11. (Strand-Gym Stufe 1): ruhiges Gehen 2 m/s statt Sprint 4 m/s; der Name bleibt, es ist das höchste Tempo */, FV = V(0, 0, 0), LEINE = 0.07; let selbstBewegt = false, kamWVor = null; /* Gang 3 (20.11.): selbstBewegt = in diesem Bild selbst gelaufen; kamWVor = Kamerawinkel im letzten Bild */ const armVers = { l: { v: 0, y: 0, s: 0 }, r: { v: 0, y: 0, s: 0 } }; let armK = 0, armVor = 1, armVX = 0, armVZ = 0, armFX = null, armFZ = 0;   // lockerer Gang (18.11.)   // kreis*: in den Kreis einer Station laufen startet sie (16.11.)
   function zurWaage() {
     if (!waage || modus === 'draussen' || waageAktiv || spiegelAktiv) return;
     tipp.classList.add('weg'); karte.classList.remove('offen'); orbit = null;
@@ -1576,7 +1647,22 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   }
   let sagUhr = null;
   function sag(t) { meldung.textContent = t; meldung.classList.add('offen'); clearTimeout(sagUhr); sagUhr = setTimeout(() => meldung.classList.remove('offen'), 3200); }
-  weiter.addEventListener('click', () => { if (naheTuer) return zurPrTuer(LOOKL); const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste(); if (n == null) rausgehen(); else if (n === nahe || pr || !LIVE) zurStation(n); else direktZur(n); });
+  /* 27.11.2026 (Strand-Gym Stufe 1, Devin: „es soll kein System reingehen, dass du da einfach draufklicken kannst und da drauf gehst. Soll schon ein bisschen laufen, aber nicht zu viel laufen“):
+     Im Gym läuft man selbst (Knüppel oder WASD). Antippen und der große Knopf bringen die Figur nicht mehr von selbst irgendwohin: Der Knopf zeigt den Weg (die Kamera dreht zur nächsten Übung,
+     die Striche am Boden führen hin). Nur ganz nah dran (am Gerät, an der Waage, am Spiegel, an der Tür) geht sie das letzte Stück selbst. Bei „Bewegung reduzieren“ bleibt der direkte Weg wie bisher. */
+  function wegZeigen(ziel, name) {
+    if (modus !== 'gehen' || aktiv != null) return;
+    kamDreh = Math.atan2(F.x - ziel.x, F.z - ziel.z); kamNickZiel = 0;   // die Kamera kommt hinter die Figur, der Blick geht zum Ziel (die Figur dreht im Stand mit)
+    tipp.classList.add('weg'); pop('Lauf hin', name);
+  }
+  weiter.addEventListener('click', () => {
+    if (naheTuer) return zurPrTuer(LOOKL);
+    const n = nahe != null && !stationen[nahe].fertig ? nahe : naechste();
+    if (n == null) { if (pr || !SELBST || naheZiel) rausgehen(); else wegZeigen(V(0, 0, zEnde + 0.2), 'Zur Tür'); }
+    else if (n === nahe || !LIVE) zurStation(n);
+    else if (SELBST) wegZeigen(stationen[n].start, stationen[n].u.name);
+    else direktZur(n);
+  });
 
   /* ---------- Antippen, Wischen, Knüppel ---------- */
   const strahl = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -1603,14 +1689,17 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       if (ab < r && ab / r < bw) { bw = ab / r; beste = s; }
     }
     letzterTipp = beste ? (beste.istSpiegel ? 'spiegel' : beste.istWaage ? 'waage' : beste.istTuer ? 'tuer' : 'station ' + (beste.i + 1)) + ' ' + bw.toFixed(2) : 'nichts';
+    // 27.11. (Strand-Gym Stufe 1): Antippen zeigt nur noch den Weg (Kamera dreht hin, der Name erscheint). Steht die Figur schon dort (2,6 m), geht sie das letzte Stück selbst
+    const nahBei = (s) => Math.hypot(F.x - s.pos.x, F.z - s.pos.z) < 2.6, nameVon = (s) => (s.istSpiegel ? 'Spiegel' : s.istWaage ? 'Waage' : s.istTuer ? 'PR-Raum' : s.u.name);
+    if (beste && SELBST && !nahBei(beste)) return wegZeigen(beste.start || beste.pos, nameVon(beste));
     if (beste) return beste.istSpiegel ? zumSpiegel() : beste.istWaage ? zurWaage() : beste.istTuer ? zurPrTuer() : zurStation(beste.i);
     if (d.x < -1e-6) {   // die Spiegelwand selbst antippen
       const ts = (spiegelXWand - o.x) / d.x, ys = o.y + d.y * ts, zs = o.z + d.z * ts;
-      if (ts > 0 && ys > 0.4 && ys < 3.6 && Math.abs(zs - SP.z) < SP.laenge / 2 + 0.2) return zumSpiegel();
+      if (ts > 0 && ys > 0.4 && ys < 3.6 && Math.abs(zs - SP.z) < SP.laenge / 2 + 0.2) return SELBST && !nahBei(spiegel) ? wegZeigen(spiegel.pos, 'Spiegel') : zumSpiegel();
     }
     if (d.y >= -0.01) return;
     const t = -o.y / d.y, x = o.x + d.x * t, z = o.z + d.z * t;
-    if (Math.abs(x) < TUER_B && z < zEnde + 3.6) return rausgehen();
+    if (Math.abs(x) < TUER_B && z < zEnde + 3.6) return SELBST && !pr && !naheZiel ? (offeneZahl() ? rausgehen() : wegZeigen(V(0, 0, zEnde + 0.2), 'Zur Tür')) : rausgehen();
     // 17.11.2026 nachts (Devin: „manchmal läuft er einfach weg von mir, läuft ohne, dass ich irgendwas mache“): Boden antippen schickt die Figur nicht mehr los.
     // Laufen geht nur noch mit dem Knüppel oder WASD (wie im Spiel); Gerät, Waage, Spiegel und Tür antippen bringen die Figur weiter hin.
   }
@@ -1651,7 +1740,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     if (modus === 'station' && orbit) { orbitZiel = null; orbit.w -= dx * 0.008; orbit.y = klemme(orbit.y - dy * 0.008, ORBIT_Y_MIN, ORBIT_Y_MAX); }
     else if (modus === 'gehen' || modus === 'lauf') {   // Live-Gym: ziehen = umsehen und drehen (wie im Spiel: Finger oder Maus nach rechts = nach rechts drehen, nach oben = nach oben sehen); Zoom mit Mausrad oder zwei Fingern
       const maus = e.pointerType === 'mouse';
-      kamHand = performance.now(); kamW -= dx * (maus ? 0.005 : 0.0065);
+      kamHand = performance.now(); kamDreh = null; kamW -= dx * (maus ? 0.005 : 0.0065);
       if (LIVE) kamNick = klemme(kamNick - dy * (maus ? 0.003 : 0.004), -0.6, 1); else kamZ = klemme(kamZ + dy * 0.004, 0.55, 2.3);
       tipp.classList.add('weg');
     }
@@ -1676,7 +1765,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     let x = (e.clientX - mx) / gr, y = (e.clientY - my) / gr; const l = Math.hypot(x, y); sprint = l > 1.12; if (l > 1) { x /= l; y /= l; }   // über den Rand gezogen: rennen
     gehX = x; gehY = y; stickK.style.transform = 'translate(' + x * gr + 'px,' + y * gr + 'px)';
   };
-  stick.addEventListener('pointerdown', (e) => { stickId = e.pointerId; try { stick.setPointerCapture(e.pointerId); } catch (x) {} stickSetzen(e); if (selbstGehen()) gang = null; tipp.classList.add('weg'); });
+  stick.addEventListener('pointerdown', (e) => { stickId = e.pointerId; try { stick.setPointerCapture(e.pointerId); } catch (x) {} stickSetzen(e); if (selbstGehen()) gang = null; tipp.classList.add('weg'); if (livePlan && livePlan.zuklappen) livePlan.zuklappen(); });
   stick.addEventListener('pointermove', (e) => { if (e.pointerId === stickId) stickSetzen(e); });
   const stickLos = (e) => { if (e.pointerId !== stickId) return; stickId = null; gehX = gehY = 0; sprint = false; stickK.style.transform = ''; };
   stick.addEventListener('pointerup', stickLos); stick.addEventListener('pointercancel', stickLos); stick.addEventListener('lostpointercapture', stickLos);   // Finger weg, ohne dass ein „pointerup“ kommt: die Figur bleibt stehen
@@ -1763,6 +1852,55 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     strichU.laenge.value = L;
   }
 
+  /* ---------- Glas hält dicht (27.11.2026, Strand-Gym Stufe 1, Devin: „Die Glasscheiben sollen auch realistisch wirken, du kannst da nicht durchlaufen. Du kannst aber nah an die Scheibe
+     gehen, aber nicht durch die Scheibe, und kein Körperteil kann durch die Scheibe gehen.“) ----------
+     Eine Scheibe ist eine Ebene in der Halle: nx·x + nz·z ≤ d gilt für alles vom Körper (die Normale zeigt aus der Halle hinaus), von und bis begrenzen sie längs. Stufe 2 und 3 hängen weitere an.
+     Der Körper wird über seine Gelenkpunkte gemessen, um jeden Punkt liegt „Fleisch“ (FLEISCH, gegen das echte Netz der Figur geprüft: werkzeug/pruefe-glas.js). Drei Regeln greifen ineinander:
+     1. weich heran: Je näher die Figur der Scheibe kommt, desto langsamer wird sie (kein Aufprall), bis Oberkörper, Arme und Kopf gerade noch davor Platz haben (mindestens 30 cm ab Körpermitte).
+     2. kurze Schritte: Vor der Scheibe werden die Schritte so kurz, dass die Fußspitze davor bleibt (siehe schrittL im Bildlauf).
+     3. Sicherung: Reicht nach dem Stellen der Figur doch ein Punkt über die Scheibe (schnelle Drehung, Armschwung), rückt die ganze Figur in diesem Bild so weit zurück. */
+  const scheiben = [{ name: 'glasfront', nx: 1, nz: 0, d: BREITE / 2 - WAND_D / 2 - 0.02, von: zEnde, bis: zAnfang, ober: 0.3 }];   // Glasfront rechts: Innenseite von Sockel und Sprossen
+  const FLEISCH = { kopf: 0.19, brust: 0.26, becken: 0.23, schulter: 0.17, ellbogen: 0.12, handgelenk: 0.09, hand: 0.16, huefte: 0.18, knie: 0.13, ferse: 0.11, zehe: 0.16 };   // gemessen (pruefe-glas.js): reicht überall mindestens 3 cm weiter als das echte Netz (Reserve für Stoff und Muskelspiel, die erst der Grafikchip rechnet)
+  // Wie weit der Körper von der Figurmitte aus in Richtung (nx, nz) reicht. g: Gelenkpunkte aus gelenke(), um die Figurmitte, in Hallenrichtung (beim Gehen liegt die Halle ungedreht). unten: auch Beine und Füße
+  const koerperWeite = (g, nx, nz, unten) => {
+    let w = -1e9; const p = (v, r) => { if (v) { const e = v.x * nx + v.z * nz + r; if (e > w) w = e; } };
+    p(g.kopf, FLEISCH.kopf); p(g.brust, FLEISCH.brust); p(g.becken, FLEISCH.becken);
+    for (const s of ['l', 'r']) {
+      p(g.schulter && g.schulter[s], FLEISCH.schulter); p(g.ellbogen && g.ellbogen[s], FLEISCH.ellbogen); p(g.handgelenk && g.handgelenk[s], FLEISCH.handgelenk); p(g.hand && g.hand[s], FLEISCH.hand);
+      if (unten) { p(g.huefte && g.huefte[s], FLEISCH.huefte); p(g.knie && g.knie[s], FLEISCH.knie); p(g.ferse && g.ferse[s], FLEISCH.ferse); p(g.zehe && g.zehe[s], FLEISCH.zehe); }
+    }
+    return w;
+  };
+  const anScheibe = (s) => { const t = -s.nz * F.x + s.nx * F.z, a = Math.min(s.von, s.bis), b = Math.max(s.von, s.bis); return t > a - 1 && t < b + 1; };   // steht die Figur längs im Bereich dieser Scheibe?
+  let glasMass = { nah: 1e9, drin: -1e9 }, letzteG = null, bildInfo = null;   // nur für die Prüfseite: kleinster Abstand Körper zu Scheibe und größtes Eindringen (nach den Gelenkpunkten), Gelenkpunkte und Zeichenaufrufe des letzten Bildes
+  function glasHalten(dt) {   // Regel 1, direkt nach dem Bewegen der Figur
+    for (const s of scheiben) {
+      if (!anScheibe(s)) continue;
+      const a0 = s.nx * FV.x + s.nz * FV.z, a1 = s.nx * F.x + s.nz * F.z, grenze = s.d - Math.max(0.3, s.ober + 0.04);
+      let neu = a1;
+      if (a1 > a0) neu = Math.min(a1, Math.max(a0, a0 + (grenze - a0) * (1 - Math.exp(-dt * 7))));
+      neu = Math.min(neu, grenze);
+      if (neu < a1) { F.x -= s.nx * (a1 - neu); F.z -= s.nz * (a1 - neu); }
+    }
+  }
+  function glasNetz(g) {   // Regel 3 und der gemerkte Platzbedarf des Oberkörpers (steigt sofort, fällt langsam: kein Zittern an der Scheibe)
+    for (const s of scheiben) {
+      if (!anScheibe(s)) { s.ober = 0.3; continue; }
+      const ober = koerperWeite(g, s.nx, s.nz, false), alles = Math.max(ober, koerperWeite(g, s.nx, s.nz, true)), a = s.nx * F.x + s.nz * F.z;
+      s.ober = Math.max(ober, s.ober - 0.01);
+      const zuWeit = a + alles + 0.03 - s.d;   // 3 cm Reserve: An einzelnen Stellen (Finger, Schuhspitze im Schritt) reicht das echte Netz so weit wie die Gelenk-Rechnung, und Stoff und Muskelspiel rechnet erst der Grafikchip dazu
+      if (zuWeit > 0) {   // alles, was die Figur am Boden festhält, rückt mit: Füße, Anker, gemerkte Plätze
+        const rx = -s.nx * zuWeit, rz = -s.nz * zuWeit; F.x += rx; F.z += rz; FV.x += rx; FV.z += rz; if (armFX != null) { armFX += rx; armFZ += rz; }
+        for (const sd of ['l', 'r']) {
+          for (const o of [fussFest[sd], standAnker[sd], fussWeltZuletzt[sd]]) if (o) { o.x += rx; o.z += rz; }
+        }
+        if (standSchritt) { standSchritt.x0 += rx; standSchritt.z0 += rz; }
+      }
+      if (test) { glasMass.nah = Math.min(glasMass.nah, s.d - (s.nx * F.x + s.nz * F.z) - alles); glasMass.drin = Math.max(glasMass.drin, zuWeit); }
+    }
+    if (test) letzteG = g;
+  }
+
   /* ---------- Jedes Bild (die Ansicht ruft das direkt vor dem Zeichnen) ---------- */
   /* ---------- PR-Raum: Powerlifting-Stimmung (09.11.2026): schwarze Gummiplatten mit weißem Rand unter den Geräten und Scheibenstapel an den Wänden; das warme Licht kommt über die LED und die Lampen ---------- */
   if (pr) {
@@ -1820,12 +1958,12 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     // nachts nur aus dem Schein der LED-Linien, und den schaltet die Qualitätsstufe am Handy als Erstes ab. Jetzt fällt über dem Gang und über jeder Station ein warmer Kegel von der
     // Decke bis zum Boden, mit Lichtfleck unten. Einfache Flächen mit Additivmischung, unabhängig vom Schein; über den Deko-Geräten nicht (weniger Überzeichnen am Handy)
     {
-      const hK = WAND - 0.05, warm = new THREE.Color(0xffd9a0);
+      const hK = WAND - 0.05, warm = new THREE.Color(hexMisch(WELT.licht, WB, 0.25));
       lampeKegel.geometry.dispose(); lampeKegel.geometry = new THREE.ConeGeometry(1.5, hK, 24, 1, true); lampeKegelU.hoehe.value = hK; lampeKegelU.farbe.value.copy(warm); lampeFleckM.color.copy(warm);
       lampenOrte.forEach(([x, z], i) => { m4.compose(V(x, hK / 2, z), qNull, V(1, 1, 1)); lampeKegel.setMatrixAt(i, m4); });
       lampeKegel.instanceMatrix.needsUpdate = true; lampeKegel.count = lampeFleck.count = lampenOrte.length - deko.length; liveKegel = true;
     }
-    const neonM = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf6d6a0), toneMapped: false, fog: false }), linien = [], YD = WAND - 0.04;
+    const neonM = new THREE.MeshBasicMaterial({ color: new THREE.Color(WHELL), toneMapped: false, fog: false }), linien = [], YD = WAND - 0.04;
     const strich = (x0, y0, z0, x1, y1, z1, d) => linien.push([V(x0, y0, z0), V(x1, y1, z1), d || 0.05]);
     for (let z = zAnfang - FACH / 2; z - FACH > zEnde; z -= FACH) {   // Decke: je Feld ein Rahmen über dem Gang, von den Ecken Linien zu den Schienen (wie Kassetten)
       const z0 = z - 0.8, z1 = z - FACH + 0.8, xr = 2.3;
@@ -1842,15 +1980,15 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     linien.forEach(([p0, p1, d], i) => { const r = p1.clone().sub(p0), l = r.length(); q.setFromUnitVectors(vz, r.normalize()); m4.compose(p0.clone().add(p1).multiplyScalar(0.5), q, V(d, d * 0.7, l)); neon.setMatrixAt(i, m4); });
     neon.instanceMatrix.needsUpdate = true; neon.frustumCulled = false; raum.add(neon);
     // Leuchtendes DK (Rückwand links), Spruch-Tafel mit Krone (Rückwand rechts), Leuchtschrift über der Lounge (linke Wand)
-    const leucht = (b, h, malen) => tex(zeichne(b, h, (x) => { x.shadowColor = 'rgba(255,196,110,0.95)'; malen(x, b, h); }));
+    const leucht = (b, h, malen) => tex(zeichne(b, h, (x) => { x.shadowColor = hexRgba(hexMisch(WB, WA, 0.4), 0.95); malen(x, b, h); }));
     const dkLeuchtT = leucht(1024, 512, (x, b, h) => {
       x.fillStyle = '#060607'; x.fillRect(0, 0, b, h);
-      for (const blur of [60, 26, 8]) { x.shadowBlur = blur; dkZeichen(x, b / 2, h / 2, 330, '#FFE9B8', '#F2C46E'); }
-      x.shadowBlur = 0; dkZeichen(x, b / 2, h / 2, 330, '#FFF8E6', '#FFE0A0');
+      for (const blur of [60, 26, 8]) { x.shadowBlur = blur; dkZeichen(x, b / 2, h / 2, 330, WHELL, hexMisch(WA, '#FFFFFF', 0.25)); }
+      x.shadowBlur = 0; dkZeichen(x, b / 2, h / 2, 330, hexMisch(WHELL, '#FFFFFF', 0.6), WHELL);
     });
     const spruchT = leucht(512, 512, (x, b, h) => {
-      x.fillStyle = '#0B0B0D'; x.fillRect(0, 0, b, h); x.strokeStyle = 'rgba(232,196,104,.8)'; x.lineWidth = 6; x.strokeRect(14, 14, b - 28, h - 28);
-      x.fillStyle = '#E8C468'; x.beginPath(); x.moveTo(196, 118); x.lineTo(214, 72); x.lineTo(236, 104); x.lineTo(256, 58); x.lineTo(276, 104); x.lineTo(298, 72); x.lineTo(316, 118); x.closePath(); x.fill();   // Krone
+      x.fillStyle = '#0B0B0D'; x.fillRect(0, 0, b, h); x.strokeStyle = hexRgba(WA, 0.8); x.lineWidth = 6; x.strokeRect(14, 14, b - 28, h - 28);
+      x.fillStyle = hexMisch(WA, '#FFFFFF', 0.2); x.beginPath(); x.moveTo(196, 118); x.lineTo(214, 72); x.lineTo(236, 104); x.lineTo(256, 58); x.lineTo(276, 104); x.lineTo(298, 72); x.lineTo(316, 118); x.closePath(); x.fill();   // Krone
       x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#F5F1E7'; x.shadowBlur = 14;
       ['TRAIN', 'EAT', 'SLEEP', 'REPEAT'].forEach((w, i) => { x.font = '800 ' + (i === 3 ? 66 : 70) + 'px ' + SCHRIFT; x.fillText(w, b / 2, 180 + i * 78); });
     });
@@ -1858,8 +1996,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       x.textAlign = 'center'; x.textBaseline = 'middle'; x.save(); x.translate(b / 2, h / 2); x.rotate(-0.07);
       ['DISCIPLINE', 'BUILDS', 'FREEDOM'].forEach((w, i) => {
         x.font = '700 118px ' + SCHRIFT; const y = (i - 1) * 140;
-        for (const blur of [40, 16]) { x.shadowBlur = blur; x.fillStyle = '#FFC978'; x.fillText(w, 0, y); }
-        x.shadowBlur = 4; x.fillStyle = '#FFF4DC'; x.fillText(w, 0, y);
+        for (const blur of [40, 16]) { x.shadowBlur = blur; x.fillStyle = hexMisch(WB, '#FFFFFF', 0.3); x.fillText(w, 0, y); }
+        x.shadowBlur = 4; x.fillStyle = hexMisch(WHELL, '#FFFFFF', 0.6); x.fillText(w, 0, y);
       });
       x.restore();
     });
@@ -1951,7 +2089,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     };
     jacht(BREITE / 2 + 48, zMitte + 6, 0.25, 1); jacht(BREITE / 2 + 95, zMitte - 30, -0.4, 1.3); segler(BREITE / 2 + 34, zMitte - 12, 0.9, 1); segler(BREITE / 2 + 70, zMitte + 26, -0.2, 1.2); segler(-6, zEnde - 70, 0.4, 1.1);
     { // großes DK im Boden (eingelegt, golden), im Gang zwischen den ersten Geräten
-      const t = tex(zeichne(512, 512, (x, b, h) => { x.globalAlpha = 0.55; dkZeichen(x, b / 2, h / 2, 330, '#E9C77A', '#B8893A'); }));
+      const t = tex(zeichne(512, 512, (x, b, h) => { x.globalAlpha = 0.55; dkZeichen(x, b / 2, h / 2, 330, hexMisch(WB, '#FFFFFF', 0.35), WA); }));
       const m = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.6), grund(0xffffff, { map: t, transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(0, 0.012, zStation(0) - FACH / 2); m.renderOrder = 1; raum.add(m);
     }
   }
@@ -1998,14 +2136,30 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       svg.setAttribute('viewBox', '0 0 32 32'); svg.setAttribute('aria-hidden', 'true');
       for (const [k, v] of [['d', 'M4 12v8M8.5 9v14M23.5 9v14M28 12v8M8.5 16h15'], ['stroke', 'currentColor'], ['stroke-width', '2.8'], ['stroke-linecap', 'round'], ['fill', 'none']]) pfad.setAttribute(k, v);
       svg.append(pfad); pk.append(svg); }
-    const pkT = el('span', 'live-plan-titel'); pkT.append(el('b', null, 'Dein Trainingsplan'), el('small', null, titel || 'Training'));
-    pk.append(pkT, el('i', 'live-plan-pfeil', '›'));
+    /* 27.11.2026 (Strand-Gym Stufe 1, Devin: „… kriegst du immer so eine Liste, was du jetzt machen sollst. Aber die nimmt den Bildschirm viel zu viel ein auf dem Handy“):
+       Am Handy (Finger oder schmales Fenster) ist der Plan eine Zeile: Fortschritt und nächste Übung. Antippen klappt die ganze Liste auf, wieder antippen oder loslaufen klappt sie zu.
+       Am PC bleibt die Liste offen wie bisher, in der Kopfzeile steht zusätzlich der Fortschritt. */
+    weltStil();
+    const planKlein = matchMedia('(pointer: coarse), (max-width: 700px)').matches;
+    const pkZahl = el('i', 'live-plan-zahl'), pkB = el('b', null, 'Dein Trainingsplan'), pkS = el('small', null, titel || 'Training');
+    const pkT = el('span', 'live-plan-titel'); pkT.append(pkB, pkS);
+    pk.append(pkZahl, pkT, el('i', 'live-plan-pfeil', '›'));
     const liste = el('ol', 'live-plan-liste');
     const zeilen = stationen.map((s) => { const li = el('li'); li.append(el('i', 'live-haken'), el('span', null, s.u.name), el('em', null, s.u.dosis || '')); liste.append(li); return li; });
     plan.append(pk, liste); wurzel.append(plan);
+    if (planKlein) { plan.classList.add('klein', 'zu'); pk.setAttribute('aria-expanded', 'false'); }
     livePlan = {
+      klein: planKlein,
       umschalten() { plan.classList.toggle('zu'); pk.setAttribute('aria-expanded', String(!plan.classList.contains('zu'))); },
-      auffrischen() { const n = naechste(); zeilen.forEach((li, i) => { li.className = stationen[i].fertig ? 'fertig' : i === n ? 'jetzt' : ''; }); }
+      zuklappen() { if (planKlein && !plan.classList.contains('zu')) this.umschalten(); },
+      auffrischen() {
+        const n = naechste(), fertig = N - offeneZahl();
+        zeilen.forEach((li, i) => { li.className = stationen[i].fertig ? 'fertig' : i === n ? 'jetzt' : ''; });
+        pkZahl.textContent = fertig + '/' + N;
+        if (planKlein) pkB.textContent = n == null ? 'Alles geschafft' : stationen[n].u.name;   // eine Zeile: Fortschritt und nächste Übung
+        else pkS.textContent = (titel || 'Training') + ' · ' + fertig + ' von ' + N;
+        pk.setAttribute('aria-label', 'Dein Trainingsplan: ' + fertig + ' von ' + N + ' geschafft. ' + (n == null ? 'Alles geschafft.' : 'Nächste Übung: ' + stationen[n].u.name + '.') + (planKlein ? ' Antippen zeigt die ganze Liste.' : ''));
+      }
     };
     pk.addEventListener('click', () => livePlan.umschalten());
     livePlan.auffrischen();
@@ -2039,15 +2193,30 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       kx.fillStyle = '#F5F1E7'; kx.font = '700 ' + Math.round(10 * d) + 'px ' + SCHRIFT; kx.textAlign = 'center'; kx.textBaseline = 'middle'; kx.fillText('N', R + si * (R - 11 * d), R - co * (R - 11 * d));
       kx.save(); kx.translate(R, R); kx.rotate(kamW - H + Math.PI); kx.fillStyle = '#FFFFFF'; kx.beginPath(); kx.moveTo(0, -7 * d); kx.lineTo(5 * d, 6 * d); kx.lineTo(0, 3 * d); kx.lineTo(-5 * d, 6 * d); kx.closePath(); kx.fill(); kx.restore();
     };
-    tipp.textContent = STRAFE ? (matchMedia('(pointer: coarse)').matches ? 'Knüppel: laufen · Wischen: umsehen · Gerät antippen: hingehen' : 'WASD: laufen · Maus ziehen: umsehen · Gerät anklicken: hingehen')
+    tipp.textContent = STRAFE ? (matchMedia('(pointer: coarse)').matches ? 'Knüppel: laufen · Wischen: umsehen · ' + (SELBST ? 'Kreis am Gerät: Training' : 'Gerät antippen: hingehen') : 'WASD: laufen · Maus ziehen: umsehen · ' + (SELBST ? 'Kreis am Gerät: Training' : 'Gerät anklicken: hingehen'))
       : matchMedia('(pointer: coarse)').matches ? 'Boden antippen: hingehen · Gerät antippen: trainieren' : 'Boden anklicken: hingehen · Gerät anklicken: trainieren · WASD geht auch';
   }
 
   /* ---------- Live-Gym: Qualität (Ziel 60 Bilder pro Sekunde, so scharf wie das Gerät schafft). Start am PC Stufe 4, am Handy Stufe 3; fällt der Schnitt über 1,5 s unter etwa 53 Bilder,
      geht es eine Stufe runter (erst Schärfe, dann Bodenspiegel, zuletzt der Schein). Hoch geht es nicht von selbst: Bei 60 Hz sieht man Reserven nicht an den Bildabständen. ---------- */
   const leuchten = LOOKL ? leuchtenBauen(THREE) : null, DPR = window.devicePixelRatio || 1, FEIN = matchMedia('(pointer: fine)').matches;
-  const QS = [{ pr: 1, boden: 0, schein: false }, { pr: 1.25, boden: 0, schein: true }, { pr: 1.5, boden: 0.3, schein: true }, { pr: 2, boden: 0.4, schein: true }, { pr: 2.5, boden: 0.5, schein: true }, { pr: 3, boden: 0.5, schein: true }];
-  let qStufe = FEIN ? 4 : 3, qSumme = 0, qN = 0, qFest = false, qSchlecht = 0, qAb = 0;
+  // 27.11. (Strand-Gym Stufe 1): Am Handy geht zuerst der Bodenspiegel (die Halle wird dafür ein zweites Mal gezeichnet, das ist dort das Teuerste), erst danach die Schärfe. Am PC bleibt die Leiter wie bisher.
+  const QS = FEIN ? [{ pr: 1, boden: 0, schein: false }, { pr: 1.25, boden: 0, schein: true }, { pr: 1.5, boden: 0.3, schein: true }, { pr: 2, boden: 0.4, schein: true }, { pr: 2.5, boden: 0.5, schein: true }, { pr: 3, boden: 0.5, schein: true }]
+    : [{ pr: 1, boden: 0, schein: false }, { pr: 1.5, boden: 0, schein: false }, { pr: 2, boden: 0, schein: true }, { pr: 2, boden: 0.3, schein: true }, { pr: 2.5, boden: 0.4, schein: true }, { pr: 3, boden: 0.5, schein: true }];
+  /* Zwei Grafik-Stufen (27.11.2026, Strand-Gym Stufe 1, Devin: „Und es soll ab iPhone XR laufen … Es soll noch immer flüssig laufen“): „handy“ (ein iPhone XR soll flüssig laufen) und
+     „pc“ (schöner). Die Stufe legt das Budget und den Start fest, darin stellt die Start-Messung die Schärfe ein (QS). Budget je Bild, gemessen mit werkzeug/messe-grafik.js (Zahlen im Bericht):
+     handy höchstens 800 Zeichenaufrufe und 700 000 Dreiecke (gemessen 28.11.: bis 770 und 650 000, wenn Bodenspiegel und Wandspiegel zugleich im Bild sind), Texturen bis 1024 px, Schärfe bis 3 (Start 2);
+     pc höchstens 1 200 Zeichenaufrufe und 1 200 000 Dreiecke (gemessen bis 1 113 und 1 004 000), Texturen bis 2048 px (Start 2,5). Neue Teile der Welt müssen in diesem Rahmen bleiben.
+     Ein Gerät, das selbst auf der kleinsten Einstellung (QS 0: Schärfe 1, ohne Bodenspiegel, ohne Schein) länger als SCHWACH_MS je Bild braucht, ist deutlich schwächer als ein iPhone XR:
+     Es bekommt das Gym nicht, sondern „Nur mein Plan“ (beiSchwach, die App merkt es sich unter dk_gym_geraet). */
+  const GRAFIK = FEIN ? 'pc' : 'handy', BUDGET = GRAFIK === 'pc' ? { aufrufe: 1200, dreiecke: 1200000, textur: 2048 } : { aufrufe: 800, dreiecke: 700000, textur: 1024 }, SCHWACH_MS = 40;
+  const geraetMerken = (was) => { if (!test && !pr) geraetSchreib(Object.assign({ t: Date.now() }, was)); };
+  // Rechner ganz ohne Grafikchip (Software-Zeichner: der unsichtbare Test-Browser, selten ein PC mit gesperrtem Treiber) werden nicht beurteilt: Handys zeichnen nie so, und die Tests der App
+  // laufen genau dort. Nur für die Prüfung des Wegs „zu schwach“ zählt es doch: wenn im Eintrag dk_gym_geraet vorher pruef steht.
+  const pruefSchwach = !!geraetLies().pruef;
+  const ohneChip = () => { try { const gl = a.renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return !!e && /swiftshader|llvmpipe|software|basic render/i.test(String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL))); } catch (x) { return false; } };
+  let qStufe = FEIN ? 4 : 3, qSumme = 0, qN = 0, qFest = false, qSchlecht = 0, qAb = 0, qUrteil = null;   // qUrteil: 'ok' oder 'schwach', sobald die Start-Messung fertig ist
+  const bildMess = { an: false, t0: 0, werte: [] };   // nur für die Prüfseite (27.11.): Rechenzeit je Bild messen
   const qStart = { an: LOOKL, bild: 0, t0: 0, werte: [], runden: 0, richt: 0, px: new Uint8Array(4) };   // Grafik (20.11.): Start-Messung, siehe qStartBild
   const qAnwenden = () => {
     const q = QS[qStufe]; a.renderer.setPixelRatio(Math.max(0.75, Math.min(q.pr, FEIN ? Math.max(DPR, 1.25) : DPR))); a.groesse();
@@ -2070,11 +2239,19 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     qStart.bild++; if (qStart.bild < 40) return;
     const gl = a.renderer.getContext(); try { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, qStart.px); } catch (e) { qStart.an = false; return; }
     qStart.werte.push(performance.now() - qStart.t0); if (qStart.werte.length < 6) return;
-    const w = qStart.werte.slice().sort((x, y) => x - y), m = (w[2] + w[3]) / 2; qStart.werte = []; qStart.runden++; qStart.letzt = m;
-    let neu = qStufe; if (m < 8 && qStart.richt >= 0 && qStufe < QS.length - 1) { neu++; qStart.richt = 1; } else if (m > 24 && qStufe > 0) { neu--; qStart.richt = -1; }
+    const w = qStart.werte.slice().sort((x, y) => x - y); let m = (w[2] + w[3]) / 2; qStart.werte = []; qStart.runden++; qStart.letzt = m;
+    // 28.11. (Strand-Gym Stufe 1): Hat die letzte Stufe nach unten fast nichts gebracht (weniger als 12 % schneller) und dabei nur Schärfe oder Schein gekostet, bremst nicht der Grafikchip,
+    // sondern das Rechnen. Dann zurück auf die schärfere Stufe und dort bleiben: unscharf und trotzdem langsam wäre das Schlechteste (gemessen mit 4-fach gedrosseltem Rechner).
+    let neu = qStufe; const vor = qStart.vor;
+    if (vor && qStart.richt < 0 && m > vor.ms * 0.88 && QS[qStufe].boden === QS[vor.stufe].boden) { qStufe = neu = vor.stufe; qAnwenden(); m = qStart.letzt = vor.ms; qStart.keinGewinn = true; }
+    else if (m < 8 && qStart.richt >= 0 && qStufe < QS.length - 1) { neu++; qStart.richt = 1; } else if (m > (FEIN ? 24 : 18) && qStufe > 0) { qStart.vor = { stufe: qStufe, ms: m }; neu--; qStart.richt = -1; }   // 27.11.: am Handy schon ab 18 ms eine Stufe tiefer (flüssig geht vor: gemessen mit 4-fach gedrosseltem Rechner 22 ms = nur rund 40 Bilder pro Sekunde)
     if (neu !== qStufe && qStart.runden < 5) { qStufe = neu; qAnwenden(); qStart.bild = 30; return; }   // nach dem Wechsel 10 Bilder Pause, dann neu messen
     if (neu !== qStufe) { qStufe = neu; qAnwenden(); }
     qStart.an = false; qAb = performance.now() + 2000;
+    // 27.11. (Strand-Gym Stufe 1): das Urteil über das Gerät. Zu langsam selbst auf der kleinsten Einstellung = kein Gym, sondern „Nur mein Plan“
+    qUrteil = LIVE && (qStufe === 0 || qStart.keinGewinn) && m > SCHWACH_MS && (!ohneChip() || pruefSchwach) ? 'schwach' : 'ok';
+    if (qUrteil === 'schwach') { geraetMerken({ schwach: 1, ms: Math.round(m) }); if (beiSchwach && !test) setTimeout(() => { if (offen) { schliessen(false, true); beiSchwach(Math.round(m)); } }, 0); }
+    else geraetMerken({ ok: 1, stufe: qStufe, ms: Math.round(m) });
   };
   // 17.11. (Devin: „flüssig auf schwächeren Smartphones“): Steht die Figur am Handy still und nichts fährt, wird nur jedes zweite Bild gerechnet (30 statt 60 pro Sekunde).
   // Atmen, Meer und Ringe laufen weiter, nur in halber Bildrate. Sobald etwas passiert (Knüppel, Laufen, Kamera, Station), sofort wieder volle Rate. Am PC nie.
@@ -2086,11 +2263,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     return sparBild;
   };
   { const malen = a.renderer.render.bind(a.renderer); a.renderer.render = (s, k) => { if (!sparBild) malen(s, k); }; }
-  if (LOOKL) { qAnwenden(); a.beiBild = () => { if (!sparBild) leuchten.zeichne(a.renderer); if (modus === 'station' && erkAn) erkHoehe(); if (erkBild) erkBild(); if (!sparBild && qStart.an) qStartBild(); }; }
+  if (LOOKL) { qAnwenden(); a.beiBild = () => { if (!sparBild) leuchten.zeichne(a.renderer); if (modus === 'station' && erkAn) erkHoehe(); if (erkBild) erkBild(); if (!sparBild && qStart.an) qStartBild(); if (bildMess.an && !sparBild) { try { const gl = a.renderer.getContext(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, qStart.px); bildMess.werte.push(performance.now() - bildMess.t0); } catch (e) { bildMess.an = false; } } }; }
 
   a.kameraFolgt = (dtRoh) => {
     zaehler.bilder++; if (sparen(dtRoh)) return; zaehler.gerechnet++;
+    if (test) { const i = a.renderer.info; i.autoReset = false; bildInfo = { aufrufe: i.render.calls, dreiecke: i.render.triangles }; i.reset(); }   // Prüfseite: Zeichenaufrufe und Dreiecke des ganzen letzten Bildes (mit Spiegeln und Schein)
     if (qStart.an) qStart.t0 = performance.now();   // Grafik (20.11.): Start-Messung
+    if (bildMess.an) bildMess.t0 = performance.now();   // Prüfseite: Rechenzeit je Bild (bis der Grafikchip fertig ist)
     const dt = dtRoh + spar; spar = 0;
     zeit += dt;
     if (liveKarte) liveKarte(dt);
@@ -2128,7 +2307,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             const rv = st > 0.01 ? (dx * Math.sin(H) + dz * Math.cos(H)) / st : 1, rs2 = Math.max(0, 1 - rv * rv);
             const fV = !STRAFE ? 1 : rv >= 0 ? rv * rv + rs2 * 0.5 : rv * rv * 0.6 + rs2 * 0.5;
             // Gang 3 (20.11.): immer Sprint, schon ab gut einem Drittel Knüppel-Ausschlag volles Tempo (Devin: „lieber den Sprinten die ganze Zeit anhaben“, die Kunden sollen nicht lange am Handy sitzen)
-            const vZiel = st > 0.01 ? Math.min(1, st / 0.35) * JOGG * (STRAFE ? 1 : fV) : 0, zx = st > 0.01 ? dx / st * vZiel : 0, zz = st > 0.01 ? dz / st * vZiel : 0;
+            // 27.11. (Strand-Gym Stufe 1): ruhiges Tempo. Knüppel wenig gedrückt = schlendern (1 m/s), ganz gedrückt = zügig gehen (2 m/s); Tasten gehen immer zügig
+            const vZiel = st > 0.01 ? (0.5 + 0.5 * klemme((st - 0.3) / 0.55, 0, 1)) * JOGG * (STRAFE ? 1 : fV) : 0, zx = st > 0.01 ? dx / st * vZiel : 0, zz = st > 0.01 ? dz / st * vZiel : 0;
             gegenEingabe = st > 0.01 && gehV > 0.05 && (dx / st * gehDx + dz / st * gehDz) < -0.3;
             const kv = Math.min(1, dt * (vZiel > gehV ? 9 : 12)); gehVx += (zx - gehVx) * kv; gehVz += (zz - gehVz) * kv; gehV = Math.hypot(gehVx, gehVz);
             if (gehV < 0.02 && !vZiel) gehV = gehVx = gehVz = 0;
@@ -2153,12 +2333,13 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             else { const ex = F.x - h.x, ez = F.z - h.z, l = Math.hypot(ex, ez), r = h.r + 0.35; if (l < r && l > 0.001) { F.x = h.x + ex / l * r; F.z = h.z + ez / l * r; } }
           }
           for (const s of stationen) { const ex = F.x - s.pos.x, ez = F.z - s.pos.z, l = Math.hypot(ex, ez); if (l < 1.3 && l > 0.001) { F.x = s.pos.x + ex / l * 1.3; F.z = s.pos.z + ez / l * 1.3; } }
-          F.x = klemme(F.x, -BREITE / 2 + FIGUR_RAND, BREITE / 2 - FIGUR_RAND); F.z = klemme(F.z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND);
+          F.x = Math.max(F.x, -BREITE / 2 + FIGUR_RAND); F.z = klemme(F.z, zEnde + FIGUR_RAND, zAnfang - FIGUR_RAND);
+          glasHalten(dt);   // rechts ist die Glasfront: nah heran, aber nichts vom Körper geht hindurch (27.11.)
         }
       }
       const ausStation = warAktiv; warAktiv = aktiv != null; const selbstBewegtJetzt = selbstBewegt; selbstBewegt = false;   // zurück von Station, Waage oder Spiegel: wie versetzt (die Merker vom Hinlaufen gelten nicht mehr)
       if (STRAFE && modus === 'gehen' && !gang && aktiv == null) {   // wie im Spiel: auch im Stand dreht die Figur mit dem Blick (Pfeiltasten links und rechts drehen ebenfalls); die Füße tippeln dabei mit
-        if (tastenDreh) { kamW -= tastenDreh * 2.2 * dt; kamHand = performance.now(); }
+        if (tastenDreh) { kamW -= tastenDreh * 2.2 * dt; kamHand = performance.now(); kamDreh = null; }
         if (kamWVor == null) kamWVor = kamW;
         if (!selbstBewegtJetzt) zielH += winkelDiff(kamWVor, kamW);   // Gang 3 (20.11.): im Stand dreht die Figur so weit mit, wie die Kamera dreht (das Mitschrauben der Beine bleibt)
         kamWVor = kamW;
@@ -2185,6 +2366,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
             schrittL = 0; gehV = gehVx = gehVz = 0; haltSperre = 0.25; }
           // Schrittweite je Richtung (17.11. nachts, Steuerung wie im Spiel): vor wie bisher, zurück 80 %, Seitschritte kurz (rund 13 cm, die Füße gehen auseinander und wieder zusammen)
           else schrittL += ((vGlatt > 0.08 && !(haltSperre > 0) && !(!STRAFE && !warLauf && Math.abs(winkelDiff(H, zielH)) > 0.6) && !(zugJetzt < 0.5 && vGlatt < 0.3) ? (STRAFE ? gangV * gangV * SCHRITT * klemme(vGlatt / GEH, 0.55, 2.0) * (gangV < 0 ? 0.8 : 1) + gangS2 * 0.13 * klemme(vGlatt / 0.75, 0.6, 1.25) : SCHRITT * klemme(vGlatt / GEH, 0.55, 2.0)) * Math.min(klemme(1 - drehT / 5, 0.45, 1), klemme(1 - Math.abs(winkelDiff(H, zielH)) / 1.6, 0.4, 1)) : 0) - schrittL) * Math.min(1, dt * 9);   // Schritt wächst mit dem Tempo (Takt aus dem Weg, die Füße rutschen nicht): seit 19.11.2026 (Devin: „schneller, sauber, flüssig“) Gehen 2,2 m/s mit rund 125, Rennen 4 m/s mit rund 165 Schritten pro Minute
+          // Glas (27.11.): geht es auf eine Scheibe zu, werden die Schritte so kurz, dass die Fußspitze davor bleibt (mit Fleisch und Reserve wie in der Sicherung rund 42 cm vor dem Fußpunkt, ein Fuß steht bis 20 cm neben der Mitte; so greift die Sicherung kaum ein und nichts ruckt)
+          for (const s of scheiben) { const gn = gangX * s.nx + gangZ * s.nz; if (gn > 0.05 && anScheibe(s)) schrittL = Math.min(schrittL, Math.max(0, (s.d - (s.nx * F.x + s.nz * F.z) - 0.2 * Math.sqrt(Math.max(0, 1 - gn * gn))) / gn - 0.42)); }
           if (schrittL > 0.012 && weg < 1 && !versetzt) ph += Math.PI * weg / Math.max(0.25, 2 * schrittL);   // Takt aus dem Weg: die Füße schaffen genau den Weg
         } else {
           H += winkelDiff(H, zielH) * Math.min(1, dt * 11);
@@ -2333,6 +2516,11 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           if (modus === 'gehen') for (const s of stationen) { const d = Math.hypot(F.x - s.pos.x, F.z - s.pos.z); if (d < bd) { bd = d; b = s.i; } }
           if (b !== nahe) { nahe = b; stand(); }
         }
+        if (LIVE) {   // 27.11. (Strand-Gym Stufe 1): alles geschafft und vor der Zieltür: Der große Knopf heißt „Rausgehen“, und wer durch die Tür läuft, geht hinaus
+          const nz = modus === 'gehen' && naechste() == null && Math.abs(F.x) < TUER_B / 2 + 1.5 && F.z < zEnde + 4.2;
+          if (nz !== naheZiel) { naheZiel = nz; stand(); }
+          if (naheZiel && SELBST && !gang && Math.abs(F.x) < TUER_B / 2 - 0.3 && F.z < zEnde + FIGUR_RAND + 0.25) rausgehen();
+        }
         if ((LIVE || pr) && modus === 'gehen' && !gang && !tuerUnterwegs) {   // 16.11. (Devin: „wenn wir in den Kreis von den Maschinen laufen, dass wir automatisch zu Maschinen gehen“): kurz im Kreis, dann geht die Figur ans Gerät
           let im = null; for (const s of stationen) if ((pr || !s.fertig) && Math.hypot(F.x - s.pos.x, F.z - s.pos.z) < STATION_R) { im = s.i; break; }
           if (im == null) { kreisZeit = 0; if (kreisSperre != null && Math.hypot(F.x - stationen[kreisSperre].pos.x, F.z - stationen[kreisSperre].pos.z) > STATION_R + 0.6) kreisSperre = null; }   // gelöst erst 0,6 m außerhalb (kleines Wackeln am Rand startet nicht neu)
@@ -2351,7 +2539,8 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
           if (d < 1.15) zurPrTuer();
           if (na !== naheTuer) { naheTuer = na; stand(); }
         }
-        a.figur.stelle(mitFaust(gelenke(pose), pose)); if (a.figur.glut) a.figur.glut(0);
+        const gK = mitFaust(gelenke(pose), pose); glasNetz(gK);   // Glas (27.11.): letzte Sicherung, bevor gezeichnet wird
+        a.figur.stelle(gK); if (a.figur.glut) a.figur.glut(0);
         if (hupf > 0) { hupf = Math.max(0, hupf - dt / 0.62); const u = 1 - hupf; a.figur.gruppe.position.y = Math.sin(u * Math.PI) * 0.62; } else a.figur.gruppe.position.y = 0;
         if (namensTafel) namensTafel.position.y = 2.2 + a.figur.gruppe.position.y;
         legeHalle(F, 0);
@@ -2386,6 +2575,10 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
     } else if (modus !== 'draussen' || gang) {
       if (modus === 'gehen' || modus === 'lauf') {   // Kamera-Joystick: rechts und links dreht die Kamera, oben und unten hebt und senkt den Blick (ohne Finger geht der Blick weich zurück)
         if (kamStickX || kamStickY) { kamW -= kamStickX * 1.9 * dt; kamNick = klemme(kamNick - kamStickY * 1.6 * dt, LIVE ? -0.6 : -0.3, 1); } else if (kamNick && !LIVE) kamNick -= kamNick * (1 - Math.exp(-dt * 1.6));   // Live-Gym: der Blick bleibt, wie man ihn gestellt hat
+        if (kamDreh != null) {   // Weg zeigen (27.11.): die Kamera dreht weich zum Ziel, der Blick geht wieder geradeaus
+          const d = winkelDiff(kamW, kamDreh), k = STILL ? 1 : 1 - Math.exp(-dt * 5); kamW += d * k; if (kamNickZiel != null) kamNick += (kamNickZiel - kamNick) * k;
+          if (Math.abs(d) < 0.01) { kamDreh = null; kamNickZiel = null; }
+        }
       }
       const z = verfolgen(), k = 1 - Math.exp(-dt * 5.5);
       K.pos.lerp(z.pos, k); K.blick.lerp(z.blick, k); K.fov += (z.fov - K.fov) * k;
@@ -2459,6 +2652,7 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   setTimeout(() => laden.remove(), 500);
   if (LIVE) {
     const hilfe = el('button', 'raum-hilfe', '?'); hilfe.type = 'button'; hilfe.setAttribute('aria-label', 'So geht’s'); wurzel.append(hilfe);
+    const INTRO_NR = !STRAFE ? '1' : SELBST ? '3' : '2';   // 27.11.: Die neue Einführung (selbst laufen, Knopf zeigt den Weg) sehen alle einmal
     const einfuehrung = () => {
       if (wurzel.querySelector('.raum-intro')) return;
       const touch = matchMedia('(pointer: coarse)').matches, box = el('div', 'raum-intro'), k = el('div', 'raum-intro-karte'), los = el('button', 'raum-intro-los', 'Los geht’s');
@@ -2467,20 +2661,22 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
       if (STRAFE) k.append(el('h2', null, 'So geht dein Gym'),   // 17.11. nachts: Steuerung wie im Spiel
         touch ? zeile('🕹️', 'Knüppel links: laufen', 'Nach vorn, zur Seite und zurück.') : zeile('⌨️', 'W A S D: laufen', 'W vor, S zurück, A links, D rechts.'),
         touch ? zeile('👉', 'Rechts wischen: umsehen', 'Deine Figur dreht sich mit. Zwei Finger: zoomen.') : zeile('🖱️', 'Maus gedrückt ziehen: umsehen', 'Deine Figur dreht sich mit. Mausrad: zoomen.'),
-        zeile('🏋️', touch ? 'Gerät antippen' : 'Gerät anklicken', 'Die Figur geht hin. Am Gerät kannst du rundum drehen und „Coach DK erklärt“ antippen.'),
-        zeile('⏩', 'Direkt zur nächsten Übung', 'Der große Knopf unten bringt dich sofort hin, ohne Laufen.'), los);
+        SELBST ? zeile('🏋️', 'Lauf in den Kreis am Gerät', 'Dann geht deine Übung los. Am Gerät kannst du rundum drehen und „Coach DK erklärt“ antippen.')
+          : zeile('🏋️', touch ? 'Gerät antippen' : 'Gerät anklicken', 'Die Figur geht hin. Am Gerät kannst du rundum drehen und „Coach DK erklärt“ antippen.'),
+        SELBST ? zeile('🧭', 'Großer Knopf unten', 'Zeigt dir den Weg zur nächsten Übung. Die Striche am Boden führen dich hin.')
+          : zeile('⏩', 'Direkt zur nächsten Übung', 'Der große Knopf unten bringt dich sofort hin, ohne Laufen.'), los);
       else k.append(el('h2', null, 'So geht dein Gym'),
         zeile('👆', touch ? 'Boden antippen' : 'Boden anklicken', 'Deine Figur geht dorthin.'),
         zeile('🏋️', touch ? 'Gerät antippen' : 'Gerät anklicken', 'Die Figur geht hin, dann tippst du auf „Übung starten“.'),
         zeile('⏩', 'Direkt zur nächsten Übung', 'Der große Knopf unten bringt dich sofort hin, ohne Laufen.'),
         touch ? zeile('🕹️', 'Knüppel unten links', 'Geht auch: selbst laufen.') : zeile('⌨️', 'WASD', 'Geht auch: selbst laufen.'), los);
       box.append(k); wurzel.append(box);
-      const zu = () => { box.remove(); try { localStorage.setItem('dk_gym_intro', STRAFE ? '2' : '1'); } catch (e) {} try { hilfe.focus({ preventScroll: true }); } catch (e) {} };
+      const zu = () => { box.remove(); try { localStorage.setItem('dk_gym_intro', INTRO_NR); } catch (e) {} try { hilfe.focus({ preventScroll: true }); } catch (e) {} };
       los.addEventListener('click', zu); box.addEventListener('keydown', (e) => { if (e.key === 'Escape') zu(); e.stopPropagation(); });
       setTimeout(() => { try { los.focus({ preventScroll: true }); } catch (e) {} }, 60);
     };
     hilfe.addEventListener('click', einfuehrung);
-    let gesehen = false; try { gesehen = localStorage.getItem('dk_gym_intro') === (STRAFE ? '2' : '1'); } catch (e) {}
+    let gesehen = false; try { gesehen = localStorage.getItem('dk_gym_intro') === INTRO_NR; } catch (e) {}
     if (!gesehen && !ausPr) einfuehrung();
   }
   if (ausPr) pop('Zurück im', 'Gym');
@@ -2519,7 +2715,23 @@ export async function raumOeffnen({ lade3d, titel, uebungen, beiStation, beiStat
   const zugang = test ? { test: {   // nur für Prüfseiten (test: true): Figur und Kamera setzen, Stufe und Bildzeiten lesen
     setze(x, z, h, w, nick, zoom) { if (aktiv == null && modus === 'gehen') { F.set(x, 0, z); H = zielH = h; kamW = w; kamNick = nick || 0; if (zoom) kamZ = zoom; const k = verfolgen(); K.pos.copy(k.pos); K.blick.copy(k.blick); K.fov = k.fov; } },
     zeit(n) { znZiel = n; zn = n; zeitSetzen(n); zeitZeichen(); }, stufe: (n) => { if (n != null) { qStufe = n; qFest = true; qAnwenden(); } return { stufe: qStufe, pr: a.renderer.getPixelRatio(), start: { an: qStart.an, runden: qStart.runden, ms: qStart.letzt } }; },
-    modus: () => modus, nahe: () => nahe, stationen: () => stationen.map((x) => ({ x: x.pos.x, z: x.pos.z })), szene, renderer: a.renderer, F: () => ({ x: F.x, z: F.z, h: H }),
+    modus: () => modus, nahe: () => nahe, stationen: () => stationen.map((x) => ({ x: x.pos.x, z: x.pos.z, sx: x.start.x, sz: x.start.z, fertig: !!x.fertig })), szene, renderer: a.renderer, F: () => ({ x: F.x, z: F.z, h: H }),
+    // 27.11. (Strand-Gym Stufe 1): Grafik-Stufe mit Budget und Messwerten je Bild, Glas (kleinster Abstand, größtes Eindringen), Körper nach Gelenkpunkten und nach dem echten Netz, Maße der Halle
+    grafik: () => ({ stufe: GRAFIK, budget: BUDGET, qs: qStufe, pr: a.renderer.getPixelRatio(), urteil: qUrteil, ms: qStart.letzt, bild: bildInfo, speicher: { geometrien: a.renderer.info.memory.geometries, texturen: a.renderer.info.memory.textures } }),
+    glas(neu) { const m = glasMass; if (neu) glasMass = { nah: 1e9, drin: -1e9 }; return { nah: m.nah, drin: m.drin, scheiben: scheiben.map((s) => ({ name: s.name, nx: s.nx, nz: s.nz, d: s.d })) }; },
+    koerper(nx, nz) {
+      let netz = -1e9; const v = new THREE.Vector3(), kiste = new THREE.Box3(); a.figur.gruppe.updateMatrixWorld(true);
+      a.figur.gruppe.traverse((o) => {
+        if (!o.isMesh || !o.visible || !o.geometry) return;
+        const pp = o.geometry.attributes.position;
+        if (o.isSkinnedMesh) { for (let i = 0; i < pp.count; i++) { v.fromBufferAttribute(pp, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld); const e = v.x * nx + v.z * nz; if (e > netz) netz = e; } }
+        else { for (let i = 0; i < pp.count; i++) { v.fromBufferAttribute(pp, i).applyMatrix4(o.matrixWorld); const e = v.x * nx + v.z * nz; if (e > netz) netz = e; } }
+      });
+      return { netz, gelenke: letzteG ? koerperWeite(letzteG, nx, nz, true) : null, ober: letzteG ? koerperWeite(letzteG, nx, nz, false) : null };
+    },
+    dreh(w) { kamW = w; kamDreh = null; }, weiter: () => weiter.click(), knopfText: () => weiter.textContent,
+    bildzeit(an) { if (an) { bildMess.werte = []; bildMess.an = true; return null; } bildMess.an = false; const w = bildMess.werte.slice().sort((x, y) => x - y); return w.length ? { n: w.length, mittel: w.reduce((s, x) => s + x, 0) / w.length, median: w[w.length >> 1], p90: w[Math.floor(w.length * 0.9)], max: w[w.length - 1] } : null; },
+    halle: () => ({ breite: BREITE, fach: FACH, zAnfang, zEnde, laenge: LAENGE, tempo: JOGG, figurRand: FIGUR_RAND }), plan: () => (livePlan ? { klein: livePlan.klein } : null), naheZiel: () => naheZiel, kamera: () => ({ x: K.pos.x, y: K.pos.y, z: K.pos.z }),
     zaehler: () => ({ ...zaehler }),
     zustand: () => ({ sL: +schrittL.toFixed(3), vG: +vGlatt.toFixed(2), gv: +gehV.toFixed(2), fa: +fussAusT.toFixed(2), ss: standSchritt ? standSchritt.sd + standSchritt.t.toFixed(2) : '', wl: warLauf, st: +standT.toFixed(2), kw: +kamW.toFixed(4), ow: orbit ? +orbit.w.toFixed(4) : null, or: orbit ? +orbit.r.toFixed(3) : null, erk: !erkKnopf.hidden, erkLauf: !!erkLauf, tipp: letzterTipp }),
     tippe(x, z) { if (selbstGehen()) lauf([V(x, 0, z)], null); }, zur: (i) => zurStation(i), direkt: (i) => direktZur(i), zurueck: () => zurueckZurKarte(false), knueppel(x, y) { if (x || y) { if (selbstGehen()) gang = null; } gehX = x; gehY = y; } } } : {};
