@@ -307,6 +307,19 @@ function mische(A, B, u, hand = u, vorne = 0) {
     const fa = handLage(A), fb = handLage(B), w = seiten((s) => p.kelchW[s]);
     p.kelch = seiten((s) => { const q = rahmen(fa[s]).slerp(rahmen(fb[s]), hand); return { finger: V(1, 0, 0).applyQuaternion(q), ruecken: V(0, 1, 0).applyQuaternion(q), innen: (B.kelch || A.kelch)[s].innen, w: w[s] }; });
   }
+  // 28.11.2026 (Stufe 2, Devin: Hände schnappen nicht): Wechselt eine Hand zwischen flach und greifend/locker, galt bis zur Mitte die eine Lage und ab der Mitte die andere. gelenke() legt das Handgelenk
+  // in beiden Lagen woanders hin (flach: über der Fläche, sonst hinter der Faustmitte): In einem Bild sprangen Hand und Ellbogen 9 bis 16 cm (rund 50 Übungen). Jetzt wandert das Handgelenk im mittleren
+  // Teil des Wegs (25–75 %) stetig von der einen Lage zur anderen; in der Mitte liegt es genau dazwischen, erst dort klappen die Finger um
+  if (!(la && lb) && hand > 0.25 && hand < 0.75) {
+    let gD = null;
+    for (const s of ['l', 'r']) {
+      if (!!A.flach[s] === !!B.flach[s] && !!A.greift[s] === !!B.greift[s]) continue;
+      const vorMitte = hand < 0.5, andere = Object.assign({}, p, { flach: Object.assign({}, p.flach, { [s]: vorMitte ? B.flach[s] : A.flach[s] }), greift: Object.assign({}, p.greift, { [s]: vorMitte ? B.greift[s] : A.greift[s] }) });
+      gD = gD || gelenke(p);
+      const gO = gelenke(andere), w = 0.5 * glatt(vorMitte ? (hand - 0.25) / 0.25 : (0.75 - hand) / 0.25);
+      p.hand = Object.assign({}, p.hand, { [s]: p.hand[s].clone().addScaledVector(gO.handgelenk[s].clone().sub(gD.handgelenk[s]), w) });
+    }
+  }
   return p;
 }
 // Ganze Pose um die Senkrechte durch m drehen (Eindrehen auf dem Sitz)
@@ -332,7 +345,9 @@ export function stehen(pos, winkel, o = {}) {
   const R = rumpfRahmen(p.rumpf), brust = becken.clone().add(R.oben.clone().multiplyScalar(MASS.rumpf));
   const schulter = (sg) => brust.clone().add(R.links.clone().multiplyScalar(sg * MASS.schulterBreite)).sub(R.oben.clone().multiplyScalar(0.03));
   p.hand = o.hand || seiten((s, sg) => schulter(sg).add(V(0, -ARM() * 0.95, 0)).add(V(sg * 0.05, 0, -sg * 0.14 * s1 * geht).applyQuaternion(q)));
-  p.fuss = seiten((s, sg) => d(sg * 0.11, FY + 0.07 * geht * Math.max(0, sg * c1), sg * schritt * s1));
+  // 28.11.2026 (Stufe 2): Der Fuß hob mit max(0, cos) ab: Er verließ den Boden und setzte auf mit vollem Tempo (0,6 m/s senkrecht in einem Bild, am Knie 1,1 bis 1,3 m/s Ruck bei jedem Schritt, alle 404 Übungen).
+  // Mit dem Quadrat hebt er weich ab und setzt weich auf, die Höhe in der Mitte des Schritts bleibt 7 cm
+  p.fuss = seiten((s, sg) => d(sg * 0.11, FY + 0.07 * geht * Math.max(0, sg * c1) ** 2, sg * schritt * s1));
   p.ellbogenPol = seiten((s, sg) => V(sg * 0.3, 0, -1).applyQuaternion(q));
   p.kniePol = seiten((s, sg) => V(sg * 0.1, 0, 1).applyQuaternion(q));
   p.fussRicht = seiten((s, sg) => V(sg * 0.15, 0, 1).applyQuaternion(q));
@@ -1632,7 +1647,9 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // Zeitleiste
   const teile = [], b = bahn(plan.weg.punkte, winkel), meter = b.laenge;
   const tGehen = Math.max(0.6, meter * DAUER.gehen);
-  teile.push({ d: tGehen, bild: (u) => { const w = glatt(u) * 0.7 + u * 0.3, s = w * meter; return stehen(b.punkt(s), b.richtung(s), { phase: (s / 0.44) * Math.PI, schritt: 0.2 * Math.min(1, u * 5, (1 - u) * 5, alt ? 1 : (meter - s) / 0.3) }); } });   // 21.11.2026: zuletzt kürzere Schritte nach dem Rest des Wegs, wie geprüft (gehend); bis dahin griff der letzte lange Schritt vor dem Sitz 5 cm in die Kante
+  // 28.11.2026 (Stufe 2, Devin: „sauberes Anlaufen und Anhalten“): Der Weg lief zu 30 % gleichmäßig, die Figur kam also mit 0,27 m/s am Platz an und stand im nächsten Bild; die Schritte wurden bis dahin
+  // geradlinig kürzer und hörten genauso hart auf (Ruck am Knie 1,1 m/s bei allen 404 Übungen). Jetzt läuft der Weg weich an und aus (Tempo am Anfang und Ende null) und die Schrittlänge mit ihm
+  teile.push({ d: tGehen, bild: (u) => { const w = glatt(u), s = w * meter; return stehen(b.punkt(s), b.richtung(s), { phase: (s / 0.44) * Math.PI, schritt: 0.2 * glatt(u * 5) * glatt((1 - u) * 5) * (alt ? 1 : glatt((meter - s) / 0.45)) }); } });   // Produkt weicher Stufen statt min(): Mit min() begann das Kürzerwerden 30 cm vor dem Ziel mit einem Knick (Fuß 0,66 m/s in einem Bild); jetzt ab 45 cm weich (bei 30 cm 74 %, bei 15 cm 26 % statt 50 %: eher kürzer, also weiter von Sitzkanten weg)   // 21.11.2026: zuletzt kürzere Schritte nach dem Rest des Wegs, wie geprüft (gehend); bis dahin griff der letzte lange Schritt vor dem Sitz 5 cm in die Kante
   const richtung = b.richtung(meter), dw = kurz(winkel - richtung), ankunft = auf ? auf.A : stand;
   // 21.11.2026: Umdrehen am Platz, ohne durch Sitz, Bank oder Stange zu fegen (Befund 21.11.: beim Drehen um das Becken kreisten Füße und
   // Schienbeine 5–7 cm durch die Vorderkante). Ist dafür kein Raum, dreht die Figur andersherum oder in einem kleinen Bogen vom Gerät weg,
