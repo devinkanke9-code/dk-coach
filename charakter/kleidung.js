@@ -151,7 +151,7 @@ export function vorbereiten(figur) {
     t = ersetze(t, 'float dkTop = dkTanktop(vRuhe) * (1.0 - dkBund);', 'float dkTop = max(dkTanktop(vRuhe) * (1.0 - uDkOhne), dkOberteil(vRuhe)) * (1.0 - dkBund);');
     t = ersetze(t, 'float dkSock = dkSocke(vRuhe);', 'float dkSock = dkSocke(vRuhe) * (1.0 - dkLangBein(vRuhe));');
     t = ersetze(t, 'diffuseColor.rgb = mix(diffuseColor.rgb, uOberteil, dkTop);', 'diffuseColor.rgb = mix(diffuseColor.rgb, uOberteil, dkTop);\n' + STOFF_OBEN);
-    t = ersetze(t, 'material.sheenColor *= 1.0 - dkHose;', 'material.sheenColor *= (1.0 - dkHose) * (1.0 - dkTop);\nmaterial.sheenColor += dkTop * (uOberteil * 0.8 + vec3(0.2)) * 0.35 + max(dkLangBein(vRuhe), dkBund * uDkOhne) * (uHose * 0.8 + vec3(0.2)) * 0.6;\nmaterial.sheenRoughness = mix(material.sheenRoughness, 0.65, dkStoff);\n#ifdef USE_CLEARCOAT\nmaterial.clearcoat *= 1.0 - dkStoff;\n#endif');
+    t = ersetze(t, 'material.sheenColor *= 1.0 - dkHose;', 'material.sheenColor *= (1.0 - dkHose) * (1.0 - dkTop);\nmaterial.sheenColor += dkTop * (uOberteil * 0.8 + vec3(0.2)) * 0.35;\nmaterial.sheenRoughness = mix(material.sheenRoughness, 0.65, dkTop);');
     s.fragmentShader = t;
   });
   for (const m of figur.meshes) {

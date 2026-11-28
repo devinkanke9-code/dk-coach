@@ -7,7 +7,7 @@
 // rechnet der Ablauf andere Einstiege durch (seitlich hinsetzen und eindrehen, erst hinten absetzen und unter dem Polster durchrutschen,
 // vorn vorbeugen und rückwärts unter das Polster steigen) und nimmt den, bei dem der Körper am wenigsten in Teile eintaucht.
 import * as THREE from 'three';
-import { gelenke, rumpfRahmen, wirbelRahmen, wirbelBogen, MASS, haltErkennen, hakenGriff, griffBei, KELCH_MASS } from './figur.js';
+import { gelenke, rumpfRahmen, wirbelRahmen, wirbelBogen, MASS, haltErkennen, hakenGriff, griffBei, KELCH_MASS, festeStangen, festErkennen } from './figur.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const RAD = Math.PI / 180, Y = V(0, 1, 0), FY = 0.08;
@@ -227,13 +227,21 @@ function ueberBodenteilen(p, flach, anteil = 1, Q = null) {
     for (const q of flach) {
       if (sohle > q.top) continue;
       let d = Infinity; for (let i = 0; i <= 4; i++) { const P = g.ferse[s].clone().lerp(g.zehe[s], i / 4); d = Math.min(d, abstand2(P.x, P.z, q.grund)); }
-      const zone = q.uebersteigen ? 0.05 + 0.4 * q.top : 0.05, ueber = zone - d; if (ueber <= 0) continue;   // halbe Fußbreite 4,5 cm, dazu 0,5 cm Luft (Stange zum Übersteigen: der Fuß hebt sich schon vorher)
-      const hz = [0, 1, 2].filter((i) => Math.abs(q.ax[i].y) < 0.5).sort((a, b) => q.h[b] - q.h[a]), lang = waag(q.ax[hz[0]]);
-      if (q.uebersteigen) hoch = Math.max(hoch, (q.top + 0.01 - sohle) * glatt(ueber / (zone - 0.03)));
-      else if (hz.length === 2 && Math.abs(lang.dot(fr)) > 0.45) {   // längs oder schräg: quer zum Rohr daneben setzen
-        const n = V(lang.z, 0, -lang.x), o = fm.clone().sub(q.c).setY(0).dot(n), sg = Math.abs(o) > 0.005 ? Math.sign(o) : Math.sign(fm.clone().sub(g.becken).setY(0).dot(n)) || 1;
-        weg.addScaledVector(n, sg * (q.h[hz[1]] + 0.065) - o);
-      } else hoch = Math.max(hoch, (q.top + 0.004 - sohle) * Math.min(1, ueber / 0.02));
+      // 27.11.2026 (Ablauf-Prüfung): ohne harte Schalter. Bis dahin hob sich der Fuß auf 2 cm Weg um die ganze Rohrhöhe, sprang beim Drehen zwischen „darüber heben“ und „daneben setzen“ (Fußrichtung über 0,45
+      // zum Rohr) und von einer Seite des Rohrs auf die andere: Knie und Knöchel machten Sätze bis 25 cm in einem Bild (Schräg-Brustpresse, Butterfly, Beincurl stehend …). Jetzt hebt sich der Fuß wie an der
+      // Stange zum Übersteigen schon vorher weich (zone wächst mit der Höhe), längs/quer geht über 0,35–0,55 ineinander über, und mitten auf dem Rohr (bis 3 cm) wird gehoben statt die Seite zu wechseln
+      const zone = 0.05 + 0.4 * q.top, ueber = zone - d; if (ueber <= 0) continue;   // halbe Fußbreite 4,5 cm, dazu 0,5 cm Luft; der Fuß hebt sich schon vorher
+      const hz = [0, 1, 2].filter((i) => Math.abs(q.ax[i].y) < 0.5).sort((a, b) => q.h[b] - q.h[a]), lang = waag(q.ax[hz[0]]), rampe = glatt(ueber / (zone - 0.03));
+      if (q.uebersteigen) hoch = Math.max(hoch, (q.top + 0.01 - sohle) * rampe);
+      else {
+        let seitlich = 0;
+        if (hz.length === 2) {   // längs oder schräg: quer zum Rohr daneben setzen
+          const n = V(lang.z, 0, -lang.x), o = fm.clone().sub(q.c).setY(0).dot(n);
+          seitlich = glatt((Math.abs(lang.dot(fr)) - 0.35) / 0.2) * glatt(Math.abs(o) / 0.03);
+          if (seitlich > 0) weg.addScaledVector(n, (Math.sign(o) * (q.h[hz[1]] + 0.065) - o) * seitlich * Math.min(1, ueber / 0.02));
+        }
+        if (seitlich < 1) hoch = Math.max(hoch, (q.top + 0.004 - sohle) * rampe * (1 - seitlich));
+      }
     }
     if (hoch > 0.002 || weg.lengthSq() > 1e-6) { neu = neu || { l: p.fuss.l, r: p.fuss.r }; neu[s] = p.fuss[s].clone().addScaledVector(weg, anteil); neu[s].y += hoch * anteil; }
   }
@@ -241,7 +249,12 @@ function ueberBodenteilen(p, flach, anteil = 1, Q = null) {
   const q = Object.assign({}, p, { fuss: neu });
   // Drückt das angehobene Bein Knie oder Schienbein in Sitz, Polster oder Rahmen (vor dem Sitz von Beinstrecker und Rückenstrecker 2–3 cm
   // tiefer als ohne), bleibt der Fuß, wo er war
-  if (Q && Q.length) { const bein = (x) => { const t = tiefen(gelenke(x), Q); let m = 0; for (let k = 0; k < Q.length; k++) m = Math.max(m, t[NG * k + 3], t[NG * k + 4]); return m; }; if (bein(q) > bein(p) + 0.005) return p; }
+  // 27.11.2026: auch das weich. Bis dahin galt ganz oder gar nicht (ab 5 mm tiefer blieb der Fuß unten): kippte das von einem Bild aufs nächste, sprang der Fuß um die ganze Hubhöhe. Jetzt nimmt der Hub
+  // zwischen 2 und 32 mm tieferem Eindringen stetig ab
+  if (Q && Q.length) {
+    const bein = (x) => { const t = tiefen(gelenke(x), Q); let m = 0; for (let k = 0; k < Q.length; k++) m = Math.max(m, t[NG * k + 3], t[NG * k + 4]); return m; }, mehr = bein(q) - bein(p);
+    if (mehr > 0.002) { const k = 1 - glatt((mehr - 0.002) / 0.03); if (k <= 0) return p; return Object.assign({}, p, { fuss: seiten((s) => p.fuss[s].clone().lerp(neu[s], k)) }); }
+  }
   return q;
 }
 // Zwischen zwei vollständigen Posen; hand: eigener Anteil für die Hände (sie greifen zuletzt); vorne: die Hantel in beiden Händen geht in der Mitte so weit vor dem Körper
@@ -1164,9 +1177,13 @@ export function baueEinleitung(anim, ger, z, kamera) {
   // Startzeitpunkt: Stange vom Boden (Kreuzheben) unten; Stange im Ständer dort, wo der Körper am aufrechtesten ist bzw. im Liegen oben
   // Griffachse der Kurzhanteln (setzen erst die props) vorher kennen, damit die Hand am Ende so greift wie in der Übung
   if (!z.griffAchse) { const e0 = anim.pose(0, z); if (e0.props) e0.props(gelenke(e0.pose), z); }
+  // 27.11.2026 (Ablauf-Prüfung): Hände an festen Stangen wie in der Übung (Ansicht.bild macht vor gelenke() ein festErkennen). Ohne das rechnete der Ablauf die Startpose mit gestreckten Armen über die Stange hinaus,
+  // die Übung begann 8 bis 9 cm tiefer: Sprung des ganzen Körpers bei der Übergabe (alle Klimmzüge, Dips, Hängen)
+  let stangenFest = []; try { stangenFest = festeStangen(anim, ger, z); } catch (e) { stangenFest = []; }
   const lage = (t) => {
     const erg = anim.pose(t, z);
     if (z.griffAchse && !erg.pose.griffAchse) erg.pose.griffAchse = z.griffAchse;
+    festErkennen(erg.pose, stangenFest);
     const v = vollstaendig(erg.pose); return { t, erg, ...v };
   };
   const L0 = lage(0), L1 = lage(1);

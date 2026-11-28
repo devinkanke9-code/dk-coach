@@ -711,6 +711,8 @@ function tanktopMaske(x, y, z) {
   return glatt(0.952, 0.958, y) * (1 - glatt(hals - 0.003, hals + 0.003, y)) * glatt(1, 1.04, ex * ex + ey * ey);
 }
 const shortsMaske = (x, y) => (Math.abs(x) <= 0.215 && y >= 0.6 && y <= 1.024 ? 1 : 0);
+// Sichtbarer Teil der lockeren Shorts (Ruhe-Höhe der Hülle, m): Saum und Oberkante, wie im Pixel-Shader (STOFF_FARBE_GLSL: „vH.y < 0.6 || vH.y > 0.935“). Auch für pruefe-kleidung.js
+export const HOSE_UNTEN = 0.6, HOSE_OBEN = 0.935;
 // Größter Abstand der Haut von einer senkrechten Achse (ax, az) je Höhe (2 cm) und Richtung (10°; 0 = vorn, +90° = links), aus
 // Punkten auf den Dreiecken (≤ 1 cm Abstand); Lücken im Kreis bzw. von der Nachbarhöhe gefüllt
 function huelleRadien(P, I, dreiecke, ax, az, y0, y1) {
@@ -859,13 +861,19 @@ function kleidungDaten(k) {
     fallen(H, 0.93, (w) => 0.02 + 0.6 * innen(w), (w) => 0.05 * (1 - innen(w)) + 0.008 * innen(w));
     return { H, s, innen };
   });
+  // Oberkante (27.11.2026, Devin: „dass die Shorts … nicht durch die Beine geht … professionell“): Der lockere Stoff ist nur bis HOSE_OBEN zu sehen, darüber liegt die aufgemalte Hose eng an. Bis dahin
+  // stand er an dieser Kante 9 mm und mehr von der Haut ab: eine offene Röhre, aus der bei gebeugter Hüfte (Kniebeuge, Sitzen, Seitlage) das Gesäß herausschaute. Jetzt läuft er zur Kante hin
+  // weich in die Haut ein (zu: 1 = locker wie bisher, 0 = an der Haut), so geht die lockere Hose ohne Stufe in die enge über
+  const zuOben = (y) => glatt(HOSE_OBEN + 0.005, HOSE_OBEN - 0.05, y);
   const hose = baue('Shorts', 'hose', (v) => shortsMaske(P[v * 3], P[v * 3 + 1]) > 0, (v, nv) => {
     const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2], B = beine[x >= 0 ? 0 : 1];
-    const dx = x - B.s * 0.11, dz = z + 0.025, r = Math.max(1e-6, Math.hypot(dx, dz)), w = Math.atan2(dx, dz), inn = B.innen(w);
-    const e = (0.005 + 0.004 * glatt(1.02, 0.92, y) + 0.02 * glatt(0.92, 0.62, y)) * (1 - 0.7 * inn), wd = glatt(0.95, 0.88, y) * (1 - inn);
+    const dx = x - B.s * 0.11, dz = z + 0.025, r = Math.max(1e-6, Math.hypot(dx, dz)), w = Math.atan2(dx, dz), inn = B.innen(w), zu = zuOben(y);
+    // Oben innen (Leiste und Schritt, 60° um die Richtung zum anderen Bein): dort liegt der Stoff an. Locker stand er bei gebeugter Hüfte im Unterbauch und zwischen den Beinen im anderen Bein
+    const leiste = 1 - glatt(0.80, 0.88, y) * glatt(0.25, 0.75, Math.max(0, Math.cos(w + B.s * Math.PI / 2)));
+    const e = (0.005 + 0.004 * glatt(1.02, 0.92, y) + 0.02 * glatt(0.92, 0.62, y)) * (1 - 0.7 * inn) * zu * leiste, wd = glatt(0.95, 0.88, y) * (1 - inn) * zu * leiste;
     const ra = (Math.max(r, liesD(B.H, y, w)) + e - r) * wd;
     return [x + nv.x * e * (1 - wd) + dx / r * ra, y + nv.y * e * (1 - wd), z + nv.z * e * (1 - wd) + dz / r * ra];
-  }, 0.004, null, (p, i, h) => { const x = h[i * 3], y = h[i * 3 + 1], s = x >= 0 ? 1 : -1, dx = x - s * 0.11, dz = h[i * 3 + 2] + 0.025, r = Math.max(0.02, Math.hypot(dx, dz)), w = Math.atan2(dx, dz), inn = Math.max(0, Math.cos(w + s * Math.PI / 2)) ** 2, a = 0.009 * glatt(0.86, 0.6, y) * (1 - inn);
+  }, (v) => 0.004 * (0.3 + 0.7 * zuOben(P[v * 3 + 1])), null, (p, i, h) => { const x = h[i * 3], y = h[i * 3 + 1], s = x >= 0 ? 1 : -1, dx = x - s * 0.11, dz = h[i * 3 + 2] + 0.025, r = Math.max(0.02, Math.hypot(dx, dz)), w = Math.atan2(dx, dz), inn = Math.max(0, Math.cos(w + s * Math.PI / 2)) ** 2, a = 0.009 * glatt(0.86, 0.6, y) * (1 - inn);
     const q = a * (0.5 + 0.5 * Math.sin(4 * w + 1.4 * Math.sin(2 * w + y * 11) + y * 5 + s)); p[i * 3] += dx / r * q; p[i * 3 + 2] += dz / r * q; });
   const gt = top.gel.array, hu = k.index.Hips, bein = new Set(['LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg'].map((b) => k.index[b]));
   for (let i = 0; i < gt.length; i++) if (bein.has(gt[i])) gt[i] = hu;
@@ -1012,6 +1020,16 @@ const STOFF_FALL_GLSL = `
   vec4 dkE = bindMatrix * vec4(dkEng, 1.0);
   vec4 dkES = boneMatX * dkE * skinWeight.x + boneMatY * dkE * skinWeight.y + boneMatZ * dkE * skinWeight.z + boneMatW * dkE * skinWeight.w;
   vec3 dkEngS = (bindMatrixInverse * dkES).xyz;
+  #if DK_STOFF == 2
+  {
+    // Die enge Hülle behält ihren Abstand zur Haut: wo sich zwei Knochen eine Stelle teilen (Leiste, Gesäß bei gebeugter Hüfte), schrumpft er sonst bis auf die Hälfte und die Haut kommt durch
+    vec4 dkRu = bindMatrix * vec4(ruhe + dkPecV, 1.0);
+    vec3 dkRuS = (bindMatrixInverse * (boneMatX * dkRu * skinWeight.x + boneMatY * dkRu * skinWeight.y + boneMatZ * dkRu * skinWeight.z + boneMatW * dkRu * skinWeight.w)).xyz;
+    vec3 dkEn = dkEngS - dkRuS;
+    float dkEl = length(dkEn);
+    if (dkEl > 1e-6) { vec3 dkNeu = dkRuS + dkEn * (length(eng - ruhe) / dkEl); transformed += dkNeu - dkEngS; dkEngS = dkNeu; }
+  }
+  #endif
   vec3 dkAb = transformed - dkEngS;
   vec3 dkW = mat3(modelMatrix) * dkAb;
   float dkL = length(dkW);
@@ -1040,6 +1058,57 @@ const STOFF_FALL_GLSL = `
   transformed += dkSh * dkSaumW * (dkShL > dkMax ? dkMax / dkShL : 1.0);
   transformed.y += clamp(dkSw.y, -0.012, 0.012) * dkSaumW;
   transformed += dkAb * dkF * dkSaumW * dkWe * (sin(3.0 * dkWw + uStoffZeit * 5.1 + ruhe.y * 9.0) + 0.55 * sin(5.0 * dkWw - uStoffZeit * 6.7 + ruhe.y * 14.0));
+  #if DK_STOFF == 2
+  {
+    // Die Hose weicht dem Körper aus (HOSE_KOERPER_GLSL): eigener Unterschenkel (Kniekehle), das andere Bein, die Füße, der Bauch, Unterarme und Hände. Liegt der Stoff in einem dieser Körper, rückt er an die
+    // enge Hülle, umso mehr, je tiefer er darin liegt (dkDruck). Zwei Durchgänge: nach dem ersten liegt er oft noch knapp darin
+    bool dkLi = ruhe.x > 0.0;
+    vec4 dkU0 = dkLi ? uHK[0] : uHK[8], dkU1 = dkLi ? uHK[1] : uHK[9], dkU2 = dkLi ? uHK[2] : uHK[10], dkF0 = dkLi ? uHK[6] : uHK[14], dkF1 = dkLi ? uHK[7] : uHK[15];
+    vec4 dkV0 = dkLi ? uHK[8] : uHK[0], dkV1 = dkLi ? uHK[9] : uHK[1], dkV2 = dkLi ? uHK[10] : uHK[2], dkO0 = dkLi ? uHK[11] : uHK[3], dkO1 = dkLi ? uHK[12] : uHK[4], dkO2 = dkLi ? uHK[13] : uHK[5], dkG0 = dkLi ? uHK[14] : uHK[6], dkG1 = dkLi ? uHK[15] : uHK[7];
+    for (int dkI = 0; dkI < 2; dkI++) {
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkU0, dkU1));
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkU1, dkU2));
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkO0, dkO1));
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkO1, dkO2));
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkV0, dkV1));
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkV1, dkV2));
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkF0, dkF1));
+    dkDruck(transformed, dkEngS, dkKap(transformed, dkG0, dkG1));
+    dkDruck(transformed, dkEngS, dkRumpfAb(transformed));
+    dkDruck(transformed, dkEngS, dkKap(transformed, uHK[16], uHK[17]));
+    dkDruck(transformed, dkEngS, dkKap(transformed, uHK[17], uHK[18]));
+    dkDruck(transformed, dkEngS, dkKap(transformed, uHK[19], uHK[20]));
+    dkDruck(transformed, dkEngS, dkKap(transformed, uHK[20], uHK[21]));
+    }
+  }
+  #endif
+}
+#endif
+`;
+// Ausweich-Körper der Hose (27.11.2026): Kapseln mit zwei Radien (Punkt xyz, Radius w) und der Bauch als Säule mit ovalem Querschnitt, in den Koordinaten der Figur. FigurModell.hoseKoerper(g) legt sie je Bild
+// aus den Gelenkpunkten: uHK[0…7] links, [8…15] rechts = Unterschenkel (unter dem Knie, Wadenbauch, über dem Knöchel), Oberschenkel (oben, Mitte, unten), Fuß (Ferse, Zehe), uHK[16…18] und [19…21] = linker und rechter Arm (Ellbogen, Handgelenk, Faustmitte); uHR = Fußpunkt am Becken, links, oben,
+// vorn, (von, bis), unten und oben je (halbe Breite, halbe Tiefe, Versatz nach vorn). dkDruck: dp = Abstand des Stoffs zum Körper (innen negativ, schon mit HOSE_LUFT); je tiefer er darin liegt, desto näher rückt er an die enge Hülle, ab HOSE_WEICH liegt er ganz an
+// (weicher Rand: kein Sprung von Punkt zu Punkt und von Bild zu Bild)
+const HOSE_LUFT = 0.024, HOSE_WEICH = 0.026;
+const HOSE_KOERPER_GLSL = `
+#if defined(DK_STOFF) && DK_STOFF == 2
+#define HOSE_WEICH ${HOSE_WEICH.toFixed(4)}
+uniform vec4 uHK[22];
+uniform vec3 uHR[7];
+float dkKap(vec3 p, vec4 a, vec4 b) {
+  vec3 ab = b.xyz - a.xyz;
+  float f = clamp(dot(p - a.xyz, ab) / max(dot(ab, ab), 1e-8), 0.0, 1.0);
+  return length(p - a.xyz - ab * f) - mix(a.w, b.w, f) - ${HOSE_LUFT.toFixed(4)};
+}
+float dkRumpfAb(vec3 p) {
+  vec3 d = p - uHR[0];
+  float u = dot(d, uHR[2]), t = clamp((u - uHR[4].x) / (uHR[4].y - uHR[4].x), 0.0, 1.0);
+  vec3 q = mix(uHR[5], uHR[6], t);
+  float rad = (length(vec2(dot(d, uHR[1]) / q.x, (dot(d, uHR[3]) - q.z) / q.y)) - 1.0) * min(q.x, q.y), ax = max(uHR[4].x - u, u - uHR[4].y);
+  return length(max(vec2(rad, ax), 0.0)) + min(max(rad, ax), 0.0) - ${HOSE_LUFT.toFixed(4)};
+}
+void dkDruck(inout vec3 p, vec3 e, float dp) {
+  if (dp < 0.0) p = mix(p, e, smoothstep(0.0, HOSE_WEICH, -dp));
 }
 #endif
 `;
@@ -1080,7 +1149,7 @@ float dkLinie(float d, float b) { float f = max(DK_FW(d), 1e-5); return clamp(1.
 vec4 dkKachel(vec3 p, float s) { return mix(texture2D(uDetail, p.xy * s), texture2D(uDetail, p.zy * s), smoothstep(0.35, 0.65, abs(vRN.x))); }
 `;
 const STOFF_FARBE_GLSL = `
-float dkStoffH = 0.0;
+float dkStoffH = 0.0, dkHoseAuf = 0.0;   // dkHoseAuf: aufgemalte Hose auf der Haut (nur dort), für die Normale
 #ifdef DK_STOFF
 vec4 dkK;
 #if DK_STOFF == 1
@@ -1137,7 +1206,14 @@ float dkBund = abs(vRuhe.x) <= 0.215 && vRuhe.y >= 0.6 ? 1.0 - smoothstep(1.03, 
 float dkHose = max(max(vKleid.x, dkHosenbein(vRuhe)), dkBund);
 float dkTop = dkTanktop(vRuhe) * (1.0 - dkBund);
 float dkSock = dkSocke(vRuhe);
-diffuseColor.rgb = mix(diffuseColor.rgb, uHose, dkHose);
+if (dkHose > 0.0) {
+  // Aufgemalte Hose wie der lockere Stoff (27.11.2026): dieselbe Webstruktur. Wo die enge Hose unter der lockeren hervorkommt (Gesäß bei gebeugter Hüfte, Oberkante), sah man bis dahin glatten,
+  // glänzenden Lack neben mattem Stoff
+  vec4 dkHw = dkKachel(vRuhe, 19.0);
+  diffuseColor.rgb = mix(diffuseColor.rgb, uHose * (1.0 + 0.5 * (dkHw.a - 0.5)) * (1.0 + 0.3 * (dkHw.b - 0.5)), dkHose);
+  dkStoffH += dkHose * 0.00018 * (dkHw.b - 0.5);
+  dkHoseAuf = dkHose;
+}
 diffuseColor.rgb = mix(diffuseColor.rgb, uOberteil, dkTop);
 #ifdef DK_HAAR
 {
@@ -1309,7 +1385,7 @@ export class FigurModell {
       uHose: { value: new THREE.Color(FARBEN.hose) }, uSchuh: { value: new THREE.Color(FARBEN.schuh) },
       uOberteil: { value: new THREE.Color(FARBEN.oberteil) }, uSocke: { value: new THREE.Color(FARBEN.socke) },
       uWelle: { value: new THREE.Vector3() }, uStoffZeit: { value: 0 }, uDetail: { value: detailTextur() }, uLogo: { value: logoTextur() }, uLogoAn: { value: logoTextur() ? 1 : 0 }, uSchweiss: { value: 0 },
-      uPec: { value: new THREE.Vector2() }, uAtem: { value: 0 }, uSpann: { value: 0 }, uMA: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMB: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMC: { value: [0, 0] }, uMasse: { value: 0 }, uStoff: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, uMimik: { value: new THREE.Vector4() }, uBlick: { value: new THREE.Vector2() }
+      uPec: { value: new THREE.Vector2() }, uAtem: { value: 0 }, uSpann: { value: 0 }, uMA: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMB: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uMC: { value: [0, 0] }, uMasse: { value: 0 }, uStoff: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] }, uHK: { value: Array.from({ length: 22 }, () => new THREE.Vector4(0, -9, 0, 0)) }, uHR: { value: [new THREE.Vector3(0, -9, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0.1, 0), new THREE.Vector3(0.01, 0.01, 0), new THREE.Vector3(0.01, 0.01, 0)] }, uMimik: { value: new THREE.Vector4() }, uBlick: { value: new THREE.Vector2() }
     };
     const t = k.tex || {};   // ohne Texturen (Prüfung in Node): nur Form
     const stoff = {
@@ -1372,7 +1448,7 @@ export class FigurModell {
     Object.assign(s.uniforms, this.u);
     // Brust (vor dem Skinning, in der Ruhelage): angespannt wölbt sie sich nach vorn und rückt zum Brustbein, gedehnt wird sie flacher
     // Stoff-Hüllen (DK_STOFF): vRuhe ist der Punkt auf der Haut (Masken wie bei der aufgemalten Kleidung), die enge Hülle geht mit
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nuniform float uAtem;\nattribute vec4 spann;\nuniform float uSpann;\n' + SPIEL_PARS_GLSL + '\nuniform vec4 uMimik;\nuniform vec2 uBlick;\nfloat dkG(float v, float m, float b) { float d = (v - m) / b; return exp(-d * d); }\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nvarying vec3 vRN;\n#ifdef DK_STOFF\nattribute vec3 ruhe;\nattribute vec3 eng;\nuniform vec3 uStoff[3];\nuniform vec3 uWelle;\nuniform float uStoffZeit;\nvarying vec3 vH;\n#endif\n#ifdef DK_SCHUH\nattribute vec2 schuh;\nvarying vec2 vSchuh;\n#endif')
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leucht;\nattribute vec2 kleid;\nattribute vec2 pec;\nuniform vec2 uPec;\nuniform float uAtem;\nattribute vec4 spann;\nuniform float uSpann;\n' + SPIEL_PARS_GLSL + '\nuniform vec4 uMimik;\nuniform vec2 uBlick;\nfloat dkG(float v, float m, float b) { float d = (v - m) / b; return exp(-d * d); }\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nvarying vec3 vRN;\n#ifdef DK_STOFF\nattribute vec3 ruhe;\nattribute vec3 eng;\nuniform vec3 uStoff[3];\nuniform vec3 uWelle;\nuniform float uStoffZeit;\nvarying vec3 vH;\n#endif\n#ifdef DK_SCHUH\nattribute vec2 schuh;\nvarying vec2 vSchuh;\n#endif' + HOSE_KOERPER_GLSL)
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = normalize(objectNormal - spann.xyz * uSpann);\n' + SPIEL_GLSL)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeucht = leucht;\nvKleid = kleid;\nfloat dkPec = uPec.x * pec.x + uPec.y * pec.y;\nvec3 dkPecV = normal * dkPec * (dkPec > 0.0 ? 0.018 : 0.009);\ndkPecV.x -= (uPec.x * pec.x - uPec.y * pec.y) * 0.009;\ndkPecV += normal * (spann.w * uSpann + dkMH + (pec.x + pec.y) * 0.012 * uMasse);\n' + ATEM_GLSL + MIMIK_GLSL + 'transformed += dkPecV;\n' +
         'vRN = normal;\n#ifdef DK_SCHUH\nvSchuh = schuh;\n#endif\n#ifdef DK_STOFF\nvRuhe = ruhe;\nvH = position;\nvec3 dkEng = eng + dkPecV;\n#else\nvRuhe = position;\n#endif')
@@ -1380,8 +1456,8 @@ export class FigurModell {
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vSpiel;\nvarying vec2 vLeucht;\nvarying vec2 vKleid;\nvarying vec3 vRuhe;\nuniform vec4 uMimik;\nuniform float uGlut;\nuniform float uHinweis;\nuniform vec3 uGlutFarbe;\nuniform vec3 uMuskelFarbe;\nuniform vec3 uHinweisFarbe;\nuniform vec3 uHose;\nuniform vec3 uSchuh;\nuniform vec3 uOberteil;\nuniform vec3 uSocke;\n' + KLEIDUNG_GLSL + STOFF_PARS_GLSL)
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + STOFF_FARBE_GLSL.replace('__SCHUH__', SCHUH_FARBE_GLSL) + MIMIK_FARBE + 'float dkMuskel = vLeucht.x * (1.0 - vLeucht.y);\n#if defined(DK_STOFF) && DK_STOFF == 1\ndkMuskel *= 0.16 + 0.34 * vSpiel;\n#elif defined(DK_STOFF)\ndkMuskel *= 0.012;\n#elif defined(USE_NORMALMAP_TANGENTSPACE)\ndkMuskel *= (1.0 - 0.78 * dkTop) * (1.0 - 0.99 * dkHose);\ndiffuseColor.rgb *= vec3(1.0) + vec3(0.05, -0.012, -0.025) * vSpiel;\n#endif\ndiffuseColor.rgb = mix(diffuseColor.rgb, uMuskelFarbe * (0.32 + 1.0 * dot(diffuseColor.rgb, vec3(0.3, 0.6, 0.1))), dkMuskel * (0.24 + 0.24 * vSpiel));\ndiffuseColor.rgb = mix(diffuseColor.rgb, uHinweisFarbe, vLeucht.y);')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n#ifdef USE_NORMALMAP_TANGENTSPACE\nroughnessFactor *= mix(1.45, 0.55, texture2D(normalMap, vNormalMapUv).b);\n#endif\nroughnessFactor = mix(roughnessFactor, 0.92, dkStoff);\n#ifdef DK_SCHUH\nroughnessFactor = dkSchuhRau;\n#endif\n#ifdef USE_NORMALMAP_TANGENTSPACE\nroughnessFactor *= (1.0 + 0.3 * dkHautA * (dkMi.g - 0.6)) * (1.0 - 0.16 * vSpiel);\n#endif')
-      .replace('#include <normal_fragment_maps>', '#ifdef USE_NORMALMAP_TANGENTSPACE\nvec3 mapN = vec3(texture2D(normalMap, vNormalMapUv).rg * 2.0 - 1.0, 0.0);\nmapN.xy *= normalScale * (1.0 + 1.1 * vSpiel);\nmapN.z = sqrt(max(0.02, 1.0 - dot(mapN.xy, mapN.xy)));\nnormal = normalize(tbn * mapN);\n#else\n#include <normal_fragment_maps>\n#endif\nnormal = normalize(mix(normal, nonPerturbedNormal, dkStoff * 0.75));\n' + STOFF_FALTEN_GLSL)
-      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#if defined(USE_SHEEN) && defined(USE_NORMALMAP_TANGENTSPACE)\nmaterial.sheenColor *= 1.0 - dkHose;\n#endif')
+      .replace('#include <normal_fragment_maps>', '#ifdef USE_NORMALMAP_TANGENTSPACE\nvec3 mapN = vec3(texture2D(normalMap, vNormalMapUv).rg * 2.0 - 1.0, 0.0);\nmapN.xy *= normalScale * (1.0 + 1.1 * vSpiel);\nmapN.z = sqrt(max(0.02, 1.0 - dot(mapN.xy, mapN.xy)));\nnormal = normalize(tbn * mapN);\n#else\n#include <normal_fragment_maps>\n#endif\nnormal = normalize(mix(normal, nonPerturbedNormal, dkStoff * 0.75 + dkHoseAuf * 0.17));\n' + STOFF_FALTEN_GLSL)
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#if defined(USE_SHEEN) && defined(USE_NORMALMAP_TANGENTSPACE)\nmaterial.sheenColor *= 1.0 - dkHose;\nmaterial.sheenColor += dkHose * (uHose * 0.8 + vec3(0.2)) * 0.6;\nmaterial.sheenRoughness = mix(material.sheenRoughness, 0.65, dkHose);\n#ifdef USE_CLEARCOAT\nmaterial.clearcoat *= 1.0 - dkStoff;\n#endif\n#endif')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uGlutFarbe * (uGlut * dkMuskel * (0.025 + 0.11 * vSpiel) * (0.3 + 0.7 * max(normal.z, 0.0))) + uHinweisFarbe * (uHinweis * vLeucht.y);');
   }
   // Feste Größen der Ruhelage: Gelenkpunkte, Rumpfachse, Richtungen von Armen, Händen und Daumen
@@ -1692,6 +1768,78 @@ export class FigurModell {
     out.lage = lage;   // 0 liegend … 1 aufrecht (auch für die Drehknochen)
     return out;
   }
+  // Ausweich-Körper der Hose je Bild (HOSE_KOERPER_GLSL). Maße an der echten Haut der stehenden Figur gemessen (27.11.2026, arbeit-lebendig/werkzeug/profil.mjs): Wadenbauch 3,4 cm hinter der Linie
+  // Knie–Knöchel und 8,2 cm dick; Oberschenkel oben 10,5 cm nach innen und 12 cm nach vorn, zum Knie hin 7,5 cm; Rumpf über dem Bund 15 cm breit, 13 cm tief, an der Brust 21 cm breit und 15,5 cm tief.
+  // Sie gehen mit der Dicke der Beine und des Rumpfs (BAU, Charakter) mit
+  hoseKoerper(g) {
+    const K = this.u.uHK.value, HR = this.u.uHR.value, m = 1 + 0.03 * (this.masse || 0), sk = BAU.bein / 1.1 * m;
+    ['l', 'r'].forEach((s, i) => {
+      const o = i * 8, sg = i ? -1 : 1, hu = g.huefte[s], knie = g.knie[s], fuss = g.knoechel[s], dS = richt(knie, fuss), dO = richt(hu, knie), bl = richt(hu, fuss), fussVor = richt(g.ferse[s], g.zehe[s]);
+      const kn = knie.clone().sub(hu); kn.sub(bl.clone().multiplyScalar(kn.dot(bl)));
+      const vornU = senkrecht(kn, dS, fussVor), vornO = senkrecht(kn, dO, fussVor), innenO = dO.clone().cross(vornO).multiplyScalar(sg), innenU = dS.clone().cross(vornU).multiplyScalar(sg);   // vorn = Kniescheibe, wie die Knochen von Unter- und Oberschenkel in stelle(); innen = zum anderen Bein
+      const lege = (k, a, b, f, r, vorn, vor, innen = 0) => { const p = a.clone().lerp(b, f).addScaledVector(vorn, vor * sk).addScaledVector(k < 3 ? innenU : innenO, innen * sk); K[o + k].set(p.x, p.y, p.z, r * sk); };
+      lege(0, knie, fuss, 0.06, 0.088, vornU, -0.018, -0.007); lege(1, knie, fuss, 0.32, 0.092, vornU, -0.034, -0.008); lege(2, knie, fuss, 0.85, 0.058, vornU, -0.008, -0.004);
+      lege(3, hu, knie, 0.10, 0.104, vornO, 0.012, 0.010); lege(4, hu, knie, 0.50, 0.101, vornO, 0.004, 0.004); lege(5, hu, knie, 0.93, 0.074, vornO, -0.004);
+      K[o + 6].set(g.ferse[s].x, g.ferse[s].y, g.ferse[s].z, 0.05); K[o + 7].set(g.zehe[s].x, g.zehe[s].y, g.zehe[s].z, 0.045);
+    });
+    // Arme: Unterarm und Hand (die Hand zieht bei Dehnungen am Oberschenkel, der Unterarm liegt beim Curl auf dem Bein)
+    ['l', 'r'].forEach((s, i) => { const o = 16 + i * 3, e = g.ellbogen[s], w = g.handgelenk[s], h = g.hand[s], am = BAU.arm / 1.12 * m; K[o].set(e.x, e.y, e.z, 0.046 * am); K[o + 1].set(w.x, w.y, w.z, 0.032 * am); K[o + 2].set(h.x, h.y, h.z, 0.04); });
+    // Rumpf: Säule vom Unterbauch (2 cm unter der Beckenmitte: die Leiste bei gebeugter Hüfte) bis zur Brust, im Rahmen der unteren Wirbelsäule (mit g.wirbel ein Drittel über dem Becken, sonst der Rumpf); Querschnitt oval, wächst nach oben
+    const F = g.wirbel && g.RB ? wirbelRahmen(g.RB, g.wirbel, 0.33) : g.RB || g.R, br = (BAU.breite.Spine || 1) * m, ti = (BAU.tiefe.Spine || 1) / 1.02 * m;
+    HR[0].copy(g.becken); HR[1].copy(F.links); HR[2].copy(F.oben); HR[3].copy(F.vor); HR[4].set(-0.02, 0.40, 0);
+    HR[5].set(0.150 * br, 0.128 * ti, 0.022 * ti); HR[6].set(0.210 * br, 0.154 * ti, 0.044 * ti);
+  }
+  // Die Shorts auf der CPU, Punkt für Punkt wie im Vertex-Shader (begin_vertex, skinning_vertex, STOFF_FALL_GLSL mit Abstand halten, Fall nach der Schwerkraft und Ausweichen; ohne Nachschwingen und Saumwelle,
+  // die in Ruhe null sind, und ohne Muskelspiel, das Haut und Stoff gleich verschiebt). Nach stelle(g) aufrufen. Für pruefe-kleidung.js: eine Quelle für Bild und Messung; wer den Shader ändert, ändert hier mit.
+  // POS = Stoff, ENG = enge Hülle, RUH = Punkt auf der Haut darunter (je 3 Zahlen je Punkt der Hülle; RUH darf fehlen)
+  hoseCpu(POS, ENG, RUH = null) {
+    const mesh = this.meshes.find((x) => x.material.defines && x.material.defines.DK_STOFF === 2); if (!mesh) return false;
+    const at = mesh.geometry.attributes, aP = at.position, aE = at.eng, aR = at.ruhe, aN = at.normal, aSI = at.skinIndex, aSW = at.skinWeight, aPec = at.pec, A = this.A, up = this.u.uPec.value, K = this.u.uHK.value, HR = this.u.uHR.value;
+    const stufe = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const kap = (x, y, z, a, b) => {
+      const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z, f = Math.max(0, Math.min(1, ((x - a.x) * abx + (y - a.y) * aby + (z - a.z) * abz) / Math.max(abx * abx + aby * aby + abz * abz, 1e-8)));
+      return Math.hypot(x - a.x - abx * f, y - a.y - aby * f, z - a.z - abz * f) - (a.w + (b.w - a.w) * f) - HOSE_LUFT;
+    };
+    const rumpf = (x, y, z) => {
+      const dx = x - HR[0].x, dy = y - HR[0].y, dz = z - HR[0].z, u = dx * HR[2].x + dy * HR[2].y + dz * HR[2].z, t = Math.max(0, Math.min(1, (u - HR[4].x) / (HR[4].y - HR[4].x)));
+      const qa = HR[5].x + (HR[6].x - HR[5].x) * t, qb = HR[5].y + (HR[6].y - HR[5].y) * t, qc = HR[5].z + (HR[6].z - HR[5].z) * t;
+      const rad = (Math.hypot((dx * HR[1].x + dy * HR[1].y + dz * HR[1].z) / qa, (dx * HR[3].x + dy * HR[3].y + dz * HR[3].z - qc) / qb) - 1) * Math.min(qa, qb), ax = Math.max(HR[4].x - u, u - HR[4].y);
+      return Math.hypot(Math.max(rad, 0), Math.max(ax, 0)) + Math.min(Math.max(rad, ax), 0) - HOSE_LUFT;
+    };
+    const p = [0, 0, 0], e = [0, 0, 0], ru = [0, 0, 0];
+    const druck = (dp) => { if (dp < 0) { const k = stufe(0, HOSE_WEICH, -dp); for (let c = 0; c < 3; c++) p[c] += (e[c] - p[c]) * k; } };
+    for (let i = 0; i < aP.count; i++) {
+      const nx = aN.getX(i), ny = aN.getY(i), nz = aN.getZ(i);
+      let vx = 0, vy = 0, vz = 0;
+      if (aPec) { const px = aPec.getX(i), py = aPec.getY(i), dk = up.x * px + up.y * py, s = dk * (dk > 0 ? 0.018 : 0.009); vx = nx * s - (up.x * px - up.y * py) * 0.009; vy = ny * s; vz = nz * s; }
+      const q = [aP.getX(i) + vx, aP.getY(i) + vy, aP.getZ(i) + vz, aE.getX(i) + vx, aE.getY(i) + vy, aE.getZ(i) + vz, aR.getX(i) + vx, aR.getY(i) + vy, aR.getZ(i) + vz];
+      p[0] = p[1] = p[2] = e[0] = e[1] = e[2] = ru[0] = ru[1] = ru[2] = 0;
+      for (let k = 0; k < 4; k++) {
+        const w = aSW.getComponent(i, k); if (!w) continue;
+        const M = A[aSI.getComponent(i, k)].elements;
+        for (let c = 0; c < 3; c++) {
+          p[c] += w * (M[c] * q[0] + M[4 + c] * q[1] + M[8 + c] * q[2] + M[12 + c]);
+          e[c] += w * (M[c] * q[3] + M[4 + c] * q[4] + M[8 + c] * q[5] + M[12 + c]);
+          ru[c] += w * (M[c] * q[6] + M[4 + c] * q[7] + M[8 + c] * q[8] + M[12 + c]);
+        }
+      }
+      // Abstand der engen Hülle zur Haut halten
+      const el = Math.hypot(e[0] - ru[0], e[1] - ru[1], e[2] - ru[2]);
+      if (el > 1e-6) { const f = Math.hypot(q[3] - q[6], q[4] - q[7], q[5] - q[8]) / el; for (let c = 0; c < 3; c++) { const neu = ru[c] + (e[c] - ru[c]) * f; p[c] += neu - e[c]; e[c] = neu; } }
+      // Fall nach der Schwerkraft (die Figur steht aufrecht in der Szene: y ist oben)
+      const ax = p[0] - e[0], ay = p[1] - e[1], az = p[2] - e[2], l = Math.hypot(ax, ay, az), F = 1 - 0.8 * stufe(0.15, 0.85, l > 1e-5 ? ay / l : 0);
+      p[0] = e[0] + ax * F; p[1] = e[1] + ay * F; p[2] = e[2] + az * F;
+      // Ausweichen (Reihenfolge wie im Shader)
+      const li = aR.getX(i) > 0, o = li ? 0 : 8, a = li ? 8 : 0;
+      for (let n = 0; n < 2; n++) {
+        for (const [u, v] of [[o, o + 1], [o + 1, o + 2], [a + 3, a + 4], [a + 4, a + 5], [a, a + 1], [a + 1, a + 2], [o + 6, o + 7], [a + 6, a + 7]]) druck(kap(p[0], p[1], p[2], K[u], K[v]));
+        druck(rumpf(p[0], p[1], p[2]));
+        for (const [u, v] of [[16, 17], [17, 18], [19, 20], [20, 21]]) druck(kap(p[0], p[1], p[2], K[u], K[v]));
+      }
+      for (let c = 0; c < 3; c++) { POS[i * 3 + c] = p[c]; ENG[i * 3 + c] = e[c]; if (RUH) RUH[i * 3 + c] = ru[c]; }
+    }
+    return true;
+  }
   // Knochen aus den Gelenkpunkten (g = gelenke(pose)) legen
   stelle(g) {
     const r = this.ruhe, P = r.P, I = this.k.index, A = this.A, R = g.R, masse = this.masse || 0, armB = BAU.arm * (1 + 0.03 * masse), beinB = BAU.bein * (1 + 0.03 * masse), rumpfB = 1 + 0.02 * masse;
@@ -1834,6 +1982,7 @@ export class FigurModell {
       return Math.max(-1, Math.min(1, (Math.atan2(z, x) / RAD - 25) / 55)) * Math.min(1, Math.hypot(x, z) * 1.4) * BAU.brust;
     };
     this.u.uPec.value.set(pec('l', 1), pec('r', -1));
+    this.hoseKoerper(g);
     this.u.uAtem.value = g.atem || 0;
     this.u.uSpann.value = g.spann || 0;
     this.muskelSpiel(g);
