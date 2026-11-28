@@ -1322,7 +1322,11 @@ function offenesTraining(p) {
     h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Offenes Training · Training ' + LAUF.tagNr }), h('h2', { id: 'rg-offen-titel', text: LAUF.tagName })),
     h('p', { class: 'rg-stand' }, h('span', { class: 'zahl', text: 'Seit ' + min + ' min' }), planMin ? h('span', { class: 'leise zahl', text: ' · geplant ~' + planMin + ' min' }) : null),
     h('p', { class: 'rg-stand' }, h('b', { class: 'zahl', text: erfasst + ' von ' + gesamt }), erfasst === 1 ? ' Satz gespeichert' : ' Sätzen gespeichert', ' · Übung ' + Math.min(LAUF.ue + 1, LAUF.uebungen.length) + ' von ' + LAUF.uebungen.length),
-    h('div', { class: 'aktionen' }, startKnopf(p, LAUF.tagNr - 1, 'Training fortsetzen'), beenden));
+    h('div', { class: 'aktionen' }, startKnopf(p, LAUF.tagNr - 1, 'Training fortsetzen'),
+      // 27.11. (Wahl vor dem Training): mitten im Training wechseln, aus dem Gym in „Nur mein Plan“ oder zurück
+      LAUF.gym ? h('button', { class: 'knopf gym-knopf', type: 'button', onclick: laufAlsPlan, text: 'Ohne Gym weitermachen' })
+        : !gymGeraet() ? h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => { speicher.schreib(ART_KEY, 'gym'); TM.klein = false; raumStarten(p, LAUF.tagNr - 1); }, text: 'Im Gym weitermachen' }) : null,
+      beenden));
 }
 // Als App aufs Handy (24.11.2026): hinter einer kompakten Aktion statt als große Karte; unter Infos steht sie immer
 function installKompakt() {
@@ -1405,7 +1409,7 @@ function trainingsKarte(p, ti, istHeute) {
   return h('section', { class: 'block heute' },
     h('div', { class: 'tag-kopf' }, h('span', { class: 'nr', text: 'Training ' + (ti + 1) }), h('h3', { text: t.n }), t.m ? h('span', { class: 'leise klein zahl', text: '~' + t.m + ' min' }) : null),
     !istHeute ? h('p', { class: 'leise klein', text: WOCHENTAGE[S.tagWahl] + ' · Vorschau' }) : null,
-    offenesTraining(p) ? null : h('div', { class: 'aktionen' }, startKnopf(p, ti, istHeute ? 'Training starten' : 'Diese Einheit starten'), h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, ti), text: 'Ins Gym' })),   // läuft schon ein Training, steht „Fortsetzen“ in der Karte darüber
+    offenesTraining(p) ? null : startWahl(p, ti),   // läuft schon ein Training, steht „Fortsetzen“ in der Karte darüber
     aufwaermen(t),
     istHeute ? fortschritt(p, t, erledigt.length, alle) : null,
     p.fokus && t.u.some((roh) => roh.z && !roh.z.art && !istSek(uebung(roh))) ? h('p', { class: 'notiz', text: 'Fokus diese Woche: ' + p.fokus }) : null,
@@ -1434,7 +1438,40 @@ function ruhetagKarte(p, wt, heute) {
       h('span', null, h('small', { text: 'Nächstes Training · ' + WOCHENTAGE[naechster.wt] }), h('b', { text: p.t[naechster.ti].n })),
       h('button', { class: 'knopf klein', type: 'button', 'aria-label': 'Nächstes Training ansehen', onclick: () => { S.tagWahl = naechster.wt; zeichne(); }, text: 'Ansehen' })) : null,
     // Kunden-Test 23.11.2026: Am Ruhetag fand niemand das Gym. Es geht jetzt auch hier hinein, mit den Geräten des nächsten Trainings.
-    naechster ? h('div', { class: 'aktionen' }, h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, naechster.ti), text: 'Ins Gym gehen' })) : null);
+    naechster && !gymGeraet() ? h('div', { class: 'aktionen' }, h('button', { class: 'knopf gym-knopf', type: 'button', onclick: () => raumStarten(p, naechster.ti), text: 'Ins Gym gehen' })) : null);   // 27.11.: auf einem zu schwachen Gerät gibt es das Gym nicht
+}
+/* ---------- Wahl vor dem Training (27.11.2026, Strand-Gym Stufe 1, Devin: „… Knopfen, ob du wirklich in den Fitnessstudio reingehen willst oder ob du einfach deinen Plan wie einen normalen
+   Plan sehen willst, also mit Timer, und dann siehst du einfach nur die Übung“) ----------
+   Zwei Knöpfe: „Ins Gym gehen“ (3D, selbst zu den Geräten laufen) und „Nur mein Plan“ (Übung, Sätze, Timer, ohne Laufen; das bisherige „Training starten“). Die letzte Wahl steht auf diesem Gerät
+   (dk_training_art) und ist beim nächsten Mal der große Knopf oben; ändern = einfach den anderen Knopf nehmen. Mitten im Training wechselt die Karte „Offenes Training“.
+   Gerät zu schwach fürs Gym (raum.js misst das beim Start und merkt es sich unter dk_gym_geraet; zweimal im Gym abgestürzt zählt genauso): Dann gibt es nur „Nur mein Plan“. */
+const ART_KEY = 'dk_training_art', GERAET_KEY = 'dk_gym_geraet';
+const trainingsArt = () => { const a = speicher.lies(ART_KEY, ''); return a === 'gym' || a === 'plan' ? a : ''; };
+function gymGeraet() { const g = speicher.lies(GERAET_KEY, null); return g && typeof g === 'object' ? (g.schwach ? 'schwach' : g.offen >= 2 ? 'absturz' : '') : ''; }
+function startWahl(p, ti) {
+  const art = trainingsArt(), schwach = gymGeraet();
+  const plan = (haupt) => h('button', { class: 'knopf ' + (haupt ? 'haupt' : 'gym-knopf'), type: 'button', 'data-art': 'plan', onclick: () => { speicher.schreib(ART_KEY, 'plan'); laufStarten(p, ti); }, text: 'Nur mein Plan' });
+  if (schwach) return h('div', { class: 'start-wahl' },
+    h('div', { class: 'aktionen' }, plan(true)),
+    h('p', { class: 'leise klein', text: 'Das Gym in 3D braucht ein stärkeres Gerät. Dein Training läuft hier mit Übung, Sätzen und Timer.' }),
+    h('button', { class: 'knopf text klein', type: 'button', onclick: () => { speicher.schreib(GERAET_KEY, null); speicher.schreib(ART_KEY, 'gym'); raumStarten(p, ti); }, text: 'Gym trotzdem testen' }));
+  const gym = (haupt) => h('button', { class: 'knopf ' + (haupt ? 'haupt' : 'gym-knopf'), type: 'button', 'data-art': 'gym', onclick: () => { speicher.schreib(ART_KEY, 'gym'); raumStarten(p, ti); }, text: 'Ins Gym gehen' });
+  return h('div', { class: 'start-wahl' },
+    h('div', { class: 'aktionen' }, ...(art === 'plan' ? [plan(true), gym(false)] : [gym(true), plan(false)])),
+    h('p', { class: 'leise klein', text: 'Ins Gym gehen: Du läufst zu deinen Geräten. Nur mein Plan: Übung, Sätze und Timer, ohne Laufen.' }));
+}
+// Mitten im Training wechseln: aus dem Gym in „Nur mein Plan“ (weiter bei der ersten Übung, die noch Sätze offen hat) oder zurück ins Gym
+function laufAlsPlan() {
+  if (!LAUF || LAUF.phase === 'fertig') return;
+  const i = LAUF.uebungen.findIndex((u) => u.log.length < u.saetze), ue = i < 0 ? LAUF.uebungen.length - 1 : i, u = LAUF.uebungen[ue];
+  LAUF.gym = false; LAUF.ue = ue; LAUF.satz = Math.min(u.log.length, u.saetze - 1); LAUF.phase = 'satz'; LAUF.seit = Date.now(); LAUF.uebungFertig = false;
+  TM.gym = null; TM.frage = false; TM.klein = false; speicher.schreib(ART_KEY, 'plan'); laufSichern(); wach(true); timerZeigen();
+}
+// raum.js hat beim Start gemessen: Das Gerät schafft das Gym auch auf der kleinsten Einstellung nicht flüssig. Das Gym ist schon zu, das Training läuft als „Nur mein Plan“ weiter
+function gymZuSchwach() {
+  GYM = null; gymStationWeg(); document.body.style.overflow = '';
+  if (LAUF && LAUF.phase !== 'fertig') laufAlsPlan(); else speicher.schreib(ART_KEY, 'plan');
+  toast('Dein Gerät ist für das Gym zu langsam. Du trainierst mit „Nur mein Plan“.'); zeichne();
 }
 // Große Muskeln an zwei Tagen direkt hintereinander? Dann ein Tipp (wie in der Trainer-Seite)
 const GROSSE_MUSKELN = ['brust', 'lat', 'oberer_ruecken', 'quadrizeps', 'beinbeuger', 'gesaess'];
@@ -1994,6 +2031,10 @@ function altesTraining(p, ti) {
 }
 function raumStarten(p, ti, abTuer) {
   if (GYM || !p) return;
+  if (gymGeraet()) {   // 27.11.: zu schwaches Gerät. Läuft genau dieses Training im Gym-Modus, geht es als „Nur mein Plan“ weiter, sonst nur der Hinweis
+    if (LAUF && LAUF.phase !== 'fertig' && LAUF.gym && LAUF.plan === p.id && LAUF.tagNr === ti + 1) laufAlsPlan();
+    toast('Das Gym in 3D braucht ein stärkeres Gerät. Nimm „Nur mein Plan“.'); return;
+  }
   if (LAUF && LAUF.phase !== 'fertig' && (LAUF.plan !== p.id || LAUF.tagNr !== ti + 1)) { altesTraining(p, ti); return; }
   if (!LAUF || LAUF.phase === 'fertig') laufStarten(p, ti, true);
   LAUF.gym = true; LAUF.phase = 'frei'; laufSichern(); wach(true);
@@ -2002,7 +2043,7 @@ function raumStarten(p, ti, abTuer) {
   GYM = {};
   if (!(history.state && history.state.training)) history.pushState({ training: 1 }, '');
   const heute = tagFuer(p, heuteIndex()) === ti, haken = heute ? erledigtLaden(p, ti) : [];
-  const wie = { lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu, status: () => Spiel.status(), abTuer: !!abTuer, prTuer: () => { const zurueckZu = LAUF ? LAUF.tagNr - 1 : ti; GYM = null; gymStationWeg(); prRaumOeffnen(() => raumStarten(p, zurueckZu, true)); },   // status: Spielstand für die Karte im Raum (wirft nie)
+  const wie = { lade3d, titel: LAUF.tagName, beiStation: gymStation, beiStationWeg: gymStationWeg, beiZu: gymZu, beiSchwach: gymZuSchwach, status: () => Spiel.status(), abTuer: !!abTuer, prTuer: () => { const zurueckZu = LAUF ? LAUF.tagNr - 1 : ti; GYM = null; gymStationWeg(); prRaumOeffnen(() => raumStarten(p, zurueckZu, true)); },   // status: Spielstand für die Karte im Raum (wirft nie)
     uebungen: LAUF.uebungen.map((u, i) => ({ id: u.id, name: u.name, dosis: u.saetze + ' × ' + u.dosis, pause: '', d: UEBUNGEN[u.id] || { n: u.name, m: [] }, fertig: u.log.length >= u.saetze || haken.indexOf(i) >= 0 })) };
   raumLaden(wie, p)
     .then((r) => { if (GYM) GYM.raum = r; }, () => { toast('Das Gym lädt gerade nicht.'); gymZu(false); });
