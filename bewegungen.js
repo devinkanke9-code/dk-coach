@@ -7731,7 +7731,7 @@ function nk2BandPfosten(art) {
     aufbau(ger) { bandPfosten(ger, A); return { band_k: ger.stab(V(), V(0, 1, 0), 0.008, ger.mBand) }; },
     pose(t) {
       const s = t * T; let dreh = 0, fu = null;
-      for (const x of ph) { if (s >= x.c && s < x.d) { fu = nkDrehSchritte((s - x.c) / (x.d - x.c), x.von); dreh = fu.dreh; } else if (s >= x.a - 0.2 && s < x.c) dreh = x.von; }
+      for (const x of ph) { if (s >= x.c && s < x.d) { fu = nkDrehSchritte((s - x.c) / (x.d - x.c), x.von); dreh = fu.dreh; } else if (s >= x.a - 0.2001 && s < x.c) dreh = x.von; }   // 0,2001 (27.11.2026): 11,8 − 0,2 ist als Zahl etwas größer als 11,6; fiel ein Bild genau auf 11,6 s, galt keine der beiden Phasen und die Figur stand ein Bild lang um 180° verdreht
       if (!fu) { const q = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), dreh * RAD); fu = { fuss: seiten((x, sg) => V(sg * 0.11, FY, 0).applyQuaternion(q)), fussRicht: seiten((x, sg) => V(sg * 0.25, 0, 1).applyQuaternion(q)) }; }
       const w = druck(s), p = nkStehPose(dreh, fu, weg.clone().multiplyScalar(0.025 * w), null, kopf);
       // der Rumpf lehnt mit (aus dem Sprunggelenk): in Blickrichtung über die Neigung, quer über seit

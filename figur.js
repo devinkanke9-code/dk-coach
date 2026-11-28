@@ -583,27 +583,38 @@ export function gelenke(pose) {
     if (pose.zehenAuf && pose.zehenAuf[s] && !ffl) {
       const b0 = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), lage = kniescheibe(huefte[s], b0.mitte, b0.ende, kpol);
       const w = lage ? glaettung((0.85 - Math.abs(lage.schien.y)) / 0.15) : 0;
-      if (w > 0) frP = (frP || V(0.18 * sg, 0, 1)).clone().normalize().multiplyScalar(1 - w).addScaledVector(lage.ks.clone().addScaledVector(lage.schien, -0.25).normalize(), w);
+      // 27.11.2026 (Ablauf-Prüfung): Im Ablauf davor (pose.fest.ablauf) steht der Knöchel schon erhöht über dem Ballen, das Schienbein steigt zum Fuß hin an und die Kniescheibe kippt um denselben Winkel vom Knie weg:
+      // Die Richtung „nach unten und etwas zum Knie“ wurde genau senkrecht, die Fußspitze zeigte dann zufällig nach hinten statt nach vorn (Sprung bei der Übergabe: 15 cm an der Fußspitze bei Vierfüßler, Knien, Stütz).
+      // Dort zählt darum die Kniescheibe ohne ihren Anteil in Richtung des liegenden Schienbeins
+      let ks = lage ? lage.ks : null;
+      if (w > 0 && pose.fest && pose.fest.ablauf) { const sh = V(lage.schien.x, 0, lage.schien.z); if (sh.lengthSq() > 0.04) { sh.normalize(); ks = ks.clone().addScaledVector(sh, -ks.dot(sh)).normalize(); } }
+      if (w > 0) frP = (frP || V(0.18 * sg, 0, 1)).clone().normalize().multiplyScalar(1 - w).addScaledVector(ks.clone().addScaledVector(lage.schien, -0.25).normalize(), w);
     }
     const fr0 = frP && frP.clone().normalize();
     // G17: hebt die Vorlage den Fuß eines solchen Beins vom Boden ab (Fire Hydrant, Superman), lösen sich die aufgestellten Zehen weich (über 7 cm), statt am Boden zu kleben
-    const abgeh = pose.zehenAuf && pose.zehenAuf[s] && pose.zehenAuf.boden && pose.fuss && pose.fuss[s] ? glaettung((pose.fuss[s].y - pose.zehenAuf.boden[s] - 0.03) / 0.07) : 0;
+    // 27.11.2026 (Ablauf-Prüfung): nicht im Ablauf davor (pose.fest.ablauf). Dort steht in pose.fuss schon der gerechnete Knöchel, und der liegt bei aufgestellten Zehen immer 9 cm über dem Boden der Vorlage: Das galt als „abgehoben“,
+    // die Zehen lagen bis zum letzten Bild flach und sprangen mit dem ersten Bild der Übung um (Vierfüßler, Knien, Stütz: Fußspitze 15 bis 20 cm)
+    const abgeh = pose.zehenAuf && pose.zehenAuf[s] && pose.zehenAuf.boden && pose.fuss && pose.fuss[s] && !(pose.fest && pose.fest.ablauf) ? glaettung((pose.fuss[s].y - pose.zehenAuf.boden[s] - 0.03) / 0.07) : 0;
     let zehenNeig = 0;
-    if (pose.fuss && pose.fuss[s] && fz.y < FUSS_LUFT && !ffl) {
+    if (pose.fuss && pose.fuss[s] && fz.y < FUSS_LUFT + 0.06 && !ffl) {   // bis 27.11.2026 hart bei FUSS_LUFT: jetzt läuft es darüber auf 6 cm aus (rand)
       const neig = Math.max(fr0 ? Math.asin(Math.max(-1, Math.min(1, -fr0.y))) : 0, ((pose.zehen && pose.zehen[s]) || 0) * RAD);
       const vor = fr0 || V(0, 0, 1), hochFuer = (n) => m.fussHoehe * 0.6 + 0.02 + Math.sin(n) * m.fussLaenge * BALLEN;
       const s0 = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), schien0 = s0.ende.clone().sub(s0.mitte).normalize();
-      if (neig > 20 * RAD && vor.dot(schien0) < 0.5) {
+      // 27.11.2026 (Ablauf-Prüfung): Die Bedingung (über 20° nach unten und nicht in Schienbeinrichtung) schaltete in einem Bild um, sobald das Schienbein in der Bewegung schwenkt (Ausfallschritt nach vorn:
+      // Knöchel des hinteren Fußes fiel 4,5 cm; Beincurl sitzend: Fußspitze 6 cm). Innerhalb der alten Grenzen bleibt alles wie bisher (rand = 1), knapp außerhalb läuft es weich aus
+      // (0,5–0,65 zur Schienbeinrichtung, Knöchel 20–26 cm hoch; die Grenze 20° Neigung bleibt hart: weich gemacht beugte sie bei der Kniebeuge mit erhöhten Fersen das Knie oben 9° statt höchstens 5°)
+      const rand = neig > 20 * RAD ? (1 - glaettung((vor.dot(schien0) - 0.5) / 0.15)) * (1 - glaettung((fz.y - FUSS_LUFT) / 0.06)) : 0;
+      if (rand > 0) {
         zehenNeig = Math.min(65 * RAD, neig);
-        if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(fz.y + (hochFuer(zehenNeig) - fz.y) * (1 - abgeh));
+        if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(fz.y + (hochFuer(zehenNeig) - fz.y) * (1 - abgeh) * rand);
         const schien = ik(huefte[s], fz, m.oberschenkel, m.unterschenkel, kpol), sd = schien.ende.clone().sub(schien.mitte).normalize();
         const hor = V(vor.x, 0, vor.z).normalize(), a = sd.dot(hor), b2 = -sd.y, Rr = Math.hypot(a, b2), grenz = Math.cos(130 * RAD);
         let phi = Math.atan2(b2, a); if (phi < 0) phi += 2 * Math.PI;
         if (Rr > Math.abs(grenz) && a * Math.cos(zehenNeig) + b2 * Math.sin(zehenNeig) < grenz) {
           zehenNeig = Math.min(75 * RAD, Math.max(zehenNeig, phi - Math.acos(grenz / Rr)));
-          if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(fz.y + (hochFuer(zehenNeig) - fz.y) * (1 - abgeh));
+          if (fz.y < hochFuer(zehenNeig)) fz = fz.clone().setY(fz.y + (hochFuer(zehenNeig) - fz.y) * (1 - abgeh) * rand);
         }
-        zehenNeig *= 1 - abgeh;
+        zehenNeig *= (1 - abgeh) * rand;
       }
     }
     // Beine, die gestreckt bleiben sollen (Liegestütz, Stütz): Kippt der Fuß auf die Zehen, steigt der Knöchel, das Bein würde kürzer und das Knie knickte durch. pose.beinGerade hält es gestreckt, der Knöchel rückt dafür ein Stück weiter weg
@@ -652,7 +663,10 @@ export function gelenke(pose) {
           // Das gilt nur für einen Fuß, der in der Bewegung den Boden berührt (pose.fussBoden, setzt animation()): ein Fuß, der die ganze Zeit schwebt (Skater Squat, hinten), behält seine Lage.
           // Liegen beide genau gegenüber (Bauchlage), geht der Weg immer seitlich nach außen herum (sonst entschied der Zufall die Richtung)
           const luft = schien.normalize(), p = oben.clone().addScaledVector(sohle, -oben.dot(sohle)), pl = p.length();   // p = Bodenspann senkrecht zur Fußrichtung
-          const k = pl > 0.05 && pose.fussBoden && pose.fussBoden[s] ? glaettung((Math.acos(grenze(p.dot(luft) / pl, -1, 1)) - 15 * RAD) / (25 * RAD)) : 0, w0 = pose.fussLuft && pose.fussLuft[s] ? 1 : pose.zehenAuf && pose.zehenAuf[s] ? Math.max(glaettung((ky - FUSS_LUFT) / 0.1), abgeh) : k * glaettung((ky - FUSS_LUFT) / 0.1) + (1 - k), w = Math.max(luftZweig ? w0 : 0, seitW);   // G17: aufgestellte Zehen strecken sich beim Abheben weich (10 cm)   // G14: pose.fussLuft (Bodenfuß in Bauchlage/Vierfüßler schon in der Lage nach dem Schienbein, nichts schaltet um)
+          // 27.11.2026 (Ablauf-Prüfung): Gemessen wurde nur der Spann quer zur Fußrichtung (p). Zeigt die Fußspitze steil nach oben (Rückenlage: Beinheben, V-Up, Hollow Rock, Dead Bug), liegt p schon wie am Schienbein,
+          // der Fuß rechnete aber unter 20 cm mit „oben = senkrecht“ und sprang darüber um 4 bis 6 cm (Ferse und Spitze). Jetzt zählt auch der Winkel zwischen dem alten Oben und der Lage nach dem Schienbein
+          const kP = pl > 0.05 ? glaettung((Math.acos(grenze(p.dot(luft) / pl, -1, 1)) - 15 * RAD) / (25 * RAD)) : 0, kO = glaettung((Math.acos(grenze(oben.dot(luft), -1, 1)) - 15 * RAD) / (25 * RAD));
+          const k = pose.fussBoden && pose.fussBoden[s] ? Math.max(kP, kO) : 0, w0 = pose.fussLuft && pose.fussLuft[s] ? 1 : pose.zehenAuf && pose.zehenAuf[s] ? Math.max(glaettung((ky - FUSS_LUFT) / 0.1), abgeh) : k * glaettung((ky - FUSS_LUFT) / 0.1) + (1 - k), w = Math.max(luftZweig ? w0 : 0, seitW);   // G17: aufgestellte Zehen strecken sich beim Abheben weich (10 cm)   // G14: pose.fussLuft (Bodenfuß in Bauchlage/Vierfüßler schon in der Lage nach dem Schienbein, nichts schaltet um)
           if (w >= 1) oben = luft;
           else if (w > 0) {
             const gegen = glaettung((-p.dot(luft) / pl - 0.5) / 0.5), aussen = V(sg, 0, 0).addScaledVector(sohle, -sohle.x * sg), roh = oben.clone().multiplyScalar(1 - w).addScaledVector(luft, w);
