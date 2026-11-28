@@ -664,7 +664,7 @@ function pausiertAnsicht() {   // Schalter „aus“ bei Devin: kein Plan, nur e
   return [h('section', { class: 'block willkommen' }, logo(),
     h('h1', { text: (vn ? vn + ', dein' : 'Dein') + ' Zugang ist pausiert' }),
     h('p', { class: 'leise', text: 'Devin hat deinen Zugang gerade ausgeschaltet. Schreib ihm, wenn du weitermachen willst. Sobald er ihn wieder anschaltet, ist dein Plan von selbst wieder da.' }),
-    knopf, h('button', { class: 'knopf text', type: 'button', onclick: abmelden, text: 'Abmelden' }))];
+    knopf, devinSchreibenKnopf('Mein Zugang ist pausiert'), h('button', { class: 'knopf text', type: 'button', onclick: abmelden, text: 'Abmelden' }))];
 }
 function willkommen() {
   return [codeLeiste(), h('section', { class: 'block willkommen' },
@@ -967,6 +967,14 @@ function abgelaufenAnsicht() {
     !link && KONTAKT.mail ? h('p', { class: 'leise klein', text: 'Oder direkt an ' + KONTAKT.mail + '.' }) : null,
     einfuegenBlock('Neuen Link einfügen'))];
 }
+/* Devin schreiben (25.11.2026, App-Store-Prüfung Punkt 1): Wo die App „Schreib Devin“ sagt, steht jetzt auch ein Knopf dafür.
+   Vorher waren „Zugang pausiert“ und „Zugang abgelaufen“ (ohne Bezahl-Link) Sackgassen: nur ein Satz, kein Weg zu Devin. Öffnet die Mail-App, sendet nichts von selbst. */
+function devinSchreibenKnopf(betreff, klasse) {
+  if (!KONTAKT.mail) return null;
+  const ko = aktivesKonto();
+  const text = 'Hi Devin,\r\n\r\n\r\n' + (ko && ko.n ? 'Viele Grüße\r\n' + ko.n : 'Viele Grüße');
+  return h('a', { class: 'knopf' + (klasse ? ' ' + klasse : ''), href: 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent(betreff) + '&body=' + encodeURIComponent(text), text: 'Devin schreiben' });
+}
 // Angebot (21.11.2026): Gratis-Zeit, danach ein Preis im Monat. Nur mit echtem Impressum (KONTAKT.abo), Bezahl-Knopf nur mit PayPal-Link
 function gratisZeit(a) { return a.gratis === 1 ? '1 Monat' : a.gratis + ' Monate'; }
 function aboKarte(a, name, knopf) {
@@ -1000,10 +1008,13 @@ function weiterAbo(a, ko) {
 function wartenAnsicht() {
   const ko = aktivesKonto(), vn = vorname(ko.n), geschickt = ko.analyse === 'geschickt';
   if (geschickt) sendeTextVorbereiten(ko);
+  const roh = geschickt ? speicher.lies(entwurfKey(ko), null) : null;   // Entwurf von vor dem 25.11.2026: ohne Haken, dann steht er hier
+  const ewFehlt = !!roh && typeof roh === 'object' && !einwilligungDa(roh);
   return [h('section', { class: 'block willkommen' }, logo(),
     h('h1', { text: 'Danke' + (vn ? ', ' + vn : '') + '!' }),
     h('p', { class: 'leise', text: (ko.form === 'gesundheit' ? 'Dein Gesundheits-Check' : 'Deine Analyse') + ' ist bei Devin. Er baut jetzt deinen Plan und schickt dir einen neuen Link. Den öffnest du einfach, der Code ist schon gespeichert.' }),
-    geschickt ? h('div', { class: 'aktionen' }, sendenKnopf(ko, 'Nochmal schicken', 'knopf'),
+    ewFehlt ? h('section', { class: 'block' }, einwilligungBlock(roh, () => speicher.schreib(entwurfKey(ko), roh))) : null,
+    geschickt ? h('div', { class: 'aktionen' }, sendenKnopf(ko, 'Nochmal schicken', 'knopf', () => einwilligungDa(speicher.lies(entwurfKey(ko), null))),
       h('button', { class: 'knopf', type: 'button', onclick: () => { kontoSetzen(ko.id, { analyse: null }); zeichne(); window.scrollTo(0, 0); }, text: 'Antworten ändern' })) : null,
     ko.c ? charakterLink() : null,
     einfuegenBlock('Neuen Link einfügen'))];
@@ -1015,7 +1026,7 @@ function wartenAnsicht() {
  * Was eine Antwort bedeutet (Stopp, Anpassung), entscheidet allein die Trainer-Seite beim Einfügen. */
 let EN = null;   // Entwurf: { id, a: Antworten, s: Gesundheits-Check, zg: Zielgruppen, schritt }
 const entwurfKey = (ko) => 'dk_analyse_' + ko.id;
-function entwurfLaden(ko) { const e = speicher.lies(entwurfKey(ko), null) || {}; return { id: ko.id, a: Object.assign({ name: ko.n || '' }, ko.g ? { geschlecht: ko.g } : null, e.a), s: e.s || {}, zg: e.zg || [], schritt: e.schritt || 0 }; }
+function entwurfLaden(ko) { const e = speicher.lies(entwurfKey(ko), null) || {}; return Object.assign({ id: ko.id, a: Object.assign({ name: ko.n || '' }, ko.g ? { geschlecht: ko.g } : null, e.a), s: e.s || {}, zg: e.zg || [], schritt: e.schritt || 0 }, e.ew === true ? { ew: true } : null, e.el === true ? { el: true } : null); }
 const entwurfSichern = () => speicher.schreib('dk_analyse_' + EN.id, EN);
 const istJa = (v) => v === true || v === 'weiss_nicht';
 const STEUER = new Set(), STEUER_S = new Set();   // Antworten, von denen Folgefragen abhängen: bei Änderung neu zeichnen
@@ -1095,6 +1106,21 @@ function anGesundheit() {
         EN.zg = EN.zg.filter((x) => x !== z.id); if (e.target.checked) EN.zg.push(z.id); entwurfSichern();
       } }), h('span', { text: z.name }))))) : null];
 }
+/* Einwilligung vor dem Senden (25.11.2026, App-Store-Prüfung Punkt 5): Die Analyse in der App (Analyse, 10 Fragen, Gesundheits-Check) hatte, anders als
+   die Seite „Analyse für dich“, keinen Haken. Gesundheitsangaben gehen nur mit ausdrücklicher Einwilligung raus (Art. 9 Abs. 2 lit. a DSGVO, Apple 5.1.2(i)):
+   Der Text nennt den Weg, die Trainer-Seite bei claude.ai und die KI (Claude von Anthropic), bevor etwas das Handy verlässt. Unter 18 zusätzlich die Eltern.
+   Die Haken stehen im Entwurf (ew, el), gehen aber nicht mit in den Text an Devin: An der Analyse selbst ändert sich nichts. */
+const EW_TEXT = 'Ich bin einverstanden, dass Devin meine Angaben, auch die zu meiner Gesundheit, nur für meinen Trainingsplan nutzt. Ich schicke sie selbst an Devin, zum Beispiel per WhatsApp oder Mail. Devin speichert sie in seiner Trainer-Seite bei claude.ai (Anthropic), und beim Auswerten hilft ihm eine KI (Claude von Anthropic). Die Anbieter sitzen auch in den USA, meine Daten können also dort verarbeitet werden. Widerrufen kann ich jederzeit per Mail an Devin.';
+const unter18 = (e) => !!e && !!e.a && e.a.alter != null && e.a.alter !== '' && +e.a.alter < 18;
+const einwilligungDa = (e) => !!e && e.ew === true && (!unter18(e) || e.el === true);
+function einwilligungBlock(e, sichern) {
+  const haken = (id, text, schluessel) => {
+    const feld = h('input', { type: 'checkbox', checked: e[schluessel] === true, 'aria-labelledby': id, onchange: (x) => { if (x.target.checked) e[schluessel] = true; else delete e[schluessel]; sichern(); } });
+    return h('div', { class: 'ueb-karte einwilligung' }, h('label', { class: 'haken' }, feld, h('span')), h('p', { class: 'klein', id, text, onclick: () => feld.click() }));
+  };
+  return h('div', { class: 'stapel' }, h('b', { text: 'Einwilligung' }), haken('ew-text', EW_TEXT, 'ew'), unter18(e) ? haken('ew-eltern', 'Meine Eltern sind einverstanden.', 'el') : null,
+    KONTAKT.rechtliches ? h('p', { class: 'leise klein' }, 'Mehr dazu: ', h('a', { href: 'datenschutz/', text: 'Datenschutz' })) : null);
+}
 // Verschlüsseln dauert kurz (PBKDF2). Deshalb vorher, damit „Teilen“ direkt im Tipp startet (sonst blockt das iPhone).
 let SENDE = { key: '', p: null, text: '' };
 function sendeTextVorbereiten(ko) {
@@ -1112,10 +1138,15 @@ function sendeTextVorbereiten(ko) {
     document.querySelectorAll('[data-senden]').forEach((b) => { b.disabled = false; b.textContent = b.dataset.senden; });
   }) };
 }
-function sendenKnopf(ko, text, klasse) {
+function sendenKnopf(ko, text, klasse, darf) {   // darf (25.11.2026): ohne Einwilligung geht nichts raus, stattdessen ein Hinweis auf den Haken
   return h('button', { class: klasse, type: 'button', 'data-senden': text, disabled: !SENDE.text || null, text: SENDE.text ? text : 'Wird vorbereitet …', onclick: async (ev) => {
     const t = SENDE.text, knopf = ev.currentTarget;
     if (!t) return;
+    if (darf && !darf()) {
+      toast('Bitte zuerst den Haken bei der Einwilligung setzen.');
+      const offen = document.querySelector('.einwilligung input:not(:checked)'); if (offen) { offen.scrollIntoView({ block: 'center' }); try { offen.focus({ preventScroll: true }); } catch (x) { /* nichts */ } }
+      return;
+    }
     let ok = false;
     if (navigator.share) {
       try { await navigator.share({ text: t }); ok = true; } catch (e) { if (e && e.name === 'AbortError') return; }
@@ -1165,7 +1196,8 @@ function analyseAnsicht() {
       ja ? h('p', { class: 'meldung klein', text: 'Du hast ' + ja + '× „Ja“ oder „Weiß nicht“ im Gesundheits-Check. Devin schaut sich das an. Vielleicht brauchst du vorher eine ärztliche Freigabe.' }) : null,
       EN.a.alter != null && +EN.a.alter < 18 ? h('p', { class: 'meldung klein', text: 'Du bist unter 18: Devin braucht die schriftliche Einwilligung deiner Eltern, bevor es losgeht.' }) : null,
       h('p', { class: 'leise klein', text: 'Deine Antworten gehen mit deinem Code verschlüsselt an Devin.' }),
-      sendenKnopf(ko, 'An Devin schicken', 'knopf haupt')));
+      einwilligungBlock(EN, entwurfSichern),
+      sendenKnopf(ko, 'An Devin schicken', 'knopf haupt', () => einwilligungDa(EN))));
   }
   const ges = alle.findIndex((x) => x.art === 'gesundheit');
   if (!kurz && akt.art === 'abschnitt' && EN.schritt < ges - 1 && alle.every((x) => x.art !== 'abschnitt' || !anFehler(x.a).length)) {
@@ -1653,6 +1685,7 @@ function ansichtInfo() {
       }, text: (x.id === p.id ? '✓ ' : '') + (x.n || 'Plan') + (x.s ? ' · ' + x.s : '') }))) : null,
       !mitZugang ? einfuegenBlock('Neuen Link einfügen') : null,
       !mitZugang ? h('button', { class: 'knopf klein', type: 'button', onclick: planLoeschen, text: 'Diesen Plan vom Handy löschen' }) : null),
+    datenBlock(),
     infoUeber()];
 }
 // Abmelden: Zugang, Plan und Analyse-Entwurf gehen vom Handy (Devin kann jederzeit einen neuen Link schicken)
@@ -1665,8 +1698,46 @@ function abmelden(e) {
   speicher.schreib(VERLAUF_KEY, null); speicher.schreib('dk_tage_' + ko.id, null); if (LAUF) laufSchliessen();   // der nächste auf diesem Handy soll nichts davon sehen
   speicher.schreib(Statistik.SCHLUESSEL, null);   // Dein Fortschritt geht mit (wie der Verlauf)
   speicher.schreib(FRAGE_MAIL_KEY, null); speicher.schreib(LAUF_GESENDET_KEY, null);   // Adresse für Antworten und „schon gesendet“ gehen mit (23.11.2026)
+  // 25.11.2026 (App-Store-Prüfung Punkt 8): Bestwerte und Gym-Punkte gehen mit wie Verlauf und Statistik, ebenso alles, was an diesem Konto hängt
+  // (Gewicht unter Status, eigene Figur, Figur-Wahl, getauschte Übungen, Haken von heute). Vorher blieben sie und der Nächste auf dem Handy sah sie.
+  speicher.schreib(Bestleistung.SCHLUESSEL, null); speicher.schreib(Spiel.SCHLUESSEL, null);
+  ['dk_gewicht_', 'dk_figur_', 'dk_meine_figur_', 'dk_tausch_'].forEach((v) => speicher.schreib(v + ko.id, null));
+  schluesselWeg(localStorage, (k) => k.indexOf('dk_erledigt_' + ko.id + '_') === 0);
   speicher.schreib('dk_konto', Object.keys(alle)[0] || null); speicher.schreib('dk_aktiv', Object.keys(plaene)[0] || null);
   EN = null; S.tagWahl = null; S.ansicht = 'heute'; zeichne(); window.scrollTo(0, 0);
+}
+/* ---------- Deine Daten (25.11.2026, App-Store-Prüfung Punkt 8) ----------
+   Alles, was die Kunden-App speichert, liegt unter Schlüsseln mit „dk_“ im Speicher dieses Browsers (die DK Akademie nutzt „dkakademie_“ und bleibt).
+   „Alle Daten auf diesem Handy löschen“ nimmt alle davon weg, auch Einstellungen, und startet die App neu. Die App-Dateien für offline (Cache) bleiben,
+   darin steht nichts Persönliches. Was Devin hat (Mails, Trainer-Seite, verschlüsselter Plan im Code-Briefkasten), löscht nur er: dafür die fertige Mail. */
+function schluesselWeg(sp, passt) {
+  try { const weg = []; for (let i = 0; i < sp.length; i++) { const k = sp.key(i); if (k && passt(k)) weg.push(k); } weg.forEach((k) => sp.removeItem(k)); } catch (e) { /* gesperrter Speicher: dann gibt es auch nichts zu löschen */ }
+}
+function loeschMail(ko) {
+  const z = ['Hi Devin,', '', 'bitte lösche alle Daten, die du von mir gespeichert hast (Analyse, Gesundheits-Check, Trainings, Nachrichten, Plan und Zugang), und bestätige mir kurz die Löschung.', ''];
+  if (ko && ko.n) z.push('Name im Plan: ' + ko.n);
+  if (ko && ko.id) z.push('Kundennummer: ' + ko.id);
+  z.push('', 'Danke!');
+  return 'mailto:' + KONTAKT.mail + '?subject=' + encodeURIComponent('Bitte meine Daten löschen') + '&body=' + encodeURIComponent(z.join('\r\n'));
+}
+function datenBlock() {
+  const ko = aktivesKonto();
+  return h('section', { class: 'block' }, h('h2', { text: 'Deine Daten' }),
+    h('p', { class: 'leise klein', text: 'Auf diesem Handy: Plan, Code, Trainings, Statistik, Bestwerte, Punkte, Figur, Gewicht, Analyse-Entwurf und Einstellungen. Abmelden nimmt deinen Zugang mit allem, was dazu gehört. „Alle Daten löschen“ nimmt wirklich alles weg.' }),
+    h('p', { class: 'leise klein', text: 'Bei Devin liegt nur, was du ihm selbst geschickt hast, und dein Plan. Das löscht er, wenn du ihn darum bittest.' }),
+    h('div', { class: 'reihe' },
+      h('button', { class: 'knopf klein', type: 'button', onclick: allesLoeschen, text: 'Alle Daten auf diesem Handy löschen' }),
+      KONTAKT.mail ? h('a', { class: 'knopf klein', href: loeschMail(ko), text: 'Löschung bei Devin anfragen' }) : null),
+    KONTAKT.rechtliches ? h('p', { class: 'klein' }, h('a', { href: 'datenschutz/', text: 'Mehr dazu in der Datenschutzerklärung' })) : null);
+}
+function allesLoeschen(e) {
+  const b = e.currentTarget;
+  if (!b.dataset.sicher) { b.dataset.sicher = '1'; b.textContent = 'Wirklich alles löschen? Nochmal tippen'; return; }
+  if (LAUF) { LAUF = null; wach(false); }
+  schluesselWeg(localStorage, (k) => k.indexOf('dk_') === 0);
+  schluesselWeg(sessionStorage, (k) => k.indexOf('dk_') === 0);
+  try { sessionStorage.setItem('dk_geloescht', '1'); } catch (x) { /* dann ohne Hinweis */ }
+  location.replace(location.pathname);   // frisch starten: kein Rest im Arbeitsspeicher, die Startseite erscheint
 }
 function planLoeschen(e) {
   const b = e.currentTarget;
@@ -2000,7 +2071,7 @@ function laufVerwerfen() {
   if (!LAUF) return;
   if (LAUF.phase !== 'fertig' && LAUF.uebungen.some((u) => u.log.length)) {
     const r = ergebnis('abgebrochen');
-    speicher.schreib(VERLAUF_KEY, [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40));
+    if (LAUF.plan !== 'beispiel') speicher.schreib(VERLAUF_KEY, [r].concat(verlaufListe().filter((x) => x.s !== r.s)).slice(0, 40));   // 25.11.2026: Beispiel nie in den echten Verlauf (wie laufBeenden)
     if (LAUF.plan !== 'beispiel') statistikMerken([r]);
   }
   LAUF = null; laufSichern(); wach(false);
@@ -2376,7 +2447,7 @@ function fsUebung(u, r) {
 // Eine Übung über die Zeit: je Training der beste Satz als Leucht-Graph, dazu erstes Mal, Bestwert und Steigerung
 function fsVerlaufBlatt(name) {
   let v;
-  try { v = Statistik.uebungVerlauf(Statistik.trainings(), name, { jetzt: Date.now() }); } catch (e) { return; }
+  try { v = Statistik.uebungVerlauf(fsListe(), name, { jetzt: Date.now() }); } catch (e) { return; }
   const einheit = (x) => (v.einheit === 'kg' ? Statistik.kgText(x) : Statistik.zahlText(x) + (v.einheit === 's' ? ' s' : ' Wdh'));
   const daten = v.punkte.map((p, i) => ({ label: p.label, name: p.name, wert: p.wert, text: p.text, zeigen: true, markiert: i === v.punkte.length - 1 }));
   const steigerung = v.richtung === 'hoch' ? Statistik.PFEIL.hoch + ' ' + v.steigerung : v.mal > 1 ? 'gleich' : '–';
@@ -2391,10 +2462,30 @@ function fsVerlaufBlatt(name) {
       h('p', { class: 'leise klein', text: v.mal === 1 ? 'Einmal mit Werten trainiert. Ab dem zweiten Mal siehst du hier deine Steigerung.'
         : v.mal + '× mit Werten trainiert. Je Training zählt der beste Satz: das meiste Gewicht, bei gleichem Gewicht die meisten Wiederholungen.' }))]);
 }
+/* Beispiel-Statistik (25.11.2026, App-Store-Prüfung Punkt 2): Probetrainings im Beispielplan landen nie in der echten Statistik. Damit man (und Apple im Review)
+   die Statistik trotzdem ohne eigenen Plan ausprobieren kann, rechnet sie im Beispiel mit erfundenen Trainings der letzten zehn Wochen
+   (Ganzkörper A und B aus dem Beispielplan, langsam schwerer). Nichts davon wird gespeichert, die echte Statistik bleibt unberührt. */
+function beispielTrainings() {
+  const p = beispielPlan(), start = [[60, 35, 30, 35, 20, 15, 25], [14, 10, 8, 5]], liste = [];
+  for (let w = 9; w >= 0; w--) {
+    [[0, 4], [1, 1]].forEach(([ti, vor]) => {
+      const t = p.t[ti], tag = new Date(); tag.setHours(17, 30, 0, 0); tag.setDate(tag.getDate() - vor - 7 * w);
+      const stufe = 9 - w, s = tag.getTime();
+      liste.push({ s, e: s + (t.m || 45) * 60000, n: t.n, u: t.u.map((u, j) => {
+        const grund = start[ti][j] || 10, schritt = grund >= 20 ? 2.5 : 1, kg = grund + schritt * Math.floor(stufe / 2);
+        return [uebung(u).name, 0, Array.from({ length: u.s }, (_, k) => [kg, Math.max(u.w[0], u.w[1] - k - (stufe % 2 ? 0 : 1))])];
+      }) });
+    });
+  }
+  return liste;
+}
+const fsBeispiel = () => !!S.plan && S.plan.id === 'beispiel';
+const fsListe = () => (fsBeispiel() ? beispielTrainings() : Statistik.trainings());
+const fsBeginn = () => (fsBeispiel() ? null : Statistik.beginn());
 // Wie lange schon dabei: vom ersten Training bis heute, dazu alles zusammengezählt
 function fsSeit(liste) {
   let z;
-  try { z = Statistik.seit(liste, { jetzt: Date.now(), beginn: Statistik.beginn() }); } catch (e) { return null; }
+  try { z = Statistik.seit(liste, { jetzt: Date.now(), beginn: fsBeginn() }); } catch (e) { return null; }
   if (!z.beginn) return null;
   const zahl = Number.isInteger(z.dauer.zahl) ? String(z.dauer.zahl) : String(z.dauer.zahl).replace('.', ',');
   return h('section', { class: 'block' }, h('div', { class: 'st-seit' },
@@ -2408,18 +2499,23 @@ function fsSeit(liste) {
 function ansichtStatistik() {
   const ansicht = Statistik.ANSICHTEN.indexOf(S.fsAnsicht) >= 0 ? S.fsAnsicht : 'woche';
   let liste = [], r;
-  try { liste = Statistik.trainings(); r = Statistik.berechne(liste, { ansicht, versatz: S.fsVersatz || 0, jetzt: Date.now() }); } catch (e) { r = Statistik.berechne([], { ansicht }); }
+  try { liste = fsListe(); r = Statistik.berechne(liste, { ansicht, versatz: S.fsVersatz || 0, jetzt: Date.now() }); } catch (e) { r = Statistik.berechne([], { ansicht }); }
   S.fsVersatz = r.versatz;
   // Der Graph zeichnet sich nur, wenn sich der Zeitraum wirklich ändert (nicht bei jedem Neuzeichnen, z. B. Farbwelt oder Haken)
   const schluessel = ansicht + '|' + r.versatz, animieren = S.fsGezeichnet !== schluessel;
   S.fsGezeichnet = schluessel;
   const neu = (wahl) => { Object.assign(S, wahl); zeichne(); };
-  const teile = [kopf('Aus deinen Trainings · nur auf diesem Handy', 'Statistik'), fsSeit(liste),
+  const teile = [kopf(fsBeispiel() ? 'Beispiel mit erfundenen Trainings · nichts davon ist gespeichert' : 'Aus deinen Trainings · nur auf diesem Handy', 'Statistik'),
+    fsBeispiel() ? h('section', { class: 'rg-beispiel', 'aria-label': 'Beispielstatus' }, h('p', null, h('b', { text: 'Beispiel mit erfundenen Trainings. ' }),
+      'So sieht deine Statistik nach ein paar Wochen aus. Was du im Beispiel trainierst, zählt hier nicht. Mit deinem eigenen Plan zählt jedes Training.')) : null,
+    fsSeit(liste),
     h('div', { class: 'fs-wahl st-wahl', role: 'group', 'aria-label': 'Zeitraum wählen' }, Statistik.ANSICHTEN.map((id) => h('button', { type: 'button', class: 'fs-wahl-knopf',
       'aria-pressed': id === ansicht ? 'true' : 'false', onclick: () => neu({ fsAnsicht: id, fsVersatz: 0, fsAlle: false }), text: FS_NAMEN[id] })))];
   if (r.leer) {
+    // Erstes Training (25.11.2026, App-Store-Prüfung Punkt 1): sagen, was genau zählt, und ein Knopf zum Training statt einer leeren Seite
     teile.push(h('section', { class: 'block' }, h('h2', { text: 'Noch kein Training gespeichert' }),
-      h('p', { class: 'leise klein', text: 'Starte ein Training und trag Gewicht und Wiederholungen ein. Danach siehst du hier jeden Tag, wie du dich steigerst.' })));
+      h('p', { class: 'leise klein', text: 'Dein erstes Training erscheint hier, sobald du es abgeschlossen hast: Starte es unter Heute oder Plan, trag bei jedem Satz Gewicht und Wiederholungen ein und tippe am Ende auf „Training abschließen“. Danach siehst du hier jeden Tag, wie du dich steigerst.' }),
+      h('div', { class: 'reihe' }, h('button', { class: 'knopf', type: 'button', onclick: () => geh('heute'), text: 'Zu deinem Training' }))));
     return teile;
   }
   const s = r.summe, a = r.aenderung || {}, mitKg = s.volumen > 0 || (r.vorher && r.vorher.volumen > 0), gesamt = ansicht === 'gesamt';
@@ -2742,7 +2838,7 @@ function infoUeber() {
   const u = KONTAKT.ueber_mich;   // null, solange Devins eigener Text fehlt: dann nur der Kontakt
   return h('section', { class: 'block' }, h('h2', { text: u ? 'Über mich' : 'Kontakt' }),
     u ? h('p', { class: 'klein', text: u.zeile + ' ' + u.text }) : null,
-    h('p', { class: 'klein leise' }, 'Fragen? Schreib mir: ', h('span', { text: KONTAKT.mail })),
+    h('p', { class: 'klein leise' }, 'Fragen? Schreib mir: ', h('a', { href: 'mailto:' + KONTAKT.mail, text: KONTAKT.mail })),   // 25.11.2026: antippbar statt nur Text
     KONTAKT.rechtliches ? h('p', { class: 'klein' }, h('a', { href: 'impressum/', text: 'Impressum' }), ' · ', h('a', { href: 'datenschutz/', text: 'Datenschutz' }), aboLinks()) : null);
 }
 
@@ -2915,6 +3011,7 @@ if ('serviceWorker' in navigator) {
   if (figurNeu && typeof figurNeu.ansicht === 'string') S.ansicht = figurNeu.ansicht;
   zeichne();
   if (figurNeu && figurNeu.text) toast(String(figurNeu.text).slice(0, 80));
+  try { if (sessionStorage.getItem('dk_geloescht')) { sessionStorage.removeItem('dk_geloescht'); toast('Alle Daten auf diesem Handy sind gelöscht.'); } } catch (e) { /* nichts */ }
   fotosVorladen();
   gymAusLink();
   umzugPruefen();
