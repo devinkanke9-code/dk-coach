@@ -82,20 +82,21 @@
 })();
 
 /* Farbwelt wechseln (18.11.2026, Devin: „dass man ganz einfach, also wirklich super einfach, das ändern kann, also man klickt drauf und das geht direkt“).
- * Ein Tipp auf den runden Knopf oben rechts zeigt sofort die nächste Farbwelt (Sport → Schwarz-Gold → Lagune → Lounge-Weiß → …), ohne Menü und ohne Neuladen.
- * Ein kleines Schild nennt kurz den Namen. Gemerkt in dk_look auf diesem Gerät. Ohne Eintrag gilt das frühe Skript in index.html (neue Besucher: Sport).
- * Die Seite zeichnet sich selbst neu (Ereignis „dk-look“: app.js zeichnet die Ansicht neu, buehne.js baut die Vorschaubilder neu), Hintergrund, Glas und Sport-Effekte hören auf data-look.
+ * Ein Tipp auf den Knopf oben rechts zeigt sofort die nächste Farbwelt, ohne Menü und ohne Neuladen.
+ * Ein kleines Schild nennt kurz den Namen. Gemerkt in dk_look auf diesem Gerät. Ohne Eintrag gilt das frühe Skript in index.html (neue Besucher: Ozean).
+ * Die Seite zeichnet sich selbst neu (Ereignis „dk-look“: app.js zeichnet die Ansicht neu, buehne.js baut die Vorschaubilder neu), alle Farben hören auf data-look.
+ * Look 5 (27.11.2026): In der Kunden-App fünf neue Welten („ein Tag am Meer“): Ozean → Abendrot → Dämmerung → Lagune → Morgenrot. Die technischen Namen bleiben
+ * (champagner, gold, sport, lagune, klar), eine früher gewählte Welt bleibt also gültig und zeigt ihre Nachfolgerin. Die Trainer-Seite behält bis zu ihrer eigenen Lieferung die alten drei.
  * Unter „Infos“ (Kunden-App) stehen dieselben Farbwelten zum direkten Antippen (window.dkFarbe).
  * Früher: Menü und location.reload(). Das war langsam, sprang auf „Heute“ zurück, und wo der Speicher fehlt (abgeschirmte Trainer-Seite), ging die Wahl beim Neuladen verloren. */
 (function () {
   var SCHLUESSEL = 'dk_look';
-  var WELTEN = [['champagner', 'Champagner'], ['sport', 'Sport'], ['gold', 'Schwarz-Gold'], ['lagune', 'Lagune'], ['klar', 'Lounge-Weiß']].filter(function (w) { return (w[0] !== 'sport' && w[0] !== 'champagner') || !!document.querySelector('link[href$="sport.css"]'); });
-  // Champagner (24.11.2026) steht wie Sport in sport.css, also nur in der Kunden-App
-  // Sport nur, wo sport.css geladen ist: Die Trainer-Seite nimmt diese Datei auch (app/build.js), hat aber kein sport.css (16.11.2026)
-  var LEISTE = { klar: '#F5F5F7', gold: '#060608', sport: '#111215', champagner: '#131416', lagune: '#86CBEE' };   // Farbe der Handy-Leiste, wie im frühen Skript in index.html
+  var NEU = !!document.querySelector('link[href$="sport.css"]');   // Look 5 steht in sport.css, also nur in der Kunden-App. Die Trainer-Seite nimmt diese Datei auch (app/build.js), hat aber kein sport.css
+  var WELTEN = NEU ? [['champagner', 'Ozean'], ['gold', 'Abendrot'], ['sport', 'Dämmerung'], ['lagune', 'Lagune'], ['klar', 'Morgenrot']] : [['gold', 'Schwarz-Gold'], ['lagune', 'Lagune'], ['klar', 'Lounge-Weiß']];
+  var LEISTE = NEU ? { champagner: '#060A12', gold: '#0E0909', sport: '#0A0812', lagune: '#EEF8F6', klar: '#FFF6F0' } : { klar: '#F5F5F7', gold: '#060608', lagune: '#86CBEE' };   // Farbe der Handy-Leiste, wie im frühen Skript in index.html
   var root = document.documentElement, schild = null, schildUhr = 0, bald = 0;
   function lies() { try { return localStorage.getItem(SCHLUESSEL) || ''; } catch (e) { return ''; } }
-  function jetzt() { return root.dataset.look || 'lagune'; }
+  function jetzt() { return root.dataset.look || (NEU ? 'champagner' : 'lagune'); }
   function name(w) { for (var i = 0; i < WELTEN.length; i++) if (WELTEN[i][0] === w) return WELTEN[i][1]; return w; }
   function hinweis(w) { return 'Farbwelt: ' + name(w) + '. Tippen zeigt die nächste'; }
   function zeigeSchild(text) {

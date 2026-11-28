@@ -17,9 +17,14 @@ function h(tag, attrs, ...kinder) {
   return el;
 }
 
+// Look 5 (28.11.2026): Hintergrund der kleinen Vorschaubilder in der Farbe der Welt (--vorschau-grund aus sport.css, immer #RRGGBB). Fehlt die Variable (Trainer-Seite), gilt der alte feste Wert.
+function vorschauGrund(sonst) { const v = getComputedStyle(document.documentElement).getPropertyValue('--vorschau-grund').trim(); return /^#[0-9a-f]{6}$/i.test(v) ? parseInt(v.slice(1), 16) : sonst; }
+
 // Farbwelt „Klar“: Boden der Bühne neutral statt bläulich (die Hell-Farbe in figur.js gehört zur Lagune)
 function klarerBoden(a) {
-  if (document.documentElement.dataset.look !== 'klar') return;
+  // Look 5 (28.11.2026): In der Kunden-App ist auch „Lagune“ neutral hell (Türkis-Grün statt Blau). Erkennbar an --vorschau-grund aus sport.css; die Trainer-Seite hat die Variable noch nicht und bleibt wie bisher.
+  const l = document.documentElement.dataset.look, look5 = !!getComputedStyle(document.documentElement).getPropertyValue('--vorschau-grund').trim();
+  if (l !== 'klar' && !(l === 'lagune' && look5)) return;
   for (const o of a.szene.children) if (o.isMesh && o.geometry.type === 'CircleGeometry') { o.material.color.set(0xffffff); o.material.emissive.set(0xe8e8ed); }
 }
 
@@ -195,7 +200,7 @@ export async function standbilder(lade3d, ziele, datenZu) {
   if (!standAnsicht) {
     const c = document.createElement('canvas'); c.width = 192; c.height = 192; c.style.cssText = 'position:fixed;left:-500px;top:0;width:192px;height:192px';
     document.body.append(c);
-    standAnsicht = new M.Ansicht(c, { standbild: true, hell: !/^(gold|sport|champagner)$/.test(document.documentElement.dataset.look || ''), hintergrund: document.documentElement.dataset.look === 'sport' ? 0x1a1c20 : document.documentElement.dataset.look === 'champagner' ? 0x202124 : document.documentElement.dataset.look === 'gold' ? 0x17171c : document.documentElement.dataset.look === 'klar' ? 0xf5f5f7 : 0xd6ecf8, farbeA: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-a').trim(), farbeB: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-b').trim() });
+    standAnsicht = new M.Ansicht(c, { standbild: true, hell: !/^(gold|sport|champagner)$/.test(document.documentElement.dataset.look || ''), hintergrund: vorschauGrund(document.documentElement.dataset.look === 'sport' ? 0x1a1c20 : document.documentElement.dataset.look === 'champagner' ? 0x202124 : document.documentElement.dataset.look === 'gold' ? 0x17171c : document.documentElement.dataset.look === 'klar' ? 0xf5f5f7 : 0xd6ecf8), farbeA: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-a').trim(), farbeB: getComputedStyle(document.documentElement).getPropertyValue('--verlauf-b').trim() });
     klarerBoden(standAnsicht);
   }
   for (const el of ziele) {

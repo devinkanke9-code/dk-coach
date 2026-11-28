@@ -1,249 +1,610 @@
-/* ---------- Farbwelt „Sport“ (16.11.2026, Devin: „modern, minimalistisch, hochwertig … dunkler Hintergrund in Anthrazit, klare Schrift, großzügige Abstände,
-   gezielt eingesetzte Akzentfarbe wie Limettengrün … dezente Interaktion mit der Maus … ohne überladene Gaming-Optik“).
-   Nur Kunden-App: <html data-look="sport">. Läuft über dieselben Tokens wie Lagune, Klar und Schwarz-Gold (app/src/stil.css), dazu ein paar ruhigere Regeln.
-   Bewegt wird nur transform und opacity. Kein bewegter Hintergrund, kein Video, keine Dauer-Animation. Maus-Effekte: sport.js (nur mit Maus und Hover).
-   Kontraste (WCAG): Text #F2F4EF auf Karte #1A1C20 15,6:1 · Zweittext #A9AFA9 auf Karte 7,9:1 · Limette #C8F135 auf Karte 13,5:1 · Schrift #0D1003 auf Limette 15,1:1. ---------- */
-:root[data-look="sport"] {
-  --verlauf-a: #D4F75A;
-  --verlauf-b: #B8E623;
-  --verlauf-winkel: 120deg;
-  --akzent: #C8F135;
-  --akzent-hell: #CFF35A;
-  --auf-akzent: #0D1003;
-  --blatt-akzent: #CFF35A;
-  --verlauf-schrift: linear-gradient(120deg, #F2F4EF 0%, #F2F4EF 100%);
-  --akzent-verlauf: #C8F135;
-
-  --schwarz: #141518;
-  --anthrazit: #24272C;
-  --flaeche: #1A1C20;
-  --linie: #2C3036;
-  --text: #F2F4EF;
-  --text2: #A9AFA9;
-  --auf-grund: #F2F4EF;
-  --auf-grund2: #A9AFA9;
-  --gut: #6FDC9C;
-  --warn: #F3B64F;
-  --stopp: #FF7B6C;
+/* ---------- DK Coach Look 5 (27.11.2026): die fünf Farbwelten der Kunden-App ----------
+   Devin: „Kannst du Farbverläufe einfach alle wechseln … die besten 5 Farbverläufe … Programmier die Knöpfe wie bei Apple … anders kreisförmig“.
+   Diese Datei hieß „Farbwelt Sport“. Jetzt stehen hier alle fünf Welten („ein Tag am Meer“): Ozean, Abendrot, Dämmerung (dunkel), Lagune, Morgenrot (hell).
+   Die technischen Namen in <html data-look> bleiben champagner, gold, sport, lagune, klar (raum.js, buehne.js und die gespeicherte Wahl kennen sie).
+   Aufbau: 1. Token je Welt (erzeugt, siehe Marken) · 2. Regeln für alle Welten (früher nur Sport und Champagner) · 3. Redesign vom 24.11. (Startseite, Leiste, Training)
+   · 4. Look 5: Ecken wie bei Apple, Hintergrund, Zustände. „:root:root“ heißt: gilt in jeder Farbwelt, mit dem Gewicht einer Farbwelt-Regel (schlägt die alten Regeln in stil.css).
+   Farben nur über Token. Bewegt werden nur transform und opacity, nichts läuft in Dauerschleife. Kontraste: D:/DK-Coach/arbeit-look5/FARBEN.md. ---------- */
+/* LOOK5-TOKEN-ANFANG (erzeugt von arbeit-look5/werkzeug/farben.js, nicht von Hand ändern) */
+/* Für alle Welten: Maske für die Ecken in Safari (Superellipse wie corner-shape: squircle) */
+:root:root { --sq-maske: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='102' height='102'%3E%3Cpath d='M52 0L70.1 0.2L77.4 0.9L82.9 1.9L87.4 3.5L91 5.5L94 8L96.5 11L98.5 14.6L100.1 19.1L101.1 24.6L101.8 31.9L102 50L102 52L101.8 70.1L101.1 77.4L100.1 82.9L98.5 87.4L96.5 91L94 94L91 96.5L87.4 98.5L82.9 100.1L77.4 101.1L70.1 101.8L52 102L50 102L31.9 101.8L24.6 101.1L19.1 100.1L14.6 98.5L11 96.5L8 94L5.5 91L3.5 87.4L1.9 82.9L0.9 77.4L0.2 70.1L0 52L0 50L0.2 31.9L0.9 24.6L1.9 19.1L3.5 14.6L5.5 11L8 8L11 5.5L14.6 3.5L19.1 1.9L24.6 0.9L31.9 0.2L50 0Z'/%3E%3C/svg%3E"); --sq-maske-oben: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='102' height='102'%3E%3Cpath d='M52 0L70.1 0.2L77.4 0.9L82.9 1.9L87.4 3.5L91 5.5L94 8L96.5 11L98.5 14.6L100.1 19.1L101.1 24.6L101.8 31.9L102 50L102 102L0 102L0 50L0.2 31.9L0.9 24.6L1.9 19.1L3.5 14.6L5.5 11L8 8L11 5.5L14.6 3.5L19.1 1.9L24.6 0.9L31.9 0.2L50 0Z'/%3E%3C/svg%3E");
+  --sq-ring-karte: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='102' height='102'%3E%3Cpath fill='none' stroke='%23FFFFFF' stroke-opacity='0.1' stroke-width='1.42' d='M52 0.7L69.8 0.9L77.1 1.6L82.5 2.6L86.9 4.1L90.5 6.1L93.4 8.6L95.9 11.5L97.9 15.1L99.4 19.5L100.4 24.9L101.1 32.2L101.3 50L101.3 52L101.1 69.8L100.4 77.1L99.4 82.5L97.9 86.9L95.9 90.5L93.4 93.4L90.5 95.9L86.9 97.9L82.5 99.4L77.1 100.4L69.8 101.1L52 101.3L50 101.3L32.2 101.1L24.9 100.4L19.5 99.4L15.1 97.9L11.5 95.9L8.6 93.4L6.1 90.5L4.1 86.9L2.6 82.5L1.6 77.1L0.9 69.8L0.7 52L0.7 50L0.9 32.2L1.6 24.9L2.6 19.5L4.1 15.1L6.1 11.5L8.6 8.6L11.5 6.1L15.1 4.1L19.5 2.6L24.9 1.6L32.2 0.9L50 0.7Z'/%3E%3C/svg%3E"); --sq-ring-leiste: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='102' height='102'%3E%3Cpath fill='none' stroke='%23FFFFFF' stroke-opacity='0.12' stroke-width='1.2' d='M52 0.6L69.8 0.8L77.1 1.4L82.6 2.5L86.9 4L90.5 6L93.5 8.5L96 11.5L98 15.1L99.5 19.4L100.6 24.9L101.2 32.2L101.4 50L101.4 52L101.2 69.8L100.6 77.1L99.5 82.6L98 86.9L96 90.5L93.5 93.5L90.5 96L86.9 98L82.6 99.5L77.1 100.6L69.8 101.2L52 101.4L50 101.4L32.2 101.2L24.9 100.6L19.4 99.5L15.1 98L11.5 96L8.5 93.5L6 90.5L4 86.9L2.5 82.6L1.4 77.1L0.8 69.8L0.6 52L0.6 50L0.8 32.2L1.4 24.9L2.5 19.4L4 15.1L6 11.5L8.5 8.5L11.5 6L15.1 4L19.4 2.5L24.9 1.4L32.2 0.8L50 0.6Z'/%3E%3C/svg%3E"); }
+/* Helle Welten: dieselbe Haarlinie dunkel */
+:root:root:is([data-look="lagune"], [data-look="klar"]) { --sq-ring-karte: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='102' height='102'%3E%3Cpath fill='none' stroke='%2310201F' stroke-opacity='0.12' stroke-width='1.42' d='M52 0.7L69.8 0.9L77.1 1.6L82.5 2.6L86.9 4.1L90.5 6.1L93.4 8.6L95.9 11.5L97.9 15.1L99.4 19.5L100.4 24.9L101.1 32.2L101.3 50L101.3 52L101.1 69.8L100.4 77.1L99.4 82.5L97.9 86.9L95.9 90.5L93.4 93.4L90.5 95.9L86.9 97.9L82.5 99.4L77.1 100.4L69.8 101.1L52 101.3L50 101.3L32.2 101.1L24.9 100.4L19.5 99.4L15.1 97.9L11.5 95.9L8.6 93.4L6.1 90.5L4.1 86.9L2.6 82.5L1.6 77.1L0.9 69.8L0.7 52L0.7 50L0.9 32.2L1.6 24.9L2.6 19.5L4.1 15.1L6.1 11.5L8.6 8.6L11.5 6.1L15.1 4.1L19.5 2.6L24.9 1.6L32.2 0.9L50 0.7Z'/%3E%3C/svg%3E"); --sq-ring-leiste: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='102' height='102'%3E%3Cpath fill='none' stroke='%2310201F' stroke-opacity='0.14' stroke-width='1.2' d='M52 0.6L69.8 0.8L77.1 1.4L82.6 2.5L86.9 4L90.5 6L93.5 8.5L96 11.5L98 15.1L99.5 19.4L100.6 24.9L101.2 32.2L101.4 50L101.4 52L101.2 69.8L100.6 77.1L99.5 82.6L98 86.9L96 90.5L93.5 93.5L90.5 96L86.9 98L82.6 99.5L77.1 100.6L69.8 101.2L52 101.4L50 101.4L32.2 101.2L24.9 100.6L19.4 99.5L15.1 98L11.5 96L8.5 93.5L6 90.5L4 86.9L2.5 82.6L1.4 77.1L0.8 69.8L0.6 52L0.6 50L0.8 32.2L1.4 24.9L2.5 19.4L4 15.1L6 11.5L8.5 8.5L11.5 6L15.1 4L19.4 2.5L24.9 1.4L32.2 0.8L50 0.6Z'/%3E%3C/svg%3E"); }
+/* Ozean (Blau → Türkis, dunkel, Start für alle) */
+:root:root:root:root:not([data-look="gold"], [data-look="sport"], [data-look="lagune"], [data-look="klar"]) {
+  --verlauf-a: #5294FF;
+  --verlauf-b: #22D3EE;
+  --verlauf-winkel: 135deg;
+  --akzent: #5294FF;
+  --akzent-hell: #5CC6FF;
+  --auf-akzent: #03111F;
+  --blatt-akzent: #5CC6FF;
+  --verlauf-schrift: linear-gradient(135deg, #5294FF 0%, #22D3EE 100%);
+  --akzent-verlauf: linear-gradient(135deg, #5294FF 0%, #22D3EE 100%);
+  --welt-verlauf: linear-gradient(135deg, #5294FF 0%, #22D3EE 100%);
+  --schwarz: #182233;
+  --anthrazit: #262F3F;
+  --flaeche: #0F1622;
+  --linie: #2A3850;
+  --text: #F1F6FF;
+  --text2: #A9B6CC;
+  --auf-grund: #F1F6FF;
+  --auf-grund2: #A9B6CC;
+  --gut: #5FE3A1;
+  --warn: #FFC25C;
+  --stopp: #FF8A8A;
   color-scheme: dark;
-
-  --seite: #111215;
+  --seite: #060A12;
   --flaechen: none;
   --wellen: none;
-  --karte: #1A1C20;
-  --flaeche-verlauf: linear-gradient(180deg, #1C1E22, #1A1C20);
-  --rand-weich: rgba(255, 255, 255, .07);
-  --schatten: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .8);
+  --karte: #0F1622;
+  --flaeche-verlauf: #0F1622;
+  --rand-weich: rgba(255, 255, 255, 0.08);
+  --schatten: none;
   --akzent-glanz: none;
-  --blatt: #18191D;
-  --blatt-text: #F2F4EF;
-  --blatt-text2: #A9AFA9;
-  --blatt-linie: #2C3036;
-  --blatt-feld: #24272C;
-  --glas: rgba(17, 18, 21, .82);
-  --glas-rand: rgba(255, 255, 255, .08);
-  --glas-dicht: rgba(20, 21, 25, .94);
-  --knopf-grund: rgba(255, 255, 255, .07);
-  --knopf-grund2: rgba(200, 241, 53, .22);
-  --knopf-text: #F2F4EF;
-  --feld: #202328;
-  --reihe: #202328;
-  --chip-grund: #24272C;
-  --platzhalter: #8F958F;
+  --blatt: #151C28;
+  --blatt-text: #F1F6FF;
+  --blatt-text2: #A9B6CC;
+  --blatt-linie: #2A3850;
+  --blatt-feld: #1D2637;
+  --glas: rgba(6, 10, 18, 0.82);
+  --glas-rand: rgba(255, 255, 255, 0.09);
+  --glas-dicht: rgba(13, 17, 25, 0.95);
+  --knopf-grund: #252B36;
+  --knopf-grund2: #353B45;
+  --knopf-text: #F1F6FF;
+  --feld: #182233;
+  --reihe: #182233;
+  --chip-grund: #182233;
+  --platzhalter: #8492A9;
   --blatt-hg: rgba(0, 0, 0, .6);
-  --tm-grund: #111215;
-  --buehne-grund: radial-gradient(80% 50% at 50% 100%, rgba(200, 241, 53, .07), transparent 72%), linear-gradient(180deg, #1C1E22 0%, #15161A 100%);
-  --buehne-rand: 0 0 0 1px rgba(255, 255, 255, .06) inset;
-  --rund-grund: rgba(30, 32, 37, .94);
-  --rund-rand: rgba(255, 255, 255, .1);
-  --mini-grund: linear-gradient(180deg, #23262B, #1A1C20);
-  --raum-grund: #111215;
-  --lila: #C8F135;
-
-  --r: 20px;
-  --knopf-voll: #C8F135;
-  --auf-voll: #0D1003;
-  --zweit-text: #F2F4EF;
-  --zweit-rand: rgba(242, 244, 239, .28);
-  --kachel: #1A1C20;
-  --kachel-text: #F2F4EF;
-  --kachel-text2: #A9AFA9;
+  --tm-grund: #060A12;
+  --buehne-grund: radial-gradient(80% 55% at 50% 100%, rgba(34, 211, 238, 0.16), transparent 72%), radial-gradient(70% 50% at 12% 0%, rgba(82, 148, 255, 0.14), transparent 72%), #0D131E;
+  --buehne-rand: 0 0 0 1px rgba(255, 255, 255, 0.07) inset;
+  --rund-grund: rgba(33, 43, 59, 0.94);
+  --rund-rand: rgba(255, 255, 255, 0.12);
+  --mini-grund: #1D2637;
+  --raum-grund: #060A12;
+  --lila: #22D3EE;
+  --knopf-voll: linear-gradient(135deg, #5294FF 0%, #22D3EE 100%);
+  --auf-voll: #03111F;
+  --zweit-text: #F1F6FF;
+  --zweit-rand: rgba(241, 246, 255, 0.3);
+  --kachel: #0F1622;
+  --kachel-text: #F1F6FF;
+  --kachel-text2: #A9B6CC;
   --kachel-frei: transparent;
-  --kachel-frei-text: #F2F4EF;
-  --kachel-frei-text2: #A9AFA9;
-  --zweit-frei-text: #F2F4EF;
-  --zweit-frei-rand: rgba(242, 244, 239, .28);
+  --kachel-frei-text: #F1F6FF;
+  --kachel-frei-text2: #A9B6CC;
+  --zweit-frei-text: #F1F6FF;
+  --zweit-frei-rand: rgba(241, 246, 255, 0.3);
   --held-grund: transparent;
-  --held-text: #F2F4EF;
-  --held-text2: #A9AFA9;
-
-  --sp-ruhig: cubic-bezier(.22, .61, .36, 1);   /* weich auslaufend, ohne Überschwingen */
-  --sp-fokus: 0 0 0 2px #111215, 0 0 0 4px #C8F135;
-  --knopf-voll-hover: #D6F65E;
-  --akzent-hover: #DDF77F;
-  --akzent-schimmer: rgba(200, 241, 53, .45);
-  --akzent-ring: rgba(200, 241, 53, .2);
-  --akzent-schein: rgba(200, 241, 53, .055);
+  --held-text: #F1F6FF;
+  --held-text2: #A9B6CC;
+  --sp-fokus: 0 0 0 2px #060A12, 0 0 0 4px #7DAFFF;
+  --knopf-voll-hover: linear-gradient(135deg, #6AA3FF 0%, #41D9F0 100%);
+  --knopf-voll-druck: linear-gradient(135deg, #4A85E6 0%, #1FBED6 100%);
+  --akzent-hover: #7DD1FF;
+  --akzent-schimmer: rgba(82, 148, 255, 0.45);
+  --akzent-ring: rgba(82, 148, 255, 0.24);
+  --akzent-schein: rgba(82, 148, 255, 0.07);
+  --fokus: #7DAFFF;
+  --feld-rand: #6E7888;
+  --wahl: #1C2F4E;
+  --wahl-rand: #5294FF;
+  --gesperrt: #1D242F;
+  --gesperrt-text: #8492A9;
+  --fehler-grund: #352933;
+  --erfolg-grund: #1C3736;
+  --warn-grund: #35322B;
+  --kopf-grund: rgba(6, 10, 18, 0.86);
+  --leiste-grund: rgba(22, 29, 41, 0.92);
+  --hauch: rgba(255, 255, 255, 0.08);
+  --hauch2: rgba(255, 255, 255, 0.14);
+  --schein-a: rgba(82, 148, 255, 0.2);
+  --schein-b: rgba(34, 211, 238, 0.15);
+  --vorschau-grund: #1B222D;
 }
-
-/* ---------- Farbwelt „Champagner“ (24.11.2026, Devin: warmes Anthrazit, helle Schrift, zurückhaltendes Champagnergold für Hauptaktion, Auswahl und Bestleistung).
-   Gleiche Tokens wie Sport, Lagune, Klar und Schwarz-Gold, darum gelten alle ruhigen Regeln unten für beide. Standard für neue Besucher und nach dem ersten Einloggen.
-   Kontraste (WCAG, geprüft): Text #F6F3EE auf Grund #131416 16,7:1, auf Karte #202124 14,6:1, auf Feld #2A2B2F 12,8:1 · Zweittext #B9B2A7 auf Karte 7,7:1, auf Feld 6,7:1
-   · Gold #D6A766 auf Grund 8,4:1, auf Karte 7,3:1 · Schrift #17130C auf Gold 8,4:1 · Platzhalter #8E8880 auf Karte 4,6:1. ---------- */
-:root[data-look="champagner"] {
-  --verlauf-a: #E2B97E;
-  --verlauf-b: #C9965A;
-  --verlauf-winkel: 120deg;
-  --akzent: #D6A766;
-  --akzent-hell: #E2B97E;
-  --auf-akzent: #17130C;
-  --blatt-akzent: #E2B97E;
-  --verlauf-schrift: linear-gradient(120deg, #F6F3EE 0%, #F6F3EE 100%);
-  --akzent-verlauf: #D6A766;
-
-  --schwarz: #131416;
-  --anthrazit: #2A2B2F;
-  --flaeche: #202124;
-  --linie: #34353A;
-  --text: #F6F3EE;
-  --text2: #B9B2A7;
-  --auf-grund: #F6F3EE;
-  --auf-grund2: #B9B2A7;
-  --gut: #7BD69F;
-  --warn: #F0B85A;
-  --stopp: #FF8A7A;
+/* Abendrot (Orange → Pink, dunkel) */
+:root:root:root[data-look="gold"] {
+  --verlauf-a: #FFA24A;
+  --verlauf-b: #FF5C8A;
+  --verlauf-winkel: 135deg;
+  --akzent: #FFA24A;
+  --akzent-hell: #FF9E6B;
+  --auf-akzent: #22090C;
+  --blatt-akzent: #FF9E6B;
+  --verlauf-schrift: linear-gradient(135deg, #FFA24A 0%, #FF5C8A 100%);
+  --akzent-verlauf: linear-gradient(135deg, #FFA24A 0%, #FF5C8A 100%);
+  --welt-verlauf: linear-gradient(135deg, #FFA24A 0%, #FF5C8A 100%);
+  --schwarz: #271B1C;
+  --anthrazit: #34292A;
+  --flaeche: #1A1213;
+  --linie: #402E2F;
+  --text: #FFF5EF;
+  --text2: #D0B8B0;
+  --auf-grund: #FFF5EF;
+  --auf-grund2: #D0B8B0;
+  --gut: #6FE0A0;
+  --warn: #FFC766;
+  --stopp: #FF8E8E;
   color-scheme: dark;
-
-  --seite: #131416;
+  --seite: #0E0909;
   --flaechen: none;
   --wellen: none;
-  --karte: #202124;
-  --flaeche-verlauf: linear-gradient(180deg, #222326, #202124);
-  --rand-weich: rgba(246, 243, 238, .07);
-  --schatten: 0 1px 0 rgba(246, 243, 238, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .8);
+  --karte: #1A1213;
+  --flaeche-verlauf: #1A1213;
+  --rand-weich: rgba(255, 255, 255, 0.08);
+  --schatten: none;
   --akzent-glanz: none;
-  --blatt: #1C1D20;
-  --blatt-text: #F6F3EE;
-  --blatt-text2: #B9B2A7;
-  --blatt-linie: #34353A;
-  --blatt-feld: #2A2B2F;
-  --glas: rgba(19, 20, 22, .84);
-  --glas-rand: rgba(246, 243, 238, .08);
-  --glas-dicht: rgba(22, 23, 25, .95);
-  --knopf-grund: rgba(246, 243, 238, .07);
-  --knopf-grund2: rgba(214, 167, 102, .22);
-  --knopf-text: #F6F3EE;
-  --feld: #2A2B2F;
-  --reihe: #2A2B2F;
-  --chip-grund: #2A2B2F;
-  --platzhalter: #8E8880;
+  --blatt: #201819;
+  --blatt-text: #FFF5EF;
+  --blatt-text2: #D0B8B0;
+  --blatt-linie: #402E2F;
+  --blatt-feld: #2B2021;
+  --glas: rgba(14, 9, 9, 0.82);
+  --glas-rand: rgba(255, 255, 255, 0.09);
+  --glas-dicht: rgba(21, 16, 16, 0.95);
+  --knopf-grund: #2F2728;
+  --knopf-grund2: #3F3839;
+  --knopf-text: #FFF5EF;
+  --feld: #271B1C;
+  --reihe: #271B1C;
+  --chip-grund: #271B1C;
+  --platzhalter: #A38D87;
   --blatt-hg: rgba(0, 0, 0, .6);
-  --tm-grund: #131416;
-  --buehne-grund: radial-gradient(80% 50% at 50% 100%, rgba(214, 167, 102, .08), transparent 72%), linear-gradient(180deg, #232427 0%, #18191B 100%);
-  --buehne-rand: 0 0 0 1px rgba(246, 243, 238, .06) inset;
-  --rund-grund: rgba(34, 35, 38, .94);
-  --rund-rand: rgba(246, 243, 238, .1);
-  --mini-grund: linear-gradient(180deg, #2A2B2F, #202124);
-  --raum-grund: #131416;
-  --lila: #D6A766;
-
-  --r: 20px;
-  --knopf-voll: #D6A766;
-  --auf-voll: #17130C;
-  --zweit-text: #F6F3EE;
-  --zweit-rand: rgba(246, 243, 238, .28);
-  --kachel: #202124;
-  --kachel-text: #F6F3EE;
-  --kachel-text2: #B9B2A7;
+  --tm-grund: #0E0909;
+  --buehne-grund: radial-gradient(80% 55% at 50% 100%, rgba(255, 92, 138, 0.16), transparent 72%), radial-gradient(70% 50% at 12% 0%, rgba(255, 162, 74, 0.14), transparent 72%), #171011;
+  --buehne-rand: 0 0 0 1px rgba(255, 255, 255, 0.07) inset;
+  --rund-grund: rgba(48, 36, 37, 0.94);
+  --rund-rand: rgba(255, 255, 255, 0.12);
+  --mini-grund: #2B2021;
+  --raum-grund: #0E0909;
+  --lila: #FF5C8A;
+  --knopf-voll: linear-gradient(135deg, #FFA24A 0%, #FF5C8A 100%);
+  --auf-voll: #22090C;
+  --zweit-text: #FFF5EF;
+  --zweit-rand: rgba(255, 245, 239, 0.3);
+  --kachel: #1A1213;
+  --kachel-text: #FFF5EF;
+  --kachel-text2: #D0B8B0;
   --kachel-frei: transparent;
-  --kachel-frei-text: #F6F3EE;
-  --kachel-frei-text2: #B9B2A7;
-  --zweit-frei-text: #F6F3EE;
-  --zweit-frei-rand: rgba(246, 243, 238, .28);
+  --kachel-frei-text: #FFF5EF;
+  --kachel-frei-text2: #D0B8B0;
+  --zweit-frei-text: #FFF5EF;
+  --zweit-frei-rand: rgba(255, 245, 239, 0.3);
   --held-grund: transparent;
-  --held-text: #F6F3EE;
-  --held-text2: #B9B2A7;
-
-  --sp-ruhig: cubic-bezier(.22, .61, .36, 1);
-  --sp-fokus: 0 0 0 2px #131416, 0 0 0 4px #D6A766;
-  --knopf-voll-hover: #E0B477;
-  --akzent-hover: #E8C690;
-  --akzent-schimmer: rgba(214, 167, 102, .45);
-  --akzent-ring: rgba(214, 167, 102, .24);
-  --akzent-schein: rgba(214, 167, 102, .05);
+  --held-text: #FFF5EF;
+  --held-text2: #D0B8B0;
+  --sp-fokus: 0 0 0 2px #0E0909, 0 0 0 4px #FFB977;
+  --knopf-voll-hover: linear-gradient(135deg, #FFAF63 0%, #FF739A 100%);
+  --knopf-voll-druck: linear-gradient(135deg, #E69243 0%, #E6537C 100%);
+  --akzent-hover: #FFB189;
+  --akzent-schimmer: rgba(255, 162, 74, 0.45);
+  --akzent-ring: rgba(255, 162, 74, 0.24);
+  --akzent-schein: rgba(255, 162, 74, 0.07);
+  --fokus: #FFB977;
+  --feld-rand: #7D7172;
+  --wahl: #482F1E;
+  --wahl-rand: #FFA24A;
+  --gesperrt: #282021;
+  --gesperrt-text: #A38D87;
+  --fehler-grund: #3F2627;
+  --erfolg-grund: #28332A;
+  --warn-grund: #3F2F20;
+  --kopf-grund: rgba(14, 9, 9, 0.86);
+  --leiste-grund: rgba(33, 25, 26, 0.92);
+  --hauch: rgba(255, 255, 255, 0.08);
+  --hauch2: rgba(255, 255, 255, 0.14);
+  --schein-a: rgba(255, 162, 74, 0.2);
+  --schein-b: rgba(255, 92, 138, 0.15);
+  --vorschau-grund: #251E1F;
 }
-:root[data-look="champagner"] body { background: radial-gradient(120% 60% at 50% -10%, #1D1C1B 0%, transparent 60%) no-repeat, var(--seite); background-attachment: fixed; }
-:root[data-look="champagner"] .look-wahl { background: linear-gradient(135deg, #202124 0 48%, #D6A766 52% 100%); }
-.look-probe.champagner { background: linear-gradient(135deg, #202124 0 48%, #D6A766 52% 100%); }
+/* Dämmerung (Violett → Pink, dunkel) */
+:root:root:root[data-look="sport"] {
+  --verlauf-a: #9B8CFF;
+  --verlauf-b: #EE7BF2;
+  --verlauf-winkel: 135deg;
+  --akzent: #9B8CFF;
+  --akzent-hell: #B7A6FF;
+  --auf-akzent: #150A26;
+  --blatt-akzent: #B7A6FF;
+  --verlauf-schrift: linear-gradient(135deg, #9B8CFF 0%, #EE7BF2 100%);
+  --akzent-verlauf: linear-gradient(135deg, #9B8CFF 0%, #EE7BF2 100%);
+  --welt-verlauf: linear-gradient(135deg, #9B8CFF 0%, #EE7BF2 100%);
+  --schwarz: #1F1A33;
+  --anthrazit: #2C283F;
+  --flaeche: #141122;
+  --linie: #342C52;
+  --text: #F6F3FF;
+  --text2: #BDB5D6;
+  --auf-grund: #F6F3FF;
+  --auf-grund2: #BDB5D6;
+  --gut: #66E0A6;
+  --warn: #FFC766;
+  --stopp: #FF8FA0;
+  color-scheme: dark;
+  --seite: #0A0812;
+  --flaechen: none;
+  --wellen: none;
+  --karte: #141122;
+  --flaeche-verlauf: #141122;
+  --rand-weich: rgba(255, 255, 255, 0.08);
+  --schatten: none;
+  --akzent-glanz: none;
+  --blatt: #1A1728;
+  --blatt-text: #F6F3FF;
+  --blatt-text2: #BDB5D6;
+  --blatt-linie: #342C52;
+  --blatt-feld: #231F37;
+  --glas: rgba(10, 8, 18, 0.82);
+  --glas-rand: rgba(255, 255, 255, 0.09);
+  --glas-dicht: rgba(17, 15, 25, 0.95);
+  --knopf-grund: #292636;
+  --knopf-grund2: #3A3745;
+  --knopf-text: #F6F3FF;
+  --feld: #1F1A33;
+  --reihe: #1F1A33;
+  --chip-grund: #1F1A33;
+  --platzhalter: #9188AE;
+  --blatt-hg: rgba(0, 0, 0, .6);
+  --tm-grund: #0A0812;
+  --buehne-grund: radial-gradient(80% 55% at 50% 100%, rgba(238, 123, 242, 0.16), transparent 72%), radial-gradient(70% 50% at 12% 0%, rgba(155, 140, 255, 0.14), transparent 72%), #120F1E;
+  --buehne-rand: 0 0 0 1px rgba(255, 255, 255, 0.07) inset;
+  --rund-grund: rgba(40, 35, 59, 0.94);
+  --rund-rand: rgba(255, 255, 255, 0.12);
+  --mini-grund: #231F37;
+  --raum-grund: #0A0812;
+  --lila: #EE7BF2;
+  --knopf-voll: linear-gradient(135deg, #9B8CFF 0%, #EE7BF2 100%);
+  --auf-voll: #150A26;
+  --zweit-text: #F6F3FF;
+  --zweit-rand: rgba(246, 243, 255, 0.3);
+  --kachel: #141122;
+  --kachel-text: #F6F3FF;
+  --kachel-text2: #BDB5D6;
+  --kachel-frei: transparent;
+  --kachel-frei-text: #F6F3FF;
+  --kachel-frei-text2: #BDB5D6;
+  --zweit-frei-text: #F6F3FF;
+  --zweit-frei-rand: rgba(246, 243, 255, 0.3);
+  --held-grund: transparent;
+  --held-text: #F6F3FF;
+  --held-text2: #BDB5D6;
+  --sp-fokus: 0 0 0 2px #0A0812, 0 0 0 4px #B4A9FF;
+  --knopf-voll-hover: linear-gradient(135deg, #A99CFF 0%, #F08DF4 100%);
+  --knopf-voll-druck: linear-gradient(135deg, #8C7EE6 0%, #D66FDA 100%);
+  --akzent-hover: #C5B8FF;
+  --akzent-schimmer: rgba(155, 140, 255, 0.45);
+  --akzent-ring: rgba(155, 140, 255, 0.24);
+  --akzent-schein: rgba(155, 140, 255, 0.07);
+  --fokus: #B4A9FF;
+  --feld-rand: #757089;
+  --wahl: #2F2A4E;
+  --wahl-rand: #9B8CFF;
+  --gesperrt: #221F2F;
+  --gesperrt-text: #9188AE;
+  --fehler-grund: #3A2536;
+  --erfolg-grund: #213237;
+  --warn-grund: #3A2E2D;
+  --kopf-grund: rgba(10, 8, 18, 0.86);
+  --leiste-grund: rgba(27, 24, 41, 0.92);
+  --hauch: rgba(255, 255, 255, 0.08);
+  --hauch2: rgba(255, 255, 255, 0.14);
+  --schein-a: rgba(155, 140, 255, 0.2);
+  --schein-b: rgba(238, 123, 242, 0.15);
+  --vorschau-grund: #201D2D;
+}
+/* Lagune (Türkis → Grün, hell) */
+:root:root:root[data-look="lagune"] {
+  --verlauf-a: #19C7D4;
+  --verlauf-b: #3DDC97;
+  --verlauf-winkel: 135deg;
+  --akzent: #0B7285;
+  --akzent-hell: #0B7285;
+  --auf-akzent: #FFFFFF;
+  --blatt-akzent: #0B7285;
+  --verlauf-schrift: linear-gradient(135deg, #0B7285 0%, #0D7550 100%);
+  --akzent-verlauf: linear-gradient(135deg, #0B7285 0%, #0D7550 100%);
+  --welt-verlauf: linear-gradient(135deg, #19C7D4 0%, #3DDC97 100%);
+  --schwarz: #E6F2EF;
+  --anthrazit: #DDE8E5;
+  --flaeche: #FFFFFF;
+  --linie: #C9DFDA;
+  --text: #0A2626;
+  --text2: #3F5C5A;
+  --auf-grund: #0A2626;
+  --auf-grund2: #3F5C5A;
+  --gut: #0E7A4F;
+  --warn: #9A5B06;
+  --stopp: #C0312B;
+  color-scheme: light;
+  --seite: #EEF8F6;
+  --flaechen: none;
+  --wellen: none;
+  --karte: #FFFFFF;
+  --flaeche-verlauf: #FFFFFF;
+  --rand-weich: rgba(10, 38, 38, 0.1);
+  --schatten: 0 1px 2px rgba(10, 38, 38, 0.05), 0 10px 28px -18px rgba(10, 38, 38, 0.3);
+  --akzent-glanz: none;
+  --blatt: #FFFFFF;
+  --blatt-text: #0A2626;
+  --blatt-text2: #3F5C5A;
+  --blatt-linie: #C9DFDA;
+  --blatt-feld: #E6F2EF;
+  --glas: rgba(238, 248, 246, 0.84);
+  --glas-rand: rgba(10, 38, 38, 0.1);
+  --glas-dicht: rgba(255, 255, 255, 0.95);
+  --knopf-grund: #D9EAE9;
+  --knopf-grund2: #C3DEDE;
+  --knopf-text: #0A2626;
+  --feld: #E6F2EF;
+  --reihe: #E6F2EF;
+  --chip-grund: #E6F2EF;
+  --platzhalter: #587270;
+  --blatt-hg: rgba(10, 38, 38, 0.38);
+  --tm-grund: #EEF8F6;
+  --buehne-grund: radial-gradient(80% 55% at 50% 100%, rgba(61, 220, 151, 0.3), transparent 72%), radial-gradient(70% 50% at 12% 0%, rgba(25, 199, 212, 0.26), transparent 72%), #EFF7F5;
+  --buehne-rand: 0 0 0 1px rgba(10, 38, 38, 0.08) inset;
+  --rund-grund: rgba(255, 255, 255, 0.94);
+  --rund-rand: rgba(10, 38, 38, 0.14);
+  --mini-grund: #E6F2EF;
+  --raum-grund: #EEF8F6;
+  --lila: #0D7550;
+  --knopf-voll: linear-gradient(135deg, #0B7285 0%, #0D7550 100%);
+  --auf-voll: #FFFFFF;
+  --zweit-text: #0A2626;
+  --zweit-rand: rgba(10, 38, 38, 0.4);
+  --kachel: #FFFFFF;
+  --kachel-text: #0A2626;
+  --kachel-text2: #3F5C5A;
+  --kachel-frei: transparent;
+  --kachel-frei-text: #0A2626;
+  --kachel-frei-text2: #3F5C5A;
+  --zweit-frei-text: #0A2626;
+  --zweit-frei-rand: rgba(10, 38, 38, 0.4);
+  --held-grund: transparent;
+  --held-text: #0A2626;
+  --held-text2: #3F5C5A;
+  --sp-fokus: 0 0 0 2px #EEF8F6, 0 0 0 4px #0B7285;
+  --knopf-voll-hover: linear-gradient(135deg, #17798B 0%, #197C59 100%);
+  --knopf-voll-druck: linear-gradient(135deg, #096070 0%, #0B6243 100%);
+  --akzent-hover: #096171;
+  --akzent-schimmer: rgba(11, 114, 133, 0.45);
+  --akzent-ring: rgba(11, 114, 133, 0.18);
+  --akzent-schein: rgba(11, 114, 133, 0.06);
+  --fokus: #0B7285;
+  --feld-rand: #75817E;
+  --wahl: #E2EEF0;
+  --wahl-rand: #0B7285;
+  --gesperrt: #E8F4F1;
+  --gesperrt-text: #587270;
+  --fehler-grund: #F9ECEC;
+  --erfolg-grund: #E9F3EF;
+  --warn-grund: #F5EFE6;
+  --kopf-grund: rgba(238, 248, 246, 0.86);
+  --leiste-grund: rgba(255, 255, 255, 0.92);
+  --hauch: rgba(10, 38, 38, 0.09);
+  --hauch2: rgba(10, 38, 38, 0.16);
+  --schein-a: rgba(25, 199, 212, 0.26);
+  --schein-b: rgba(61, 220, 151, 0.22);
+  --vorschau-grund: #E6F2EF;
+}
+/* Morgenrot (Pfirsich → Rosa, hell) */
+:root:root:root[data-look="klar"] {
+  --verlauf-a: #FFB37A;
+  --verlauf-b: #FF7AA2;
+  --verlauf-winkel: 135deg;
+  --akzent: #BC3D0B;
+  --akzent-hell: #B8380F;
+  --auf-akzent: #FFFFFF;
+  --blatt-akzent: #B8380F;
+  --verlauf-schrift: linear-gradient(135deg, #BC3D0B 0%, #BE185D 100%);
+  --akzent-verlauf: linear-gradient(135deg, #BC3D0B 0%, #BE185D 100%);
+  --welt-verlauf: linear-gradient(135deg, #FFB37A 0%, #FF7AA2 100%);
+  --schwarz: #FBECE3;
+  --anthrazit: #F1E3DA;
+  --flaeche: #FFFFFF;
+  --linie: #EBD5C8;
+  --text: #2B1710;
+  --text2: #6B5046;
+  --auf-grund: #2B1710;
+  --auf-grund2: #6B5046;
+  --gut: #0E7A4F;
+  --warn: #9A5B06;
+  --stopp: #C0312B;
+  color-scheme: light;
+  --seite: #FFF6F0;
+  --flaechen: none;
+  --wellen: none;
+  --karte: #FFFFFF;
+  --flaeche-verlauf: #FFFFFF;
+  --rand-weich: rgba(43, 23, 16, 0.1);
+  --schatten: 0 1px 2px rgba(43, 23, 16, 0.05), 0 10px 28px -18px rgba(43, 23, 16, 0.3);
+  --akzent-glanz: none;
+  --blatt: #FFFFFF;
+  --blatt-text: #2B1710;
+  --blatt-text2: #6B5046;
+  --blatt-linie: #EBD5C8;
+  --blatt-feld: #FBECE3;
+  --glas: rgba(255, 246, 240, 0.84);
+  --glas-rand: rgba(43, 23, 16, 0.1);
+  --glas-dicht: rgba(255, 255, 255, 0.95);
+  --knopf-grund: #F7E1D6;
+  --knopf-grund2: #F0CFC1;
+  --knopf-text: #2B1710;
+  --feld: #FBECE3;
+  --reihe: #FBECE3;
+  --chip-grund: #FBECE3;
+  --platzhalter: #775E54;
+  --blatt-hg: rgba(43, 23, 16, 0.38);
+  --tm-grund: #FFF6F0;
+  --buehne-grund: radial-gradient(80% 55% at 50% 100%, rgba(255, 122, 162, 0.3), transparent 72%), radial-gradient(70% 50% at 12% 0%, rgba(255, 179, 122, 0.26), transparent 72%), #FCF3ED;
+  --buehne-rand: 0 0 0 1px rgba(43, 23, 16, 0.08) inset;
+  --rund-grund: rgba(255, 255, 255, 0.94);
+  --rund-rand: rgba(43, 23, 16, 0.14);
+  --mini-grund: #FBECE3;
+  --raum-grund: #FFF6F0;
+  --lila: #BE185D;
+  --knopf-voll: linear-gradient(135deg, #BC3D0B 0%, #BE185D 100%);
+  --auf-voll: #FFFFFF;
+  --zweit-text: #2B1710;
+  --zweit-rand: rgba(43, 23, 16, 0.4);
+  --kachel: #FFFFFF;
+  --kachel-text: #2B1710;
+  --kachel-text2: #6B5046;
+  --kachel-frei: transparent;
+  --kachel-frei-text: #2B1710;
+  --kachel-frei-text2: #6B5046;
+  --zweit-frei-text: #2B1710;
+  --zweit-frei-rand: rgba(43, 23, 16, 0.4);
+  --held-grund: transparent;
+  --held-text: #2B1710;
+  --held-text2: #6B5046;
+  --sp-fokus: 0 0 0 2px #FFF6F0, 0 0 0 4px #BC3D0B;
+  --knopf-voll-hover: linear-gradient(135deg, #BF4717 0%, #C12465 100%);
+  --knopf-voll-druck: linear-gradient(135deg, #9E3309 0%, #A0144E 100%);
+  --akzent-hover: #9C300D;
+  --akzent-schimmer: rgba(188, 61, 11, 0.45);
+  --akzent-ring: rgba(188, 61, 11, 0.18);
+  --akzent-schein: rgba(188, 61, 11, 0.06);
+  --fokus: #BC3D0B;
+  --feld-rand: #887C74;
+  --wahl: #F7E8E2;
+  --wahl-rand: #BC3D0B;
+  --gesperrt: #FCEFE7;
+  --gesperrt-text: #775E54;
+  --fehler-grund: #F9ECEC;
+  --erfolg-grund: #E9F3EF;
+  --warn-grund: #F5EFE6;
+  --kopf-grund: rgba(255, 246, 240, 0.86);
+  --leiste-grund: rgba(255, 255, 255, 0.92);
+  --hauch: rgba(43, 23, 16, 0.09);
+  --hauch2: rgba(43, 23, 16, 0.16);
+  --schein-a: rgba(255, 179, 122, 0.26);
+  --schein-b: rgba(255, 122, 162, 0.22);
+  --vorschau-grund: #FBECE3;
+}
+/* Proben unter „Infos“: der Verlauf der Welt */
+.look-probe.champagner { background: linear-gradient(135deg, #5294FF 0%, #22D3EE 100%); }
+.look-probe.gold { background: linear-gradient(135deg, #FFA24A 0%, #FF5C8A 100%); }
+.look-probe.sport { background: linear-gradient(135deg, #9B8CFF 0%, #EE7BF2 100%); }
+.look-probe.lagune { background: linear-gradient(135deg, #19C7D4 0%, #3DDC97 100%); }
+.look-probe.klar { background: linear-gradient(135deg, #FFB37A 0%, #FF7AA2 100%); }
+/* LOOK5-TOKEN-ENDE */
 
-/* Grund: ruhiges Anthrazit. Bewegte Farbflächen, Wellen und Video sind in dieser Farbwelt aus. */
-:root:is([data-look="sport"],[data-look="champagner"])::before, :root:is([data-look="sport"],[data-look="champagner"])::after { content: none; }
-:root:is([data-look="sport"],[data-look="champagner"]) body::before { background: color-mix(in srgb, var(--seite) 90%, transparent); }
-:root[data-look="sport"] body { background: radial-gradient(120% 60% at 50% -10%, #1A1C21 0%, transparent 60%) no-repeat, var(--seite); background-attachment: fixed; }
-:root:is([data-look="sport"],[data-look="champagner"]) .dk-wellen-video { display: none; }
+/* LOOK5-TEIL2-ANFANG */
+/* ---------- 2. Regeln für alle fünf Welten (bis 26.11. nur Sport und Champagner) ---------- */
+/* Grund: die Farbe der Seite, dazu zwei weiche, stehende Lichter in den Farben der Welt. Eine feste Ebene hinter allem: Sie wird einmal gemalt und kostet beim Scrollen nichts.
+   Kein Video, kein Bild, keine Wellen, nichts bewegt sich (die alten treibenden Flächen aus stil.css sind hier aus). */
+:root:root { background: var(--seite); --sp-ruhig: cubic-bezier(.22, .61, .36, 1); --r: 20px; }   /* --sp-ruhig: weich auslaufend, ohne Überschwingen (alle Übergänge in dieser Datei) */
+:root:root::before { content: ""; position: fixed; z-index: -1; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; margin: 0; pointer-events: none; animation: none; transform: none; will-change: auto;
+  background: radial-gradient(64% 44% at 8% 0%, var(--schein-a), transparent 72%), radial-gradient(58% 42% at 100% 20%, var(--schein-b), transparent 72%), var(--seite); }
+:root:root::after { content: none; }
+:root:root:has(.tm)::before { visibility: hidden; }   /* Training läuft: der Timer deckt alles ab */
+:root:root body { background: transparent; color: var(--text); }
+:root:root body::before { background: var(--seite); }
+:root:root body::after { content: none; }   /* die lila LED-Leiste der alten Farbwelt Schwarz-Gold lief in Dauerschleife */
+:root:root .dk-wellen-video { display: none; }
 
 /* Schrift: klar, etwas mehr Kontrast zwischen Titel und Text */
-:root:is([data-look="sport"],[data-look="champagner"]) h1, :root:is([data-look="sport"],[data-look="champagner"]) h2, :root:is([data-look="sport"],[data-look="champagner"]) h3 { letter-spacing: -.02em; }
-:root:is([data-look="sport"],[data-look="champagner"]) h1 { font-weight: 700; }
-:root:is([data-look="sport"],[data-look="champagner"]) .marke { background: none; color: var(--text); font-weight: 700; letter-spacing: -.015em; }
-:root:is([data-look="sport"],[data-look="champagner"]) .marke::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%; background: var(--akzent); vertical-align: .12em; }
-:root:is([data-look="sport"],[data-look="champagner"]) .st-held h1 { background: none; -webkit-text-fill-color: currentColor; animation: none; }   /* kein Dauer-Glanz */
+:root:root h1, :root:root h2, :root:root h3 { letter-spacing: -.02em; }
+:root:root h1 { font-weight: 700; color: var(--text); }
+:root:root .marke { background: none; color: var(--text); -webkit-text-fill-color: currentColor; font-weight: 700; letter-spacing: -.015em; }
+:root:root .marke::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 9px; border-radius: 3px; background: var(--welt-verlauf); vertical-align: .08em; }
+:root:root .marke small { color: var(--text2); -webkit-text-fill-color: currentColor; }
+:root:root .st-held h1 { background: none; -webkit-text-fill-color: currentColor; animation: none; }   /* kein Dauer-Glanz */
+:root:root .inhalt > .leise, :root:root .inhalt > .klein, :root:root .plan-kopf .leise, :root:root .plan-kopf .klein, :root:root .kopf .rechts { color: var(--text2); }
+:root:root ::placeholder { color: var(--platzhalter); opacity: 1; }
+:root:root a { color: var(--akzent-hell); }
+:root:root a.knopf { color: var(--knopf-text); }
+:root:root a.knopf.haupt { color: var(--auf-voll); }
 
-/* Kopf und Leiste: dunkles Glas mit feiner Linie */
-:root:is([data-look="sport"],[data-look="champagner"]) .kopf { border-bottom-color: rgba(255, 255, 255, .06); }
-:root:is([data-look="sport"],[data-look="champagner"]) nav.leiste { box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .8); border-color: rgba(255, 255, 255, .07); }
-:root:is([data-look="sport"],[data-look="champagner"]) nav.leiste button { color: var(--text2); }
-:root:is([data-look="sport"],[data-look="champagner"]) nav.leiste button[aria-current="page"] { color: var(--akzent); background: none; }
+/* Kopf und Leiste: dichte Fläche in der Farbe der Seite, feine Linie */
+:root:root .kopf { background: var(--kopf-grund); border-bottom: 1px solid var(--hauch); box-shadow: none; -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); }
+:root:root nav.leiste { background: var(--leiste-grund); border: 1px solid var(--hauch2); box-shadow: 0 12px 32px -14px rgba(0, 0, 0, .55); -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); }
+:root:root nav.leiste button { color: var(--text2); background: none; box-shadow: none; }
+:root:root nav.leiste button[aria-current="page"] { color: var(--akzent-hell); background: none; box-shadow: none; }
 
-/* Karten: eine Fläche, feiner Rand, großzügig */
-:root:is([data-look="sport"],[data-look="champagner"]) .block, :root:is([data-look="sport"],[data-look="champagner"]) .kunde, :root:is([data-look="sport"],[data-look="champagner"]) .eintrag { background: var(--flaeche); border: 1px solid var(--rand-weich); box-shadow: var(--schatten); }
-:root:is([data-look="sport"],[data-look="champagner"]) .block { padding: 22px; gap: 14px; }
-:root:is([data-look="sport"],[data-look="champagner"]) .block.heute { border-color: color-mix(in srgb, var(--akzent) 30%, transparent); }
-:root:is([data-look="sport"],[data-look="champagner"]) .naechstes { background: var(--reihe); border-color: var(--rand-weich); }
-:root:is([data-look="sport"],[data-look="champagner"]) .st-block:not(.st-frei):not(.st-held) { border: 1px solid var(--rand-weich); }
-:root:is([data-look="sport"],[data-look="champagner"]) .st-mock .block.heute { box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .9); }
-:root:is([data-look="sport"],[data-look="champagner"]) .woche-karte .wochenleiste .wt.heute { border-color: var(--akzent); }
-:root:is([data-look="sport"],[data-look="champagner"]) .fortschritt-balken i, :root:is([data-look="sport"],[data-look="champagner"]) .woche-ring::before { will-change: auto; }
-:root:is([data-look="sport"],[data-look="champagner"]) .tipp-text small, :root:is([data-look="sport"],[data-look="champagner"]) .angepasst { color: var(--akzent); }
+/* Karten: eine dichte Fläche, feiner Rand, großzügig. Kein Glas, kein Bild hinter Text. */
+:root:root .block, :root:root .kunde, :root:root .eintrag, :root:root .statistik div { background: var(--karte); border: 1px solid var(--hauch); box-shadow: var(--schatten); color: var(--text); text-shadow: none; }
+:root:root .block { padding: 20px; gap: 14px; }
+:root:root .block.heute { border-color: var(--akzent-ring); }
+:root:root .naechstes { background: var(--reihe); border: 1px solid var(--hauch); box-shadow: none; }
+:root:root .st-block:not(.st-frei):not(.st-held) { border: 1px solid var(--hauch); }
+:root:root .st-mock .block.heute { box-shadow: 0 18px 40px -22px rgba(0, 0, 0, .6); }
+:root:root .woche-karte .wochenleiste .wt.heute { border-color: var(--wahl-rand); }
+:root:root .fortschritt-balken i, :root:root .woche-ring::before { will-change: auto; }
+:root:root .tipp-text small, :root:root .angepasst { color: var(--akzent-hell); }
+:root:root .woche { background: var(--reihe); }
+:root:root .mono { background: var(--feld); box-shadow: 0 0 0 1px var(--hauch2); color: var(--akzent-hell); }
+:root:root .leer { border-color: var(--hauch2); }
 @media (min-width: 1024px) {
-  :root:is([data-look="sport"],[data-look="champagner"]) .st-block:not(.st-held):hover { transform: none; box-shadow: none; }   /* das Heben übernimmt sport.js, ruhiger und nur bis 3 px */
+  :root:root .st-block:not(.st-held):hover { transform: none; box-shadow: none; }   /* das Heben übernimmt sport.js, ruhiger und nur bis 3 px */
 }
 
-/* Knöpfe: Limette für das Wichtigste, sonst ruhig. Farbe und Größe ändern sich sanft. */
-:root:is([data-look="sport"],[data-look="champagner"]) .knopf { transition: transform .22s var(--sp-ruhig), background-color .2s var(--sp-ruhig), color .2s var(--sp-ruhig), border-color .2s var(--sp-ruhig), box-shadow .2s var(--sp-ruhig); }
-:root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt { background: var(--knopf-voll); color: var(--auf-voll); font-weight: 600; }
-:root:is([data-look="sport"],[data-look="champagner"]) .knopf:not(.haupt):not(.text) { background: var(--knopf-grund); color: var(--knopf-text); border-color: rgba(255, 255, 255, .1); }
-:root:is([data-look="sport"],[data-look="champagner"]) .knopf.text { color: var(--akzent); }
+/* Knöpfe: der Verlauf der Welt für das Wichtigste, sonst eine ruhige Fläche. Zustände: Maus darüber (heller), gedrückt (dunkler und 3 % kleiner), gesperrt (grau, ohne Verlauf). */
+:root:root .knopf, :root:root .knopf:hover, :root:root .blatt .knopf, :root:root .blatt .knopf:hover { border: 1px solid transparent; box-shadow: none; background: var(--knopf-grund); color: var(--knopf-text); font-weight: 600; text-shadow: none; filter: none;
+  transition: transform .16s var(--sp-ruhig), color .16s var(--sp-ruhig), box-shadow .2s var(--sp-ruhig); }
+:root:root .knopf.haupt, :root:root .knopf.haupt:hover, :root:root .blatt .knopf.haupt, :root:root .blatt .knopf.haupt:hover { background: var(--knopf-voll); color: var(--auf-voll); border-color: transparent; box-shadow: none; }
+:root:root .knopf.text, :root:root .knopf.text:hover, :root:root .blatt .knopf.text, :root:root .blatt .knopf.text:hover { background: none; color: var(--akzent-hell); }
 @media (hover: hover) and (pointer: fine) {
-  :root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt:hover { background: var(--knopf-voll-hover); }
-  :root:is([data-look="sport"],[data-look="champagner"]) .knopf:not(.haupt):not(.text):hover { background: rgba(255, 255, 255, .11); border-color: var(--akzent-schimmer); }
-  :root:is([data-look="sport"],[data-look="champagner"]) .knopf.text:hover { color: var(--akzent-hover); }
-  :root:is([data-look="sport"],[data-look="champagner"]) .chip:hover { border-color: var(--akzent-schimmer); }
+  :root:root .knopf:hover, :root:root .blatt .knopf:hover { background: var(--knopf-grund2); }
+  :root:root .knopf.haupt:hover, :root:root .blatt .knopf.haupt:hover { background: var(--knopf-voll-hover); }
+  :root:root .knopf.text:hover, :root:root .blatt .knopf.text:hover { background: none; color: var(--akzent-hover); }
+  :root:root .chip:hover { border-color: var(--akzent-schimmer); }
 }
-/* Knopf-Gefühl aus antippen.js in dieser Farbwelt leiser: höchstens 4 px mitziehen, nicht dehnen, kein Wackeln, nur ein sanftes Einrasten */
-:root:is([data-look="sport"],[data-look="champagner"]) .kg-schwebt { transform: translate3d(clamp(-3px, var(--kx, 0px), 3px), clamp(-3px, var(--ky, 0px), 3px), 0) scale(1.03) !important; transition: transform .3s var(--sp-ruhig), box-shadow .25s var(--sp-ruhig), background-color .2s var(--sp-ruhig) !important; }
-:root:is([data-look="sport"],[data-look="champagner"]) .kg-zieht { transform: translate3d(clamp(-4px, var(--kx, 0px), 4px), clamp(-4px, var(--ky, 0px), 4px), 0) scale(.98) !important; transition: transform .12s var(--sp-ruhig) !important; }
-:root:is([data-look="sport"],[data-look="champagner"]) .kg-drueckt { transform: scale(.97) !important; transition: transform .1s var(--sp-ruhig) !important; }
-:root:is([data-look="sport"],[data-look="champagner"]) .kg-plopp { animation: sp-einrasten .28s var(--sp-ruhig) both !important; }
+:root:root .knopf:active, :root:root .knopf.kg-drueckt, :root:root .knopf.kg-zieht { background: var(--knopf-grund2); filter: none; }
+:root:root .knopf.haupt:active, :root:root .knopf.haupt.kg-drueckt, :root:root .knopf.haupt.kg-zieht { background: var(--knopf-voll-druck); }
+:root:root .knopf.text:active, :root:root .knopf.text.kg-drueckt, :root:root .knopf.text.kg-zieht { background: var(--akzent-schein); }
+:root:root .knopf:disabled, :root:root .knopf[disabled], :root:root .knopf[aria-disabled="true"] { background: var(--gesperrt); color: var(--gesperrt-text); border-color: transparent; box-shadow: none; opacity: 1; cursor: default; transform: none; }
+:root:root .knopf.text:disabled, :root:root .knopf.text[disabled] { background: none; }
+/* Knopf-Gefühl aus antippen.js, leise: höchstens 3 px mitziehen, nicht dehnen, kein Wackeln, nur ein sanftes Einrasten. Die Rückmeldung beginnt sofort und ist nach 100 ms da. */
+:root:root .kg-schwebt { transform: translate3d(clamp(-3px, var(--kx, 0px), 3px), clamp(-3px, var(--ky, 0px), 3px), 0) scale(1.02) !important; transition: transform .3s var(--sp-ruhig), box-shadow .25s var(--sp-ruhig) !important; }
+:root:root .kg-zieht { transform: translate3d(clamp(-4px, var(--kx, 0px), 4px), clamp(-4px, var(--ky, 0px), 4px), 0) scale(.98) !important; transition: transform .12s var(--sp-ruhig) !important; }
+:root:root .kg-drueckt { transform: scale(.97) !important; transition: transform .1s var(--sp-ruhig) !important; }
+:root:root .kg-plopp { animation: sp-einrasten .26s var(--sp-ruhig) both !important; }
 @keyframes sp-einrasten { from { transform: scale(.97); } to { transform: none; } }
-:root:is([data-look="sport"],[data-look="champagner"]) .knopf.kg-schwebt, :root:is([data-look="sport"],[data-look="champagner"]) .knopf.kg-zieht, :root:is([data-look="sport"],[data-look="champagner"]) .chip.kg-zieht, :root:is([data-look="sport"],[data-look="champagner"]) .wt.kg-zieht { box-shadow: 0 10px 24px -14px rgba(0, 0, 0, .9); }
-:root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt.kg-schwebt, :root:is([data-look="sport"],[data-look="champagner"]) .knopf.haupt.kg-zieht { box-shadow: 0 10px 28px -12px var(--akzent-schimmer); }
-:root:is([data-look="sport"],[data-look="champagner"]) .kg-licht { background: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 60%); }
-:root:is([data-look="sport"],[data-look="champagner"]) .kg-licht::after { display: none; }   /* kein Lichtstreifen quer über den Knopf */
+:root:root .kg-licht { background: radial-gradient(140px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 60%); }
+:root:root .kg-licht::after { display: none; }   /* kein Lichtstreifen quer über den Knopf */
 
 /* Felder und Auswahl */
-:root:is([data-look="sport"],[data-look="champagner"]) .eingabe { background: var(--feld); border-color: var(--linie); color: var(--text); }
-:root:is([data-look="sport"],[data-look="champagner"]) .eingabe:focus { border-color: var(--akzent); box-shadow: 0 0 0 3px var(--akzent-ring); }
-:root:is([data-look="sport"],[data-look="champagner"]) .optionen input:checked + span, :root:is([data-look="sport"],[data-look="champagner"]) .janein input:checked + span { background: var(--knopf-voll); color: var(--auf-voll); border-color: transparent; }
+:root:root .eingabe, :root:root .blatt .eingabe { background: var(--feld); border: 1px solid var(--feld-rand); color: var(--text); box-shadow: none; }
+:root:root .eingabe:focus, :root:root .blatt .eingabe:focus { border-color: var(--fokus); box-shadow: 0 0 0 3px var(--akzent-ring); outline: none; }
+:root:root .eingabe[aria-invalid="true"] { border-color: var(--stopp); }
+:root:root .eingabe:disabled { background: var(--gesperrt); color: var(--gesperrt-text); border-color: transparent; }
+:root:root .optionen span, :root:root .janein span, :root:root .blatt .optionen span { background: var(--feld); border: 1px solid var(--feld-rand); color: var(--text); box-shadow: none; }
+:root:root .optionen input:checked + span, :root:root .janein input:checked + span, :root:root .blatt .optionen input:checked + span { background: var(--knopf-voll); color: var(--auf-voll); border-color: transparent; box-shadow: none; font-weight: 600; }
+:root:root .optionen input:disabled + span { background: var(--gesperrt); color: var(--gesperrt-text); border-color: transparent; opacity: 1; }
+:root:root .feld > label, :root:root .feld > .lbl, :root:root .blatt .feld > label, :root:root .blatt .feld > .lbl { color: var(--text); }
+:root:root .haken span { border-color: var(--wahl-rand); }
+:root:root .haken input:checked + span { background: var(--knopf-voll); border-color: transparent; }
+:root:root .haken input:checked + span::after { color: var(--auf-voll); }
+
+/* Gewählt, Hinweise, Chips */
+:root:root .wochenleiste .wt { background: var(--feld); border: 1px solid transparent; color: var(--text2); box-shadow: none; }
+:root:root .wochenleiste .wt.an { background: var(--knopf-voll); color: var(--auf-voll); border-color: transparent; box-shadow: none; }
+:root:root .wochenleiste .wt.an b { color: var(--auf-voll); }
+:root:root .chip { background: var(--chip-grund); border-color: var(--hauch2); color: var(--text2); }
+:root:root .chip.gut { color: var(--gut); border-color: var(--gut); background: var(--erfolg-grund); }
+:root:root .chip.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-grund); }
+:root:root .chip.stopp { color: var(--stopp); border-color: var(--stopp); background: var(--fehler-grund); }
+:root:root .chip.gold { color: var(--akzent-hell); border-color: var(--wahl-rand); background: var(--wahl); }
+:root:root .meldung, :root:root .blatt .meldung { background: var(--feld); color: var(--text); box-shadow: inset 3px 0 0 var(--warn); border: 0; }   /* Hinweis: ruhige Fläche, die Farbe steckt nur im Streifen (getönte Flächen wirkten bräunlich) */
+:root:root .meldung.stopp, :root:root .blatt .meldung.stopp { background: var(--fehler-grund); box-shadow: inset 3px 0 0 var(--stopp); }
+:root:root .toast { background: var(--blatt); color: var(--text); border: 1px solid var(--hauch2); box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .5); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root:root .detail { background: var(--feld); }
 
 /* Tastatur: deutlich sichtbarer Fokus, nur bei Tastatur (focus-visible) */
-:root:is([data-look="sport"],[data-look="champagner"]) :focus-visible { outline: 2px solid var(--akzent); outline-offset: 3px; }
-:root:is([data-look="sport"],[data-look="champagner"]) .eingabe:focus-visible { outline: none; }
-:root:is([data-look="sport"],[data-look="champagner"]) .optionen input:focus-visible + span, :root:is([data-look="sport"],[data-look="champagner"]) .janein input:focus-visible + span, :root:is([data-look="sport"],[data-look="champagner"]) .haken input:focus-visible + span { box-shadow: var(--sp-fokus); }
+:root:root :focus-visible { outline: 2px solid var(--fokus); outline-offset: 3px; }
+:root:root .eingabe:focus-visible { outline: none; }
+:root:root .optionen input:focus-visible + span, :root:root .janein input:focus-visible + span, :root:root .haken input:focus-visible + span { box-shadow: var(--sp-fokus); outline: none; }
 
-/* Farbwelt-Knopf und Probe im Menü */
-:root[data-look="sport"] .look-wahl { background: linear-gradient(135deg, #1A1C20 0 48%, #C8F135 52% 100%); }
-.look-probe.sport { background: linear-gradient(135deg, #1A1C20 0 48%, #C8F135 52% 100%); }
+/* Farbwelt-Knopf oben rechts: zeigt den Verlauf der Welt, die gerade gilt */
+:root:root .look-wahl { background: var(--welt-verlauf); border: 2px solid var(--hauch2); box-shadow: none; transition: transform .16s var(--sp-ruhig); }
+:root:root .look-wahl:active { transform: scale(.94); }
+:root:root .look-schild { background: var(--blatt) !important; color: var(--text) !important; border: 1px solid var(--hauch2) !important; }
 
 /* ---------- Maus-Effekte (sport.js setzt Klassen und Werte). Nur mit präzisem Zeiger und Hover, nie bei „weniger Bewegung“. ---------- */
 /* Lichtschein im Hintergrund: eine feste weiche Fläche, sport.js schiebt sie nur per transform (kein Blur-Filter) */
@@ -251,15 +612,15 @@
   background: radial-gradient(closest-side, var(--akzent-schein), transparent 55%, transparent);
   opacity: 0; transition: opacity .6s var(--sp-ruhig); will-change: transform; contain: strict; }
 .sp-schein.an { opacity: 1; }
-:root:is([data-look="sport"],[data-look="champagner"]) .app { position: relative; z-index: 1; }   /* Inhalt liegt über dem Schein */
+:root:root .app { position: relative; z-index: 1; }   /* Inhalt liegt über dem Schein */
 
 /* Aktive Karte: neigt sich leicht zur Maus und rückt höchstens 3 px. Andere Karten bleiben stehen. */
 .sp-karte { transition: transform .45s var(--sp-ruhig), border-color .3s var(--sp-ruhig), box-shadow .45s var(--sp-ruhig); }
 .sp-karte.sp-aktiv { transform: perspective(1000px) rotateX(var(--sp-rx, 0deg)) rotateY(var(--sp-ry, 0deg)) translate3d(var(--sp-tx, 0px), var(--sp-ty, 0px), 0);
-  transition: transform .18s linear, border-color .3s var(--sp-ruhig), box-shadow .45s var(--sp-ruhig); border-color: rgba(255, 255, 255, .12); }
+  transition: transform .18s linear, border-color .3s var(--sp-ruhig), box-shadow .45s var(--sp-ruhig); border-color: var(--hauch2); }
 /* Highlight: Licht auf der Fläche und am Rand, folgt der Maus (zwei Ebenen, nur opacity wird überblendet) */
 .sp-licht, .sp-rand { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .35s var(--sp-ruhig); z-index: 0; }
-.sp-licht { background: radial-gradient(420px circle at var(--sp-mx, 50%) var(--sp-my, 50%), rgba(255, 255, 255, .045), transparent 60%); }
+.sp-licht { background: radial-gradient(420px circle at var(--sp-mx, 50%) var(--sp-my, 50%), var(--akzent-schein), transparent 60%); }
 .sp-rand { inset: 0; padding: 1px; background: radial-gradient(240px circle at var(--sp-mx, 50%) var(--sp-my, 50%), var(--akzent-schimmer), transparent 70%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
 .sp-aktiv > .sp-licht, .sp-aktiv > .sp-rand { opacity: 1; }
@@ -267,34 +628,34 @@
 
 /* ---------- Touch: kurze, leise Tap-Reaktion, kein Fingertracking ---------- */
 @media (hover: none), (pointer: coarse) {
-  :root:is([data-look="sport"],[data-look="champagner"]) .block:active, :root:is([data-look="sport"],[data-look="champagner"]) .naechstes:active, :root:is([data-look="sport"],[data-look="champagner"]) .kunde:active { transform: scale(.992); transition: transform .12s var(--sp-ruhig); }
-  :root:is([data-look="sport"],[data-look="champagner"]) .block, :root:is([data-look="sport"],[data-look="champagner"]) .naechstes, :root:is([data-look="sport"],[data-look="champagner"]) .kunde { transition: transform .25s var(--sp-ruhig); }
-  :root:is([data-look="sport"],[data-look="champagner"]) .block:has(input:active, textarea:active, select:active, canvas:active) { transform: none; }   /* Felder und 3D-Bühne nicht anstupsen */
+  :root:root .block:active, :root:root .naechstes:active, :root:root .kunde:active { transform: scale(.992); transition: transform .12s var(--sp-ruhig); }
+  :root:root .block, :root:root .naechstes, :root:root .kunde { transition: transform .25s var(--sp-ruhig); }
+  :root:root .block:has(input:active, textarea:active, select:active, canvas:active) { transform: none; }   /* Felder und 3D-Bühne nicht anstupsen */
 }
 
 /* Weniger Bewegung: keine dekorative Bewegung, alles bleibt bedienbar */
 @media (prefers-reduced-motion: reduce) {
   .sp-schein, .sp-licht, .sp-rand { display: none; }
   .sp-karte, .sp-karte.sp-aktiv { transform: none !important; transition: none; }
-  :root:is([data-look="sport"],[data-look="champagner"]) .knopf { transition: background-color .15s linear, color .15s linear, border-color .15s linear; }
-  :root:is([data-look="sport"],[data-look="champagner"]) .block:active, :root:is([data-look="sport"],[data-look="champagner"]) .naechstes:active, :root:is([data-look="sport"],[data-look="champagner"]) .kunde:active { transform: none; }
+  :root:root .knopf { transition: color .15s linear; }
+  :root:root .kg-drueckt, :root:root .kg-zieht, :root:root .kg-schwebt, :root:root .look-wahl:active { transform: none !important; }
+  :root:root .block:active, :root:root .naechstes:active, :root:root .kunde:active { transform: none; }
 }
 
-/* Regeln, die in stil.css und buehne.css nur „Schwarz-Gold“ als dunkle Farbwelt kennen: für Sport ebenso dunkel.
-   stil.css setzt für alle Farbwelten außer Gold und Klar einen dunkelblauen Zweittext auf dem Grund (Lagune), darum hier mit höherem Gewicht. */
-:root:is([data-look="sport"],[data-look="champagner"])[data-look] { --auf-grund2: #A9AFA9; }
-:root:is([data-look="sport"],[data-look="champagner"]) .marke small { color: var(--auf-grund2); }
-:root:is([data-look="sport"],[data-look="champagner"]) .buehne, :root:is([data-look="sport"],[data-look="champagner"]) .blatt { color-scheme: dark; }
-:root:is([data-look="sport"],[data-look="champagner"]) .blatt { box-shadow: 0 -1px 0 rgba(255, 255, 255, .08), 0 -18px 44px rgba(0, 0, 0, .5); }
-:root:is([data-look="sport"],[data-look="champagner"]) .erklaer-blase { background: rgba(20, 21, 25, .96); }
-:root:is([data-look="sport"],[data-look="champagner"]) .raum-pop { color: var(--text); text-shadow: 0 2px 18px rgba(0, 0, 0, .85), 0 0 3px rgba(0, 0, 0, .9); }
+/* 3D-Bühne, Blatt, Erklär-Blase: hell oder dunkel wie die Welt (stil.css und buehne.css kannten nur Schwarz-Gold als dunkle Welt) */
+:root:root .buehne, :root:root .blatt { color-scheme: inherit; }
+:root:root .blatt { background: var(--blatt); color: var(--blatt-text); box-shadow: 0 -1px 0 var(--hauch2), 0 -18px 44px rgba(0, 0, 0, .35); }
+:root:root .blatt-hg { background: var(--blatt-hg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root:root .erklaer-blase { background: rgba(16, 18, 24, .96); color: #F4F6FA; }
+:root:root .raum-pop { color: #FFFFFF; text-shadow: 0 2px 18px rgba(0, 0, 0, .85), 0 0 3px rgba(0, 0, 0, .9); }
+:root:root .buehne .tipp { color: var(--text2); }
 
 /* Sehr schmale Handys (16.11.2026, Gesamttest): Der Punkt vor „Devin Kanke Coach“ machte den Namen 17 px breiter, „Analyse“ rutschte bei 320 px
    bis auf 7 px an den Farbwelt-Knopf (sonst 12 px, damit die Trefferflächen sich nichts wegnehmen). Kleinerer Punkt, weniger Abstand. */
-@media (max-width: 360px) { :root:is([data-look="sport"],[data-look="champagner"]) .marke::before { width: 6px; height: 6px; margin-right: 5px; } }
+@media (max-width: 360px) { :root:root .marke::before { width: 6px; height: 6px; margin-right: 5px; border-radius: 2px; } }
 
 /* ---------- Finger und Wischen (17.11.2026, sport.js, alle Farbwelten). Finger: Licht nur solange der Finger liegt. Wischen: Karten unterhalb des Bildschirms
-   kommen einmal mit 18 px Bewegung und Überblendung. Nur transform und opacity, keine Dauer-Animation, nie bei „weniger Bewegung“. ---------- */
+   kommen einmal mit 8 px Bewegung und Überblendung. Nur transform und opacity, keine Dauer-Animation, nie bei „weniger Bewegung“. ---------- */
 .sp-finger > .sp-licht, .sp-finger > .sp-rand { opacity: 1; transition-duration: .12s; }
 .sp-finger > .sp-licht { background: radial-gradient(170px circle at var(--sp-mx, 50%) var(--sp-my, 50%), color-mix(in srgb, var(--akzent) 13%, transparent), transparent 70%); }
 .sp-finger > .sp-rand { background: radial-gradient(210px circle at var(--sp-mx, 50%) var(--sp-my, 50%), color-mix(in srgb, var(--akzent) 75%, transparent), transparent 70%); }
@@ -303,16 +664,11 @@
 @media (prefers-reduced-motion: reduce) { .sp-vor { opacity: 1; transform: none; } .sp-finger > .sp-licht, .sp-finger > .sp-rand { opacity: 0; } }
 
 /* Ruhig und schön (19.11.2026, Devin: „reibungslose Übergänge … keinen Reinzoom … dass die Webseite an sich besser aussieht“) */
-/* Studio-Bild etwas dunkler: Schrift direkt auf dem Hintergrund (Seitentitel, Erklärsätze, Startseite) bleibt auch vor den hellen Fenstern lesbar. Ein festes Bild, kostet beim Scrollen nichts. */
-:root:is([data-look="sport"],[data-look="champagner"]) .dk-wellen-video.dk-studio { filter: brightness(.74) saturate(.92); }
-:root:is([data-look="sport"],[data-look="champagner"]) #ansicht > .plan-kopf, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-text { text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 0 18px rgba(0, 0, 0, .35); }
-:root:is([data-look="sport"],[data-look="champagner"]) #ansicht > .plan-kopf .knopf, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-text .knopf { text-shadow: none; }
-/* Erklärsätze im Seitenkopf (z. B. „Tippe auf eine Übung …“) und Untertitel der Startseite: heller und mit kräftigerem weichem Schatten statt Grau auf hellen Fenstern */
-:root:is([data-look="sport"],[data-look="champagner"]) #ansicht > .plan-kopf .leise, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-held .st-zeile, :root:is([data-look="sport"],[data-look="champagner"]) body.start .st-frei .st-zeile { color: rgba(238, 240, 244, .9); text-shadow: 0 1px 3px rgba(0, 0, 0, .8), 0 0 14px rgba(0, 0, 0, .55); }
-/* Startseite am Handy: Abschnitte ohne Lücke, damit zwischen ihnen keine Streifen vom Hintergrund wie Nähte aussehen */
-@media (max-width: 639px) { :root:is([data-look="sport"],[data-look="champagner"]) body.start .inhalt { gap: 0; } }
+/* Startseite am Handy: Abschnitte ohne Lücke */
+@media (max-width: 639px) { :root:root body.start .inhalt { gap: 0; } }
 /* Neuzeichnen derselben Seite (Haken, Farbwelt): nichts blendet neu ein, nur der echte Seitenwechsel (app.js setzt „still“) */
 #ansicht.still > * { animation: none !important; }
+/* LOOK5-TEIL2-ENDE */
 
 /* ========== Redesign Kunden-App (24.11.2026) ==========
    Rundgang auf der Startseite, Beispielstatus, offenes Training, Leiste mit „Mehr“, Satz speichern. Alles über die Tokens der Farbwelt,
@@ -554,3 +910,133 @@ nav.leiste div.mit-mehr button[aria-current="page"]::after { content: ""; positi
 .rg-schnell { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: center; padding: 18px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(180deg, transparent, var(--seite) 38%); }
 .rg-schnell[hidden] { display: none; }
 .rg-schnell .knopf { width: 100%; max-width: 440px; justify-content: center; text-decoration: none; }
+
+/* LOOK5-TEIL4-ANFANG */
+/* ========== 4. Look 5 (27.11.2026): Ecken wie bei Apple ==========
+   Devin: „Programmier die Knöpfe wie bei Apple, nicht, dass die einfach rund jede Ecke ist … anders kreisförmig“. Gemeint sind die durchgehenden Ecken
+   (Superellipse, „Squircle“): Die Rundung beginnt früher und läuft weich in die Gerade, ein Kreisbogen knickt am Übergang.
+   Drei Stufen, jede für sich fertig:
+   A  Jeder Browser:               normale runde Ecke mit dem Maß --e (Firefox bleibt hier).
+   B  Chrome und Edge ab 139 (PC): corner-shape: squircle. Rahmen, Schatten und Fokusrahmen folgen der Form von selbst. Die Ecke bekommt das 1,6-fache Maß,
+                                   weil eine Superellipse bei gleichem Maß eckiger wirkt als ein Kreis.
+   C  Safari (iPhone, iOS 16+):    kennt corner-shape nicht. Dieselbe Superellipse als Maske in neun Teilen (-webkit-mask-box-image, --sq-maske): Ecken fest, Kanten gedehnt,
+                                   passt auf jede Größe. Eine Maske schneidet alles außerhalb ab, darum:
+                                   · Karten, Leiste unten, Blätter: Die Maske liegt auf einer eigenen Hintergrund-Ebene (::before). Die Karte selbst wird nie beschnitten,
+                                     Fokusrahmen und alles, was aus ihr herausragt, bleiben ganz. Die Haarlinie ist eine Zeichnung in derselben Form (::after, --sq-ring-…).
+                                   · Knöpfe und Eingabefelder: Maske direkt (sie haben keine freie Ebene). Kein Schatten nach außen, der Rand liegt innen (inset).
+                                     Mit Tastatur-Fokus fällt die Maske weg und der normale Fokusrahmen steht außen um eine runde Ecke.
+                                   · Lange Listen (Übungen, Kacheln) bleiben rund: Hunderte Masken würden ein iPhone XR beim Scrollen bremsen.
+   Keine Pille und kein Kreis für Knöpfe: auch runde Symbol-Knöpfe (Schließen, Pfeile, Farbwelt) haben die Apple-Form. Rund bleiben nur Dinge, die rund sein müssen
+   (Ringe, Medaillen, Haken, Punkte). Tippflächen bleiben mindestens 44 px. */
+:root:root { --e-klein: 11px; --e-feld: 13px; --e-knopf: 15px; --e-kachel: 16px; --e-karte: 22px; --e-leiste: 26px; --e-blatt: 28px; --e-mal: 1.6; }
+
+/* Maß je Gruppe */
+:root:root :is(.knopf, .fs-wahl-knopf, .st-wahl button, .schmerz-wert, .optionen span, .janein span, .raum-intro-los, .raum-weiter, .raum-pose-weiter, .raum-pr-knopf, .raum-start, .es-haken-knopf, .look-eintrag, .rg-weg-knopf, .mehr-zeile, .eb-knopf, .erklaer-knopf, .erklaer-knopf) { --e: var(--e-knopf); }
+:root:root :is(.knopf.klein, .chip, .fs-chip, .raum-pose-chip, .live-schild, .lg-tipp) { --e: var(--e-klein); }
+:root:root :is(.eingabe, .an-haken, .nw-wert) { --e: var(--e-feld); }
+:root:root :is(.block, .kunde, .leer, .fakten, .buehne, .rg-plan, .rg-preis-karte, .rg-kurs, .rg-gym-bild, .st-stufe, .raum-karte, .raum-intro-karte, .raum-kopf, .tm-uhr, .tm-feier, .lg, .st-figur, .update-hinweis, .erklaer-blase, .st-blase) { --e: var(--e-karte); }
+:root:root :is(.eintrag, .ueb-karte, .naechstes, .fs-kachel, .st-kachel, .st-wert, .st-zahl, .rang-kurz, .meldung, .detail, .tm-werte, .tm-frage, .tm-sum div, .tm-karte, .tm-pr, .lauf-zeile, .rg-schritte li, .rg-beispiel, .farb-eintrag, .pr-karte, .med-fach,
+  .wochenleiste .wt, .woche, .mini3d, .liste-ueb details, .statistik div, .fs-wahl, .st-wahl, .rir-satz, .tm-fehler, .fs-hinweis, .netz-hinweis, .toast, .look-schild, .raum-meldung, .raum-status-werte div, .live-plan, .rang-leiter li, .rm-pfad li.jetzt,
+  .es-liste li, .es-weg, .es-lm, .es-ampel-gruppe, .es-scan, .es-foto-bild, .gs-zeile, .gs-wert, .af-fehler, .af-wichtig, .devin-foto, .rg-weg-knopf img) { --e: var(--e-kachel); }
+:root:root nav.leiste { --e: var(--e-leiste); }
+:root:root nav.leiste button { --e: 20px; }
+:root:root .blatt { --e: var(--e-blatt); }
+
+/* Stufe A: runde Ecke mit dem Maß der Gruppe */
+:root:root :is(.knopf, .fs-wahl-knopf, .st-wahl button, .schmerz-wert, .optionen span, .janein span, .raum-intro-los, .raum-weiter, .raum-pose-weiter, .raum-pr-knopf, .raum-start, .es-haken-knopf, .look-eintrag, .rg-weg-knopf, .mehr-zeile, .eb-knopf, .erklaer-knopf,
+  .knopf.klein, .chip, .fs-chip, .raum-pose-chip, .live-schild, .lg-tipp, .eingabe, .an-haken, .nw-wert,
+  .block, .kunde, .leer, .fakten, .buehne, .rg-plan, .rg-preis-karte, .rg-kurs, .rg-gym-bild, .st-stufe, .raum-karte, .raum-intro-karte, .raum-kopf, .tm-uhr, .tm-feier, .lg, .st-figur, .update-hinweis, .erklaer-blase, .st-blase,
+  .eintrag, .ueb-karte, .naechstes, .fs-kachel, .st-kachel, .st-wert, .st-zahl, .rang-kurz, .meldung, .detail, .tm-werte, .tm-frage, .tm-sum div, .tm-karte, .tm-pr, .lauf-zeile, .rg-schritte li, .rg-beispiel, .farb-eintrag, .pr-karte, .med-fach,
+  .wochenleiste .wt, .woche, .mini3d, .liste-ueb details, .statistik div, .fs-wahl, .st-wahl, .rir-satz, .tm-fehler, .fs-hinweis, .netz-hinweis, .toast, .look-schild, .raum-meldung, .raum-status-werte div, .live-plan, .rang-leiter li, .rm-pfad li.jetzt,
+  .es-liste li, .es-weg, .es-lm, .es-ampel-gruppe, .es-scan, .es-foto-bild, .gs-zeile, .gs-wert, .af-fehler, .af-wichtig, .devin-foto, .rg-weg-knopf img, nav.leiste, nav.leiste button) { border-radius: var(--e); }
+:root:root .blatt { border-radius: var(--e) var(--e) 0 0; }
+/* Ausnahmen wie bisher: Übungszeilen in der Karte „Heute“ sind Zeilen mit Linie, keine Kacheln */
+:root:root .block.heute .ueb-karte { border-radius: 0; }
+:root:root .block.heute .mini3d { --e: 12px; }
+/* Runde Symbol-Knöpfe: Apple-Form statt Kreis (Stufe B und C). Stufe A lässt sie rund. */
+:root:root :is(.rund, .blatt-zu, .zu, .zu-rund, .fs-pfeil, .look-wahl, .raum-zu, .rir-i) { border-radius: 50%; }
+
+/* Stufe B: echte Apple-Ecke */
+@supports (corner-shape: squircle) {
+  :root:root :is(.knopf, .fs-wahl-knopf, .st-wahl button, .schmerz-wert, .optionen span, .janein span, .raum-intro-los, .raum-weiter, .raum-pose-weiter, .raum-pr-knopf, .raum-start, .es-haken-knopf, .look-eintrag, .rg-weg-knopf, .mehr-zeile, .eb-knopf, .erklaer-knopf,
+    .knopf.klein, .chip, .fs-chip, .raum-pose-chip, .live-schild, .lg-tipp, .eingabe, .an-haken, .nw-wert,
+    .block, .kunde, .leer, .fakten, .buehne, .rg-plan, .rg-preis-karte, .rg-kurs, .rg-gym-bild, .st-stufe, .raum-karte, .raum-intro-karte, .raum-kopf, .tm-uhr, .tm-feier, .lg, .st-figur, .update-hinweis, .erklaer-blase, .st-blase,
+    .eintrag, .ueb-karte, .naechstes, .fs-kachel, .st-kachel, .st-wert, .st-zahl, .rang-kurz, .meldung, .detail, .tm-werte, .tm-frage, .tm-sum div, .tm-karte, .tm-pr, .lauf-zeile, .rg-schritte li, .rg-beispiel, .farb-eintrag, .pr-karte, .med-fach,
+    .wochenleiste .wt, .woche, .mini3d, .liste-ueb details, .statistik div, .fs-wahl, .st-wahl, .rir-satz, .tm-fehler, .fs-hinweis, .netz-hinweis, .toast, .look-schild, .raum-meldung, .raum-status-werte div, .live-plan, .rang-leiter li, .rm-pfad li.jetzt,
+    .es-liste li, .es-weg, .es-lm, .es-ampel-gruppe, .es-scan, .es-foto-bild, .gs-zeile, .gs-wert, .af-fehler, .af-wichtig, .devin-foto, .rg-weg-knopf img, nav.leiste, nav.leiste button) { border-radius: calc(var(--e) * var(--e-mal)); corner-shape: squircle; }
+  :root:root .blatt { border-radius: calc(var(--e) * var(--e-mal)) calc(var(--e) * var(--e-mal)) 0 0; corner-shape: squircle; }
+  :root:root .block.heute .ueb-karte { border-radius: 0; }
+  :root:root :is(.rund, .blatt-zu, .zu, .zu-rund, .fs-pfeil, .look-wahl, .raum-zu, .rir-i) { border-radius: 50%; corner-shape: squircle; }
+  :root:root :is(.dk-rahmen, .kg-licht, .sp-licht, .sp-rand) { corner-shape: squircle; }   /* Licht und Welle im Knopf haben dieselbe Form */
+}
+
+/* Stufe C: Safari. Dieselbe Form als Maske. */
+@supports (not (corner-shape: squircle)) and (-webkit-mask-box-image: none) {
+  /* Karten: Fläche und Haarlinie auf eigenen Ebenen in der Apple-Form, die Karte selbst bleibt unbeschnitten.
+     Sicherheitsnetz: Die Ebenen haben zusätzlich eine kleine runde Ecke (0,8 × Maß). Sie liegt außerhalb der Apple-Form und ändert nichts, solange die Maske wirkt.
+     Nimmt ein Safari die Maske nicht an, bleibt so eine normale runde Ecke statt einer eckigen Fläche. */
+  :root:root .block { position: relative; isolation: isolate; background: none; border-color: transparent; }
+  :root:root .block::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: calc(var(--e) * .8); background: var(--block-grund, var(--karte)); -webkit-mask-box-image: var(--sq-maske) 50 / calc(var(--e) * var(--e-mal)) stretch; }
+  :root:root .block::after { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; border: 1px solid transparent; border-image: var(--sq-ring-karte) 50 / calc(var(--e) * var(--e-mal)) stretch; }
+  /* Leiste unten: dicht statt weichgezeichnet (eine Maske und Weichzeichnen zusammen sind in Safari nicht sicher) */
+  :root:root nav.leiste { isolation: isolate; background: none; border-color: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root:root nav.leiste::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: calc(var(--e) * .8); background: var(--blatt); -webkit-mask-box-image: var(--sq-maske) 50 / calc(var(--e) * var(--e-mal)) stretch; }
+  :root:root nav.leiste::after { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; border: 1px solid transparent; border-image: var(--sq-ring-leiste) 50 / calc(var(--e) * var(--e-mal)) stretch; }
+  /* Blatt von unten: nur die oberen Ecken */
+  :root:root .blatt { background: none; box-shadow: none; }
+  :root:root .blatt::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: calc(var(--e) * .8) calc(var(--e) * .8) 0 0; background: var(--blatt); -webkit-mask-box-image: var(--sq-maske-oben) 50 / calc(var(--e) * var(--e-mal)) stretch; }
+  /* Knöpfe: Maske direkt. Die runde Ecke darunter ist etwas kleiner als die Maske, damit die Maske die Form bestimmt. Kein Schatten nach außen. */
+  :root:root :is(.knopf, .fs-wahl-knopf, .schmerz-wert, .raum-intro-los, .raum-weiter, .raum-pose-weiter, .raum-start, .es-haken-knopf), :root:root .st-wahl button {
+    -webkit-mask-box-image: var(--sq-maske) 50 / calc(var(--e) * var(--e-mal)) stretch; border-radius: calc(var(--e) * .8); box-shadow: none; }
+  :root:root .optionen span, :root:root .janein span { -webkit-mask-box-image: var(--sq-maske) 50 / calc(var(--e) * var(--e-mal)) stretch; border-radius: calc(var(--e) * .8); }
+  :root:root :is(.knopf, .fs-wahl-knopf, .st-wahl button, .schmerz-wert, .raum-intro-los, .raum-weiter, .raum-pose-weiter, .raum-start, .es-haken-knopf):focus-visible { -webkit-mask-box-image: none; border-radius: var(--e); }
+  :root:root :is(.optionen, .janein) input:focus-visible + span { -webkit-mask-box-image: none; border-radius: var(--e); }
+  /* Rand von Auswahl-Knöpfen: innen statt als Rahmen (ein Rahmen franst an der Maske aus).
+     Die Wochentag-Kacheln (.wt) bleiben in Safari rund: Eine Maske nähme ihnen den unsichtbaren Treffer-Rand, sie wären dann unter 44 px breit. */
+  :root:root .optionen span, :root:root .janein span, :root:root .blatt .optionen span { border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--feld-rand); }
+  :root:root .optionen input:checked + span, :root:root .janein input:checked + span, :root:root .blatt .optionen input:checked + span { box-shadow: none; }
+  /* Eingabefelder: Maske direkt, Rand und Fokus innen */
+  :root:root .eingabe, :root:root .blatt .eingabe { -webkit-mask-box-image: var(--sq-maske) 50 / calc(var(--e) * var(--e-mal)) stretch; border-radius: calc(var(--e) * .8); border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--feld-rand); }
+  :root:root .eingabe:focus, :root:root .blatt .eingabe:focus { border-color: transparent; box-shadow: inset 0 0 0 2.5px var(--fokus); }
+  :root:root .eingabe[aria-invalid="true"] { border-color: transparent; box-shadow: inset 0 0 0 2.5px var(--stopp); }
+  :root:root .eingabe:disabled { box-shadow: none; }
+  /* Runde Symbol-Knöpfe: volle Apple-Form, Rand innen */
+  :root:root :is(.rund, .blatt-zu, .zu, .zu-rund, .fs-pfeil, .raum-zu) { -webkit-mask-box-image: var(--sq-maske) 50 / 50% stretch; border-radius: 42%; border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--hauch2); }
+  :root:root :is(.rund, .blatt-zu, .zu, .zu-rund, .fs-pfeil, .raum-zu):focus-visible { -webkit-mask-box-image: none; border-radius: 50%; }
+  /* Farbwelt-Knopf (32 px): Die Form liegt auf einer eigenen Ebene, der Knopf selbst bleibt ohne Maske. So behält er seinen unsichtbaren Treffer-Rand (44 × 44). */
+  :root:root .look-wahl { isolation: isolate; background: none; border-color: transparent; box-shadow: none; border-radius: 42%; }
+  :root:root .look-wahl::after { content: ""; position: absolute; z-index: -1; inset: -2px; pointer-events: none; background: var(--welt-verlauf); border-radius: 42%; -webkit-mask-box-image: var(--sq-maske) 50 / 50% stretch; }
+}
+
+/* ========== Look 5: Zustände, die bisher fehlten oder je Seite anders waren ========== */
+/* Gewählte Reiter (Zeitraum, Rückmeldung): der Verlauf der Welt */
+:root:root .fs-wahl { background: var(--feld); border-color: var(--hauch); }
+:root:root .fs-wahl-knopf { color: var(--text2); background: none; }
+:root:root .fs-wahl-knopf[aria-pressed="true"] { background: var(--knopf-voll); color: var(--auf-voll); }
+:root:root .fs-pfeil { background: var(--knopf-grund); border-color: var(--hauch2); color: var(--text); }
+:root:root .fs-pfeil:disabled { opacity: 1; background: var(--gesperrt); color: var(--gesperrt-text); }
+:root:root .fs-kachel, :root:root .fs-hinweis { background: var(--feld); border-color: var(--hauch); text-shadow: none; }
+:root:root .blatt-zu, :root:root .zu { background: var(--knopf-grund); color: var(--text); border-color: var(--hauch2); }
+/* Hinweise oben: Farben der Welt statt festem Grau */
+:root:root .update-hinweis { background: var(--blatt); color: var(--text); border: 1px solid var(--hauch2); box-shadow: 0 12px 34px -12px rgba(0, 0, 0, .5); }
+:root:root .update-hinweis small { color: var(--text2); }
+:root:root .netz-hinweis { background: var(--blatt); color: var(--text); border: 1px solid var(--hauch2); box-shadow: 0 8px 24px -10px rgba(0, 0, 0, .45); }
+/* Fortschritt, Ringe, Balken: der Verlauf der Welt */
+:root:root .fortschritt-balken i, :root:root .fs-saeule-feld i, :root:root .an-fortschritt i, :root:root .balken i::after, :root:root .rang-balken i { background: var(--welt-verlauf); }
+:root:root .woche-ring::before { background: conic-gradient(from 0deg, var(--verlauf-a), var(--verlauf-b) calc(var(--p, 0) * 1%), var(--hauch2) 0); }
+:root:root .woche-stand.voll .woche-ring::before, :root:root .fortschritt.voll .fortschritt-balken i { background: var(--gut); }
+:root:root .rm-weg i.da, :root:root .rm-weg i.jetzt, :root:root .rm-pfad li.drin::after { background: var(--welt-verlauf); }
+:root:root .rm-weg i.jetzt { box-shadow: 0 0 0 2px var(--akzent-ring); }
+:root:root .rm-pfad li.jetzt { background: var(--wahl); box-shadow: inset 0 0 0 1px var(--akzent-ring); }
+:root:root .schritte button.an { background: var(--welt-verlauf); }
+:root:root .st-stufe { background: var(--karte); border-color: var(--hauch2); }
+:root:root .st-stufe.haupt { border-color: var(--wahl-rand); box-shadow: inset 0 0 0 1px var(--wahl-rand); }
+/* Große Zahl und Marke dürfen den Verlauf als Schrift tragen (groß und fett, an beiden Enden über 4,5:1) */
+:root:root .verlauf-schrift, :root:root .rg-betrag b, :root:root .st-stufe-preis b { background: var(--verlauf-schrift); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+/* Tippflächen (Look 5): Auswahl-Knöpfe waren 40 px hoch, die sieben Wochentage am Handy nur 40 px breit. Jetzt 44 px hoch; bei den Wochentagen reicht die
+   unsichtbare Trefferfläche 2 px in die 6 px breite Lücke (die Nachbarn berühren sich nicht). */
+:root:root .optionen span, :root:root .janein span { min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
+:root:root .optionen input { inset: 0 -2px; margin: 0; }   /* ohne den Standard-Rand des Kästchens, sonst bleibt es schmaler als sein Knopf */
+/* Farbwelt-Knopf: 32 px groß, mit dem unsichtbaren Rand aus index.html 44 × 44 Trefferfläche (vorher 28 px und 40 × 40) */
+:root:root .look-wahl { width: 32px; height: 32px; }
+/* LOOK5-TEIL4-ENDE */
