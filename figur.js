@@ -795,6 +795,24 @@ export function festErkennen(pose, boxen) {
   }
 }
 
+/* ---------- Leben im Stand ---------- */
+// 28.11.2026 (Stufe 2, Devin: „Atmung reinkommt … ein bisschen Bewegung“, dezent): Atem und kleine Gewichtsverlagerung für eine Figur, die steht und wartet, als reine Funktion der Zeit (kein Zustand, kein
+// Zufall: gleiche Zeit, gleiche Pose). Dieselben Maße wie Ansicht.atme/belebe in der Übungsansicht, damit die Figur im Gym genauso atmet: Atemzug 4,2 s (einatmen 40 %), Brust und Bauch über pose.atem
+// (figur-modell.js), Schultern 1,1 cm, Becken höchstens 8 mm zur Seite und 4 mm vor/zurück, Rumpf 0,5° Seitneigung und 0,7° Drehung. Die Füße bleiben, wo sie sind; Hände ohne festen Griff gehen mit dem Becken.
+// pose: Pose wie für gelenke() (wird nicht verändert, zurück kommt eine Kopie). sek: laufende Zeit in Sekunden. o.staerke 0…1 (Standard 1), o.ruhig = true → Pose unverändert (Bewegung reduzieren),
+// o.nurAtem = true → ohne Gewichtsverlagerung (Sitzen, Liegen, am Gerät)
+export function standLeben(pose, sek, o = {}) {
+  if (!pose || o.ruhig) return pose;
+  const st = o.staerke == null ? 1 : Math.max(0, Math.min(1, o.staerke)), ph = (((sek / 4.2) % 1) + 1) % 1, atem = ph < 0.4 ? glaettung(ph / 0.4) : 1 - glaettung((ph - 0.4) / 0.6);
+  const p = Object.assign({}, pose, { atem: st * atem, schulterHub: (pose.schulterHub || 0) + 0.011 * st * atem });
+  if (o.nurAtem || !pose.becken) return p;
+  const dx = 0.008 * st * welle(sek, 0.53, 0.3), dz = 0.004 * st * welle(sek, 0.37, 2.2), r = pose.rumpf || {};
+  p.becken = pose.becken.clone().add(V(dx, 0, dz));
+  if (!r.basis) p.rumpf = Object.assign({}, r, { seit: (r.seit || 0) - 0.5 * st * welle(sek, 0.53, 0.3), drehung: (r.drehung || 0) + 0.7 * st * welle(sek, 0.31, 1.1) });
+  if (pose.hand) { const hand = {}; for (const s of ['l', 'r']) { const h = pose.hand[s]; if (!h) continue; if (pose.fest && pose.fest[s]) { hand[s] = h; continue; } const n = h.clone().add(V(dx, 0, dz)); if (h.genau) n.genau = h.genau; hand[s] = n; } p.hand = Object.assign({}, pose.hand, hand); }
+  return p;
+}
+
 /* ---------- Material ---------- */
 export const FARBEN = {
   haut: 0xc4927a, hose: 0x1b1c20, schuh: 0xdcdedf, haar: 0x1c1612, dkGold: 0xc29c5e, oberteil: 0x7c8086, socke: 0xf3f3f1,   // Devins Look: graues Tanktop, schwarze Shorts, weiße Socken
