@@ -1,7 +1,7 @@
-/* Maus-Effekte der Farbwelt „Sport“ (16.11.2026, Devin: „Die Oberfläche soll subtil auf die Position des Mauszeigers reagieren“).
+/* Maus-Effekte (16.11.2026 für die Farbwelt „Sport“, seit Look 5 vom 27.11.2026 in allen fünf Welten der Kunden-App; Devin: „Die Oberfläche soll subtil auf die Position des Mauszeigers reagieren“).
  * - Ein weicher, schwacher Lichtschein im Hintergrund folgt der Maus (eine feste Fläche, nur transform).
  * - Über einer Karte wandert ein Licht über Fläche und Rand, die Karte neigt sich leicht zur Maus und rückt höchstens 3 px. Andere Karten bleiben stehen.
- * Nur in der Farbwelt „Sport“, nur mit präzisem Zeiger und Hover (Maus, Trackpad), nie bei „weniger Bewegung“. Touch bekommt nur die kurze Tap-Reaktion aus sport.css.
+ * Nur mit präzisem Zeiger und Hover (Maus, Trackpad), nie bei „weniger Bewegung“. Touch bekommt nur die kurze Tap-Reaktion aus sport.css.
  * Leistung: Mausbewegungen werden pro Bild gebündelt (requestAnimationFrame), es wird nichts neu gezeichnet, nur CSS-Werte gesetzt.
  * Steht die Maus still und ist alles angekommen, läuft keine Schleife mehr. Beim Drücken friert die Karte ein (Klicken und Wischen auf der 3D-Figur bleiben ruhig). */
 (function () {
@@ -19,7 +19,7 @@
   var mx = -1000, my = -1000, sx = -1000, sy = -1000, sichtbar = false;
   var karte = null, kRect = null;
 
-  function aktiv() { return (root.dataset.look === 'sport' || root.dataset.look === 'champagner') && zeiger.matches && !ruhig.matches; }
+  function aktiv() { return zeiger.matches && !ruhig.matches; }
 
   function scheinBauen() {
     if (schein) return;

@@ -697,7 +697,7 @@ function schnellLeiste() {
   SCHNELL = new IntersectionObserver((l) => { const e = l[l.length - 1]; if (e.isIntersecting || e.boundingClientRect.top < 0) gesehen = true; leiste.hidden = gesehen; if (gesehen) { SCHNELL.disconnect(); SCHNELL = null; } }, { threshold: 0.6 });
   SCHNELL.observe(ziel);
 }
-const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + ({ klar: '-klar', gold: '-gold', sport: '-gold', champagner: '-gold' }[document.documentElement.dataset.look] || '') + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
+const startBild = (name, alt, b, h2) => h('img', { src: 'start/' + name + lookEndung() + '.jpg', alt, width: b, height: h2, loading: 'lazy', onerror: (e) => e.target.remove() });
 // Blöcke erscheinen beim Hinscrollen, die Figur rechnet nur, solange sie zu sehen ist
 function startBeobachten() {
   const bloecke = [...document.querySelectorAll('.st-block:not(.da)')];
@@ -780,7 +780,8 @@ function codeZugang() {
 const heldBild = () => { const hell = /^(klar|lagune)$/.test(document.documentElement.dataset.look || ''); return 'hintergrund-breit' + (hell ? '-hell' : '') + '.jpg'; };
 // 3D-Standbilder (27.11.2026): je Farbwelt eine Fassung (wie startBild), je zwei Breiten, feste Maße gegen Springen beim Laden
 const START_WEG = 'split_squat';   // Übung der Bilder im ersten Bildschirm und bei „So sieht dein Training aus“ (Antippen öffnet sie)
-const lookEndung = () => ({ klar: '-klar', gold: '-gold', sport: '-gold', champagner: '-gold' }[document.documentElement.dataset.look] || '');
+// Look 5 (27.11.2026): je Farbwelt eigene Bilder, Endung = technischer Name der Welt (champagner, gold, sport, lagune, klar); unbekannt = Start-Welt
+function lookEndung() { const l = document.documentElement.dataset.look; return '-' + (LOOKS.includes(l) ? l : 'champagner'); }
 function standBild(name, alt, b, h2, prio) {
   const e = lookEndung(), url = (w) => 'start/' + name + e + '-' + w + '.jpg';
   return h('img', { src: url(960), srcset: url(480) + ' 480w, ' + url(960) + ' 960w', sizes: '(min-width: 900px) 42vw, 92vw', alt, width: b, height: h2,
@@ -2808,7 +2809,9 @@ function infoUeber() {
  * Fällig ist der Umzug, sobald die alte Adresse umleitet: Die Probe (manifest.webmanifest?umzug=…) geht am Offline-Speicher vorbei (sw.js), und fetch folgt der Umleitung nicht. */
 const NEUE_ADRESSE = KONTAKT.adresse;
 const ALTE_ADRESSE = /\.github\.io$/.test(location.hostname) && location.origin !== new URL(NEUE_ADRESSE).origin;
-const LOOKS = ['lagune', 'klar', 'gold', 'sport', 'champagner'];
+// Look 5 (27.11.2026): fünf Farbwelten, technische Namen wie bisher (champagner = Ozean, gold = Abendrot, sport = Dämmerung, lagune = Lagune, klar = Morgenrot). Farben in sport.css.
+const LOOKS = ['champagner', 'gold', 'sport', 'lagune', 'klar'];
+const LOOK_LEISTE = { champagner: '#060A12', gold: '#0E0909', sport: '#0A0812', lagune: '#EEF8F6', klar: '#FFF6F0' };   // Farbe der Handy-Leiste je Welt, wie im frühen Skript in index.html
 const UMZUG_JE = /^dk_(?:(?:tage|analyse)_[A-Za-z][A-Za-z0-9_-]{0,40}|spiel_stand|bestleistung)$/;   // seit 09.11.2026 auch der Spielstand (genau dieser eine Schlüssel, spiel.js), sonst nichts
 async function umzugPruefen() {
   if (!ALTE_ADRESSE || S.umzug || navigator.onLine === false) return;
@@ -2899,7 +2902,7 @@ async function umzugEinlesen(teil) {
   if (leer && LOOKS.includes(d.look)) {   // Farbwelt nur auf einem leeren Handy übernehmen
     try { localStorage.setItem('dk_look', d.look); } catch (e) {}
     document.documentElement.dataset.look = d.look;
-    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = d.look === 'klar' ? '#F5F5F7' : d.look === 'gold' ? '#060608' : d.look === 'sport' ? '#111215' : d.look === 'champagner' ? '#131416' : '#86CBEE';
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = LOOK_LEISTE[d.look];
   }
   gespeichertesPruefen();
   S.umzugNeu = true; S.tagWahl = null; S.ansicht = 'heute'; dauerhaft();

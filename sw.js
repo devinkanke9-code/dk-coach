@@ -1,9 +1,9 @@
 // DK Coach — Offline-Speicher. VERSION und DATEIEN setzt build.js.
-const VERSION = 'r2711b';
+const VERSION = 'r2811a';
 // Offline-Kern (24.11.2026, Kundenperspektive „schlechter Empfang im Gym“): Plan, Training, Eintragen und alle statisch geladenen Module.
 // Kommt ohne den Kern keine neue Fassung zustande, bleibt die alte. 3D-Figur, Gym und Bilder sind optional: Sie kommen mit, wenn es klappt,
 // fehlt eins (Funkloch, Speicher knapp), gilt die neue Fassung trotzdem und das Training läuft ohne Figur (statische Vorschau).
-const KERN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'status.js', 'figurwahl.js', 'essen.js', 'essen-daten.js', 'essen.css', 'gesund.js', 'gesund-daten.js', 'gesund.css', 'strichcode.js', 'qrcode.js', 'ki-foto.js', 'glas.js', 'gefuehl.js',
+const KERN = ['./', 'index.html', 'app.js', 'daten.js', 'kompakt.js', 'coach.js', 'buehne.js', 'buehne.css', 'antippen.js', 'status.js', 'figurwahl.js', 'essen.js', 'essen-daten.js', 'essen.css', 'gesund.js', 'gesund-daten.js', 'gesund.css', 'strichcode.js', 'qrcode.js', 'ki-foto.js', 'gefuehl.js',
   'spiel.js', 'bestleistung.js', 'statistik.js', 'statistik-grafik.js', 'rang.js', 'medaille.js', 'pr-raum.js', 'stil.css', 'sport.css', 'sport.js',
   'schriften/schriften.css', 'schriften/figtree.woff2', 'schriften/archivo.woff2', 'schriften/plex-sans.woff2', 'schriften/plex-mono-500.woff2', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 const OPTIONAL = ['skin-standard.jpg', 'skin-athlet.jpg', 'skin-kraftpaket.jpg', 'skin-laeufer.jpg', 'skin-gold.jpg', 'hintergrund-hoch.jpg', 'hintergrund-breit.jpg', 'hintergrund-hoch-hell.jpg', 'hintergrund-breit-hell.jpg',

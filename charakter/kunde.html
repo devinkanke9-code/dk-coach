@@ -237,24 +237,27 @@ a.foto-knopf { text-decoration: none; }
   --akzent-verlauf: linear-gradient(var(--verlauf-winkel), var(--verlauf-a) 0%, var(--verlauf-b) 100%); --akzent-glanz: 0 10px 24px -8px rgba(15, 134, 196, .6), inset 0 1px 0 rgba(255, 255, 255, .45); --rand-weich: rgba(11, 60, 90, .12); --sanft: cubic-bezier(.22, .61, .36, 1); --feder: cubic-bezier(.3, 1.3, .5, 1); --ios: cubic-bezier(.32, .72, 0, 1);
   --glas: rgba(255, 255, 255, .6); --glas-rand: rgba(255, 255, 255, .72); --glas-dicht: rgba(255, 255, 255, .84); --knopf-grund: rgba(15, 134, 196, .14); --knopf-grund2: rgba(15, 134, 196, .2); --knopf-text: #05506F; --raum-grund: #8CCDEE; color-scheme: light;
   --tm-grund: radial-gradient(120% 70% at 18% 0%, #A6DAF7 0%, transparent 62%), radial-gradient(110% 60% at 92% 8%, #A4EBE4 0%, transparent 62%), #D6EEF9; }
-:root[data-look="klar"] .raum {
-  --verlauf-a: #0071E3; --verlauf-b: #0071E3; --akzent: #0071E3; --akzent-hell: #0066CC; --auf-akzent: #FFFFFF; --text: #1D1D1F; --text2: #6E6E73;
-  --akzent-glanz: none; --rand-weich: rgba(0, 0, 0, .08); --glas: rgba(255, 255, 255, .72); --glas-rand: rgba(0, 0, 0, .08); --glas-dicht: rgba(255, 255, 255, .9); --knopf-grund: #E8E8ED; --knopf-grund2: #DCDCE1; --knopf-text: #1D1D1F; --tm-grund: #F5F5F7; }
+/* Look 5 (28.11.2026): fünf Farbwelten wie in der App (Ozean, Abendrot, Dämmerung, Lagune, Morgenrot), Werte aus arbeit-look5/farben.json. Technische Namen wie bisher. */
+/* Ozean */
+:root[data-look="champagner"] .raum {
+  --verlauf-a: #5294FF; --verlauf-b: #22D3EE; --verlauf-winkel: 135deg; --akzent: #5294FF; --akzent-hell: #5CC6FF; --auf-akzent: #03111F; --text: #F1F6FF; --text2: #A9B6CC; --akzent-verlauf: linear-gradient(135deg, #5294FF 0%, #22D3EE 100%); --akzent-glanz: none; --rand-weich: rgba(255, 255, 255, 0.08); --glas: rgba(6, 10, 18, 0.82); --glas-rand: rgba(255, 255, 255, 0.09); --glas-dicht: rgba(13, 17, 25, 0.95); --knopf-grund: #252B36; --knopf-grund2: #353B45; --knopf-text: #F1F6FF; --raum-grund: #060A12; color-scheme: dark; --tm-grund: #060A12;
+}
+/* Abendrot */
 :root[data-look="gold"] .raum {
-  --verlauf-a: #F7DE93; --verlauf-b: #CC9A33; --akzent: #DCB453; --akzent-hell: #EFD083; --auf-akzent: #1B1304; --text: #F5F1E7; --text2: #BDB7A8;
-  --akzent-glanz: 0 10px 26px -8px rgba(220, 180, 83, .5), inset 0 1px 0 rgba(255, 255, 255, .55); --rand-weich: rgba(236, 200, 110, .17);
-  --glas: rgba(16, 16, 20, .62); --glas-rand: rgba(236, 200, 110, .24); --glas-dicht: rgba(20, 20, 25, .86); --knopf-grund: rgba(236, 200, 110, .14); --knopf-grund2: rgba(236, 200, 110, .22); --knopf-text: #F4D98F; --raum-grund: #060608; color-scheme: dark;
-  --tm-grund: radial-gradient(120% 60% at 22% 0%, rgba(124, 58, 237, .38) 0%, transparent 62%), radial-gradient(110% 50% at 90% 6%, rgba(204, 154, 51, .2) 0%, transparent 62%), #08080A; }
-:root[data-look="sport"] .raum {   /* Farbwelt Sport (16.11.2026): Anthrazit und Limette, wie sport.css in der App */
-  --verlauf-a: #D4F75A; --verlauf-b: #B8E623; --akzent: #C8F135; --akzent-hell: #CFF35A; --auf-akzent: #0D1003; --text: #F2F4EF; --text2: #A9AFA9;
-  --akzent-verlauf: #C8F135; --akzent-glanz: none; --rand-weich: rgba(255, 255, 255, .07);
-  --glas: rgba(17, 18, 21, .82); --glas-rand: rgba(255, 255, 255, .08); --glas-dicht: rgba(20, 21, 25, .94); --knopf-grund: rgba(255, 255, 255, .07); --knopf-grund2: rgba(200, 241, 53, .22); --knopf-text: #F2F4EF; --raum-grund: #111215; color-scheme: dark;
-  --tm-grund: #111215; }
-:root[data-look="champagner"] .raum {   /* Farbwelt Champagner (24.11.2026): warmes Anthrazit und Champagnergold, wie sport.css in der App */
-  --verlauf-a: #E2B97E; --verlauf-b: #C9965A; --akzent: #D6A766; --akzent-hell: #E2B97E; --auf-akzent: #17130C; --text: #F6F3EE; --text2: #B9B2A7;
-  --akzent-verlauf: #D6A766; --akzent-glanz: none; --rand-weich: rgba(246, 243, 238, .07);
-  --glas: rgba(19, 20, 22, .84); --glas-rand: rgba(246, 243, 238, .08); --glas-dicht: rgba(22, 23, 25, .95); --knopf-grund: rgba(246, 243, 238, .07); --knopf-grund2: rgba(214, 167, 102, .22); --knopf-text: #F6F3EE; --raum-grund: #131416; color-scheme: dark;
-  --tm-grund: #131416; }
+  --verlauf-a: #FFA24A; --verlauf-b: #FF5C8A; --verlauf-winkel: 135deg; --akzent: #FFA24A; --akzent-hell: #FF9E6B; --auf-akzent: #22090C; --text: #FFF5EF; --text2: #D0B8B0; --akzent-verlauf: linear-gradient(135deg, #FFA24A 0%, #FF5C8A 100%); --akzent-glanz: none; --rand-weich: rgba(255, 255, 255, 0.08); --glas: rgba(14, 9, 9, 0.82); --glas-rand: rgba(255, 255, 255, 0.09); --glas-dicht: rgba(21, 16, 16, 0.95); --knopf-grund: #2F2728; --knopf-grund2: #3F3839; --knopf-text: #FFF5EF; --raum-grund: #0E0909; color-scheme: dark; --tm-grund: #0E0909;
+}
+/* Dämmerung */
+:root[data-look="sport"] .raum {
+  --verlauf-a: #9B8CFF; --verlauf-b: #EE7BF2; --verlauf-winkel: 135deg; --akzent: #9B8CFF; --akzent-hell: #B7A6FF; --auf-akzent: #150A26; --text: #F6F3FF; --text2: #BDB5D6; --akzent-verlauf: linear-gradient(135deg, #9B8CFF 0%, #EE7BF2 100%); --akzent-glanz: none; --rand-weich: rgba(255, 255, 255, 0.08); --glas: rgba(10, 8, 18, 0.82); --glas-rand: rgba(255, 255, 255, 0.09); --glas-dicht: rgba(17, 15, 25, 0.95); --knopf-grund: #292636; --knopf-grund2: #3A3745; --knopf-text: #F6F3FF; --raum-grund: #0A0812; color-scheme: dark; --tm-grund: #0A0812;
+}
+/* Lagune */
+:root[data-look="lagune"] .raum {
+  --verlauf-a: #19C7D4; --verlauf-b: #3DDC97; --verlauf-winkel: 135deg; --akzent: #0B7285; --akzent-hell: #0B7285; --auf-akzent: #FFFFFF; --text: #0A2626; --text2: #3F5C5A; --akzent-verlauf: linear-gradient(135deg, #0B7285 0%, #0D7550 100%); --akzent-glanz: none; --rand-weich: rgba(10, 38, 38, 0.1); --glas: rgba(238, 248, 246, 0.84); --glas-rand: rgba(10, 38, 38, 0.1); --glas-dicht: rgba(255, 255, 255, 0.95); --knopf-grund: #D9EAE9; --knopf-grund2: #C3DEDE; --knopf-text: #0A2626; --raum-grund: #EEF8F6; color-scheme: light; --tm-grund: #EEF8F6;
+}
+/* Morgenrot */
+:root[data-look="klar"] .raum {
+  --verlauf-a: #FFB37A; --verlauf-b: #FF7AA2; --verlauf-winkel: 135deg; --akzent: #BC3D0B; --akzent-hell: #B8380F; --auf-akzent: #FFFFFF; --text: #2B1710; --text2: #6B5046; --akzent-verlauf: linear-gradient(135deg, #BC3D0B 0%, #BE185D 100%); --akzent-glanz: none; --rand-weich: rgba(43, 23, 16, 0.1); --glas: rgba(255, 246, 240, 0.84); --glas-rand: rgba(43, 23, 16, 0.1); --glas-dicht: rgba(255, 255, 255, 0.95); --knopf-grund: #F7E1D6; --knopf-grund2: #F0CFC1; --knopf-text: #2B1710; --raum-grund: #FFF6F0; color-scheme: light; --tm-grund: #FFF6F0;
+}
 .raum h2 { margin: 0; }
 .raum p { margin: 0; }
 .raum-fertig { width: 100%; min-height: 52px; margin-top: 10px; border: 0; border-radius: 16px; cursor: pointer; font-size: 17px; font-weight: 800; color: var(--auf-akzent); background: var(--akzent-verlauf); box-shadow: var(--akzent-glanz); }

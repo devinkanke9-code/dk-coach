@@ -1,13 +1,12 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-+JQvtxbBbmwK9cqAZ36JJWhFW3YXgQWYD28MrBcbCA8=' 'sha256-s/CDIf01kuSrhXyh+miQpJ6jcEXcPvayFDEbab5JFdU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-3e5wDaW8L4yphvbvDTpgzKW3jpQ1xnmbWfUA9Kul9C4=' 'sha256-R5iDOSeH731keE2u5EsbIg+6mSrbE5sxHAMpt7QkzTU=' 'sha256-s/CDIf01kuSrhXyh+miQpJ6jcEXcPvayFDEbab5JFdU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self'; connect-src 'self' https://script.google.com/macros/s/AKfycbyLPzLHNzum-pwciI3_dzC59O2ORegEOl_eoz95GNV7-4xVumbC5oZRW1EZlCbvzE4xHg/exec https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="dk-wellen-video" content="../">
 <title>Kurze Analyse · Devin Kanke Coach</title>
 <!-- Nie in einer fremden Seite (13.11.2026, wie app.js): In einem Rahmen (iframe) bleibt die Seite unsichtbar, das Skript unten startet nicht. frame-ancestors geht per <meta> nicht. -->
 <script>if(window.top!==window.self){document.documentElement.style.display='none'}</script>
-<meta name="theme-color" content="#131416"><script>try{var l=localStorage.getItem('dk_look');if(!localStorage.getItem('dk_look_start2411')){if(!l||l==='sport'){l='champagner';localStorage.setItem('dk_look',l)}localStorage.setItem('dk_look_start2411','1')}if(l){document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=l==='klar'?'#F5F5F7':l==='gold'?'#060608':l==='sport'?'#111215':l==='champagner'?'#131416':'#86CBEE'}}catch(e){document.documentElement.dataset.look='champagner'}</script>
+<meta name="theme-color" content="#060A12"><script>try{var l=localStorage.getItem('dk_look');if(!/^(champagner|gold|sport|lagune|klar)$/.test(l||'')){l='champagner';localStorage.setItem('dk_look',l)}document.documentElement.dataset.look=l;var m=document.querySelector('meta[name=theme-color]');if(m)m.content={'champagner':'#060A12','gold':'#0E0909','sport':'#0A0812','lagune':'#EEF8F6','klar':'#FFF6F0'}[l]}catch(e){document.documentElement.dataset.look='champagner'}</script>
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../icon-180.png">
 <!-- Devin Kanke Coach — Analyse für dich. Eigene Seite unter /analyse/, ohne Login, ohne Code, ohne Server.
@@ -143,10 +142,7 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
 input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 /* Größere Trefferfläche: In der Kunden-App stehen Knöpfe mindestens 12 px auseinander, darum 6 px Rand statt 4 (auf der Trainer-Seite nur 8 px Lücke) */
 html :where(button, a[href], [role=button], label, summary):where(.knopf, .eb-knopf)::before { inset: -6px; }
-/* Wellen im Hintergrund und Schrift (09.11.2026, Devin: „Wellen … Strand“, Schrift „nicht so eckig, nicht so pixelig, schön sauber, ein bisschen größer“) */
-.dk-wellen-video { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100lvh; object-fit: cover; z-index: -1; pointer-events: none; }
-.dk-wellen-video::-webkit-media-controls, .dk-wellen-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
-html.dk-wellen-an::before, html.dk-wellen-an::after { content: none; }
+/* Schrift (09.11.2026, Devin: „nicht so eckig, nicht so pixelig, schön sauber, ein bisschen größer“). Kein Wellen-Video mehr seit Look 5 (27.11.2026), der Hintergrund kommt aus sport.css. */
 html:root { --f-text: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; --f-display: var(--f-text); --f-zahl: var(--f-text); }
 body { font-size: 18px; letter-spacing: 0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .klein { font-size: 15px; }
